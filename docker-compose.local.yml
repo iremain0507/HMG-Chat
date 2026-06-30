@@ -1,0 +1,29 @@
+# docker-compose.local.yml — 완전 로컬 dev 경로 (AWS 없이 pgvector + redis).
+# 사용: docker compose -f docker-compose.local.yml up -d --wait
+#   .env.local 의 DATABASE_URL=postgres://wchat:localdev@localhost:5432/wchat_dev 와 일치.
+#   .env.local 의 REDIS_URL=redis://localhost:6379 와 일치.
+# 운영엔 사용 안 함 — prod 는 Fargate + RDS + ElastiCache.
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_USER: wchat
+      POSTGRES_PASSWORD: localdev
+      POSTGRES_DB: wchat_dev
+    ports: ["5432:5432"]
+    volumes: ["pgdata:/var/lib/postgresql/data"]
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "wchat"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    ports: ["6379:6379"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+
+volumes:
+  pgdata:
