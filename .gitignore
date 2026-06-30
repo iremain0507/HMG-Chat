@@ -1,0 +1,37 @@
+# ── 비밀/환경설정 — AWS Secrets Manager 사용, 저장소 커밋 금지 ──────────────
+.env
+.env.*
+!.env.example
+!.env.sample
+!.env.template
+!.env.local.example
+!*.example
+*.pem
+*.p12
+*.pfx
+id_rsa
+id_rsa.*
+.aws/
+*.tfstate
+*.tfstate.*
+*.tfvars
+*.keystore
+*.jks
+
+# ── 로컬 개발 산출물 (맥 미니 로컬) ──────────────────────────────────────────
+node_modules/
+.pnpm-store/
+.turbo/
+.next/
+dist/
+build/
+out/
+coverage/
+*.tsbuildinfo
+*.log
+
+# ── OS / 에디터 ──────────────────────────────────────────────────────────────
+.DS_Store
+.idea/
+.vscode/*
+!.vscode/extensions.json
