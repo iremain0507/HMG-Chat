@@ -1,0 +1,75 @@
+# 본 파일을 project.config.yaml 로 복사 후 채우세요.
+# 채운 뒤 (둘 다 동작 — script 가 자기 위치 기준 PLAN_DIR 자동 감지):
+#   - rebuild_plan/ 부모에서: bash rebuild_plan/scripts/apply-project-vars.sh rebuild_plan/project.config.yaml
+#   - rebuild_plan/ 안에서: bash scripts/apply-project-vars.sh project.config.yaml
+# 정의는 00a-PROJECT-VARIABLES.md 참조
+#
+# 모든 빈 문자열 ("") 은 사용자가 직접 채울 자리.
+# default 값이 합리적인 LLM/policy 카테고리는 채워져 있음.
+
+project:
+  name: ""                                       # 영문 대문자, 마케팅용 표기 (예: ACME)
+  slug: ""                                       # 영문 소문자, 디렉토리/리소스 prefix (예: acme). 비우면 lowercase(name) 자동 유도
+  name_pascal: ""                                # PascalCase. 비우면 자동 유도 (name 첫글자 대문자)
+  name_ko: ""                                    # 한글 표시명 (영문 그대로 OK)
+  tagline_ko: ""                                 # 한 줄 정의 (30~80자)
+  version_target: "v1.0"
+
+org:
+  name: ""                                       # 영문 조직명 (예: Acme)
+  name_lower: ""                                 # 비우면 자동 유도
+  name_ko: ""                                    # 한글 조직명
+  full_name_ko: ""                               # 풀네임 한글 (예: ○○그룹/Inc/Corp)
+  domain: ""                                     # 이메일 도메인 (예: acme.com)
+  user_persona_ko: ""                            # 사용자 호칭 (예: ○○인)
+  philosophy_short: ""                           # 회사 철학 요약 (선택, 비워도 OK)
+
+gitlab:
+  host: ""                                       # gitlab.<org>.com 또는 github.com
+  group: ""                                      # <group>/<subgroup>
+
+aws:
+  region: ""                                     # 예: us-east-1, ap-northeast-2
+  account_dev: ""                                # 12자리 AWS account ID
+  account_staging: ""
+  account_prod: ""
+  db_master_username: ""                         # RDS master user
+  internal_cidr_default: "10.0.0.0/16"
+
+domain:
+  app_prod: ""                                   # 운영 도메인 (예: app.acme.com)
+  app_staging: ""
+  app_dev: ""
+
+alerts:
+  slack_channel: ""                              # #<channel>
+  release_channel: ""
+
+brand:
+  pptx_skill_name: ""                            # 브랜드 PPT 스킬 (예: acme-pptx). 비우면 ${ORG_NAME_LOWER}-pptx
+  sandbox_template_id: ""                        # E2B 템플릿 (예: acme-default-v1)
+
+# ─── default 가 합리적, 수정 시만 ───
+llm:
+  primary_provider: "anthropic"
+  primary_model_opus: "claude-opus-4-7"
+  primary_model_sonnet: "claude-sonnet-4-6"
+  primary_model_haiku: "claude-haiku-4-5"
+  embedding_provider: "voyage"
+  embedding_model: "voyage-multilingual-2"
+  embedding_dim: 1024
+  web_search_provider: "tavily"
+  image_caption_provider: "gemini"
+  sandbox_provider: "e2b"
+  fallback_providers: ["openai", "gemini"]
+
+policy:
+  message_retention_days: 90
+  artifact_retention_days: 90
+  upload_retention_days: 30
+  share_default_ttl_days: 30
+  share_max_ttl_days: 90
+  default_user_budget_tokens: 100000
+  jwt_access_ttl_seconds: 900
+  jwt_refresh_ttl_seconds: 2592000
+  rate_limit_global_max: 120
