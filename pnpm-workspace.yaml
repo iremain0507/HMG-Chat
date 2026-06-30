@@ -1,0 +1,6 @@
+packages:
+  - "apps/server"
+  - "apps/web"
+  - "packages/*"
+  # apps/converter-worker 는 Python (poetry) — pnpm workspace 밖.
+  # `cd apps/converter-worker && poetry install` 로 별도 셋업.

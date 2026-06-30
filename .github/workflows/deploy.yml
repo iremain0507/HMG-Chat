@@ -1,0 +1,33 @@
+name: Deploy (AWS)
+
+# AWS 배포 워크플로 — 현재는 LOCAL_ONLY 게이트로 보호됨 (수동 트리거 전용, 자동 실행 안 함).
+# project.config.yaml 의 AWS account / 도메인이 실제 값으로 채워지고 infra/ 가 구성되면
+# 이 워크플로에 build → ECR push → ECS deploy 단계를 추가한다.
+#   참고: rebuild_plan/11-DEPLOYMENT.md, rebuild_plan/15-CI-PIPELINE.md
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "배포 환경"
+        type: choice
+        options: [staging, prod]
+        default: staging
+
+permissions:
+  id-token: write # 추후 AWS OIDC 연동용
+  contents: read
+
+jobs:
+  guard:
+    name: AWS 변수 게이트 (LOCAL_ONLY 차단)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: LOCAL_ONLY 마커 검사
+        run: |
+          if grep -qE 'LOCAL_ONLY_[A-Z]+_PENDING' project.config.yaml; then
+            echo "::error::AWS 계정이 아직 LOCAL_ONLY 상태입니다. 배포하려면 project.config.yaml 의 aws.account_* / domain.app_* 를 실제 값으로 채우고 infra/ 를 구성한 뒤 다시 시도하세요."
+            exit 1
+          fi
+          echo "✓ AWS 변수 확인됨 — (배포 단계는 infra/ 구성 후 추가 예정)"

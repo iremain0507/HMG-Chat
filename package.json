@@ -1,0 +1,65 @@
+{
+  "name": "wchat",
+  "version": "0.0.0",
+  "private": true,
+  "packageManager": "pnpm@10.28.2",
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "scripts": {
+    "dev": "turbo run dev --parallel",
+    "dev:full": "concurrently -k -n nodes,worker -c blue,magenta \"pnpm dev:nodes\" \"pnpm dev:worker\"",
+    "dev:nodes": "turbo run dev --parallel",
+    "dev:worker": "cd apps/converter-worker && poetry run uvicorn src.main:app --reload --port ${WORKER_PORT:-8000}",
+    "dev:no-worker": "turbo run dev --parallel",
+    "build": "turbo run build",
+    "test": "turbo run test",
+    "test:watch": "turbo run test:watch --parallel",
+    "test:unit": "turbo run test:unit",
+    "test:integration": "turbo run test:integration",
+    "lint": "turbo run lint",
+    "typecheck": "turbo run typecheck",
+    "tunnel": "bash scripts/tunnel.sh",
+    "db:migrate": "pnpm --filter @wchat/server db:migrate",
+    "db:seed": "pnpm --filter @wchat/server db:seed",
+    "gen:api-docs": "pnpm --filter @wchat/server openapi:generate",
+    "prepare": "bash scripts/setup-hooks.sh"
+  },
+  "devDependencies": {
+    "turbo": "^2.5.0",
+    "typescript": "5.6.3",
+    "vitest": "2.1.0",
+    "eslint": "^9.10.0",
+    "@eslint/js": "^9.10.0",
+    "typescript-eslint": "^8.0.0",
+    "globals": "^15.0.0",
+    "prettier": "^3.3.0",
+    "lint-staged": "^15.2.0",
+    "concurrently": "^9.0.0",
+    "@types/node": "^22.5.0"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "esbuild",
+      "sharp",
+      "unrs-resolver"
+    ],
+    "overrides": {
+      "react": "19.0.0",
+      "react-dom": "19.0.0",
+      "typescript": "5.6.3",
+      "vitest": "2.1.0",
+      "pdfjs-dist": "4.5.136",
+      "drizzle-orm": "0.36.0",
+      "hono": "4.6.0"
+    }
+  },
+  "lint-staged": {
+    "*.{ts,tsx}": [
+      "eslint --fix"
+    ],
+    "*.{json,md,yml}": [
+      "prettier --write"
+    ]
+  }
+}

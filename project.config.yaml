@@ -1,0 +1,70 @@
+# WChat 프로젝트 변수 — rebuild_plan 템플릿의 placeholder 치환값.
+# 결정: 프로젝트명=WChat, 저장소=GitHub, CI/CD=GitHub Actions, AWS=배포 직전까지 LOCAL_ONLY.
+# 정의는 rebuild_plan/00a-PROJECT-VARIABLES.md 참조.
+
+project:
+  name: "WChat"
+  slug: "wchat"
+  name_pascal: "WChat"
+  name_ko: "WChat"
+  tagline_ko: "개인/사내용 AI 채팅 어시스턴트 (RAG·도구·아티팩트)"
+  version_target: "v1.0"
+
+org:
+  name: "WChat"
+  name_lower: "wchat"
+  name_ko: "WChat"
+  full_name_ko: "WChat"
+  domain: "wchat.dev"                      # 이메일/앱 도메인 placeholder — 실제 도메인 확정 시 교체
+  user_persona_ko: "사용자"
+  philosophy_short: ""
+
+gitlab:                                     # 저장소는 GitHub. (변수 키 이름은 템플릿 호환 위해 유지)
+  host: "github.com"
+  group: "iremain0507"
+
+aws:
+  region: "ap-northeast-2"                  # 서울 리전 (기본값 — 필요 시 변경)
+  account_dev: "LOCAL_ONLY_DEV_PENDING"     # 배포 직전 scripts/check-aws-vars.sh 가 마커 잔존 검사
+  account_staging: "LOCAL_ONLY_STAGING_PENDING"
+  account_prod: "LOCAL_ONLY_PROD_PENDING"
+  db_master_username: "wchat_admin"
+  internal_cidr_default: "10.0.0.0/16"
+
+domain:
+  app_prod: "LOCAL_ONLY_PROD_PENDING"
+  app_staging: "LOCAL_ONLY_STAGING_PENDING"
+  app_dev: "localhost:3000"
+
+alerts:
+  slack_channel: ""
+  release_channel: ""
+
+brand:
+  pptx_skill_name: "wchat-pptx"
+  sandbox_template_id: "wchat-default-v1"
+
+# ─── default 가 합리적, 수정 시만 ───
+llm:
+  primary_provider: "anthropic"
+  primary_model_opus: "claude-opus-4-7"
+  primary_model_sonnet: "claude-sonnet-4-6"
+  primary_model_haiku: "claude-haiku-4-5"
+  embedding_provider: "voyage"
+  embedding_model: "voyage-multilingual-2"
+  embedding_dim: 1024
+  web_search_provider: "tavily"
+  image_caption_provider: "gemini"
+  sandbox_provider: "e2b"
+  fallback_providers: ["openai", "gemini"]
+
+policy:
+  message_retention_days: 90
+  artifact_retention_days: 90
+  upload_retention_days: 30
+  share_default_ttl_days: 30
+  share_max_ttl_days: 90
+  default_user_budget_tokens: 100000
+  jwt_access_ttl_seconds: 900
+  jwt_refresh_ttl_seconds: 2592000
+  rate_limit_global_max: 120
