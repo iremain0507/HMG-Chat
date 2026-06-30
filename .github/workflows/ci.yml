@@ -1,0 +1,60 @@
+name: CI
+
+# 계획(15-CI-PIPELINE.md)의 GitLab CI 의도를 GitHub Actions 로 적응.
+# Phase 0 범위: validate(typecheck/lint) + test + build + secret-scan.
+# 로컬 개발은 맥 미니, CI 는 ubuntu — CI 는 커밋하지 않으므로 dev/deploy 훅의 macOS 규칙과 무관.
+
+on:
+  push:
+    branches: [main, "integration/**"]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PNPM_VERSION: "10.28.2"
+  NODE_VERSION: "22"
+
+jobs:
+  validate:
+    name: typecheck · lint · test · build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+
+      - name: Install (frozen lockfile)
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Test
+        run: pnpm test
+
+      - name: Build
+        run: pnpm build
+
+  secret-scan:
+    name: gitleaks (secret scan)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
