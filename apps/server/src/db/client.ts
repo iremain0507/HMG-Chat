@@ -2,7 +2,9 @@ import { drizzle } from "drizzle-orm/node-postgres";
 import pg from "pg";
 
 const pool = new pg.Pool({
-  connectionString: process.env.DATABASE_URL,
+  connectionString:
+    process.env.DATABASE_URL ??
+    "postgres://wchat:localdev@localhost:5432/wchat_dev",
   max: 20,
   ssl: process.env.DB_SSL === "true" ? { rejectUnauthorized: false } : false,
 });

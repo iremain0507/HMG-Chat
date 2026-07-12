@@ -29,6 +29,13 @@
       "when": 1783888600000,
       "tag": "0002_sessions_messages",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1783888700000,
+      "tag": "0003_sessions_active_runs",
+      "breakpoints": true
     }
   ]
 }

@@ -167,8 +167,8 @@
     "acceptance": "active_runs status enum 전이 테스트 통과",
     "phase": "P2",
     "team": "T1",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P2-T2-01",
