@@ -221,8 +221,8 @@
     "acceptance": "dev 에서 SSE 흐름 표시 + Stop 클릭 시 즉시 중단",
     "phase": "P2",
     "team": "T6",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P3-T1-01",
