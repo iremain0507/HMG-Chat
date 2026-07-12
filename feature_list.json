@@ -176,8 +176,8 @@
     "acceptance": "orchestrator.test.ts — 메시지 → LLM → SSE 흐름 통과",
     "phase": "P2",
     "team": "T2",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P2-T2-02",
