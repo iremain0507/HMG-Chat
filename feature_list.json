@@ -194,8 +194,8 @@
     "acceptance": "LLMProvider Anthropic 구현이 14-INTERFACES 계약을 만족 (테스트 통과)",
     "phase": "P2",
     "team": "T2",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P2-T2-04",
