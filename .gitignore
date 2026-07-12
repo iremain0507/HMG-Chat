@@ -48,3 +48,4 @@ coverage/
 .ralph/PHASE_DONE
 .ralph/current_phase
 .ralph/feature_count
+.ralph/*.out

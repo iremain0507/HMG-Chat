@@ -23,7 +23,7 @@
     "acceptance": "pnpm install && pnpm test && pnpm lint && pnpm typecheck 통과",
     "phase": "P0",
     "team": "T1",
-    "passes": false,
+    "passes": true,
     "attempts": 2
   },
   {
@@ -80,7 +80,6 @@
     "passes": false,
     "attempts": 0
   },
-
   {
     "id": "P0.5-RC-01",
     "desc": "[HUMAN GATE] integration owner 단일 PR — 12 interface 파일 + index.ts/types.ts/errors.ts (총 15 파일) + Zod shared types + openapi stub + api-client + error registry + envelope middleware + CODEOWNERS + ChatEvent/storageKind freeze",
@@ -90,7 +89,6 @@
     "passes": false,
     "attempts": 0
   },
-
   {
     "id": "P1-T1-01",
     "desc": "마이그레이션 0001_identity.sql — organizations / org_units / users / user_org_units (RLS 임베디드)",
@@ -154,7 +152,6 @@
     "passes": false,
     "attempts": 0
   },
-
   {
     "id": "P2-T1-01",
     "desc": "마이그레이션 0002_sessions_messages.sql — sessions + messages",
@@ -227,7 +224,6 @@
     "passes": false,
     "attempts": 0
   },
-
   {
     "id": "P3-T1-01",
     "desc": "마이그레이션 0004_projects_members.sql — projects + project_members + sessions.project_id FK",
@@ -264,7 +260,6 @@
     "passes": false,
     "attempts": 0
   },
-
   {
     "id": "P4-T1-01",
     "desc": "마이그레이션 0005_project_documents_chunks.sql — project_documents + document_chunks (DDL)",
@@ -346,7 +341,6 @@
     "passes": false,
     "attempts": 0
   },
-
   {
     "id": "P5-T1-01",
     "desc": "마이그레이션 0006_artifacts_revisions.sql (storageKind inline/s3 분기, CHECK 제약) + db/artifact-service.ts",
@@ -392,7 +386,6 @@
     "passes": false,
     "attempts": 0
   },
-
   {
     "id": "P6-T1-01",
     "desc": "ArtifactShareRepo (0007 기반) — 토큰 발급/만료/revoke, view_count",
@@ -420,7 +413,6 @@
     "passes": false,
     "attempts": 0
   },
-
   {
     "id": "P7-T1-01",
     "desc": "마이그레이션 0008_user_memories_locks.sql + UserMemoryRepo + extraction lock 메커니즘",
@@ -466,7 +458,6 @@
     "passes": false,
     "attempts": 0
   },
-
   {
     "id": "P8-T1-01",
     "desc": "마이그레이션 0009_mcp_servers_skill_assets.sql + routes/mcp-servers.ts + url-validator (SSRF, RFC-1918 차단 + VPC CIDR 화이트리스트)",
@@ -521,7 +512,6 @@
     "passes": false,
     "attempts": 0
   },
-
   {
     "id": "P9-T1-01",
     "desc": "마이그레이션 0010,0011,0016 + quota-service + usage-logger + tool-metrics",

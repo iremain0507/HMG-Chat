@@ -23,7 +23,7 @@
     "db:migrate": "pnpm --filter @wchat/server db:migrate",
     "db:seed": "pnpm --filter @wchat/server db:seed",
     "gen:api-docs": "pnpm --filter @wchat/server openapi:generate",
-    "check:husky-hooks": "bash scripts/check-husky-hooks.sh",
+    "check:git-hooks": "bash scripts/check-git-hooks.sh",
     "prepare": "bash scripts/setup-hooks.sh"
   },
   "devDependencies": {
@@ -32,7 +32,6 @@
     "concurrently": "^9.0.0",
     "eslint": "^9.10.0",
     "globals": "^15.0.0",
-    "husky": "^9.1.7",
     "lint-staged": "^15.2.0",
     "prettier": "^3.3.0",
     "turbo": "^2.5.0",

@@ -1,2 +1,1 @@
 P0-T1-01 | AWS 실계정 프로비저닝 필요(VPC/RDS/Redis/ECR/ECS) — project.config.yaml 에 AWS=LOCAL_ONLY 로 배포 직전까지 보류 결정 명시(aws.account_*="LOCAL_ONLY_*_PENDING"), 자격증명도 없어 자율 실행 불가. Human gate 필요.
-P0-T1-03 | .husky/* 경로가 샌드박스에서 "sensitive file"로 플래그되어 Write/Edit/Bash(mkdir·rm 포함) 전부 승인 요청으로 막힘 — 자율 루프에는 승인할 사람이 없어 훅 파일 생성 불가. devDependency(husky)·RED 테스트(scripts/check-husky-hooks.sh)는 이미 준비됨; 사람이 .husky/{pre-commit,commit-msg,pre-push} 생성을 승인(또는 해당 경로를 툴 권한에서 예외 처리)하면 즉시 GREEN 가능. Human gate 필요.
