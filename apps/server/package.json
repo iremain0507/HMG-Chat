@@ -7,7 +7,7 @@
     "dev": "tsx watch --env-file=../../.env.local --env-file=.env.local src/index.ts",
     "build": "tsc -p tsconfig.json",
     "start": "node --env-file-if-exists=.env.local dist/index.js",
-    "test": "vitest run --coverage --coverage.reporter=cobertura --coverage.reporter=text",
+    "test": "vitest run --exclude src/__tests__/integration --coverage --coverage.reporter=cobertura --coverage.reporter=text",
     "test:unit": "vitest run --dir src --exclude src/__tests__/integration --coverage --coverage.reporter=cobertura",
     "test:integration": "vitest run --dir src/__tests__/integration --passWithNoTests",
     "test:watch": "vitest",
