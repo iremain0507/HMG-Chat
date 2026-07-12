@@ -185,8 +185,8 @@
     "acceptance": "prompt-builder.test.ts — 4계층 prompt 의 우선순위 (System > Project > User > Tool)",
     "phase": "P2",
     "team": "T2",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P2-T2-03",
