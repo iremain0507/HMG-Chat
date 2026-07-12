@@ -77,8 +77,8 @@
     "acceptance": "http://localhost:3000 접속 → 홈 페이지 표시; pnpm test 통과",
     "phase": "P0",
     "team": "T6",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P0.5-RC-01",
