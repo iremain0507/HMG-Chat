@@ -41,8 +41,8 @@
     "acceptance": "pnpm test 통과 (첫 vitest RED → GREEN)",
     "phase": "P0",
     "team": "T2",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P0-T3-01",
