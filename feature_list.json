@@ -95,8 +95,8 @@
     "acceptance": "한 org 사용자가 다른 org 데이터를 query 할 수 없음 (RLS 통합 테스트)",
     "phase": "P1",
     "team": "T1",
-    "passes": false,
-    "attempts": 1
+    "passes": true,
+    "attempts": 2
   },
   {
     "id": "P1-T1-02",
@@ -104,8 +104,8 @@
     "acceptance": "빈 DB 에서 pnpm db:migrate 0 exit; magic-link 흐름 의존 테이블 생성",
     "phase": "P1",
     "team": "T1",
-    "passes": false,
-    "attempts": 1
+    "passes": true,
+    "attempts": 2
   },
   {
     "id": "P1-T1-03",

@@ -89,7 +89,7 @@ SECURITY DEFINER
 STABLE
 SET search_path = pg_catalog, public
 AS $$
-  SELECT role FROM users WHERE id = current_setting('app.user_id', true)::uuid;
+  SELECT role FROM users WHERE id = NULLIF(current_setting('app.user_id', true), '')::uuid;
 $$;
 
 CREATE OR REPLACE FUNCTION current_user_is_admin()
@@ -120,7 +120,7 @@ BEGIN
   -- 0004 이전엔 project_members 가 없어 NULL 반환 — RLS 결과는 어떤 policy 도 통과 안 됨.
   -- 0004 적용 후 본 EXECUTE 가 실제 role 을 반환.
   BEGIN
-    EXECUTE 'SELECT role FROM project_members WHERE project_id = $1 AND user_id = current_setting(''app.user_id'', true)::uuid'
+    EXECUTE 'SELECT role FROM project_members WHERE project_id = $1 AND user_id = NULLIF(current_setting(''app.user_id'', true), '''')::uuid'
       INTO v_role USING p_project_id;
   EXCEPTION
     WHEN undefined_table THEN
@@ -169,49 +169,49 @@ GRANT  EXECUTE ON FUNCTION user_is_project_editor_or_owner(UUID)    TO PUBLIC;
 
 CREATE POLICY organizations_select ON organizations
   FOR SELECT
-  USING (id = current_setting('app.org_id', true)::uuid);
+  USING (id = NULLIF(current_setting('app.org_id', true), '')::uuid);
 
 CREATE POLICY organizations_modify_admin ON organizations
   FOR ALL
   USING (
-    id = current_setting('app.org_id', true)::uuid
+    id = NULLIF(current_setting('app.org_id', true), '')::uuid
     AND current_user_is_admin()                 -- SECURITY DEFINER 함수, RLS 우회
   );
 
 CREATE POLICY org_units_select ON org_units
   FOR SELECT
-  USING (org_id = current_setting('app.org_id', true)::uuid);
+  USING (org_id = NULLIF(current_setting('app.org_id', true), '')::uuid);
 
 CREATE POLICY org_units_modify ON org_units
   FOR ALL
   USING (
-    org_id = current_setting('app.org_id', true)::uuid
+    org_id = NULLIF(current_setting('app.org_id', true), '')::uuid
     AND current_user_is_admin()
   );
 
 CREATE POLICY users_select_same_org ON users
   FOR SELECT
-  USING (org_id = current_setting('app.org_id', true)::uuid);
+  USING (org_id = NULLIF(current_setting('app.org_id', true), '')::uuid);
 
 CREATE POLICY users_update_self ON users
   FOR UPDATE
-  USING (id = current_setting('app.user_id', true)::uuid);
+  USING (id = NULLIF(current_setting('app.user_id', true), '')::uuid);
 
 CREATE POLICY users_admin_modify ON users
   FOR ALL
   USING (
-    org_id = current_setting('app.org_id', true)::uuid
+    org_id = NULLIF(current_setting('app.org_id', true), '')::uuid
     AND current_user_is_admin()                 -- 같은 테이블 자기참조 회피
   );
 
 CREATE POLICY user_org_units_select ON user_org_units
   FOR SELECT
   USING (
-    user_id = current_setting('app.user_id', true)::uuid
+    user_id = NULLIF(current_setting('app.user_id', true), '')::uuid
     OR EXISTS (
       SELECT 1 FROM org_units ou
       WHERE ou.id = user_org_units.org_unit_id
-        AND ou.org_id = current_setting('app.org_id', true)::uuid
+        AND ou.org_id = NULLIF(current_setting('app.org_id', true), '')::uuid
     )
   );
 
