@@ -149,8 +149,8 @@
     "acceptance": "dev 서버에서 magic-link 가입 흐름 표시 (server 302 → / , 홈에서 새 세션 생성)",
     "phase": "P1",
     "team": "T6",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P2-T1-01",
