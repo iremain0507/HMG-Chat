@@ -203,8 +203,8 @@
     "acceptance": "사용자가 채팅에 메시지 보내면 SSE 로 응답 받음 ('hello' → text_delta + stop)",
     "phase": "P2",
     "team": "T2",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P2-T2-05",
