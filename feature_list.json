@@ -32,8 +32,8 @@
     "acceptance": "새 개발자가 README 보고 30분 안에 pnpm dev 실행 가능",
     "phase": "P0",
     "team": "T1",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P0-T2-01",

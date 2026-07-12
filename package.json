@@ -24,6 +24,7 @@
     "db:seed": "pnpm --filter @wchat/server db:seed",
     "gen:api-docs": "pnpm --filter @wchat/server openapi:generate",
     "check:git-hooks": "bash scripts/check-git-hooks.sh",
+    "check:onboarding": "bash scripts/check-onboarding.sh",
     "prepare": "bash scripts/setup-hooks.sh"
   },
   "devDependencies": {
