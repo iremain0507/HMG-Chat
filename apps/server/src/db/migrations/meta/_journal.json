@@ -8,6 +8,13 @@
       "when": 1783888311605,
       "tag": "0001_identity",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1783888400000,
+      "tag": "0012_password_or_magic",
+      "breakpoints": true
     }
   ]
 }
