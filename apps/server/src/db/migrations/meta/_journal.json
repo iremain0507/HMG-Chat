@@ -15,6 +15,13 @@
       "when": 1783888400000,
       "tag": "0012_password_or_magic",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1783888500000,
+      "tag": "0013_refresh_token_families",
+      "breakpoints": true
     }
   ]
 }
