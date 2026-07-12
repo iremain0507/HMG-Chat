@@ -212,8 +212,8 @@
     "acceptance": "abort.test.ts — abort signal 전파 시 LLM 호출 cancel; Stop 클릭 시 active_runs.status=cancelled",
     "phase": "P2",
     "team": "T2",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P2-T6-01",
