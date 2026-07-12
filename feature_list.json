@@ -158,8 +158,8 @@
     "acceptance": "빈 DB 에서 pnpm db:migrate 0 exit; sessions/messages RLS 통과",
     "phase": "P2",
     "team": "T1",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P2-T1-02",
