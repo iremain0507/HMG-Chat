@@ -10,7 +10,8 @@
     "test:unit": "vitest run --dir src --coverage --coverage.reporter=cobertura",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",
-    "lint": "eslint src next.config.ts tailwind.config.ts"
+    "lint": "eslint src next.config.ts tailwind.config.ts",
+    "api-types:generate": "openapi-typescript ../server/openapi.json -o src/lib/api-types.generated.ts"
   },
   "dependencies": {
     "@wchat/shared": "workspace:*",
@@ -28,6 +29,7 @@
     "autoprefixer": "^10.4.0",
     "vitest": "2.1.0",
     "@vitest/coverage-v8": "2.1.0",
+    "openapi-typescript": "^7.0.0",
     "eslint-config-next": "15.0.0"
   }
 }

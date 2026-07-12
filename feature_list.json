@@ -86,8 +86,8 @@
     "acceptance": "pnpm install/typecheck/lint + openapi:generate + api-types:generate + lint-plan.sh 모두 0 exit",
     "phase": "P0.5",
     "team": "RC",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P1-T1-01",
