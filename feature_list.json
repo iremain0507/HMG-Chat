@@ -6,7 +6,7 @@
     "phase": "P0",
     "team": "T1",
     "passes": false,
-    "attempts": 0
+    "attempts": 1
   },
   {
     "id": "P0-T1-02",
@@ -14,8 +14,8 @@
     "acceptance": "CI 가 PR / main / release pipeline 으로 분기",
     "phase": "P0",
     "team": "T1",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P0-T1-03",

@@ -5,9 +5,13 @@ name: CI
 # 로컬 개발은 맥 미니, CI 는 ubuntu — CI 는 커밋하지 않으므로 dev/deploy 훅의 macOS 규칙과 무관.
 
 on:
-  push:
-    branches: [main, "integration/**"]
   pull_request:
+  push:
+    branches:
+      - main
+      - "integration/**"
+    tags:
+      - "v*.*.*"
 
 concurrency:
   group: ci-${{ github.ref }}

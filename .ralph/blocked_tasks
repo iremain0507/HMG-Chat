@@ -1,0 +1,1 @@
+P0-T1-01 | AWS 실계정 프로비저닝 필요(VPC/RDS/Redis/ECR/ECS) — project.config.yaml 에 AWS=LOCAL_ONLY 로 배포 직전까지 보류 결정 명시(aws.account_*="LOCAL_ONLY_*_PENDING"), 자격증명도 없어 자율 실행 불가. Human gate 필요.
