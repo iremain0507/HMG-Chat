@@ -131,8 +131,8 @@
     "acceptance": "도메인 외(gmail.com) 가입 시도 → 403; routes/auth.test.ts login flow integration 통과",
     "phase": "P1",
     "team": "T1",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P1-T1-06",
