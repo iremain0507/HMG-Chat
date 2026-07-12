@@ -35,3 +35,16 @@ coverage/
 .idea/
 .vscode/*
 !.vscode/extensions.json
+
+# ── Loop engineering 런타임 산출물 (reports/blocked_tasks 는 리뷰 대상이라 제외 안 함) ──
+.ralph/logs/
+.ralph/last_fail.txt
+.ralph/fingerprints
+.ralph/spec.md5
+.ralph/phase-eval.json
+.ralph/loop.lock
+.ralph/gates.out
+.ralph/BLOCKED
+.ralph/PHASE_DONE
+.ralph/current_phase
+.ralph/feature_count

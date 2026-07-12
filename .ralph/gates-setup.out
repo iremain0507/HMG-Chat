@@ -1,0 +1,213 @@
+── gate: typecheck
+
+> wchat@0.0.0 typecheck /Users/iremain/Documents/claudecode/W-Chat
+> turbo run typecheck
+
+• turbo 2.10.1
+
+   • Packages in scope: @wchat/interfaces, @wchat/server, @wchat/shared, @wchat/web
+   • Running typecheck in 4 packages
+   • Remote caching disabled
+
+@wchat/shared:typecheck: cache hit, replaying logs 5db1cb4342340223
+@wchat/shared:typecheck: 
+@wchat/shared:typecheck: > @wchat/shared@0.0.0 typecheck /Users/iremain/Documents/claudecode/W-Chat/packages/shared
+@wchat/shared:typecheck: > tsc --noEmit
+@wchat/shared:typecheck: 
+@wchat/shared:build: cache hit, replaying logs b318985ca40b1a0d
+@wchat/shared:build: 
+@wchat/shared:build: > @wchat/shared@0.0.0 build /Users/iremain/Documents/claudecode/W-Chat/packages/shared
+@wchat/shared:build: > tsc -p tsconfig.json
+@wchat/shared:build: 
+@wchat/interfaces:typecheck: cache hit, replaying logs cad4566f69c8b011
+@wchat/web:typecheck: cache hit, replaying logs e973072201570e40
+@wchat/interfaces:typecheck: 
+@wchat/interfaces:typecheck: > @wchat/interfaces@0.0.0 typecheck /Users/iremain/Documents/claudecode/W-Chat/packages/interfaces
+@wchat/interfaces:typecheck: > tsc --noEmit
+@wchat/interfaces:typecheck: 
+@wchat/web:typecheck: 
+@wchat/web:typecheck: > @wchat/web@0.0.0 typecheck /Users/iremain/Documents/claudecode/W-Chat/apps/web
+@wchat/web:typecheck: > tsc --noEmit
+@wchat/web:typecheck: 
+@wchat/interfaces:build: cache hit, replaying logs 886b6f6a8f7c5760
+@wchat/interfaces:build: 
+@wchat/interfaces:build: > @wchat/interfaces@0.0.0 build /Users/iremain/Documents/claudecode/W-Chat/packages/interfaces
+@wchat/interfaces:build: > tsc -p tsconfig.json
+@wchat/interfaces:build: 
+@wchat/server:typecheck: cache hit, replaying logs 424c2d465ca1f8dc
+@wchat/server:typecheck: 
+@wchat/server:typecheck: > @wchat/server@0.0.0 typecheck /Users/iremain/Documents/claudecode/W-Chat/apps/server
+@wchat/server:typecheck: > tsc --noEmit
+@wchat/server:typecheck: 
+
+ Tasks:    6 successful, 6 total
+Cached:    6 cached, 6 total
+  Time:    28ms >>> FULL TURBO
+
+   ✅ typecheck
+── gate: lint
+
+> wchat@0.0.0 lint /Users/iremain/Documents/claudecode/W-Chat
+> turbo run lint
+
+• turbo 2.10.1
+
+   • Packages in scope: @wchat/interfaces, @wchat/server, @wchat/shared, @wchat/web
+   • Running lint in 4 packages
+   • Remote caching disabled
+
+@wchat/interfaces:lint: cache hit, replaying logs 9f8ffff5f00d8f1b
+@wchat/interfaces:lint: 
+@wchat/interfaces:lint: > @wchat/interfaces@0.0.0 lint /Users/iremain/Documents/claudecode/W-Chat/packages/interfaces
+@wchat/interfaces:lint: > eslint src
+@wchat/interfaces:lint: 
+@wchat/server:lint: cache hit, replaying logs 101d4015632cd8af
+@wchat/shared:lint: cache hit, replaying logs f2e9b1b7d5984c7f
+@wchat/web:lint: cache hit, replaying logs 322531918533b527
+@wchat/shared:lint: 
+@wchat/shared:lint: > @wchat/shared@0.0.0 lint /Users/iremain/Documents/claudecode/W-Chat/packages/shared
+@wchat/shared:lint: > eslint src
+@wchat/shared:lint: 
+@wchat/web:lint: 
+@wchat/web:lint: > @wchat/web@0.0.0 lint /Users/iremain/Documents/claudecode/W-Chat/apps/web
+@wchat/web:lint: > eslint src next.config.ts tailwind.config.ts
+@wchat/web:lint: 
+@wchat/server:lint: 
+@wchat/server:lint: > @wchat/server@0.0.0 lint /Users/iremain/Documents/claudecode/W-Chat/apps/server
+@wchat/server:lint: > eslint src
+@wchat/server:lint: 
+
+ Tasks:    4 successful, 4 total
+Cached:    4 cached, 4 total
+  Time:    12ms >>> FULL TURBO
+
+   ✅ lint
+── gate: test
+
+> wchat@0.0.0 test /Users/iremain/Documents/claudecode/W-Chat
+> turbo run test
+
+• turbo 2.10.1
+
+   • Packages in scope: @wchat/interfaces, @wchat/server, @wchat/shared, @wchat/web
+   • Running test in 4 packages
+   • Remote caching disabled
+
+@wchat/shared:build: cache hit, replaying logs b318985ca40b1a0d
+@wchat/shared:build: 
+@wchat/shared:build: > @wchat/shared@0.0.0 build /Users/iremain/Documents/claudecode/W-Chat/packages/shared
+@wchat/shared:build: > tsc -p tsconfig.json
+@wchat/shared:build: 
+@wchat/shared:test: cache hit, replaying logs 4806f5a1353131e5
+@wchat/shared:test: 
+@wchat/shared:test: > @wchat/shared@0.0.0 test /Users/iremain/Documents/claudecode/W-Chat/packages/shared
+@wchat/shared:test: > vitest run --coverage --coverage.reporter=cobertura --coverage.reporter=text
+@wchat/shared:test: 
+@wchat/shared:test: 
+@wchat/shared:test:  RUN  v2.1.0 /Users/iremain/Documents/claudecode/W-Chat/packages/shared
+@wchat/shared:test:       Coverage enabled with v8
+@wchat/shared:test: 
+@wchat/shared:test:  ✓ src/__tests__/hello.test.ts  (1 test) 1ms
+@wchat/shared:test: 
+@wchat/shared:test:  Test Files  1 passed (1)
+@wchat/shared:test:       Tests  1 passed (1)
+@wchat/shared:test:    Start at  15:47:45
+@wchat/shared:test:    Duration  861ms (transform 20ms, setup 0ms, collect 14ms, tests 1ms, environment 0ms, prepare 66ms)
+@wchat/shared:test: 
+@wchat/shared:test:  % Coverage report from v8
+@wchat/shared:test: ----------|---------|----------|---------|---------|-------------------
+@wchat/shared:test: File      | % Stmts | % Branch | % Funcs | % Lines | Uncovered Line #s 
+@wchat/shared:test: ----------|---------|----------|---------|---------|-------------------
+@wchat/shared:test: All files |       0 |        0 |       0 |       0 |                   
+@wchat/shared:test:  index.ts |       0 |        0 |       0 |       0 | 1                 
+@wchat/shared:test: ----------|---------|----------|---------|---------|-------------------
+@wchat/interfaces:build: cache hit, replaying logs 886b6f6a8f7c5760
+@wchat/interfaces:build: 
+@wchat/interfaces:build: > @wchat/interfaces@0.0.0 build /Users/iremain/Documents/claudecode/W-Chat/packages/interfaces
+@wchat/interfaces:build: > tsc -p tsconfig.json
+@wchat/interfaces:build: 
+@wchat/web:test: cache hit, replaying logs 7782f259c58c6ba3
+@wchat/web:test: 
+@wchat/web:test: > @wchat/web@0.0.0 test /Users/iremain/Documents/claudecode/W-Chat/apps/web
+@wchat/web:test: > vitest run --coverage --coverage.reporter=cobertura --coverage.reporter=text
+@wchat/server:test: cache hit, replaying logs 58a462b7d0c893dc
+@wchat/web:test: 
+@wchat/interfaces:test: cache hit, replaying logs c059750e40854236
+@wchat/web:test: 
+@wchat/web:test:  RUN  v2.1.0 /Users/iremain/Documents/claudecode/W-Chat/apps/web
+@wchat/web:test:       Coverage enabled with v8
+@wchat/web:test: 
+@wchat/web:test:  ✓ src/__tests__/hello.test.ts  (1 test) 1ms
+@wchat/web:test: 
+@wchat/web:test:  Test Files  1 passed (1)
+@wchat/web:test:       Tests  1 passed (1)
+@wchat/server:test: 
+@wchat/server:test: > @wchat/server@0.0.0 test /Users/iremain/Documents/claudecode/W-Chat/apps/server
+@wchat/server:test: > vitest run --coverage --coverage.reporter=cobertura --coverage.reporter=text
+@wchat/web:test:    Start at  16:50:52
+@wchat/web:test:    Duration  624ms (transform 186ms, setup 0ms, collect 183ms, tests 1ms, environment 0ms, prepare 38ms)
+@wchat/web:test: 
+@wchat/web:test:  % Coverage report from v8
+@wchat/server:test: 
+@wchat/server:test: 
+@wchat/server:test:  RUN  v2.1.0 /Users/iremain/Documents/claudecode/W-Chat/apps/server
+@wchat/server:test:       Coverage enabled with v8
+@wchat/server:test: 
+@wchat/interfaces:test: 
+@wchat/web:test: -------------------|---------|----------|---------|---------|-------------------
+@wchat/web:test: File               | % Stmts | % Branch | % Funcs | % Lines | Uncovered Line #s 
+@wchat/interfaces:test: > @wchat/interfaces@0.0.0 test /Users/iremain/Documents/claudecode/W-Chat/packages/interfaces
+@wchat/interfaces:test: > vitest run --passWithNoTests
+@wchat/interfaces:test: 
+@wchat/interfaces:test: 
+@wchat/web:test: -------------------|---------|----------|---------|---------|-------------------
+@wchat/server:test:  ✓ src/__tests__/hello.test.ts  (1 test) 1ms
+@wchat/server:test: 
+@wchat/server:test:  Test Files  1 passed (1)
+@wchat/server:test:       Tests  1 passed (1)
+@wchat/server:test:    Start at  16:50:53
+@wchat/server:test:    Duration  297ms (transform 14ms, setup 0ms, collect 12ms, tests 1ms, environment 0ms, prepare 34ms)
+@wchat/server:test: 
+@wchat/server:test:  % Coverage report from v8
+@wchat/server:test: -------------------|---------|----------|---------|---------|-------------------
+@wchat/interfaces:test:  RUN  v2.1.0 /Users/iremain/Documents/claudecode/W-Chat/packages/interfaces
+@wchat/interfaces:test: 
+@wchat/interfaces:test:  ✓ src/__tests__/hello.test.ts  (1 test) 1ms
+@wchat/interfaces:test: 
+@wchat/interfaces:test:  Test Files  1 passed (1)
+@wchat/interfaces:test:       Tests  1 passed (1)
+@wchat/interfaces:test:    Start at  16:50:52
+@wchat/interfaces:test:    Duration  647ms (transform 241ms, setup 0ms, collect 234ms, tests 1ms, environment 0ms, prepare 53ms)
+@wchat/interfaces:test: 
+@wchat/server:test: File               | % Stmts | % Branch | % Funcs | % Lines | Uncovered Line #s 
+@wchat/server:test: -------------------|---------|----------|---------|---------|-------------------
+@wchat/server:test: All files          |       0 |       20 |      20 |       0 |                   
+@wchat/server:test:  server            |       0 |        0 |       0 |       0 |                   
+@wchat/server:test:   ...zle.config.ts |       0 |        0 |       0 |       0 | 1-10              
+@wchat/server:test:  server/scripts    |       0 |        0 |       0 |       0 |                   
+@wchat/server:test:   ...ate-expand.ts |       0 |        0 |       0 |       0 | 1-29              
+@wchat/server:test:   ...ate-status.ts |       0 |        0 |       0 |       0 | 1-36              
+@wchat/server:test:   ...te-openapi.ts |       0 |        0 |       0 |       0 | 1-15              
+@wchat/server:test:  server/src        |       0 |       25 |      25 |       0 |                   
+@wchat/server:test:   app.ts           |       0 |        0 |       0 |       0 | 1-20              
+@wchat/web:test: All files          |       0 |       50 |      50 |       0 |                   
+@wchat/web:test:  web               |       0 |      100 |     100 |       0 |                   
+@wchat/web:test:   next.config.ts   |       0 |      100 |     100 |       0 | 3-26              
+@wchat/web:test:   ...ind.config.ts |       0 |      100 |     100 |       0 | 3-18              
+@wchat/web:test:  web/src/app       |       0 |        0 |       0 |       0 |                   
+@wchat/web:test:   layout.tsx       |       0 |        0 |       0 |       0 | 1-14              
+@wchat/web:test:   page.tsx         |       0 |        0 |       0 |       0 | 1-8               
+@wchat/web:test: -------------------|---------|----------|---------|---------|-------------------
+@wchat/server:test:   env.ts           |       0 |        0 |       0 |       0 | 1-23              
+@wchat/server:test:   index.ts         |       0 |        0 |       0 |       0 | 1-10              
+@wchat/server:test:   openapi.ts       |       0 |      100 |     100 |       0 | 9-19              
+@wchat/server:test:  server/src/db     |       0 |       50 |      50 |       0 |                   
+@wchat/server:test:   client.ts        |       0 |        0 |       0 |       0 | 1-11              
+@wchat/server:test:   schema.ts        |       0 |      100 |     100 |       0 | 3                 
+@wchat/server:test: -------------------|---------|----------|---------|---------|-------------------
+
+ Tasks:    6 successful, 6 total
+Cached:    6 cached, 6 total
+  Time:    12ms >>> FULL TURBO
+
+   ✅ test
