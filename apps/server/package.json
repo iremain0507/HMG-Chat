@@ -20,22 +20,25 @@
     "openapi:generate": "tsx scripts/generate-openapi.ts"
   },
   "dependencies": {
-    "@wchat/shared": "workspace:*",
-    "@wchat/interfaces": "workspace:*",
-    "hono": "4.6.0",
+    "@aws-sdk/client-sesv2": "^3.1085.0",
     "@hono/node-server": "^1.13.0",
-    "zod": "^3.23.0",
+    "@wchat/interfaces": "workspace:*",
+    "@wchat/shared": "workspace:*",
     "drizzle-orm": "0.36.0",
+    "hono": "4.6.0",
+    "jsonwebtoken": "^9.0.0",
+    "nodemailer": "^9.0.3",
     "pg": "^8.13.0",
-    "jsonwebtoken": "^9.0.0"
+    "zod": "^3.23.0"
   },
   "devDependencies": {
-    "@types/node": "^22.5.0",
-    "@types/pg": "^8.11.0",
     "@types/jsonwebtoken": "^9.0.0",
-    "tsx": "^4.0.0",
-    "vitest": "2.1.0",
+    "@types/node": "^22.5.0",
+    "@types/nodemailer": "^8.0.1",
+    "@types/pg": "^8.11.0",
     "@vitest/coverage-v8": "2.1.0",
-    "drizzle-kit": "0.27.0"
+    "drizzle-kit": "0.27.0",
+    "tsx": "^4.0.0",
+    "vitest": "2.1.0"
   }
 }

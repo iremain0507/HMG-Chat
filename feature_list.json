@@ -140,8 +140,8 @@
     "acceptance": "EMAIL_SENDER_KIND=console 로 magic-link URL 이 stdout 에 출력",
     "phase": "P1",
     "team": "T1",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P1-T6-01",
