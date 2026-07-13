@@ -392,8 +392,8 @@
     "acceptance": "10MB pptx upload → s3, 100KB md → inline; 다운로드 URL 이 S3 presigned (token 만료 시 차단)",
     "phase": "P5",
     "team": "T4",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P5-T4-02",

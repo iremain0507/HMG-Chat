@@ -12,6 +12,10 @@ import { createUploadRoutes } from "./routes/uploads.js";
 import { createPgUploadDataAccess } from "./db/upload-data-access.js";
 import { createDocumentRoutes } from "./routes/documents.js";
 import { createPgDocumentDataAccess } from "./db/project-document-data-access.js";
+import { createArtifactRoutes } from "./routes/artifacts.js";
+import { createPgArtifactDataAccess } from "./db/artifact-data-access.js";
+import { createInlineArtifactStore } from "./lib/artifact-store.inline.js";
+import { createS3ArtifactStore } from "./lib/artifact-store.s3.js";
 import { createLocalObjectStore } from "./lib/object-store.js";
 import { createParserPipeline } from "./knowledge/parser-pipeline.js";
 import { withUsageTracking } from "./knowledge/embedding-provider.js";
@@ -105,6 +109,20 @@ export function createApp(env: Env) {
     }),
   );
   app.route("/api/v1/documents", documentsApp);
+
+  const artifactsApp = new Hono<{ Variables: AuthedVariables }>();
+  artifactsApp.use("*", authMiddleware);
+  const artifactDa = createPgArtifactDataAccess();
+  artifactsApp.route(
+    "/",
+    createArtifactRoutes({
+      da: artifactDa,
+      inlineStore: createInlineArtifactStore(artifactDa.artifacts),
+      s3Store: createS3ArtifactStore(createLocalObjectStore()),
+      downloadSecret: env.JWT_SECRET,
+    }),
+  );
+  app.route("/api/v1/artifacts", artifactsApp);
 
   return app;
 }
