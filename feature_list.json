@@ -536,8 +536,8 @@
     "acceptance": "skills list 표시 + MCP 등록 시 discovery 성공 표시",
     "phase": "P8",
     "team": "T6",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P9-T1-01",
