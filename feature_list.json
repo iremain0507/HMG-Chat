@@ -311,8 +311,8 @@
     "acceptance": "parser-pipeline + 4 파서 단위테스트 GREEN(각 포맷 → markdown), 미지원 mime → 에러",
     "phase": "P4",
     "team": "T3",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P4-T3-08",
