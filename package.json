@@ -25,6 +25,8 @@
     "gen:api-docs": "pnpm --filter @wchat/server openapi:generate",
     "check:git-hooks": "bash scripts/check-git-hooks.sh",
     "check:onboarding": "bash scripts/check-onboarding.sh",
+    "load:100": "node scripts/load-test.mjs --users 100",
+    "load:1000": "node scripts/load-test.mjs --users 1000",
     "prepare": "bash scripts/setup-hooks.sh"
   },
   "devDependencies": {

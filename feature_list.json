@@ -581,8 +581,8 @@
     "acceptance": "p95 응답 시간 < 500ms (LLM 제외)",
     "phase": "P9",
     "team": "T1",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P9-T1-06",
