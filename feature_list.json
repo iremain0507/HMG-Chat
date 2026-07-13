@@ -374,8 +374,8 @@
     "acceptance": "artifact-service.test.ts — db/s3 라우팅 (size threshold); RLS test (session_id NULL OK, cross-user 404)",
     "phase": "P5",
     "team": "T1",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P5-T1-02",
