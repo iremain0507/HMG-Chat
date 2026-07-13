@@ -47,21 +47,27 @@ describe("ProjectDetail", () => {
   it("프로젝트를 정상 조회하면 이름/visibility 를 표시한다", async () => {
     vi.stubGlobal(
       "fetch",
-      vi.fn(async () => ({
-        ok: true,
-        status: 200,
-        json: async () => ({
-          data: {
-            id: "proj-1",
-            name: "영업 RFP 분석",
-            description: null,
-            visibility: "private",
-            orgUnitId: null,
-            ownerId: "user-1",
-            createdAt: "2026-04-01T00:00:00Z",
-          },
-        }),
-      })),
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url.startsWith("/api/v1/documents")) {
+          return { ok: true, status: 200, json: async () => ({ data: [] }) };
+        }
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            data: {
+              id: "proj-1",
+              name: "영업 RFP 분석",
+              description: null,
+              visibility: "private",
+              orgUnitId: null,
+              ownerId: "user-1",
+              createdAt: "2026-04-01T00:00:00Z",
+            },
+          }),
+        };
+      }),
     );
 
     render(<ProjectDetail projectId="proj-1" />);

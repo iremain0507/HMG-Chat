@@ -365,8 +365,8 @@
     "acceptance": "dev 에서 파일 업로드 → indexed; 30 페이지 PDF 가 < 60초 안에 indexing 완료",
     "phase": "P4",
     "team": "T6",
-    "passes": false,
-    "attempts": 1
+    "passes": true,
+    "attempts": 2
   },
   {
     "id": "P5-T1-01",
