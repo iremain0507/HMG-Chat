@@ -527,8 +527,8 @@
     "acceptance": "SKILL.md semver·manifest 일관성 통과 (lint-skills)",
     "phase": "P8",
     "team": "T5",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P8-T6-01",

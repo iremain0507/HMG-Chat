@@ -1,7 +1,8 @@
 import { describe, it, expect } from "vitest";
-import { mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { createSkillRegistry } from "../skills-engine.js";
 
 const SCOPE = { orgId: "org-1", userId: "user-1", projectId: "proj-1" };
@@ -203,5 +204,44 @@ describe("createSkillRegistry", () => {
       scope: "nonsense",
     });
     expect(() => createSkillRegistry({ skillsDir })).toThrow(/scope/i);
+  });
+});
+
+describe("wchat-pptx 실제 스킬 (P8-T5-03, L09 semver·manifest 일관성 = lint-skills 대체)", () => {
+  const skillDir = fileURLToPath(
+    new URL("../../../../../skills/wchat-pptx", import.meta.url),
+  );
+  const skillsRootDir = fileURLToPath(
+    new URL("../../../../../skills", import.meta.url),
+  );
+
+  it("SKILL.md 가 semver·description·entryPoint 검증을 통과하고 레지스트리에 로드된다", async () => {
+    const registry = createSkillRegistry({ skillsDir: skillsRootDir });
+    const spec = await registry.byId("wchat-pptx@1.0.0");
+    expect(spec).not.toBeNull();
+    expect(spec?.entryPoint).toBe("skills/wchat-pptx/scripts/build.mjs");
+  });
+
+  it("package.json 의 name/version 이 SKILL.md frontmatter 와 일치한다 (L09)", () => {
+    const skillMd = readFileSync(join(skillDir, "SKILL.md"), "utf8");
+    const fm = skillMd.match(/^---\n([\s\S]+?)\n---/);
+    const fields = Object.fromEntries(
+      (fm?.[1] ?? "")
+        .split("\n")
+        .map((l) => l.split(/:\s*/, 2))
+        .filter((p): p is [string, string] => p.length === 2),
+    );
+    const pkg = JSON.parse(
+      readFileSync(join(skillDir, "package.json"), "utf8"),
+    ) as { name: string; version: string };
+    expect(pkg.name).toBe(fields.name);
+    expect(pkg.version).toBe(fields.version);
+  });
+
+  it("CHANGELOG.md 최상단 항목이 SKILL.md version 과 일치한다 (L09)", () => {
+    const skillMd = readFileSync(join(skillDir, "SKILL.md"), "utf8");
+    const version = skillMd.match(/^version:\s*(\S+)/m)?.[1];
+    const changelog = readFileSync(join(skillDir, "CHANGELOG.md"), "utf8");
+    expect(changelog).toContain(`[${version}]`);
   });
 });
