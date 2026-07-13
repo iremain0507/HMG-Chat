@@ -284,8 +284,8 @@
     "acceptance": "빈 DB 에서 pnpm db:migrate 0 exit; uploads RLS 통과",
     "phase": "P4",
     "team": "T1",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P4-T3-01",
