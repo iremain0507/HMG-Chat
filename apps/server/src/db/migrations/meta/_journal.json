@@ -50,6 +50,13 @@
       "when": 1783888900000,
       "tag": "0015_project_team_scope_rls",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1783889000000,
+      "tag": "0005_project_documents_chunks",
+      "breakpoints": true
     }
   ]
 }

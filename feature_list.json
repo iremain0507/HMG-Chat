@@ -275,8 +275,8 @@
     "acceptance": "document_chunks RLS 통과",
     "phase": "P4",
     "team": "T1",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P4-T1-02",
