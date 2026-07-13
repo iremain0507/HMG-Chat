@@ -1,2 +1,4 @@
 P0-T1-01 | AWS 실계정 프로비저닝 필요(VPC/RDS/Redis/ECR/ECS) — project.config.yaml 에 AWS=LOCAL_ONLY 로 배포 직전까지 보류 결정 명시(aws.account_*="LOCAL_ONLY_*_PENDING"), 자격증명도 없어 자율 실행 불가. Human gate 필요.
-P9-T6-01 | 16-API-CONTRACT.md § 14 GET /admin/dashboard, GET /admin/users, PATCH /admin/users/:id, POST /admin/users/:id/suspend|unsuspend, GET /admin/tool-metrics 가 apps/server/src/routes/admin.ts 에 미구현(health/history 만 존재, P9-T1-02 desc 범위 밖) — 이 5개 엔드포인트를 다루는 T1 feature_list 태스크가 존재하지 않아 백엔드가 만들어질 경로가 없음. T6=apps/web/src/ path ownership 상 라우트 직접 구현 불가(P4-T3-02→P4-T6-01 과 동일한 다운스트림 차단 패턴). Human gate 필요(신규 T1 태스크 추가 또는 스코프 조정 결정).
+P9-T6-02 | e2e Playwright + A11y audit — 전체 스택(server+web+DB) 기동 + 브라우저 e2e 필요. 코드는 준비 가능하나 LOCAL_ONLY 세션에서 실 e2e green 확정은 배포/스테이징 환경에서. 배포-시 human gate.
+P9-ALL-01 | GA 게이트: 커버리지 임계 + docs/decisions ADR INDEX 는 가능하나 "24시간 staging soak 오류 0" 요건이 세션에서 불가(장시간 실행+스테이징 환경). 배포-시 human gate.
+P9-ALL-02 | v1.0 GA production 배포 = AWS(LOCAL_ONLY 라 불가) + 회고 ADR. 실 배포는 사람이 AWS 프로비저닝(P0-T1-01) 후 수행. 배포-시 human gate.

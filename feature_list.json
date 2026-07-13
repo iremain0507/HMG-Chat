@@ -594,6 +594,15 @@
     "attempts": 1
   },
   {
+    "id": "P9-T1-07",
+    "desc": "routes/admin.ts 확장 — GET /admin/dashboard, GET /admin/users, PATCH /admin/users/:id(role), POST /admin/users/:id/{suspend,unsuspend}, GET /admin/tool-metrics (admin role만, 16 §14). app.ts 마운트 + routes-mounted 가드 등록 + createApp 실HTTP 통합테스트(비admin 403).",
+    "acceptance": "admin 라우트 5개 구현+마운트, admin role만 접근(비admin 403), 실HTTP 통합테스트 통과",
+    "phase": "P9",
+    "team": "T1",
+    "passes": false,
+    "attempts": 0
+  },
+  {
     "id": "P9-T6-01",
     "desc": "web/admin/* — dashboard, users 관리, tool-metrics (3 화면)",
     "acceptance": "admin role 만 접근 + role 변경 / suspend 동작",
