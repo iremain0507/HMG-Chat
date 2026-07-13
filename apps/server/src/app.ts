@@ -10,6 +10,8 @@ import { createProjectRoutes } from "./routes/projects.js";
 import { createPgProjectDataAccess } from "./db/project-data-access.js";
 import { createUploadRoutes } from "./routes/uploads.js";
 import { createPgUploadDataAccess } from "./db/upload-data-access.js";
+import { createDocumentRoutes } from "./routes/documents.js";
+import { createPgDocumentDataAccess } from "./db/project-document-data-access.js";
 import { createLocalObjectStore } from "./lib/object-store.js";
 import {
   authMiddleware,
@@ -87,6 +89,17 @@ export function createApp(env: Env) {
     }),
   );
   app.route("/api/v1/uploads", uploadsApp);
+
+  const documentsApp = new Hono<{ Variables: AuthedVariables }>();
+  documentsApp.use("*", authMiddleware);
+  documentsApp.route(
+    "/",
+    createDocumentRoutes({
+      da: createPgDocumentDataAccess(),
+      objectStore: createLocalObjectStore(),
+    }),
+  );
+  app.route("/api/v1/documents", documentsApp);
 
   return app;
 }

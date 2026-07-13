@@ -302,8 +302,8 @@
     "acceptance": "document CRUD API + 다른 org 문서 조회 404, 실HTTP 통합테스트 통과",
     "phase": "P4",
     "team": "T3",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P4-T3-02",

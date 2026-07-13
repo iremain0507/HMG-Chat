@@ -45,6 +45,8 @@ const EXPECTED_ROUTES: Array<{ method: string; path: string; phase: string }> =
     { method: "GET", path: `/api/v1/projects/${pid}`, phase: "P3" },
     { method: "POST", path: "/api/v1/uploads", phase: "P4" },
     { method: "GET", path: `/api/v1/uploads/${randomUUID()}`, phase: "P4" },
+    { method: "GET", path: `/api/v1/documents?projectId=${pid}`, phase: "P4" },
+    { method: "GET", path: `/api/v1/documents/${randomUUID()}`, phase: "P4" },
   ];
 
 describe("app.ts route mount 가드 (계약 prefix 배선 검증)", () => {
