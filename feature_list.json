@@ -437,8 +437,8 @@
     "acceptance": "만료된 토큰 url 클릭 → 410 페이지",
     "phase": "P6",
     "team": "T6",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P7-T1-01",
