@@ -289,8 +289,17 @@
   },
   {
     "id": "P4-T3-01",
-    "desc": "routes/{uploads,documents}.ts + S3 upload",
+    "desc": "routes/uploads.ts — 파일 업로드(멀티파트) → lib/object-store.ts ObjectStore 주입(dev=createLocalObjectStore, 테스트=createInMemoryObjectStore; 실 S3 미사용) 로 원본 저장 + uploads.s3_key 기록. **app.ts /api/v1/uploads 마운트 + routes-mounted.test.ts EXPECTED_ROUTES 등록 + createApp 실HTTP 통합테스트**.",
     "acceptance": "upload + document CRUD API 통과",
+    "phase": "P4",
+    "team": "T3",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P4-T3-07",
+    "desc": "routes/documents.ts — project_documents CRUD(목록/조회/삭제, dedup content_hash), ObjectStore 주입. **app.ts /api/v1/documents 마운트 + routes-mounted 가드 등록 + createApp 실HTTP 통합테스트(cross-org 404)**.",
+    "acceptance": "document CRUD API + 다른 org 문서 조회 404, 실HTTP 통합테스트 통과",
     "phase": "P4",
     "team": "T3",
     "passes": false,
@@ -316,8 +325,8 @@
   },
   {
     "id": "P4-T3-04",
-    "desc": "knowledge/embedding-provider.ts (Voyage) + 비용 측정 (API 호출 수, embedding cost)",
-    "acceptance": "embedding 호출 수/비용 측정값 노출 (테스트 통과)",
+    "desc": "knowledge/embedding-provider.ts — EmbeddingProvider 사용처. 로컬/테스트는 knowledge/embedding-provider-dev-stub.ts(createDevStubEmbeddingProvider) 주입(실 Voyage 미사용, 배포 시 교체). 비용측정=embed 호출수/입력토큰 카운트.",
+    "acceptance": "dev-stub EmbeddingProvider 로 embed 호출수/비용 카운트 노출, 테스트 통과(외부 API 미호출)",
     "phase": "P4",
     "team": "T3",
     "passes": false,

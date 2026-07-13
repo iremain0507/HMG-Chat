@@ -48,7 +48,7 @@
 - migration/DDL/RLS → 롤백 경로 존재, nullable-first 확인
 - auth/permission → cross-org 격리 테스트 포함 여부
 - orchestrator/SSE → AbortSignal 전파·취소 테스트 포함 여부
-- knowledge/RAG → citation 근거 테스트 포함 여부
+- knowledge/RAG → citation 근거 테스트 포함 여부. **외부 서비스는 LOCAL_ONLY 라 dev-stub 주입**: 임베딩=`knowledge/embedding-provider-dev-stub.ts`(createDevStubEmbeddingProvider), 업로드 저장=`lib/object-store.ts`(createLocalObjectStore/InMemory) — 실 Voyage/S3 미사용, 테스트는 in-memory fake 주입. 실 provider 는 배포 시 교체.
 - skills → semver·manifest 일관성 / MCP → scope·SSRF 방어
 
 ## Blocker 격리 프로토콜 (루프를 멈추지 않는다)

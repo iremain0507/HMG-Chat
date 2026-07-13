@@ -41,7 +41,7 @@ for ((i=1; i<=MAX_ITERS; i++)); do
   echo "═══ Iteration $i @ $(date -u +%FT%TZ) [phase $(cat .ralph/current_phase 2>/dev/null || echo '?')] ═══" | tee -a .ralph/logs/run.log
 
   OUT=$(claude -p "$(cat PROMPT.md)" \
-    --max-turns 40 --max-budget-usd "$BUDGET_USD" --model "$MODEL" \
+    --max-turns "${MAX_TURNS:-40}" --max-budget-usd "$BUDGET_USD" --model "$MODEL" \
     --output-format json 2>>.ralph/logs/run.log) || true
   echo "$OUT" | jq -r '.result // "(no result)"' > ".ralph/logs/iter-$i.md"
   echo "iter=$i cost=\$$(echo "$OUT" | jq -r '.total_cost_usd // 0')" >> .ralph/logs/run.log
