@@ -518,8 +518,8 @@
     "acceptance": "skills / skill-assets CRUD API 통과",
     "phase": "P8",
     "team": "T5",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P8-T5-03",

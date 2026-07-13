@@ -1,3 +1,4 @@
+import { fileURLToPath } from "node:url";
 import { Hono } from "hono";
 import Anthropic from "@anthropic-ai/sdk";
 import type { Env } from "./env.js";
@@ -23,6 +24,10 @@ import { createMcpServerRoutes } from "./routes/mcp-servers.js";
 import { createPgMcpServerDataAccess } from "./db/mcp-server-data-access.js";
 import { createMcpClientPool } from "./mcp/mcp-client-pool.js";
 import { createMcpBridge } from "./mcp/mcp-bridge.js";
+import { createSkillRoutes } from "./routes/skills.js";
+import { createSkillAssetRoutes } from "./routes/skill-assets.js";
+import { createPgSkillAssetDataAccess } from "./db/skill-asset-data-access.js";
+import { createSkillRegistry } from "./tools/skills-engine.js";
 import { createInlineArtifactStore } from "./lib/artifact-store.inline.js";
 import { createS3ArtifactStore } from "./lib/artifact-store.s3.js";
 import { createLocalObjectStore } from "./lib/object-store.js";
@@ -177,6 +182,31 @@ export function createApp(env: Env) {
     }),
   );
   app.route("/api/v1/mcp-servers", mcpServersApp);
+
+  // repo root/skills — skills/ 는 어떤 패키지도 import 불가(05-REPO-STRUCTURE.md), server 만
+  // fs 로 직접 읽는다(skills-engine.ts 와 동일 경로 규칙).
+  const skillsDir = fileURLToPath(new URL("../../../skills", import.meta.url));
+  const skillsApp = new Hono<{ Variables: AuthedVariables }>();
+  skillsApp.use("*", authMiddleware);
+  skillsApp.route(
+    "/",
+    createSkillRoutes({
+      registry: createSkillRegistry({ skillsDir }),
+      skillsDir,
+    }),
+  );
+  app.route("/api/v1/skills", skillsApp);
+
+  const skillAssetsApp = new Hono<{ Variables: AuthedVariables }>();
+  skillAssetsApp.use("*", authMiddleware);
+  skillAssetsApp.route(
+    "/",
+    createSkillAssetRoutes({
+      da: createPgSkillAssetDataAccess(),
+      objectStore: createLocalObjectStore(),
+    }),
+  );
+  app.route("/api/v1/skill-assets", skillAssetsApp);
 
   return app;
 }
