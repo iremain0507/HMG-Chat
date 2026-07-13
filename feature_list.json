@@ -402,7 +402,7 @@
     "phase": "P5",
     "team": "T4",
     "passes": false,
-    "attempts": 0
+    "attempts": 1
   },
   {
     "id": "P5-T6-01",
@@ -411,7 +411,7 @@
     "phase": "P5",
     "team": "T6",
     "passes": false,
-    "attempts": 0
+    "attempts": 1
   },
   {
     "id": "P6-T1-01",
