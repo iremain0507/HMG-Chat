@@ -473,8 +473,8 @@
     "acceptance": "memories CRUD + pin API 통과",
     "phase": "P7",
     "team": "T2",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P7-T6-01",

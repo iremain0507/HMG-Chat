@@ -17,6 +17,8 @@ import { createPgArtifactDataAccess } from "./db/artifact-data-access.js";
 import { createArtifactShareRoutes } from "./routes/artifact-shares.js";
 import { createPgArtifactShareDataAccess } from "./db/artifact-share-data-access.js";
 import { createPublicShareRoutes } from "./routes/public-share.js";
+import { createMemoryRoutes } from "./routes/memories.js";
+import { createPgUserMemoryDataAccess } from "./db/user-memory-data-access.js";
 import { createInlineArtifactStore } from "./lib/artifact-store.inline.js";
 import { createS3ArtifactStore } from "./lib/artifact-store.s3.js";
 import { createLocalObjectStore } from "./lib/object-store.js";
@@ -147,6 +149,14 @@ export function createApp(env: Env) {
       s3Store: s3ArtifactStore,
     }),
   );
+
+  const memoriesApp = new Hono<{ Variables: AuthedVariables }>();
+  memoriesApp.use("*", authMiddleware);
+  memoriesApp.route(
+    "/",
+    createMemoryRoutes({ da: createPgUserMemoryDataAccess() }),
+  );
+  app.route("/api/v1/memories", memoriesApp);
 
   return app;
 }
