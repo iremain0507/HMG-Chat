@@ -572,8 +572,8 @@
     "acceptance": "로그가 카테고리/레벨 구조로 출력",
     "phase": "P9",
     "team": "T1",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P9-T1-05",
