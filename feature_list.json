@@ -590,8 +590,8 @@
     "acceptance": "보안 audit 통과 (semgrep + trivy)",
     "phase": "P9",
     "team": "T1",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P9-T6-01",
