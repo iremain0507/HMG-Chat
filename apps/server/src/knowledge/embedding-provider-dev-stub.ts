@@ -36,7 +36,7 @@ function embedOne(text: string): number[] {
   const seedTokens = tokens.length ? tokens : [text];
   for (const tok of seedTokens) {
     const rnd = mulberry32(fnv1a(tok));
-    for (let i = 0; i < DIM; i++) v[i] += rnd() - 0.5;
+    for (let i = 0; i < DIM; i++) v[i] = (v[i] ?? 0) + (rnd() - 0.5);
   }
   // L2 정규화 (cosine/inner-product 검색과 일관).
   const norm = Math.sqrt(v.reduce((s, x) => s + x * x, 0)) || 1;
