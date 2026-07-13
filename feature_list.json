@@ -455,8 +455,8 @@
     "acceptance": "memory-extractor.test.ts — 다양한 메시지에서 카테고리 분류; '사용자가 ___ 좋아한다' 패턴 추출",
     "phase": "P7",
     "team": "T2",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P7-T2-02",
