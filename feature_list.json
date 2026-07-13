@@ -320,8 +320,8 @@
     "acceptance": "POST /documents multipart 업로드→파싱→청킹→임베딩→document_chunks 저장, 실HTTP 통합테스트 통과",
     "phase": "P4",
     "team": "T3",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P4-T3-03",

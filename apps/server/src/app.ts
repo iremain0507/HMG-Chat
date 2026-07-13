@@ -13,6 +13,9 @@ import { createPgUploadDataAccess } from "./db/upload-data-access.js";
 import { createDocumentRoutes } from "./routes/documents.js";
 import { createPgDocumentDataAccess } from "./db/project-document-data-access.js";
 import { createLocalObjectStore } from "./lib/object-store.js";
+import { createParserPipeline } from "./knowledge/parser-pipeline.js";
+import { withUsageTracking } from "./knowledge/embedding-provider.js";
+import { createDevStubEmbeddingProvider } from "./knowledge/embedding-provider-dev-stub.js";
 import {
   authMiddleware,
   type AuthedVariables,
@@ -97,6 +100,8 @@ export function createApp(env: Env) {
     createDocumentRoutes({
       da: createPgDocumentDataAccess(),
       objectStore: createLocalObjectStore(),
+      parserPipeline: createParserPipeline(),
+      embeddingProvider: withUsageTracking(createDevStubEmbeddingProvider()),
     }),
   );
   app.route("/api/v1/documents", documentsApp);

@@ -2,15 +2,22 @@
 // mount 돼 있는지 + project_documents 목록/조회/삭제(+ content_hash dedup 조회)가 실 HTTP +
 // 실 Postgres 레벨에서 동작하는지 검증. 다른 org 의 private 프로젝트 문서 조회/삭제 시
 // existence-leak 없이 404 를 반환하는지도 함께 검증 (routes/projects.ts, routes/uploads.ts 와 동일 패턴).
-// 문서 row 자체는 POST 없이(이 태스크 범위는 목록/조회/삭제 — feature_list.json P4-T3-07 desc)
-// rls-project-documents-chunks.test.ts 와 동일하게 admin pgPool 로 직접 insert 한다.
+// 목록/조회/삭제 테스트용 문서 row는 rls-project-documents-chunks.test.ts 와 동일하게 admin
+// pgPool 로 직접 insert 한다. POST(P4-T3-08)는 실 parser-pipeline+dev-stub embedding 을 거쳐야
+// 하므로 실제 multipart 업로드로 검증한다 (knowledge/__tests__/fixtures 의 docx fixture 재사용).
 // 마이그레이션은 이 테스트 실행 전 `pnpm db:migrate` 로 이미 적용돼 있어야 한다.
 import { randomUUID } from "node:crypto";
+import { readFileSync } from "node:fs";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createApp } from "../../app.js";
 import type { Env } from "../../env.js";
 import { pgPool } from "../../db/client.js";
 import { signAccessToken } from "../../middleware/jwt.js";
+
+const docxFixturePath = new URL(
+  "../../knowledge/__tests__/fixtures/single-paragraph.docx",
+  import.meta.url,
+);
 
 process.env.JWT_SECRET = "test-only-jwt-secret-32chars-minimum-xxxx";
 process.env.PROJECT_SLUG = "wchat";
@@ -178,5 +185,35 @@ describe("app.ts /api/v1/documents mount — P4-T3-07", () => {
       headers: { Cookie: cookieFor(userA, orgA) },
     });
     expect(getRes.status).toBe(404);
+  });
+
+  it("POST /api/v1/documents (P4-T3-08) — 작은 docx 업로드 → 201 → document_chunks 생성", async () => {
+    const bytes = readFileSync(docxFixturePath);
+    const form = new FormData();
+    form.set("projectId", projectId);
+    form.set(
+      "file",
+      new File([bytes], "single-paragraph.docx", {
+        type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      }),
+    );
+
+    const res = await app.request("/api/v1/documents", {
+      method: "POST",
+      headers: { Cookie: cookieFor(userA, orgA) },
+      body: form,
+    });
+    expect(res.status).toBe(201);
+    const body = (await res.json()) as {
+      data: { id: string; indexStatus: string; chunkCount: number };
+    };
+    expect(body.data.indexStatus).toBe("indexed");
+    expect(body.data.chunkCount).toBeGreaterThan(0);
+
+    const chunks = await pgPool.query(
+      "SELECT count(*)::int AS count FROM document_chunks WHERE document_id = $1",
+      [body.data.id],
+    );
+    expect(chunks.rows[0]?.count).toBe(body.data.chunkCount);
   });
 });

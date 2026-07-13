@@ -1,9 +1,9 @@
-// routes/documents.ts — 16-API-CONTRACT.md § 5 Project Documents 단일 출처(목록/조회/삭제 범위).
+// routes/documents.ts — 16-API-CONTRACT.md § 5 Project Documents 단일 출처.
 // db/document-service.ts 가 project 읽기/쓰기 권한 매트릭스를 강제하므로, 여기선 HTTP 계층
-// (쿼리 파싱/상태코드 매핑)만 담당한다. NOT_FOUND/FORBIDDEN 모두 404 로 매핑해
+// (쿼리/멀티파트 파싱/상태코드 매핑)만 담당한다. NOT_FOUND/FORBIDDEN 모두 404 로 매핑해
 // existence-leak 을 방지한다 (routes/projects.ts, routes/uploads.ts 와 동일 패턴).
-// 생성(POST, multipart 업로드 → parser-pipeline 큐잉)은 knowledge/parser-pipeline(P4-T3-02+)
-// 의존이라 이 태스크 범위 밖 — feature_list.json P4-T3-07 desc 가 CRUD 를 목록/조회/삭제로 명시.
+// POST(P4-T3-08) 는 업로드→parser-pipeline→chunker→embedding dev-stub 까지 동기로 처리해
+// indexStatus='indexed' 로 응답한다(실 큐/워커 인프라 미도입 — LOCAL_ONLY dev-stub, 배포 시 비동기 큐로 교체).
 import { randomUUID } from "node:crypto";
 import { Hono } from "hono";
 import type { ProjectDocumentRecord } from "@wchat/interfaces";
@@ -12,8 +12,10 @@ import {
   DocumentServiceError,
   createDocumentService,
   type DocumentDataAccess,
+  type DocumentIndexingDeps,
 } from "../db/document-service.js";
 import type { ObjectStore } from "../lib/object-store.js";
+import { ParserPipelineError } from "../knowledge/parser-pipeline.js";
 
 function errorJson(code: string, message: string) {
   return {
@@ -39,12 +41,23 @@ function toDto(doc: ProjectDocumentRecord) {
   };
 }
 
-export function createDocumentRoutes(deps: {
-  da: DocumentDataAccess;
-  objectStore: ObjectStore;
-}): Hono<{ Variables: AuthedVariables }> {
+export function createDocumentRoutes(
+  deps: {
+    da: DocumentDataAccess;
+    objectStore: ObjectStore;
+  } & Partial<DocumentIndexingDeps>,
+): Hono<{ Variables: AuthedVariables }> {
   const app = new Hono<{ Variables: AuthedVariables }>();
-  const service = createDocumentService(deps.da, deps.objectStore);
+  const service = createDocumentService(
+    deps.da,
+    deps.objectStore,
+    deps.parserPipeline && deps.embeddingProvider
+      ? {
+          parserPipeline: deps.parserPipeline,
+          embeddingProvider: deps.embeddingProvider,
+        }
+      : undefined,
+  );
 
   function actorOf(c: { get(key: "auth"): AuthedVariables["auth"] }) {
     const auth = c.get("auth");
@@ -82,6 +95,37 @@ export function createDocumentRoutes(deps: {
         meta: { requestId: randomUUID() },
       });
     } catch (err) {
+      const { body, status } = handleServiceError(err);
+      return c.json(body, status);
+    }
+  });
+
+  app.post("/", async (c) => {
+    const form = await c.req.parseBody().catch(() => null);
+    const file = form?.file;
+    const projectId =
+      typeof form?.projectId === "string" ? form.projectId : null;
+    if (!file || !(file instanceof File) || !projectId) {
+      return c.json(
+        errorJson("INVALID_INPUT", "file, projectId 가 필요합니다."),
+        400,
+      );
+    }
+    const data = Buffer.from(await file.arrayBuffer());
+    try {
+      const doc = await service.indexDocument(actorOf(c), projectId, {
+        filename: file.name,
+        mimeType: file.type || "application/octet-stream",
+        data,
+      });
+      return c.json(
+        { data: toDto(doc), meta: { requestId: randomUUID() } },
+        201,
+      );
+    } catch (err) {
+      if (err instanceof ParserPipelineError) {
+        return c.json(errorJson(err.code, err.message), 415);
+      }
       const { body, status } = handleServiceError(err);
       return c.json(body, status);
     }

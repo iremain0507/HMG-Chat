@@ -3,16 +3,37 @@
 // RLS 를 우회한다(db/project-service.ts 와 동일 근거) — 이 서비스가 project-service.ts 의
 // getProjectForActor(visibility/role 권한 매트릭스)를 재사용해 문서 접근을 동일하게 강제한다.
 // NOT_FOUND/FORBIDDEN 모두 라우트 레이어에서 404 로 매핑 — 다른 org 문서 존재 여부 노출 방지.
-import type { DataAccess, ProjectDocumentRecord } from "@wchat/interfaces";
+import { createHash, randomUUID } from "node:crypto";
+import type {
+  DataAccess,
+  DocumentChunkRepo,
+  EmbeddingProvider,
+  ProjectDocumentRecord,
+} from "@wchat/interfaces";
 import {
   createProjectService,
   type ProjectActor,
   type ProjectDataAccess,
 } from "./project-service.js";
 import type { ObjectStore } from "../lib/object-store.js";
+import type { ParserPipeline } from "../knowledge/parser-types.js";
+import { chunkText } from "../knowledge/chunker.js";
 
 export type DocumentDataAccess = Pick<DataAccess, "projectDocuments"> &
-  ProjectDataAccess;
+  ProjectDataAccess & {
+    documentChunks: Pick<DocumentChunkRepo, "insert" | "bulkInsert">;
+  };
+
+export interface DocumentIndexingDeps {
+  parserPipeline: ParserPipeline;
+  embeddingProvider: EmbeddingProvider;
+}
+
+export interface IndexDocumentInput {
+  filename: string;
+  mimeType: string;
+  data: Buffer;
+}
 
 export class DocumentServiceError extends Error {
   code: "NOT_FOUND" | "FORBIDDEN";
@@ -26,6 +47,7 @@ export class DocumentServiceError extends Error {
 export function createDocumentService(
   da: DocumentDataAccess,
   objectStore: ObjectStore,
+  indexing?: DocumentIndexingDeps,
 ) {
   const projectService = createProjectService(da);
 
@@ -88,5 +110,87 @@ export function createDocumentService(
     await da.projectDocuments.delete(documentId);
   }
 
-  return { listDocumentsForActor, getDocumentForActor, deleteDocument };
+  async function indexDocument(
+    actor: ProjectActor,
+    projectId: string,
+    input: IndexDocumentInput,
+  ): Promise<ProjectDocumentRecord> {
+    if (!indexing) {
+      throw new Error(
+        "indexDocument requires parserPipeline/embeddingProvider",
+      );
+    }
+    const access = await projectService.getProjectForActor(actor, projectId);
+    if (!access) {
+      throw new DocumentServiceError(
+        "NOT_FOUND",
+        "프로젝트를 찾을 수 없습니다.",
+      );
+    }
+    if (access.role !== "owner" && access.role !== "editor") {
+      throw new DocumentServiceError("FORBIDDEN", "업로드 권한이 없습니다.");
+    }
+
+    const contentHash = createHash("sha256").update(input.data).digest("hex");
+    const existing = await da.projectDocuments.byContentHash(
+      projectId,
+      contentHash,
+    );
+    if (existing) return existing;
+
+    const s3Key = `documents/${projectId}/${contentHash}-${randomUUID()}`;
+    await objectStore.put(s3Key, input.data);
+    const doc = await da.projectDocuments.insert({
+      projectId,
+      filename: input.filename,
+      contentHash,
+      mimeType: input.mimeType,
+      sizeBytes: input.data.byteLength,
+      s3Key,
+      createdBy: actor.userId,
+    });
+
+    try {
+      const parsed = await indexing.parserPipeline.parse({
+        bytes: input.data,
+        mimeType: input.mimeType,
+        filename: input.filename,
+      });
+      const chunks = chunkText(parsed.markdown);
+      const embeddings = chunks.length
+        ? await indexing.embeddingProvider.embed(chunks.map((c) => c.content))
+        : [];
+      if (chunks.length) {
+        await da.documentChunks.bulkInsert(
+          chunks.map((c, i) => ({
+            documentId: doc.id,
+            chunkIndex: c.chunkIndex,
+            content: c.content,
+            tokenCount: c.tokenCount,
+            embedding: embeddings[i] ?? null,
+            metadata: {},
+          })),
+        );
+      }
+      return await da.projectDocuments.update(doc.id, {
+        indexStatus: "indexed",
+        chunkCount: chunks.length,
+        indexedAt: new Date(),
+      });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      await da.projectDocuments.update(doc.id, {
+        indexStatus: "failed",
+        failureReason: message,
+      });
+      throw err;
+    }
+  }
+
+  return {
+    listDocumentsForActor,
+    getDocumentForActor,
+    deleteDocument,
+    indexDocument,
+  };
 }

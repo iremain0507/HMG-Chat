@@ -3,10 +3,30 @@
 // createPgProjectDataAccess() 를 재사용 — 중복 구현 없이 project-service.ts 의 접근 제어와
 // 동일한 데이터 소스를 공유한다. dev/test DATABASE_URL role 은 superuser 라 RLS(0005) 를
 // 우회한다 — document-service.ts 가 application 레벨에서 권한을 재현/강제한다.
-import type { ProjectDocumentRecord } from "@wchat/interfaces";
+import type { DocumentChunk, ProjectDocumentRecord } from "@wchat/interfaces";
 import type { DocumentDataAccess } from "./document-service.js";
 import { createPgProjectDataAccess } from "./project-data-access.js";
 import { pgPool } from "./client.js";
+
+function toChunk(row: Record<string, unknown>): DocumentChunk {
+  return {
+    id: row.id as string,
+    documentId: row.document_id as string,
+    chunkIndex: row.chunk_index as number,
+    content: row.content as string,
+    tokenCount: (row.token_count as number | null) ?? null,
+    embedding: (row.embedding as number[] | null) ?? null,
+    metadata: (row.metadata as Record<string, unknown>) ?? {},
+    createdAt: row.created_at as Date,
+  };
+}
+
+// pgvector 는 `[0.1,0.2,...]` 텍스트 리터럴을 ::vector 로 캐스트해 받는다.
+function toVectorLiteral(
+  embedding: number[] | null | undefined,
+): string | null {
+  return embedding ? `[${embedding.join(",")}]` : null;
+}
 
 function toDocument(row: Record<string, unknown>): ProjectDocumentRecord {
   return {
@@ -133,6 +153,31 @@ export function createPgDocumentDataAccess(): DocumentDataAccess {
             [status, id],
           );
         }
+      },
+    },
+    documentChunks: {
+      async insert(data) {
+        const res = await pgPool.query(
+          `INSERT INTO document_chunks (document_id, chunk_index, content, token_count, embedding, metadata)
+           VALUES ($1, $2, $3, $4, $5::vector, $6)
+           RETURNING *`,
+          [
+            data.documentId,
+            data.chunkIndex,
+            data.content,
+            data.tokenCount ?? null,
+            toVectorLiteral(data.embedding),
+            JSON.stringify(data.metadata ?? {}),
+          ],
+        );
+        return toChunk(res.rows[0]);
+      },
+      async bulkInsert(rows) {
+        const results: DocumentChunk[] = [];
+        for (const row of rows) {
+          results.push(await this.insert(row));
+        }
+        return results;
       },
     },
   };
