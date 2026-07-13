@@ -72,7 +72,7 @@ describe("rls (projects / project_members)", () => {
     `);
     await admin.query(`GRANT USAGE ON SCHEMA public TO ${RLS_ROLE}`);
     await admin.query(
-      `GRANT SELECT, INSERT, UPDATE, DELETE ON organizations, users, projects, project_members TO ${RLS_ROLE}`,
+      `GRANT SELECT, INSERT, UPDATE, DELETE ON organizations, org_units, user_org_units, users, projects, project_members TO ${RLS_ROLE}`,
     );
 
     await admin.query(

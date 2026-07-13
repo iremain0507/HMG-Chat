@@ -248,8 +248,8 @@
     "acceptance": "visibility 매트릭스 9 케이스 통과 (§ Phase 3 visibility 매트릭스 단일 출처)",
     "phase": "P3",
     "team": "T1",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P3-T1-03",
