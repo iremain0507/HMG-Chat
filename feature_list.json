@@ -446,8 +446,8 @@
     "acceptance": "Redis distributed lock test (concurrent extraction 안전)",
     "phase": "P7",
     "team": "T1",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P7-T2-01",
