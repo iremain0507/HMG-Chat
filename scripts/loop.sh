@@ -68,7 +68,12 @@ for ((i=1; i<=MAX_ITERS; i++)); do
   fi
   if grep -q "<PHASE_COMPLETE:" ".ralph/logs/iter-$i.md"; then
     CUR=$(cat .ralph/current_phase)
-    echo "── phase $CUR 완료 신호 → 독립 검증 실행"
+    echo "── phase $CUR 완료 신호"
+    if [ "${PHASE_VERIFY:-0}" != "1" ]; then
+      echo "🚧 정지: phase $CUR 완료 — 사람이 직접 검증 후 .ralph/current_phase 수동 승급 (자동검증 원하면 PHASE_VERIFY=1)"
+      notify; break
+    fi
+    echo "── 독립 검증(claude -p) 실행"
     PV=$(claude -p "$(cat PROMPT.phase.md)" \
       --max-turns 25 --max-budget-usd "$BUDGET_USD" --model "$MODEL" \
       --output-format json 2>>.ralph/logs/run.log) || true
