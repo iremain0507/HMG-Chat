@@ -482,8 +482,8 @@
     "acceptance": "dev 에서 memory 추가/수정/pin/삭제 동작",
     "phase": "P7",
     "team": "T6",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P8-T1-01",
