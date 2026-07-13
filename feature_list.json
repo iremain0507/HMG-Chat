@@ -397,7 +397,7 @@
   },
   {
     "id": "P5-T4-02",
-    "desc": "converter-worker (Python) skeleton — PPTX → PDF (LibreOffice)",
+    "desc": "converter-worker(Python 3.9, apps/converter-worker) — FastAPI PPTX→PDF 엔드포인트 skeleton + apps/server/src/lib/office-pdf-converter.ts(converter HTTP client). 단위테스트는 LibreOffice(subprocess) mock + `python3 -m pytest apps/converter-worker` 로 실행/검증(poetry 불필요, 3.10+ 문법 회피). 실 LibreOffice 변환은 배포 시.",
     "acceptance": "converter-worker 단위 테스트 (mock LibreOffice) 통과",
     "phase": "P5",
     "team": "T4",
@@ -406,7 +406,7 @@
   },
   {
     "id": "P5-T6-01",
-    "desc": "web/components/artifacts/{PdfRenderer,PptxRenderer,ArtifactPanel}",
+    "desc": "web components/artifacts/{PdfRenderer,PptxRenderer,ArtifactPanel}. PDF=pdfjs-dist 실렌더. PPTX 미리보기=office-pdf-converter 호출(dev는 mock 변환결과, 실 LibreOffice는 배포 시). Hyundai WIA CI 토큰.",
     "acceptance": "10MB PPTX artifact 가 web preview 에서 5초 이내 표시; ArtifactPanel.test.tsx preview 렌더",
     "phase": "P5",
     "team": "T6",
