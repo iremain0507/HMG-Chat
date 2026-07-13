@@ -266,8 +266,8 @@
     "acceptance": "다른 org 의 private 프로젝트 조회 시도 → 404 (existence leak 방지); visibility=team 가 다른 org 에서 404",
     "phase": "P3",
     "team": "T6",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P4-T1-01",
