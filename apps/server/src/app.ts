@@ -19,6 +19,8 @@ import { createPgArtifactShareDataAccess } from "./db/artifact-share-data-access
 import { createPublicShareRoutes } from "./routes/public-share.js";
 import { createMemoryRoutes } from "./routes/memories.js";
 import { createPgUserMemoryDataAccess } from "./db/user-memory-data-access.js";
+import { createMcpServerRoutes } from "./routes/mcp-servers.js";
+import { createPgMcpServerDataAccess } from "./db/mcp-server-data-access.js";
 import { createInlineArtifactStore } from "./lib/artifact-store.inline.js";
 import { createS3ArtifactStore } from "./lib/artifact-store.s3.js";
 import { createLocalObjectStore } from "./lib/object-store.js";
@@ -157,6 +159,17 @@ export function createApp(env: Env) {
     createMemoryRoutes({ da: createPgUserMemoryDataAccess() }),
   );
   app.route("/api/v1/memories", memoriesApp);
+
+  const mcpServersApp = new Hono<{ Variables: AuthedVariables }>();
+  mcpServersApp.use("*", authMiddleware);
+  mcpServersApp.route(
+    "/",
+    createMcpServerRoutes({
+      da: createPgMcpServerDataAccess(),
+      nodeEnv: env.NODE_ENV,
+    }),
+  );
+  app.route("/api/v1/mcp-servers", mcpServersApp);
 
   return app;
 }

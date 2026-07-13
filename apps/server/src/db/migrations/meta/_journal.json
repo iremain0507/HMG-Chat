@@ -85,6 +85,13 @@
       "when": 1783889400000,
       "tag": "0008_user_memories_locks",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1783889500000,
+      "tag": "0009_mcp_servers_skill_assets",
+      "breakpoints": true
     }
   ]
 }

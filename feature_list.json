@@ -491,8 +491,8 @@
     "acceptance": "url-validator.test.ts RFC-1918 차단 + VPC CIDR 화이트리스트; SSRF 시도(http://10.0.0.1/...) → 차단",
     "phase": "P8",
     "team": "T1",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P8-T1-02",
