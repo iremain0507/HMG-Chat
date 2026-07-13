@@ -410,8 +410,8 @@
     "acceptance": "10MB PPTX artifact 가 web preview 에서 5초 이내 표시; ArtifactPanel.test.tsx preview 렌더",
     "phase": "P5",
     "team": "T6",
-    "passes": false,
-    "attempts": 1
+    "passes": true,
+    "attempts": 2
   },
   {
     "id": "P6-T1-01",
