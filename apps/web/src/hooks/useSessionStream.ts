@@ -11,6 +11,7 @@ export interface StreamMessage {
   role: "user" | "assistant";
   content: string;
   truncated?: boolean;
+  error?: boolean;
 }
 
 type ChatStreamEvent =
@@ -106,7 +107,19 @@ export function useSessionStream(sessionId: string) {
                   m.id === id ? { ...m, content: m.content + event.text } : m,
                 ),
               );
-            } else if (event.type === "stop" || event.type === "error") {
+            } else if (event.type === "stop") {
+              setIsStreaming(false);
+            } else if (event.type === "error") {
+              const message = event.error?.message ?? "알 수 없는 오류";
+              setMessages((prev) => [
+                ...prev,
+                {
+                  id: `err-${prev.length}`,
+                  role: "assistant",
+                  content: message,
+                  error: true,
+                },
+              ]);
               setIsStreaming(false);
             }
           }

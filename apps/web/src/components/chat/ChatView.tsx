@@ -121,6 +121,7 @@ export function ChatView({ sessionId }: { sessionId: string }) {
                 key={m.id}
                 role={m.role}
                 content={m.content}
+                error={m.error ?? false}
                 streaming={
                   isStreaming &&
                   i === messages.length - 1 &&
@@ -183,11 +184,25 @@ function MessageItem({
   role,
   content,
   streaming,
+  error,
 }: {
   role: "user" | "assistant";
   content: string;
   streaming: boolean;
+  error?: boolean;
 }) {
+  if (error) {
+    return (
+      <li data-role="error" className="flex gap-3">
+        <div className="mt-0.5 grid h-8 w-8 flex-none place-items-center rounded-lg bg-accent text-sm font-bold text-white">
+          !
+        </div>
+        <div className="min-w-0 flex-1 rounded-xl border border-accent/40 bg-accent/10 px-3 py-2 text-sm text-accent">
+          <span className="font-semibold">오류</span> · {content}
+        </div>
+      </li>
+    );
+  }
   if (role === "user") {
     return (
       <li data-role="user" className="flex justify-end">
