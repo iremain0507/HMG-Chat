@@ -563,8 +563,8 @@
     "acceptance": "alarm slack 발송; data retention cron 동작",
     "phase": "P9",
     "team": "T1",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P9-T1-04",
