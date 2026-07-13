@@ -329,8 +329,8 @@
     "acceptance": "dev-stub EmbeddingProvider 로 embed 호출수/비용 카운트 노출, 테스트 통과(외부 API 미호출)",
     "phase": "P4",
     "team": "T3",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P4-T3-05",
