@@ -257,8 +257,8 @@
     "acceptance": "project-service.test.ts 권한 매트릭스 (viewer 가 settings 변경 불가 등) 통과",
     "phase": "P3",
     "team": "T1",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 2
   },
   {
     "id": "P3-T6-01",
