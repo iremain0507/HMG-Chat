@@ -383,8 +383,8 @@
     "acceptance": "빈 DB 에서 pnpm db:migrate 0 exit; artifact_shares 테이블 생성",
     "phase": "P5",
     "team": "T1",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P5-T4-01",

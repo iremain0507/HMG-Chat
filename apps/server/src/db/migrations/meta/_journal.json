@@ -71,6 +71,13 @@
       "when": 1783889200000,
       "tag": "0006_artifacts_revisions",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1783889300000,
+      "tag": "0007_artifact_shares",
+      "breakpoints": true
     }
   ]
 }
