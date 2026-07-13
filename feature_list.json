@@ -608,8 +608,8 @@
     "acceptance": "admin role 만 접근 + role 변경 / suspend 동작",
     "phase": "P9",
     "team": "T6",
-    "passes": false,
-    "attempts": 1
+    "passes": true,
+    "attempts": 2
   },
   {
     "id": "P9-T6-02",
