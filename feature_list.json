@@ -545,8 +545,8 @@
     "acceptance": "quota 90% 경고 + 100% 차단 동작",
     "phase": "P9",
     "team": "T1",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P9-T1-02",

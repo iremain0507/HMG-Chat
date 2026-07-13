@@ -92,6 +92,27 @@
       "when": 1783889500000,
       "tag": "0009_mcp_servers_skill_assets",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1783889600000,
+      "tag": "0010_quotas_usage",
+      "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1783889700000,
+      "tag": "0011_observability",
+      "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "7",
+      "when": 1783889800000,
+      "tag": "0016_indexes_vacuum",
+      "breakpoints": true
     }
   ]
 }
