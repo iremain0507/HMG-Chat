@@ -253,11 +253,11 @@
   },
   {
     "id": "P3-T1-03",
-    "desc": "routes/projects.ts + db/project-service.ts — CRUD + 멤버 관리 (orgUnitId, owner row 자동 생성)",
+    "desc": "routes/projects.ts + app.ts 마운트(/api/v1/projects) + db/project-service.ts — CRUD/멤버관리, orgUnitId, owner row 자동생성. **실앱 통합테스트(createApp 기반, P2-T2-06 패턴)로 다른 org private 프로젝트 조회→404 existence-leak 방지 HTTP 레벨 검증** (project-service 단위테스트만으론 불충분).",
     "acceptance": "project-service.test.ts 권한 매트릭스 (viewer 가 settings 변경 불가 등) 통과",
     "phase": "P3",
     "team": "T1",
-    "passes": true,
+    "passes": false,
     "attempts": 2
   },
   {
