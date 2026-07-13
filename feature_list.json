@@ -320,8 +320,8 @@
     "acceptance": "chunker.test.ts — 오버랩 + 토큰 카운트",
     "phase": "P4",
     "team": "T3",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P4-T3-04",
