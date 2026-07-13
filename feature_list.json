@@ -293,8 +293,8 @@
     "acceptance": "upload + document CRUD API 통과",
     "phase": "P4",
     "team": "T3",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P4-T3-07",

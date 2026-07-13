@@ -8,6 +8,9 @@ import { createSessionRoutes } from "./routes/sessions.js";
 import { createMessageRoutes } from "./routes/messages.js";
 import { createProjectRoutes } from "./routes/projects.js";
 import { createPgProjectDataAccess } from "./db/project-data-access.js";
+import { createUploadRoutes } from "./routes/uploads.js";
+import { createPgUploadDataAccess } from "./db/upload-data-access.js";
+import { createLocalObjectStore } from "./lib/object-store.js";
 import {
   authMiddleware,
   type AuthedVariables,
@@ -73,6 +76,17 @@ export function createApp(env: Env) {
   projectsApp.use("*", authMiddleware);
   projectsApp.route("/", createProjectRoutes(createPgProjectDataAccess()));
   app.route("/api/v1/projects", projectsApp);
+
+  const uploadsApp = new Hono<{ Variables: AuthedVariables }>();
+  uploadsApp.use("*", authMiddleware);
+  uploadsApp.route(
+    "/",
+    createUploadRoutes({
+      da: createPgUploadDataAccess(),
+      objectStore: createLocalObjectStore(),
+    }),
+  );
+  app.route("/api/v1/uploads", uploadsApp);
 
   return app;
 }
