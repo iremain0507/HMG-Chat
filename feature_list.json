@@ -464,8 +464,8 @@
     "acceptance": "memory-retriever.test.ts pin 우선 + recency; 메모리가 prompt 의 별도 섹션(## 영구 사용자 지시사항)으로 주입; 삭제 시 다음 세션 prompt 에서 제외",
     "phase": "P7",
     "team": "T2",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P7-T2-03",
