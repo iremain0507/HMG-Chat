@@ -338,8 +338,8 @@
     "acceptance": "search-service.test.ts — hybrid score 조합 (vector + bm25 + RRF)",
     "phase": "P4",
     "team": "T3",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P4-T3-06",
