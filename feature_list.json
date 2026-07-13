@@ -428,8 +428,8 @@
     "acceptance": "routes/public-share.test.ts — 인증 없이 접근 + expired → 410; revoke 후 즉시 차단; share.security.test.ts 122-bit 안전",
     "phase": "P6",
     "team": "T4",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P6-T6-01",

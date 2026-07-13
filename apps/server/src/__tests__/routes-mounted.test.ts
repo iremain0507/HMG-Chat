@@ -49,6 +49,20 @@ const EXPECTED_ROUTES: Array<{ method: string; path: string; phase: string }> =
     { method: "GET", path: `/api/v1/documents/${randomUUID()}`, phase: "P4" },
     { method: "POST", path: "/api/v1/documents", phase: "P4" },
     { method: "GET", path: `/api/v1/artifacts/${randomUUID()}`, phase: "P5" },
+    {
+      method: "POST",
+      path: `/api/v1/artifacts/${randomUUID()}/share`,
+      phase: "P6",
+    },
+    {
+      method: "GET",
+      path: `/api/v1/artifacts/${randomUUID()}/shares`,
+      phase: "P6",
+    },
+    // GET /api/v1/share/:token 은 authMiddleware 밖(인증 우회) 이라 "미마운트 404" 와
+    // "유효하지 않은 토큰 → 계약상 404 NOT_FOUND"(16-API-CONTRACT § 8) 를 상태코드로 구분할 수
+    // 없어 이 가드에서 제외 — 실 마운트 검증은 routes/__tests__/public-share.test.ts(유효 토큰
+    // 200 흐름)가 대신한다.
   ];
 
 describe("app.ts route mount 가드 (계약 prefix 배선 검증)", () => {

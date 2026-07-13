@@ -14,6 +14,9 @@ import { createDocumentRoutes } from "./routes/documents.js";
 import { createPgDocumentDataAccess } from "./db/project-document-data-access.js";
 import { createArtifactRoutes } from "./routes/artifacts.js";
 import { createPgArtifactDataAccess } from "./db/artifact-data-access.js";
+import { createArtifactShareRoutes } from "./routes/artifact-shares.js";
+import { createPgArtifactShareDataAccess } from "./db/artifact-share-data-access.js";
+import { createPublicShareRoutes } from "./routes/public-share.js";
 import { createInlineArtifactStore } from "./lib/artifact-store.inline.js";
 import { createS3ArtifactStore } from "./lib/artifact-store.s3.js";
 import { createLocalObjectStore } from "./lib/object-store.js";
@@ -113,16 +116,37 @@ export function createApp(env: Env) {
   const artifactsApp = new Hono<{ Variables: AuthedVariables }>();
   artifactsApp.use("*", authMiddleware);
   const artifactDa = createPgArtifactDataAccess();
+  const artifactShareDa = createPgArtifactShareDataAccess();
+  const artifactAndShareDa = { ...artifactDa, ...artifactShareDa };
+  const inlineArtifactStore = createInlineArtifactStore(artifactDa.artifacts);
+  const s3ArtifactStore = createS3ArtifactStore(createLocalObjectStore());
   artifactsApp.route(
     "/",
     createArtifactRoutes({
       da: artifactDa,
-      inlineStore: createInlineArtifactStore(artifactDa.artifacts),
-      s3Store: createS3ArtifactStore(createLocalObjectStore()),
+      inlineStore: inlineArtifactStore,
+      s3Store: s3ArtifactStore,
       downloadSecret: env.JWT_SECRET,
     }),
   );
+  artifactsApp.route(
+    "/",
+    createArtifactShareRoutes({
+      da: artifactAndShareDa,
+      appOrigin,
+    }),
+  );
   app.route("/api/v1/artifacts", artifactsApp);
+
+  // 인증 우회 mount (16-API-CONTRACT § 8 GET /api/v1/share/:token(/content)) — authMiddleware 밖.
+  app.route(
+    "/api/v1/share",
+    createPublicShareRoutes({
+      da: artifactAndShareDa,
+      inlineStore: inlineArtifactStore,
+      s3Store: s3ArtifactStore,
+    }),
+  );
 
   return app;
 }
