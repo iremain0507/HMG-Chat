@@ -599,8 +599,8 @@
     "acceptance": "admin 라우트 5개 구현+마운트, admin role만 접근(비admin 403), 실HTTP 통합테스트 통과",
     "phase": "P9",
     "team": "T1",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P9-T6-01",

@@ -35,6 +35,7 @@ import { createErrorRoutes } from "./routes/errors.js";
 import { createPgErrorLogDataAccess } from "./db/error-log-data-access.js";
 import { createAdminRoutes } from "./routes/admin.js";
 import { createPgHealthHistoryDataAccess } from "./db/health-history-data-access.js";
+import { createPgAdminDataAccess } from "./db/admin-data-access.js";
 import { createSkillRegistry } from "./tools/skills-engine.js";
 import { createInlineArtifactStore } from "./lib/artifact-store.inline.js";
 import { createS3ArtifactStore } from "./lib/artifact-store.s3.js";
@@ -235,7 +236,10 @@ export function createApp(env: Env) {
   adminApp.use("*", authMiddleware);
   adminApp.route(
     "/",
-    createAdminRoutes({ da: createPgHealthHistoryDataAccess() }),
+    createAdminRoutes({
+      da: createPgHealthHistoryDataAccess(),
+      adminDa: createPgAdminDataAccess(),
+    }),
   );
   app.route("/api/v1/admin", adminApp);
 
