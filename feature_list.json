@@ -307,8 +307,17 @@
   },
   {
     "id": "P4-T3-02",
-    "desc": "knowledge/{parser-pipeline,pdf-parser,pptx-parser,docx-parser,xlsx-parser}",
-    "acceptance": "parser-pipeline.test.ts — 4 포맷 모두 markdown 변환",
+    "desc": "knowledge/{parser-pipeline,pdf-parser,docx-parser,xlsx-parser,pptx-parser}.ts — parser-types.ts 계약 구현. pdf=pdf-parse, docx=mammoth, xlsx=sheetjs(→markdown 표), pptx=jszip 로 slide XML <a:t> 텍스트 추출(dev-stub). parser-pipeline 이 detectFormat 로 위임, 미지원 415. 각 파서 단위테스트(작은 인라인/픽스처 샘플).",
+    "acceptance": "parser-pipeline + 4 파서 단위테스트 GREEN(각 포맷 → markdown), 미지원 mime → 에러",
+    "phase": "P4",
+    "team": "T3",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P4-T3-08",
+    "desc": "routes/documents.ts 에 POST /projects/:id/documents(multipart) 추가 — 업로드→ObjectStore 저장→parser-pipeline→chunker→embedding dev-stub→document_chunks insert(project_documents dedup content_hash). routes-mounted 가드에 POST /documents 등록. createApp 실HTTP 통합테스트: 작은 docx 업로드→201→document_chunks 생성 확인.",
+    "acceptance": "POST /documents multipart 업로드→파싱→청킹→임베딩→document_chunks 저장, 실HTTP 통합테스트 통과",
     "phase": "P4",
     "team": "T3",
     "passes": false,
@@ -352,7 +361,7 @@
   },
   {
     "id": "P4-T6-01",
-    "desc": "web/projects/[id]/documents upload UI + indexing progress",
+    "desc": "web/projects/[id]/documents 업로드 UI + 인덱싱 상태 표시. POST /projects/:id/documents(P4-T3-08) 호출. CI(Hyundai WIA) 토큰 사용. (T3-08 완료 후 진행)",
     "acceptance": "dev 에서 파일 업로드 → indexed; 30 페이지 PDF 가 < 60초 안에 indexing 완료",
     "phase": "P4",
     "team": "T6",
