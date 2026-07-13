@@ -21,6 +21,13 @@
   T5=skills/ · T6=apps/web/src/
 - `packages/shared`·`packages/interfaces` 수정이 필요한 태스크는 구현하지 말고 격리(blocked_tasks) 처리.
 
+## Frontend 디자인 (T6, apps/web)
+
+- 모든 `apps/web` UI 는 **Hyundai WIA CI** 를 따른다. 단일 출처: `apps/web/DESIGN.md`.
+- 색상은 시맨틱 토큰만 사용(`primary`=#00287A 청색, `accent`=#C8102E 레드는 강조/Stop 전용 소량, 중립 그레이).
+  하드코딩 hex 금지 — `globals.css @theme` 토큰 → `bg-primary`·`text-accent`·`border-border` 유틸로.
+- 공식 로고는 재현/변형 금지(회사 제공 자산만). 미보유 시 텍스트 워드마크(primary 색).
+
 ## Hard rules
 
 - 테스트를 삭제·약화·우회하는 것은 어떤 이유로도 용납되지 않는다 (unacceptable).
