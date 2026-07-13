@@ -18,8 +18,8 @@ const Env = z.object({
   APP_ORIGIN: z.string().optional(),
   // 미설정 시 app.ts 가 llm-provider-dev-stub 으로 fail-soft (P2-T2-06 acceptance).
   ANTHROPIC_API_KEY: z.string().optional(),
-  // 실 Anthropic 사용 시 모델 ID. 기본 Haiku 4.5(비용 저렴, 테스트용). .env.local 로 override 가능.
-  LLM_MODEL: z.string().default("claude-haiku-4-5-20251001"),
+  // 실 Anthropic 사용 시 모델 ID. 기본 Sonnet 5. .env.local 로 override 가능.
+  LLM_MODEL: z.string().default("claude-sonnet-5"),
 });
 export type Env = z.infer<typeof Env>;
 
