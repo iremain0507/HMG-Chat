@@ -21,6 +21,8 @@ import { createMemoryRoutes } from "./routes/memories.js";
 import { createPgUserMemoryDataAccess } from "./db/user-memory-data-access.js";
 import { createMcpServerRoutes } from "./routes/mcp-servers.js";
 import { createPgMcpServerDataAccess } from "./db/mcp-server-data-access.js";
+import { createMcpClientPool } from "./mcp/mcp-client-pool.js";
+import { createMcpBridge } from "./mcp/mcp-bridge.js";
 import { createInlineArtifactStore } from "./lib/artifact-store.inline.js";
 import { createS3ArtifactStore } from "./lib/artifact-store.s3.js";
 import { createLocalObjectStore } from "./lib/object-store.js";
@@ -160,13 +162,18 @@ export function createApp(env: Env) {
   );
   app.route("/api/v1/memories", memoriesApp);
 
+  const mcpServerDa = createPgMcpServerDataAccess();
+  const mcpBridge = createMcpBridge({
+    pool: createMcpClientPool({ da: mcpServerDa }),
+  });
   const mcpServersApp = new Hono<{ Variables: AuthedVariables }>();
   mcpServersApp.use("*", authMiddleware);
   mcpServersApp.route(
     "/",
     createMcpServerRoutes({
-      da: createPgMcpServerDataAccess(),
+      da: mcpServerDa,
       nodeEnv: env.NODE_ENV,
+      discover: (server) => mcpBridge.discoverServerTools(server),
     }),
   );
   app.route("/api/v1/mcp-servers", mcpServersApp);

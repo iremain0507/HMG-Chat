@@ -500,8 +500,8 @@
     "acceptance": "mcp-bridge.test.ts 도구 발견 + 등록; 새 MCP server 등록 후 30초 안에 도구 자동 발견; mcp.rate-limit.test.ts quota 적용",
     "phase": "P8",
     "team": "T1",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P8-T5-01",
