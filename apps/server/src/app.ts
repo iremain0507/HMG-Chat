@@ -27,6 +27,14 @@ import { createMcpBridge } from "./mcp/mcp-bridge.js";
 import { createSkillRoutes } from "./routes/skills.js";
 import { createSkillAssetRoutes } from "./routes/skill-assets.js";
 import { createPgSkillAssetDataAccess } from "./db/skill-asset-data-access.js";
+import { createQuotaRoutes } from "./routes/quota.js";
+import { createPgQuotaDataAccess } from "./db/quota-data-access.js";
+import { createUsageRoutes } from "./routes/usage.js";
+import { createPgUsageLogDataAccess } from "./db/usage-log-data-access.js";
+import { createErrorRoutes } from "./routes/errors.js";
+import { createPgErrorLogDataAccess } from "./db/error-log-data-access.js";
+import { createAdminRoutes } from "./routes/admin.js";
+import { createPgHealthHistoryDataAccess } from "./db/health-history-data-access.js";
 import { createSkillRegistry } from "./tools/skills-engine.js";
 import { createInlineArtifactStore } from "./lib/artifact-store.inline.js";
 import { createS3ArtifactStore } from "./lib/artifact-store.s3.js";
@@ -207,6 +215,29 @@ export function createApp(env: Env) {
     }),
   );
   app.route("/api/v1/skill-assets", skillAssetsApp);
+
+  const quotaApp = new Hono<{ Variables: AuthedVariables }>();
+  quotaApp.use("*", authMiddleware);
+  quotaApp.route("/", createQuotaRoutes({ da: createPgQuotaDataAccess() }));
+  app.route("/api/v1/quota", quotaApp);
+
+  const usageApp = new Hono<{ Variables: AuthedVariables }>();
+  usageApp.use("*", authMiddleware);
+  usageApp.route("/", createUsageRoutes({ da: createPgUsageLogDataAccess() }));
+  app.route("/api/v1/usage", usageApp);
+
+  const errorsApp = new Hono<{ Variables: AuthedVariables }>();
+  errorsApp.use("*", authMiddleware);
+  errorsApp.route("/", createErrorRoutes({ da: createPgErrorLogDataAccess() }));
+  app.route("/api/v1/errors", errorsApp);
+
+  const adminApp = new Hono<{ Variables: AuthedVariables }>();
+  adminApp.use("*", authMiddleware);
+  adminApp.route(
+    "/",
+    createAdminRoutes({ da: createPgHealthHistoryDataAccess() }),
+  );
+  app.route("/api/v1/admin", adminApp);
 
   return app;
 }

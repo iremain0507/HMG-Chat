@@ -554,8 +554,8 @@
     "acceptance": "quota/usage/errors + health 엔드포인트 응답",
     "phase": "P9",
     "team": "T1",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P9-T1-03",
