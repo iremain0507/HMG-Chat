@@ -347,8 +347,8 @@
     "acceptance": "citation-helper.test.ts — [1],[2] 번호 매칭; knowledge_search 결과 citation 100% 매칭; 모르는 도메인이면 빈 결과 + '관련 문서 없음'",
     "phase": "P4",
     "team": "T3",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P4-T6-01",
