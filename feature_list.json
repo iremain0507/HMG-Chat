@@ -509,8 +509,8 @@
     "acceptance": "skills-engine.test.ts — SKILL.md 파싱 + 활성화; 잘못된 frontmatter → reject + 명확한 에러; lint-skills semver 검증 (L09)",
     "phase": "P8",
     "team": "T5",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P8-T5-02",
