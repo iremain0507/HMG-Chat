@@ -43,6 +43,7 @@
 
 ## 변경 유형별 추가 확인 (커밋 전 자가 점검)
 
+- **새 HTTP 라우트(routes/\*.ts) → 반드시 `app.ts`(createApp)에 마운트 + `apps/server/src/__tests__/routes-mounted.test.ts` 의 EXPECTED_ROUTES 에 prefix 추가.** (route 파일만 만들고 미마운트 = P2/P3 반복 gap. 이 가드가 기본 test 게이트에서 잡음.) 계약(16) cross-org/404 흐름은 createApp 기반 실HTTP 통합테스트로 검증.
 - shared/interface 변경 → 즉시 격리 (human gate)
 - migration/DDL/RLS → 롤백 경로 존재, nullable-first 확인
 - auth/permission → cross-org 격리 테스트 포함 여부
