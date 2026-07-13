@@ -401,8 +401,8 @@
     "acceptance": "converter-worker 단위 테스트 (mock LibreOffice) 통과",
     "phase": "P5",
     "team": "T4",
-    "passes": false,
-    "attempts": 1
+    "passes": true,
+    "attempts": 2
   },
   {
     "id": "P5-T6-01",
