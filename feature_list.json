@@ -239,8 +239,8 @@
     "acceptance": "빈 DB 에서 pnpm db:migrate 0 exit; project_members RLS 통과",
     "phase": "P3",
     "team": "T1",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 2
   },
   {
     "id": "P3-T1-02",
