@@ -51,8 +51,6 @@ import { createAnthropicLLMProvider } from "./orchestrator/llm-provider-anthropi
 import { createDevStubLLMProvider } from "./orchestrator/llm-provider-dev-stub.js";
 import { setActiveRun } from "./db/active-runs-service.js";
 
-const DEFAULT_MODEL = "claude-sonnet-4-6";
-
 export function createApp(env: Env) {
   const app = new Hono<{ Variables: AuthedVariables }>();
 
@@ -98,7 +96,8 @@ export function createApp(env: Env) {
     "/",
     createMessageRoutes({
       provider,
-      model: provider.models[0] ?? DEFAULT_MODEL,
+      // 실 Anthropic 은 env.LLM_MODEL(기본 Haiku 4.5) 사용. dev-stub 은 모델명 무시(에코).
+      model: env.LLM_MODEL,
       activeRuns: { setActiveRun },
     }),
   );

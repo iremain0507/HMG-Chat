@@ -13,6 +13,10 @@ import {
 import "@testing-library/jest-dom/vitest";
 import { ChatView } from "../ChatView";
 
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ push: vi.fn(), replace: vi.fn() }),
+}));
+
 function sseFrame(event: string, data: unknown): string {
   return `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
 }
