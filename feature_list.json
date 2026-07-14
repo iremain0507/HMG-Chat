@@ -977,8 +977,8 @@
     "acceptance": "fake transport로 코드실행→stdout text + 파일→artifact_created + signal 취소 중단; RED→GREEN, verify-gates green",
     "phase": "P11",
     "team": "T2",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P11-T3-01",
