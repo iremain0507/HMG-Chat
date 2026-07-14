@@ -13,7 +13,7 @@ NOTIFY_CMD="${NOTIFY_CMD:-}"
 SENTINEL_ALL="<ALL_TASKS_COMPLETE>"
 FP_LIMIT=3
 PLAN_DIR="rebuild_plan"
-PHASE_ORDER=(P0 P0.5 P1 P2 P3 P4 P5 P6 P7 P8 P9)
+PHASE_ORDER=(P0 P0.5 P1 P2 P3 P4 P5 P6 P7 P8 P9 P10)
 mkdir -p .ralph/logs .ralph/reports
 touch PROGRESS.md .ralph/blocked_tasks
 rm -f .ralph/BLOCKED .ralph/PHASE_DONE .ralph/fingerprints
@@ -40,7 +40,10 @@ echo "$SPEC_MD5" > .ralph/spec.md5
 for ((i=1; i<=MAX_ITERS; i++)); do
   echo "═══ Iteration $i @ $(date -u +%FT%TZ) [phase $(cat .ralph/current_phase 2>/dev/null || echo '?')] ═══" | tee -a .ralph/logs/run.log
 
-  OUT=$(claude -p "$(cat PROMPT.md)" \
+  # phase 전용 프롬프트가 있으면 사용(예: PROMPT.P10.md), 없으면 기본 PROMPT.md
+  PROMPT_FILE="PROMPT.$(cat .ralph/current_phase 2>/dev/null).md"
+  [ -f "$PROMPT_FILE" ] || PROMPT_FILE="PROMPT.md"
+  OUT=$(claude -p "$(cat "$PROMPT_FILE")" \
     --max-turns "${MAX_TURNS:-40}" --max-budget-usd "$BUDGET_USD" --model "$MODEL" \
     --output-format json 2>>.ralph/logs/run.log) || true
   echo "$OUT" | jq -r '.result // "(no result)"' > ".ralph/logs/iter-$i.md"

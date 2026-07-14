@@ -637,5 +637,212 @@
     "team": "ALL",
     "passes": false,
     "attempts": 0
+  },
+  {
+    "id": "P10-T6-01",
+    "desc": "AppShell 3분할 레이아웃 + 사이드바 접기 + z-index 토큰(--z-modal/toast/hitl) + Pretendard self-host + 라이트/다크 테마 토글(data-theme override)",
+    "acceptance": "AppShell 이 3 region 렌더 + 테마 토글이 data-theme 스탬프 + 모바일에서 사이드바 슬라이드오버; vitest RED→GREEN, verify-gates green",
+    "phase": "P10",
+    "team": "T6",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P10-T6-02",
+    "desc": "세션 히스토리 사이드바(SessionList/SessionCard/NewSessionButton) 날짜그룹+핀+검색+이름변경, /sessions GET/POST/PATCH/DELETE 연동",
+    "acceptance": "세션 목록 날짜그룹 렌더 + 새세션이 POST /sessions 호출 + 이름변경 PATCH; RED→GREEN, verify-gates green",
+    "phase": "P10",
+    "team": "T6",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P10-T6-03",
+    "desc": "메시지 렌더링 고도화 — assistant 풀폭 문서형 + hover MessageActions(복사/재생성/피드백) + 코드블록 문법하이라이트+복사+wrap + 표 overflow-x",
+    "acceptance": "코드블록 하이라이트+복사, user 우측/assistant 풀폭, thumbs 상태; RED→GREEN, verify-gates green",
+    "phase": "P10",
+    "team": "T6",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P10-T6-04",
+    "desc": "메시지 수식(KaTeX: remark-math/rehype-katex) + Mermaid 다이어그램(코드/다이어그램 토글) 렌더",
+    "acceptance": "$...$ 수식 렌더 + mermaid 코드→SVG; 미지정 의존성이면 격리; RED→GREEN, verify-gates green",
+    "phase": "P10",
+    "team": "T6",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P10-T6-05",
+    "desc": "스트리밍/추론 UX — Reasoning 접이식(기본 접힘+생각시간 칩) + 강제 오토스크롤 제거(하단 추종+최신으로↓ pill) + shimmer/skeleton",
+    "acceptance": "스크롤 이탈 시 자동추종 해제+pill, reasoning 접힘/펼침; RED→GREEN, verify-gates green",
+    "phase": "P10",
+    "team": "T6",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P10-T6-06",
+    "desc": "접근성 — 스트리밍 컨테이너 aria-live=polite + aria-atomic=false + role=log + announce 디바운스 + 포커스 관리 + 아이콘버튼 접근가능 이름",
+    "acceptance": "live region 속성 존재 + 빠른 델타에서 announce 디바운스; RED→GREEN, verify-gates green",
+    "phase": "P10",
+    "team": "T6",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P10-T2-01",
+    "desc": "orchestrator 실 tool-execution 루프 — ChatInput.tools 배선, tool_use→핸들러 실행→tool_result emit→재호출 반복(stop.reason=tool_use 비종결), AbortSignal 관통",
+    "acceptance": "툴 1개 등록 시 tool_use→tool_result→최종 text 시퀀스 + abort 즉시 중단; RED→GREEN, server ≥ 80%, verify-gates green",
+    "phase": "P10",
+    "team": "T2",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P10-T6-07",
+    "desc": "ToolCallRenderer + StatusChip — 툴명+상태칩(queued/running/done/error)+MCP 라벨+args/result 펼침, 스트림 위치 인터리브",
+    "acceptance": "tool_use→running, tool_result→done+요약, error→재시도 칩; SSE-stub RED→GREEN, verify-gates green",
+    "phase": "P10",
+    "team": "T6",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P10-T2-02",
+    "desc": "HITL 브리지 — 부수효과 툴 게이팅: hitl_request emit 후 turn pause, POST /sessions/:id/messages/hitl 대기→hitl_resolved(수정인자 반영)/hitl_timeout; GET hitl/pending",
+    "acceptance": "게이트 툴이 hitl_request 후 pause; approved→실행, denied→스킵, 만료→timeout; RED→GREEN, verify-gates green",
+    "phase": "P10",
+    "team": "T2",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P10-T6-08",
+    "desc": "HitlPrompt 승인 카드(z-300, aria-live=assertive) — 평문 액션 설명 + 거부/수정/승인 + 인자 인라인 편집 → POST hitl",
+    "acceptance": "카드가 승인/거부 전송 + 인자수정→modifiedArgs 반영; SSE-stub RED→GREEN, verify-gates green",
+    "phase": "P10",
+    "team": "T6",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P10-T2-03",
+    "desc": "knowledge_search 툴 핸들러 → 기존 retrieval 호출, citation 이벤트 emit + Message.citations[] 채움(기존 knowledge/** 편집 필요 시 격리)",
+    "acceptance": "검색 툴 turn 이 index/filename/snippet 갖춘 citation emit; RED→GREEN, verify-gates green",
+    "phase": "P10",
+    "team": "T2",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P10-T6-09",
+    "desc": "인용 UI — lib/citation-plugin.ts(remark) 로 [N] 칩 + ## Reference 푸터 + hover 스니펫 팝오버 + 클릭→우패널 소스 하이라이트",
+    "acceptance": "citation 이벤트→[N] 칩 렌더 + 클릭 시 소스 포커스; SSE-stub RED→GREEN, verify-gates green",
+    "phase": "P10",
+    "team": "T6",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P10-T2-04",
+    "desc": "artifact-create 툴 핸들러 → store 등록 후 artifact_created(artifactId/artifactKind/filename/downloadUrl) emit(기존 artifact-store lib 호출; 편집 필요 시 격리)",
+    "acceptance": "생성 툴 turn 이 artifact_created emit + GET /sessions/:id/artifacts 반영; RED→GREEN, verify-gates green",
+    "phase": "P10",
+    "team": "T2",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P10-T2-05",
+    "desc": "resume-stream 엔드포인트 GET /sessions/:id/messages/:messageId/stream — 첫 이벤트 message_replace 후 계속(stop.reason=tool_use 재연결 대상); 404/410/409 경로",
+    "acceptance": "재연결 시 message_replace 선행 + 이어받기; 신규 prefix 아님(기존 sessions 하위); RED→GREEN, verify-gates green",
+    "phase": "P10",
+    "team": "T2",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P10-T6-10",
+    "desc": "아티팩트/캔버스 패널(components/artifacts/**, T4 공동) — 우측 리사이즈 분할 + 미리보기/코드 토글 + 버전 페이저 + 다운로드/공유(ShareDialog) + artifact_created 자동오픈 + Cmd+백슬래시 토글",
+    "acceptance": "artifact_created→패널 오픈 + 미리보기/코드 토글 + 버전 네비; SSE-stub RED→GREEN, verify-gates green",
+    "phase": "P10",
+    "team": "T6",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P10-T2-06",
+    "desc": "routes/messages.ts 첨부 수용 — attachments:[{uploadId}] 수용(현 400 ATTACHMENTS_NOT_SUPPORTED 제거), turn 에 ephemeral RAG 컨텍스트로 전달",
+    "acceptance": "uploadId 포함 메시지가 400 아님 + ephemeral 소스 반영; RED→GREEN, verify-gates green",
+    "phase": "P10",
+    "team": "T2",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P10-T6-11",
+    "desc": "컴포저 첨부 — ChatInput 에 파일첨부 + 드래그드롭(드롭존 하이라이트) + 이미지 붙여넣기 → POST /uploads→uploadId → 제거가능 칩; 타입/크기 검증",
+    "acceptance": "드롭/붙여넣기→업로드→칩 + 전송 시 attachments 포함; RED→GREEN, verify-gates green",
+    "phase": "P10",
+    "team": "T6",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P10-T6-12",
+    "desc": "슬래시 커맨드(/) 액션 팝오버 + @멘션 엔티티 픽커(파일/툴/지식 → 참조 토큰)",
+    "acceptance": "/→필터 팝오버 선택 시 액션 실행, @→참조 토큰 삽입; RED→GREEN, verify-gates green",
+    "phase": "P10",
+    "team": "T6",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P10-T6-13",
+    "desc": "모델/모드 피커 — 컴포저 내 모델(추론 effort 포함)+모드(Agent/Chat·웹검색) 선택, GET /config availableModels; 미가용 옵션 숨김",
+    "acceptance": "config fetch→피커 렌더 + 선택이 전송 payload 반영; RED→GREEN, verify-gates green",
+    "phase": "P10",
+    "team": "T6",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P10-T6-14",
+    "desc": "프로젝트/스페이스 스코핑(헤더 Project 드롭다운, GET /projects) + 메모리 채팅 내 노출/토글(/memories)",
+    "acceptance": "프로젝트 전환이 세션 스코프 반영 + 메모리 표시; RED→GREEN, verify-gates green",
+    "phase": "P10",
+    "team": "T6",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P10-T6-15",
+    "desc": "메시지 편집/분기(트리 데이터모델) + 버전 페이저 — user 메시지 편집→분기 생성, 형제 페이저 2/3 네비, 활성경로 렌더",
+    "acceptance": "user 편집→새 분기 + 페이저로 형제 전환 + 활성경로 렌더; RED→GREEN, verify-gates green",
+    "phase": "P10",
+    "team": "T6",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P10-T6-16",
+    "desc": "공유/내보내기 — 대화 공개링크(명시 opt-in+리뷰) + 마크다운/JSON export(기존 share 계약 활용)",
+    "acceptance": "export 가 md/JSON 생성 + 공유는 opt-in 확인 후에만; RED→GREEN, verify-gates green",
+    "phase": "P10",
+    "team": "T6",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P10-T6-17",
+    "desc": "에러/신뢰 — turn 내 원인별 에러배너+재시도(재시도 가능 코드만; 429 백오프) + 토스트 시스템 + SSE 드롭 재연결/resume + 오프라인 상태; 입력 draft 보존",
+    "acceptance": "재시도가능 에러만 Retry 노출(크레딧부족 등 제외) + 토스트 동작; RED→GREEN, verify-gates green",
+    "phase": "P10",
+    "team": "T6",
+    "passes": false,
+    "attempts": 0
   }
 ]
