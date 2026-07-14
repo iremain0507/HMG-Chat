@@ -662,8 +662,8 @@
     "acceptance": "코드블록 하이라이트+복사, user 우측/assistant 풀폭, thumbs 상태; RED→GREEN, verify-gates green",
     "phase": "P10",
     "team": "T6",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P10-T6-04",

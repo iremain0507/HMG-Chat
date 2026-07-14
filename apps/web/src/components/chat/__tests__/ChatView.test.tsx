@@ -124,4 +124,88 @@ describe("ChatView", () => {
 
     releaseStream?.();
   });
+
+  it("user 메시지는 우측 정렬, assistant 메시지는 풀폭(버블 배경 없음)으로 렌더한다", async () => {
+    const encoder = new TextEncoder();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({
+        body: new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.enqueue(
+              encoder.encode(sseFrame("message_start", { messageId: "msg-1" })),
+            );
+            controller.enqueue(
+              encoder.encode(sseFrame("text_delta", { text: "hello" })),
+            );
+            controller.enqueue(
+              encoder.encode(sseFrame("stop", { reason: "end_turn" })),
+            );
+            controller.close();
+          },
+        }),
+      })),
+    );
+
+    render(<ChatView sessionId="session-1" />);
+    fireEvent.change(screen.getByLabelText("메시지 입력"), {
+      target: { value: "hi" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "전송" }));
+
+    await waitFor(() => {
+      expect(screen.getByText("hello")).toBeInTheDocument();
+    });
+
+    const userItem = document.querySelector('[data-role="user"]');
+    expect(userItem?.className).toMatch(/justify-end/);
+
+    const assistantContent = document.querySelector(
+      '[data-role="assistant"] .min-w-0',
+    );
+    expect(assistantContent?.querySelector(".bg-primary")).toBeNull();
+  });
+
+  it("assistant 메시지에 hover 액션(재생성)이 있고 클릭 시 마지막 user 메시지를 재전송한다", async () => {
+    const encoder = new TextEncoder();
+    const fetchMock = vi.fn(async () => ({
+      body: new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.enqueue(
+            encoder.encode(sseFrame("message_start", { messageId: "msg-1" })),
+          );
+          controller.enqueue(
+            encoder.encode(sseFrame("text_delta", { text: "hello" })),
+          );
+          controller.enqueue(
+            encoder.encode(sseFrame("stop", { reason: "end_turn" })),
+          );
+          controller.close();
+        },
+      }),
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<ChatView sessionId="session-1" />);
+    fireEvent.change(screen.getByLabelText("메시지 입력"), {
+      target: { value: "hi" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "전송" }));
+
+    await waitFor(() => {
+      expect(screen.getByText("hello")).toBeInTheDocument();
+    });
+
+    fetchMock.mockClear();
+    fireEvent.click(screen.getByRole("button", { name: "재생성" }));
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/v1/sessions/session-1/messages",
+        expect.objectContaining({
+          body: JSON.stringify({ content: "hi" }),
+        }),
+      );
+    });
+  });
 });

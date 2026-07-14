@@ -59,6 +59,35 @@
   --z-modal: 100;
   --z-toast: 200;
   --z-hitl: 300;
+
+  /* 코드블록 문법하이라이트 토큰(rehype-highlight, P10-T6-03) — light */
+  --code-keyword: #0057b8;
+  --code-string: #1a7f37;
+  --code-number: #ab5000;
+  --code-comment: #6b7280;
+  --code-function: #7c3aed;
 }
+:root[data-theme="dark"] {
+  --code-keyword: #7aa2f7;
+  --code-string: #7ec699;
+  --code-number: #e0af68;
+  --code-comment: #7a8496;
+  --code-function: #c792ea;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme]) {
+    --code-keyword: #7aa2f7;
+    --code-string: #7ec699;
+    --code-number: #e0af68;
+    --code-comment: #7a8496;
+    --code-function: #c792ea;
+  }
+}
+
+.hljs-keyword, .hljs-built_in, .hljs-tag, .hljs-selector-tag { color: var(--code-keyword); }
+.hljs-string, .hljs-attr, .hljs-symbol { color: var(--code-string); }
+.hljs-number, .hljs-literal { color: var(--code-number); }
+.hljs-comment, .hljs-quote { color: var(--code-comment); font-style: italic; }
+.hljs-title, .hljs-title.function_, .hljs-section { color: var(--code-function); }
 
 body { background: var(--color-bg); color: var(--color-fg); }

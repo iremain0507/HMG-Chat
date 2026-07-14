@@ -13,6 +13,7 @@ import React, {
 import { useRouter } from "next/navigation";
 import { useSessionStream } from "../../hooks/useSessionStream";
 import { Markdown } from "./Markdown";
+import { MessageActions } from "./MessageActions";
 
 const SUGGESTIONS = [
   "프로젝트 요약해줘",
@@ -116,19 +117,33 @@ export function ChatView({ sessionId }: { sessionId: string }) {
             aria-label="메시지 목록"
             className="mx-auto max-w-3xl space-y-6 px-4 py-6"
           >
-            {messages.map((m, i) => (
-              <MessageItem
-                key={m.id}
-                role={m.role}
-                content={m.content}
-                error={m.error ?? false}
-                streaming={
-                  isStreaming &&
-                  i === messages.length - 1 &&
-                  m.role === "assistant"
-                }
-              />
-            ))}
+            {messages.map((m, i) => {
+              const canRegenerate = m.role === "assistant" && !isStreaming;
+              return (
+                <MessageItem
+                  key={m.id}
+                  role={m.role}
+                  content={m.content}
+                  error={m.error ?? false}
+                  streaming={
+                    isStreaming &&
+                    i === messages.length - 1 &&
+                    m.role === "assistant"
+                  }
+                  {...(canRegenerate
+                    ? {
+                        onRegenerate: () => {
+                          const priorUser = messages
+                            .slice(0, i)
+                            .reverse()
+                            .find((prev) => prev.role === "user");
+                          if (priorUser) void send(priorUser.content);
+                        },
+                      }
+                    : {})}
+                />
+              );
+            })}
           </ul>
         )}
       </div>
@@ -185,11 +200,13 @@ function MessageItem({
   content,
   streaming,
   error,
+  onRegenerate,
 }: {
   role: "user" | "assistant";
   content: string;
   streaming: boolean;
   error?: boolean;
+  onRegenerate?: () => void;
 }) {
   if (error) {
     return (
@@ -205,25 +222,39 @@ function MessageItem({
   }
   if (role === "user") {
     return (
-      <li data-role="user" className="flex justify-end">
-        <div className="max-w-[80%] whitespace-pre-wrap rounded-2xl bg-primary px-4 py-2.5 text-primary-fg">
-          {content}
+      <li data-role="user" className="group flex justify-end">
+        <div className="max-w-[80%]">
+          <div className="whitespace-pre-wrap rounded-2xl bg-primary px-4 py-2.5 text-primary-fg">
+            {content}
+          </div>
+          <div className="mt-1 flex justify-end opacity-0 transition-opacity group-hover:opacity-100">
+            <MessageActions role="user" content={content} />
+          </div>
         </div>
       </li>
     );
   }
   return (
-    <li data-role="assistant" className="flex gap-3">
+    <li data-role="assistant" className="group flex gap-3">
       <div className="mt-0.5 grid h-8 w-8 flex-none place-items-center rounded-lg bg-primary text-sm font-bold text-primary-fg">
         W
       </div>
       <div className="min-w-0 flex-1 pt-1">
-        {content ? <Markdown>{content}</Markdown> : null}
+        {content ? <Markdown streaming={streaming}>{content}</Markdown> : null}
         {streaming && (
           <span
             className="ml-0.5 inline-block h-4 w-[3px] animate-pulse bg-fg align-middle"
             aria-label="응답 생성 중"
           />
+        )}
+        {!streaming && (
+          <div className="mt-1 opacity-0 transition-opacity group-hover:opacity-100">
+            <MessageActions
+              role="assistant"
+              content={content}
+              {...(onRegenerate ? { onRegenerate } : {})}
+            />
+          </div>
         )}
       </div>
     </li>
