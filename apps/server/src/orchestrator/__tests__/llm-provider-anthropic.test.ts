@@ -236,6 +236,198 @@ describe("createAnthropicLLMProvider", () => {
     });
   });
 
+  it("input.tools 를 body.tools 로 변환한다(inputSchema→input_schema)", async () => {
+    const { client, receivedBody } = fakeClient([]);
+    const provider = createAnthropicLLMProvider({ client });
+
+    const result = [];
+    for await (const event of provider.chat(
+      {
+        model: "claude-sonnet-4-6",
+        systemBlocks: [],
+        messages: [{ role: "user", content: "ls 실행해줘" }],
+        maxTokens: 512,
+        tools: [
+          {
+            name: "bash",
+            description: "쉘 명령 실행",
+            inputSchema: {
+              type: "object",
+              properties: { cmd: { type: "string" } },
+              required: ["cmd"],
+            },
+            permissionTier: "system",
+            defaultPolicy: "hitl",
+          },
+        ],
+      },
+      new AbortController().signal,
+    )) {
+      result.push(event);
+    }
+
+    expect(receivedBody()?.tools).toEqual([
+      {
+        name: "bash",
+        description: "쉘 명령 실행",
+        input_schema: {
+          type: "object",
+          properties: { cmd: { type: "string" } },
+          required: ["cmd"],
+        },
+      },
+    ]);
+  });
+
+  it("input.toolChoice 'any' 를 body.tool_choice={type:'any'} 로 변환한다", async () => {
+    const { client, receivedBody } = fakeClient([]);
+    const provider = createAnthropicLLMProvider({ client });
+
+    for await (const event of provider.chat(
+      {
+        model: "claude-sonnet-4-6",
+        systemBlocks: [],
+        messages: [{ role: "user", content: "안녕" }],
+        maxTokens: 512,
+        toolChoice: "any",
+      },
+      new AbortController().signal,
+    )) {
+      void event;
+    }
+
+    expect(receivedBody()?.tool_choice).toEqual({ type: "any" });
+  });
+
+  it("input.toolChoice {type:'tool',name} 를 body.tool_choice={type:'tool',name} 로 변환한다", async () => {
+    const { client, receivedBody } = fakeClient([]);
+    const provider = createAnthropicLLMProvider({ client });
+
+    for await (const event of provider.chat(
+      {
+        model: "claude-sonnet-4-6",
+        systemBlocks: [],
+        messages: [{ role: "user", content: "안녕" }],
+        maxTokens: 512,
+        toolChoice: { type: "tool", name: "bash" },
+      },
+      new AbortController().signal,
+    )) {
+      void event;
+    }
+
+    expect(receivedBody()?.tool_choice).toEqual({
+      type: "tool",
+      name: "bash",
+    });
+  });
+
+  it("parallelToolCalls===false 면 tool_choice.disable_parallel_tool_use=true 를 세팅한다(toolChoice 미지정 시 auto 기본값에 병합)", async () => {
+    const { client, receivedBody } = fakeClient([]);
+    const provider = createAnthropicLLMProvider({ client });
+
+    for await (const event of provider.chat(
+      {
+        model: "claude-sonnet-4-6",
+        systemBlocks: [],
+        messages: [{ role: "user", content: "안녕" }],
+        maxTokens: 512,
+        tools: [
+          {
+            name: "bash",
+            description: "쉘 명령 실행",
+            inputSchema: { type: "object" },
+            permissionTier: "system",
+            defaultPolicy: "hitl",
+          },
+        ],
+        parallelToolCalls: false,
+      },
+      new AbortController().signal,
+    )) {
+      void event;
+    }
+
+    expect(receivedBody()?.tool_choice).toEqual({
+      type: "auto",
+      disable_parallel_tool_use: true,
+    });
+  });
+
+  it("잘린 partial_json(invalid JSON) 은 tool_use args={} 로 안전하게 폴백하고 turn 을 안 죽인다", async () => {
+    const events: Anthropic.RawMessageStreamEvent[] = [
+      {
+        type: "message_start",
+        message: {
+          id: "msg_789",
+          type: "message",
+          role: "assistant",
+          model: "claude-sonnet-4-6",
+          content: [],
+          stop_reason: null,
+          stop_sequence: null,
+          usage: USAGE,
+        },
+      },
+      {
+        type: "content_block_start",
+        index: 0,
+        content_block: {
+          type: "tool_use",
+          id: "call_2",
+          name: "bash",
+          input: {},
+        },
+      },
+      {
+        type: "content_block_delta",
+        index: 0,
+        delta: { type: "input_json_delta", partial_json: '{"cmd":"l' },
+      },
+      { type: "content_block_stop", index: 0 },
+      {
+        type: "message_delta",
+        delta: { stop_reason: "tool_use", stop_sequence: null },
+        usage: { output_tokens: 8 },
+      },
+      { type: "message_stop" },
+    ];
+    const { client } = fakeClient(events);
+    const provider = createAnthropicLLMProvider({ client });
+
+    const result = [];
+    for await (const event of provider.chat(
+      {
+        model: "claude-sonnet-4-6",
+        systemBlocks: [],
+        messages: [{ role: "user", content: "ls 실행해줘" }],
+        maxTokens: 512,
+      },
+      new AbortController().signal,
+    )) {
+      result.push(event);
+    }
+
+    expect(result).toEqual([
+      {
+        type: "message_start",
+        messageId: "msg_789",
+        meta: { provider: "anthropic", model: "claude-sonnet-4-6" },
+      },
+      {
+        type: "tool_use",
+        toolCallId: "call_2",
+        name: "bash",
+        args: {},
+      },
+      {
+        type: "stop",
+        reason: "tool_use",
+        usage: { inputTokens: 10, outputTokens: 8 },
+      },
+    ]);
+  });
+
   it("signal 이 abort 된 상태에서 stream 실행 중 에러가 나면 stop reason='aborted' 를 emit 한다", async () => {
     const controller = new AbortController();
     const { client } = fakeClient([], { throwError: new Error("aborted") });

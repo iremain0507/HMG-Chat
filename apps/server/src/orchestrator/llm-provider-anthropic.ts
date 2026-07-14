@@ -1,5 +1,6 @@
 import type Anthropic from "@anthropic-ai/sdk";
 import type {
+  AgentToolSpec,
   ChatEvent,
   ChatInput,
   ContentPart,
@@ -71,6 +72,33 @@ function mapStopReason(
   return reason === "tool_use" || reason === "max_tokens" ? reason : "end_turn";
 }
 
+function toAnthropicTools(tools: AgentToolSpec[]): Anthropic.Tool[] {
+  return tools.map((tool) => ({
+    name: tool.name,
+    description: tool.description,
+    input_schema: tool.inputSchema as Anthropic.Tool.InputSchema,
+  }));
+}
+
+function toAnthropicToolChoice(
+  toolChoice: ChatInput["toolChoice"],
+  parallelToolCalls: ChatInput["parallelToolCalls"],
+): Anthropic.ToolChoice | undefined {
+  const disableParallel = parallelToolCalls === false;
+  if (!toolChoice) {
+    return disableParallel
+      ? { type: "auto", disable_parallel_tool_use: true }
+      : undefined;
+  }
+  const base =
+    toolChoice === "auto"
+      ? { type: "auto" as const }
+      : toolChoice === "any"
+        ? { type: "any" as const }
+        : { type: "tool" as const, name: toolChoice.name };
+  return disableParallel ? { ...base, disable_parallel_tool_use: true } : base;
+}
+
 export function createAnthropicLLMProvider(
   deps: CreateAnthropicLLMProviderDeps,
 ): LLMProvider {
@@ -83,6 +111,10 @@ export function createAnthropicLLMProvider(
       input: ChatInput,
       signal: AbortSignal,
     ): AsyncIterable<ChatEvent> {
+      const toolChoice = toAnthropicToolChoice(
+        input.toolChoice,
+        input.parallelToolCalls,
+      );
       const body: Anthropic.MessageStreamParams = {
         model: input.model,
         max_tokens: input.maxTokens,
@@ -94,6 +126,10 @@ export function createAnthropicLLMProvider(
                 .join("\n\n"),
             }
           : {}),
+        ...(input.tools && input.tools.length > 0
+          ? { tools: toAnthropicTools(input.tools) }
+          : {}),
+        ...(toolChoice ? { tool_choice: toolChoice } : {}),
       };
 
       let inputTokens = 0;
@@ -135,13 +171,23 @@ export function createAnthropicLLMProvider(
               break;
             case "content_block_stop":
               if (toolUseBuffer) {
+                let args: Record<string, unknown> = {};
+                if (toolUseBuffer.json) {
+                  try {
+                    args = JSON.parse(toolUseBuffer.json) as Record<
+                      string,
+                      unknown
+                    >;
+                  } catch {
+                    // 잘린 partial_json — turn 을 죽이지 않고 빈 args 로 폴백.
+                    args = {};
+                  }
+                }
                 yield {
                   type: "tool_use",
                   toolCallId: toolUseBuffer.toolCallId,
                   name: toolUseBuffer.name,
-                  args: toolUseBuffer.json
-                    ? JSON.parse(toolUseBuffer.json)
-                    : {},
+                  args,
                 };
                 toolUseBuffer = undefined;
               }
