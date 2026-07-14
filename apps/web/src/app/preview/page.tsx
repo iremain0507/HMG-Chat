@@ -10,6 +10,10 @@ import { Reasoning } from "../../components/chat/Reasoning";
 import { MessageActions } from "../../components/chat/MessageActions";
 import { ToolCallRenderer } from "../../components/chat/ToolCallRenderer";
 import { HitlPrompt } from "../../components/chat/HitlPrompt";
+import {
+  ArtifactCanvas,
+  type ArtifactCanvasArtifact,
+} from "../../components/artifacts/ArtifactCanvas";
 import type { Citation } from "../../hooks/useSessionStream";
 
 const CITATIONS: Citation[] = [
@@ -57,6 +61,47 @@ function CitationPreview() {
           ))}
         </ul>
       </div>
+    </div>
+  );
+}
+
+const ARTIFACTS: ArtifactCanvasArtifact[] = [
+  {
+    artifactId: "preview-artifact-1",
+    artifactKind: "markdown",
+    filename: "report-v1.md",
+    sizeBytes: 512,
+  },
+  {
+    artifactId: "preview-artifact-2",
+    artifactKind: "markdown",
+    filename: "report-v2.md",
+    sizeBytes: 1024,
+  },
+];
+
+function ArtifactCanvasPreview() {
+  const [open, setOpen] = useState(true);
+  const [activeIndex, setActiveIndex] = useState(1);
+  return (
+    <div>
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="mb-3 rounded-md border border-border px-3 py-1.5 text-sm text-fg-muted hover:border-primary hover:text-fg"
+      >
+        패널 다시 열기
+      </button>
+      {open && (
+        <div className="relative h-[420px] overflow-hidden rounded-lg border border-border">
+          <ArtifactCanvas
+            artifacts={ARTIFACTS}
+            activeIndex={activeIndex}
+            onActiveIndexChange={setActiveIndex}
+            onClose={() => setOpen(false)}
+          />
+        </div>
+      )}
     </div>
   );
 }
@@ -168,6 +213,10 @@ export default function PreviewGallery() {
           }}
           onRespond={() => {}}
         />
+      </Section>
+
+      <Section name="artifact-canvas">
+        <ArtifactCanvasPreview />
       </Section>
     </div>
   );

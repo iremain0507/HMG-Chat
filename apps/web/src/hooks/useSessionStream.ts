@@ -51,6 +51,15 @@ export interface HitlPromptData {
   expiresAt: string;
 }
 
+// 14-INTERFACES § ChatEvent.artifact_created 와 1:1 (artifactId/artifactKind/filename/sizeBytes/downloadUrl).
+export interface ArtifactSummary {
+  artifactId: string;
+  artifactKind: string;
+  filename: string;
+  sizeBytes: number;
+  downloadUrl?: string;
+}
+
 type ChatStreamEvent =
   | {
       type: "message_start";
@@ -77,6 +86,14 @@ type ChatStreamEvent =
     }
   | { type: "hitl_timeout"; toolCallId: string }
   | ({ type: "citation" } & Citation)
+  | {
+      type: "artifact_created";
+      artifactId: string;
+      artifactKind: string;
+      filename: string;
+      sizeBytes: number;
+      downloadUrl?: string;
+    }
   | {
       type: "stop";
       reason: "end_turn" | "tool_use" | "max_tokens" | "aborted";
@@ -112,6 +129,7 @@ export function useSessionStream(sessionId: string) {
   const [messages, setMessages] = useState<StreamMessage[]>([]);
   const [isStreaming, setIsStreaming] = useState(false);
   const [hitlRequest, setHitlRequest] = useState<HitlPromptData | null>(null);
+  const [artifacts, setArtifacts] = useState<ArtifactSummary[]>([]);
   const abortRef = useRef<AbortController | null>(null);
 
   const send = useCallback(
@@ -253,6 +271,19 @@ export function useSessionStream(sessionId: string) {
                     : m,
                 ),
               );
+            } else if (event.type === "artifact_created") {
+              setArtifacts((prev) => [
+                ...prev,
+                {
+                  artifactId: event.artifactId,
+                  artifactKind: event.artifactKind,
+                  filename: event.filename,
+                  sizeBytes: event.sizeBytes,
+                  ...(event.downloadUrl !== undefined
+                    ? { downloadUrl: event.downloadUrl }
+                    : {}),
+                },
+              ]);
             } else if (event.type === "hitl_request") {
               setHitlRequest({
                 toolCallId: event.toolCallId,
@@ -340,5 +371,13 @@ export function useSessionStream(sessionId: string) {
     [sessionId, hitlRequest],
   );
 
-  return { messages, isStreaming, send, stop, hitlRequest, respondHitl };
+  return {
+    messages,
+    isStreaming,
+    send,
+    stop,
+    hitlRequest,
+    respondHitl,
+    artifacts,
+  };
 }

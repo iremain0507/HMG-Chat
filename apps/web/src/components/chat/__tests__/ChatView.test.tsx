@@ -722,4 +722,161 @@ describe("ChatView", () => {
 
     expect(refItem).toHaveAttribute("data-focused", "true");
   });
+
+  it("artifact_created 이벤트가 오면 아티팩트 패널이 자동으로 열리고 미리보기/코드 토글이 동작한다", async () => {
+    const encoder = new TextEncoder();
+    const fetchMock = vi.fn(async (url: string) => {
+      if (String(url).endsWith("/content")) {
+        return { ok: true, text: async () => "# 원본 콘텐츠" };
+      }
+      return {
+        body: new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.enqueue(
+              encoder.encode(sseFrame("message_start", { messageId: "msg-1" })),
+            );
+            controller.enqueue(
+              encoder.encode(
+                sseFrame("artifact_created", {
+                  artifactId: "artifact-1",
+                  artifactKind: "markdown",
+                  filename: "report.md",
+                  sizeBytes: 100,
+                }),
+              ),
+            );
+            controller.enqueue(
+              encoder.encode(sseFrame("stop", { reason: "end_turn" })),
+            );
+            controller.close();
+          },
+        }),
+      };
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<ChatView sessionId="session-1" />);
+    fireEvent.change(screen.getByLabelText("메시지 입력"), {
+      target: { value: "보고서 만들어줘" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "전송" }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("artifact-panel")).toBeInTheDocument();
+    });
+    expect(screen.getAllByText("report.md").length).toBeGreaterThan(0);
+
+    fireEvent.click(screen.getByRole("button", { name: "코드" }));
+    await waitFor(() => {
+      expect(screen.getByTestId("artifact-code-view")).toHaveTextContent(
+        "원본 콘텐츠",
+      );
+    });
+  });
+
+  it("artifact_created 가 두 번 오면 버전 페이저로 이전 아티팩트를 탐색할 수 있다", async () => {
+    const encoder = new TextEncoder();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({
+        body: new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.enqueue(
+              encoder.encode(sseFrame("message_start", { messageId: "msg-1" })),
+            );
+            controller.enqueue(
+              encoder.encode(
+                sseFrame("artifact_created", {
+                  artifactId: "artifact-1",
+                  artifactKind: "markdown",
+                  filename: "report-v1.md",
+                  sizeBytes: 100,
+                }),
+              ),
+            );
+            controller.enqueue(
+              encoder.encode(
+                sseFrame("artifact_created", {
+                  artifactId: "artifact-2",
+                  artifactKind: "markdown",
+                  filename: "report-v2.md",
+                  sizeBytes: 200,
+                }),
+              ),
+            );
+            controller.enqueue(
+              encoder.encode(sseFrame("stop", { reason: "end_turn" })),
+            );
+            controller.close();
+          },
+        }),
+      })),
+    );
+
+    render(<ChatView sessionId="session-1" />);
+    fireEvent.change(screen.getByLabelText("메시지 입력"), {
+      target: { value: "보고서 만들어줘" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "전송" }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("artifact-version-pager")).toHaveTextContent(
+        "2 / 2",
+      );
+    });
+    expect(screen.getAllByText("report-v2.md").length).toBeGreaterThan(0);
+
+    fireEvent.click(screen.getByRole("button", { name: "이전 버전" }));
+
+    expect(screen.getByTestId("artifact-version-pager")).toHaveTextContent(
+      "1 / 2",
+    );
+    expect(screen.getAllByText("report-v1.md").length).toBeGreaterThan(0);
+  });
+
+  it("Cmd+\\ 로 아티팩트 패널을 닫고 다시 열 수 있다", async () => {
+    const encoder = new TextEncoder();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({
+        body: new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.enqueue(
+              encoder.encode(sseFrame("message_start", { messageId: "msg-1" })),
+            );
+            controller.enqueue(
+              encoder.encode(
+                sseFrame("artifact_created", {
+                  artifactId: "artifact-1",
+                  artifactKind: "markdown",
+                  filename: "report.md",
+                  sizeBytes: 100,
+                }),
+              ),
+            );
+            controller.enqueue(
+              encoder.encode(sseFrame("stop", { reason: "end_turn" })),
+            );
+            controller.close();
+          },
+        }),
+      })),
+    );
+
+    render(<ChatView sessionId="session-1" />);
+    fireEvent.change(screen.getByLabelText("메시지 입력"), {
+      target: { value: "보고서 만들어줘" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "전송" }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("artifact-panel")).toBeInTheDocument();
+    });
+
+    fireEvent.keyDown(window, { key: "\\", metaKey: true });
+    expect(screen.queryByTestId("artifact-panel")).not.toBeInTheDocument();
+
+    fireEvent.keyDown(window, { key: "\\", metaKey: true });
+    expect(screen.getByTestId("artifact-panel")).toBeInTheDocument();
+  });
 });

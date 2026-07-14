@@ -244,6 +244,53 @@ describe("useSessionStream", () => {
     ]);
   });
 
+  it("artifact_created 이벤트를 받으면 artifacts 배열에 순서대로 누적한다", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({
+        body: sseBody([
+          sseFrame("message_start", { messageId: "msg-1" }),
+          sseFrame("artifact_created", {
+            artifactId: "artifact-1",
+            artifactKind: "markdown",
+            filename: "report.md",
+            sizeBytes: 120,
+          }),
+          sseFrame("artifact_created", {
+            artifactId: "artifact-2",
+            artifactKind: "pdf",
+            filename: "report.pdf",
+            sizeBytes: 4096,
+            downloadUrl: "https://s3.example.com/artifact-2",
+          }),
+          sseFrame("stop", { reason: "end_turn" }),
+        ]),
+      })),
+    );
+
+    const { result } = renderHook(() => useSessionStream("session-1"));
+
+    await act(async () => {
+      await result.current.send("보고서 만들어줘");
+    });
+
+    expect(result.current.artifacts).toEqual([
+      {
+        artifactId: "artifact-1",
+        artifactKind: "markdown",
+        filename: "report.md",
+        sizeBytes: 120,
+      },
+      {
+        artifactId: "artifact-2",
+        artifactKind: "pdf",
+        filename: "report.pdf",
+        sizeBytes: 4096,
+        downloadUrl: "https://s3.example.com/artifact-2",
+      },
+    ]);
+  });
+
   it("hitl_request 이벤트를 받으면 hitlRequest 상태를 채우고, hitl_resolved 로 같은 toolCallId 가 도착하면 비운다", async () => {
     let releaseStream: (() => void) | undefined;
     const encoder = new TextEncoder();

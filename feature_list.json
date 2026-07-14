@@ -770,8 +770,8 @@
     "acceptance": "artifact_created→패널 오픈 + 미리보기/코드 토글 + 버전 네비; SSE-stub RED→GREEN, verify-gates green",
     "phase": "P10",
     "team": "T6",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P10-T2-06",

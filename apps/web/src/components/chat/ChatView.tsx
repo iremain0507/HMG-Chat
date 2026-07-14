@@ -16,6 +16,7 @@ import {
   type MessagePart,
   type Citation,
 } from "../../hooks/useSessionStream";
+import { ArtifactCanvas } from "../artifacts/ArtifactCanvas";
 import { HitlPrompt } from "./HitlPrompt";
 import { Markdown } from "./Markdown";
 import { MessageActions } from "./MessageActions";
@@ -32,14 +33,45 @@ const SUGGESTIONS = [
 
 export function ChatView({ sessionId }: { sessionId: string }) {
   const router = useRouter();
-  const { messages, isStreaming, send, stop, hitlRequest, respondHitl } =
-    useSessionStream(sessionId);
+  const {
+    messages,
+    isStreaming,
+    send,
+    stop,
+    hitlRequest,
+    respondHitl,
+    artifacts,
+  } = useSessionStream(sessionId);
   const [input, setInput] = useState("");
   const [autoFollow, setAutoFollow] = useState(true);
   const [announceText, setAnnounceText] = useState("");
+  const [artifactPanelOpen, setArtifactPanelOpen] = useState(false);
+  const [activeArtifactIndex, setActiveArtifactIndex] = useState(0);
   const scrollRef = useRef<HTMLDivElement>(null);
   const taRef = useRef<HTMLTextAreaElement>(null);
   const wasStreamingRef = useRef(isStreaming);
+  const prevArtifactCountRef = useRef(0);
+
+  // artifact_created 자동 오픈 — 18-FRONTEND-WIREFRAMES § 18.5.1 "ArtifactContext.open()".
+  useEffect(() => {
+    if (artifacts.length > prevArtifactCountRef.current) {
+      setActiveArtifactIndex(artifacts.length - 1);
+      setArtifactPanelOpen(true);
+    }
+    prevArtifactCountRef.current = artifacts.length;
+  }, [artifacts.length]);
+
+  // Cmd/Ctrl+\ 패널 토글 — 18-FRONTEND-WIREFRAMES § 18.5.1 키맵.
+  useEffect(() => {
+    function onKeyDown(e: globalThis.KeyboardEvent) {
+      if ((e.metaKey || e.ctrlKey) && e.key === "\\") {
+        e.preventDefault();
+        setArtifactPanelOpen((prev) => !prev);
+      }
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
 
   useEffect(() => {
     const el = scrollRef.current;
@@ -117,164 +149,175 @@ export function ChatView({ sessionId }: { sessionId: string }) {
   const empty = messages.length === 0;
 
   return (
-    <div className="flex h-full flex-col bg-bg text-fg">
-      <header className="flex items-center justify-between border-b border-border px-4 py-3">
-        <button
-          type="button"
-          onClick={() => router.push("/")}
-          className="rounded-lg px-2 py-1 text-sm text-fg-muted hover:text-fg"
-        >
-          ← 홈
-        </button>
-        <span className="text-sm font-semibold text-primary">WChat</span>
-        <button
-          type="button"
-          onClick={() => router.push(`/chat/${crypto.randomUUID()}`)}
-          className="rounded-lg border border-border px-3 py-1 text-sm text-fg-muted hover:border-primary hover:text-fg"
-        >
-          ＋ 새 채팅
-        </button>
-      </header>
-
-      <div className="relative flex-1 overflow-hidden">
-        <div
-          ref={scrollRef}
-          data-testid="chat-scroll"
-          onScroll={onScroll}
-          role="log"
-          aria-live="polite"
-          aria-atomic="false"
-          className="h-full overflow-y-auto"
-        >
-          <div className="sr-only" data-testid="stream-announcer">
-            {announceText}
-          </div>
-          {empty ? (
-            <div className="grid h-full place-items-center px-6">
-              <div className="text-center">
-                <div className="mx-auto grid h-14 w-14 place-items-center rounded-2xl bg-primary text-2xl font-bold text-primary-fg">
-                  W
-                </div>
-                <h1 className="mt-5 text-2xl font-semibold">
-                  무엇을 도와드릴까요?
-                </h1>
-                <p className="mt-2 text-fg-muted">
-                  메시지를 입력해 대화를 시작하세요.
-                </p>
-                <div className="mt-6 flex flex-wrap justify-center gap-2">
-                  {SUGGESTIONS.map((s) => (
-                    <button
-                      key={s}
-                      type="button"
-                      onClick={() => {
-                        setInput(s);
-                        taRef.current?.focus();
-                      }}
-                      className="rounded-full border border-border bg-surface px-3.5 py-2 text-sm text-fg-muted hover:border-primary hover:text-fg"
-                    >
-                      {s}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </div>
-          ) : (
-            <ul
-              aria-label="메시지 목록"
-              className="mx-auto max-w-3xl space-y-6 px-4 py-6"
-            >
-              {messages.map((m, i) => {
-                const canRegenerate = m.role === "assistant" && !isStreaming;
-                return (
-                  <MessageItem
-                    key={m.id}
-                    role={m.role}
-                    content={m.content}
-                    {...(m.parts ? { parts: m.parts } : {})}
-                    {...(m.citations ? { citations: m.citations } : {})}
-                    error={m.error ?? false}
-                    streaming={
-                      isStreaming &&
-                      i === messages.length - 1 &&
-                      m.role === "assistant"
-                    }
-                    {...(canRegenerate
-                      ? {
-                          onRegenerate: () => {
-                            const priorUser = messages
-                              .slice(0, i)
-                              .reverse()
-                              .find((prev) => prev.role === "user");
-                            if (priorUser) void send(priorUser.content);
-                          },
-                        }
-                      : {})}
-                  />
-                );
-              })}
-            </ul>
-          )}
-        </div>
-        {!autoFollow && (
+    <div className="flex h-full">
+      <div className="flex h-full min-w-0 flex-1 flex-col bg-bg text-fg">
+        <header className="flex items-center justify-between border-b border-border px-4 py-3">
           <button
             type="button"
-            onClick={scrollToBottom}
-            className="absolute bottom-3 left-1/2 -translate-x-1/2 rounded-full border border-border bg-surface px-3 py-1.5 text-xs text-fg-muted shadow-md hover:border-primary hover:text-fg"
+            onClick={() => router.push("/")}
+            className="rounded-lg px-2 py-1 text-sm text-fg-muted hover:text-fg"
           >
-            최신으로↓
+            ← 홈
           </button>
-        )}
-      </div>
+          <span className="text-sm font-semibold text-primary">WChat</span>
+          <button
+            type="button"
+            onClick={() => router.push(`/chat/${crypto.randomUUID()}`)}
+            className="rounded-lg border border-border px-3 py-1 text-sm text-fg-muted hover:border-primary hover:text-fg"
+          >
+            ＋ 새 채팅
+          </button>
+        </header>
 
-      {hitlRequest && (
-        <div className="border-t border-border px-4 pt-3">
-          <HitlPrompt request={hitlRequest} onRespond={respondHitl} />
-        </div>
-      )}
-
-      <div className="border-t border-border px-4 py-3">
-        <form
-          onSubmit={onSubmit}
-          className="mx-auto flex max-w-3xl items-end gap-2 rounded-2xl border border-border bg-surface p-2"
-        >
-          <textarea
-            id="chat-input"
-            ref={taRef}
-            rows={1}
-            aria-label="메시지 입력"
-            value={input}
-            onChange={(e) => {
-              setInput(e.target.value);
-              autogrow();
-            }}
-            onKeyDown={onKeyDown}
-            placeholder="메시지를 입력하세요…  (Enter 전송 · Shift+Enter 줄바꿈)"
-            className="max-h-[200px] flex-1 resize-none bg-transparent px-2 py-1.5 text-fg outline-none placeholder:text-fg-muted"
-          />
-          {isStreaming ? (
+        <div className="relative flex-1 overflow-hidden">
+          <div
+            ref={scrollRef}
+            data-testid="chat-scroll"
+            onScroll={onScroll}
+            role="log"
+            aria-live="polite"
+            aria-atomic="false"
+            className="h-full overflow-y-auto"
+          >
+            <div className="sr-only" data-testid="stream-announcer">
+              {announceText}
+            </div>
+            {empty ? (
+              <div className="grid h-full place-items-center px-6">
+                <div className="text-center">
+                  <div className="mx-auto grid h-14 w-14 place-items-center rounded-2xl bg-primary text-2xl font-bold text-primary-fg">
+                    W
+                  </div>
+                  <h1 className="mt-5 text-2xl font-semibold">
+                    무엇을 도와드릴까요?
+                  </h1>
+                  <p className="mt-2 text-fg-muted">
+                    메시지를 입력해 대화를 시작하세요.
+                  </p>
+                  <div className="mt-6 flex flex-wrap justify-center gap-2">
+                    {SUGGESTIONS.map((s) => (
+                      <button
+                        key={s}
+                        type="button"
+                        onClick={() => {
+                          setInput(s);
+                          taRef.current?.focus();
+                        }}
+                        className="rounded-full border border-border bg-surface px-3.5 py-2 text-sm text-fg-muted hover:border-primary hover:text-fg"
+                      >
+                        {s}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <ul
+                aria-label="메시지 목록"
+                className="mx-auto max-w-3xl space-y-6 px-4 py-6"
+              >
+                {messages.map((m, i) => {
+                  const canRegenerate = m.role === "assistant" && !isStreaming;
+                  return (
+                    <MessageItem
+                      key={m.id}
+                      role={m.role}
+                      content={m.content}
+                      {...(m.parts ? { parts: m.parts } : {})}
+                      {...(m.citations ? { citations: m.citations } : {})}
+                      error={m.error ?? false}
+                      streaming={
+                        isStreaming &&
+                        i === messages.length - 1 &&
+                        m.role === "assistant"
+                      }
+                      {...(canRegenerate
+                        ? {
+                            onRegenerate: () => {
+                              const priorUser = messages
+                                .slice(0, i)
+                                .reverse()
+                                .find((prev) => prev.role === "user");
+                              if (priorUser) void send(priorUser.content);
+                            },
+                          }
+                        : {})}
+                    />
+                  );
+                })}
+              </ul>
+            )}
+          </div>
+          {!autoFollow && (
             <button
               type="button"
-              onClick={() => stop()}
-              aria-label="Stop"
-              className="grid h-9 w-9 flex-none place-items-center rounded-xl bg-accent text-lg leading-none text-white"
+              onClick={scrollToBottom}
+              className="absolute bottom-3 left-1/2 -translate-x-1/2 rounded-full border border-border bg-surface px-3 py-1.5 text-xs text-fg-muted shadow-md hover:border-primary hover:text-fg"
             >
-              ■
-            </button>
-          ) : (
-            <button
-              type="submit"
-              aria-label="전송"
-              disabled={!input.trim()}
-              className="grid h-9 w-9 flex-none place-items-center rounded-xl bg-primary text-lg leading-none text-primary-fg transition disabled:opacity-40"
-            >
-              ↑
+              최신으로↓
             </button>
           )}
-        </form>
-        <p className="mx-auto mt-2 max-w-3xl text-center text-xs text-fg-muted">
-          WChat은 dev-stub 응답을 표시할 수 있습니다.
-        </p>
+        </div>
+
+        {hitlRequest && (
+          <div className="border-t border-border px-4 pt-3">
+            <HitlPrompt request={hitlRequest} onRespond={respondHitl} />
+          </div>
+        )}
+
+        <div className="border-t border-border px-4 py-3">
+          <form
+            onSubmit={onSubmit}
+            className="mx-auto flex max-w-3xl items-end gap-2 rounded-2xl border border-border bg-surface p-2"
+          >
+            <textarea
+              id="chat-input"
+              ref={taRef}
+              rows={1}
+              aria-label="메시지 입력"
+              value={input}
+              onChange={(e) => {
+                setInput(e.target.value);
+                autogrow();
+              }}
+              onKeyDown={onKeyDown}
+              placeholder="메시지를 입력하세요…  (Enter 전송 · Shift+Enter 줄바꿈)"
+              className="max-h-[200px] flex-1 resize-none bg-transparent px-2 py-1.5 text-fg outline-none placeholder:text-fg-muted"
+            />
+            {isStreaming ? (
+              <button
+                type="button"
+                onClick={() => stop()}
+                aria-label="Stop"
+                className="grid h-9 w-9 flex-none place-items-center rounded-xl bg-accent text-lg leading-none text-white"
+              >
+                ■
+              </button>
+            ) : (
+              <button
+                type="submit"
+                aria-label="전송"
+                disabled={!input.trim()}
+                className="grid h-9 w-9 flex-none place-items-center rounded-xl bg-primary text-lg leading-none text-primary-fg transition disabled:opacity-40"
+              >
+                ↑
+              </button>
+            )}
+          </form>
+          <p className="mx-auto mt-2 max-w-3xl text-center text-xs text-fg-muted">
+            WChat은 dev-stub 응답을 표시할 수 있습니다.
+          </p>
+        </div>
       </div>
+
+      {artifactPanelOpen && artifacts.length > 0 && (
+        <ArtifactCanvas
+          artifacts={artifacts}
+          activeIndex={Math.min(activeArtifactIndex, artifacts.length - 1)}
+          onActiveIndexChange={setActiveArtifactIndex}
+          onClose={() => setArtifactPanelOpen(false)}
+        />
+      )}
     </div>
   );
 }
