@@ -425,4 +425,60 @@ describe("ChatInput 모델/모드 피커 (P10-T6-13)", () => {
       );
     });
   });
+
+  // P10-T6-17 — 에러/신뢰: 입력 draft 보존(세션별 sessionStorage).
+  it("입력 draft 가 sessionStorage 에 보존되고 같은 sessionId 로 재마운트 시 복원된다", () => {
+    const { unmount } = render(
+      <ChatInput
+        sessionId="draft-session-1"
+        isStreaming={false}
+        onSend={vi.fn()}
+        onStop={vi.fn()}
+      />,
+    );
+    fireEvent.change(screen.getByLabelText("메시지 입력"), {
+      target: { value: "임시로 작성 중인 초안" },
+    });
+    unmount();
+
+    render(
+      <ChatInput
+        sessionId="draft-session-1"
+        isStreaming={false}
+        onSend={vi.fn()}
+        onStop={vi.fn()}
+      />,
+    );
+    expect(screen.getByLabelText("메시지 입력")).toHaveValue(
+      "임시로 작성 중인 초안",
+    );
+  });
+
+  it("전송하면 draft 가 sessionStorage 에서 제거된다", async () => {
+    const onSend = vi.fn();
+    const { unmount } = render(
+      <ChatInput
+        sessionId="draft-session-2"
+        isStreaming={false}
+        onSend={onSend}
+        onStop={vi.fn()}
+      />,
+    );
+    fireEvent.change(screen.getByLabelText("메시지 입력"), {
+      target: { value: "전송할 내용" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "전송" }));
+    await waitFor(() => expect(onSend).toHaveBeenCalled());
+    unmount();
+
+    render(
+      <ChatInput
+        sessionId="draft-session-2"
+        isStreaming={false}
+        onSend={vi.fn()}
+        onStop={vi.fn()}
+      />,
+    );
+    expect(screen.getByLabelText("메시지 입력")).toHaveValue("");
+  });
 });

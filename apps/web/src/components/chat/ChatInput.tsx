@@ -79,6 +79,21 @@ function detectTrigger(value: string, cursor: number): TriggerState | null {
   };
 }
 
+// P10-T6-17 — 입력 draft 보존: 세션별로 sessionStorage 에 임시 저장해 새로고침/재마운트에도
+// 작성 중이던 내용을 잃지 않게 한다.
+function draftKey(sessionId: string): string {
+  return `wchat:draft:${sessionId}`;
+}
+
+function readDraft(sessionId: string): string {
+  if (typeof window === "undefined") return "";
+  try {
+    return window.sessionStorage.getItem(draftKey(sessionId)) ?? "";
+  } catch {
+    return "";
+  }
+}
+
 export interface ChatInputProps {
   sessionId: string;
   isStreaming: boolean;
@@ -93,6 +108,8 @@ export interface ChatInputProps {
   mentionEntities?: MentionEntity[];
   availableModels?: string[];
   availableTools?: string[];
+  // P10-T6-17 — 오프라인 상태 등 외부 사유로 전송을 막을 때 사용(§19.5 D4).
+  disabled?: boolean;
 }
 
 export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
@@ -107,10 +124,11 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
       mentionEntities = [],
       availableModels = [],
       availableTools = [],
+      disabled = false,
     },
     ref,
   ) {
-    const [input, setInput] = useState("");
+    const [input, setInput] = useState(() => readDraft(sessionId));
     const [dragActive, setDragActive] = useState(false);
     const [trigger, setTrigger] = useState<TriggerState | null>(null);
     const [activeIndex, setActiveIndex] = useState(0);
@@ -130,6 +148,17 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
         setModel(availableModels[0] ?? "");
       }
     }, [availableModels, model]);
+
+    // P10-T6-17 — 입력 draft 보존: 값이 바뀔 때마다 세션별 키로 sessionStorage 에 동기화.
+    useEffect(() => {
+      if (typeof window === "undefined") return;
+      try {
+        if (input) window.sessionStorage.setItem(draftKey(sessionId), input);
+        else window.sessionStorage.removeItem(draftKey(sessionId));
+      } catch {
+        // sessionStorage 접근 불가(프라이빗 모드 등) — draft 보존은 best-effort.
+      }
+    }, [input, sessionId]);
 
     const fileMentionEntities = useMemo<MentionEntity[]>(
       () =>
@@ -217,7 +246,8 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
     }
 
     const uploading = items.some((it) => it.status === "uploading");
-    const canSend = input.trim().length > 0 && !isStreaming && !uploading;
+    const canSend =
+      input.trim().length > 0 && !isStreaming && !uploading && !disabled;
 
     async function submit() {
       if (!canSend) return;
@@ -406,7 +436,11 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
             }}
             onKeyDown={onKeyDown}
             onPaste={onPaste}
-            placeholder="메시지를 입력하세요…  (Enter 전송 · Shift+Enter 줄바꿈)"
+            placeholder={
+              disabled
+                ? "오프라인 상태입니다 — 연결이 복구되면 전송할 수 있어요."
+                : "메시지를 입력하세요…  (Enter 전송 · Shift+Enter 줄바꿈)"
+            }
             className="max-h-[200px] flex-1 resize-none bg-transparent px-2 py-1.5 text-fg outline-none placeholder:text-fg-muted"
           />
           {isStreaming ? (

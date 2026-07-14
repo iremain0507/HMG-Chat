@@ -577,4 +577,130 @@ describe("useSessionStream", () => {
       "첫 응답",
     );
   });
+
+  // P10-T6-17 — 에러/신뢰: turn 내 원인별 에러배너 + 재시도(재시도 가능 코드만) +
+  // SSE 드롭 재연결/resume.
+  it("error 이벤트의 SerializedError.retryable/category 를 메시지 노드에 반영한다", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({
+        body: sseBody([
+          sseFrame("message_start", { messageId: "msg-1" }),
+          sseFrame("error", {
+            error: {
+              code: "RATE_LIMITED",
+              category: "rate-limit",
+              message: "요청이 너무 많습니다",
+              retryable: true,
+            },
+          }),
+        ]),
+      })),
+    );
+
+    const { result } = renderHook(() => useSessionStream("session-1"));
+    await act(async () => {
+      await result.current.send("hi");
+    });
+
+    const errorMessage = result.current.messages.find((m) => m.error);
+    expect(errorMessage?.retryable).toBe(true);
+    expect(errorMessage?.errorCategory).toBe("rate-limit");
+    expect(result.current.isStreaming).toBe(false);
+  });
+
+  it("retryable:false 인 error 이벤트(크레딧 부족 등)는 retryable 이 false 로 반영된다", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({
+        body: sseBody([
+          sseFrame("message_start", { messageId: "msg-1" }),
+          sseFrame("error", {
+            error: {
+              code: "QUOTA_EXCEEDED",
+              category: "auth",
+              message: "크레딧이 부족합니다",
+              retryable: false,
+            },
+          }),
+        ]),
+      })),
+    );
+
+    const { result } = renderHook(() => useSessionStream("session-1"));
+    await act(async () => {
+      await result.current.send("hi");
+    });
+
+    const errorMessage = result.current.messages.find((m) => m.error);
+    expect(errorMessage?.retryable).toBe(false);
+  });
+
+  it("stop 없이 스트림이 끊기면 resume 엔드포인트(GET .../messages/:messageId/stream)로 재연결해 이어받는다", async () => {
+    const fetchMock = vi.fn(async (url: unknown) => {
+      if (typeof url === "string" && url.endsWith("/stream")) {
+        return {
+          ok: true,
+          body: sseBody([
+            sseFrame("message_replace", {
+              messageId: "msg-1",
+              contentSoFar: "hel",
+            }),
+            sseFrame("text_delta", { text: "lo" }),
+            sseFrame("stop", { reason: "end_turn" }),
+          ]),
+        };
+      }
+      return {
+        ok: true,
+        body: sseBody([
+          sseFrame("message_start", { messageId: "msg-1" }),
+          sseFrame("text_delta", { text: "hel" }),
+        ]),
+      };
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { result } = renderHook(() => useSessionStream("session-1"));
+    await act(async () => {
+      await result.current.send("hi");
+    });
+
+    expect(result.current.isStreaming).toBe(false);
+    const assistantMessage = result.current.messages.find(
+      (m) => m.role === "assistant",
+    );
+    expect(assistantMessage?.content).toBe("hello");
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock).toHaveBeenLastCalledWith(
+      "/api/v1/sessions/session-1/messages/msg-1/stream",
+      expect.objectContaining({ credentials: "include" }),
+    );
+  });
+
+  it("재연결 요청도 실패하면 재시도 가능한(retryable:true) 오류 메시지를 추가한다", async () => {
+    const fetchMock = vi.fn(async (url: unknown) => {
+      if (typeof url === "string" && url.endsWith("/stream")) {
+        throw new Error("network down");
+      }
+      return {
+        ok: true,
+        body: sseBody([
+          sseFrame("message_start", { messageId: "msg-1" }),
+          sseFrame("text_delta", { text: "hel" }),
+        ]),
+      };
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { result } = renderHook(() => useSessionStream("session-1"));
+    await act(async () => {
+      await result.current.send("hi");
+    });
+
+    expect(result.current.isStreaming).toBe(false);
+    const errorMessage = result.current.messages.find((m) => m.error);
+    expect(errorMessage).toBeDefined();
+    expect(errorMessage?.retryable).toBe(true);
+  });
 });

@@ -15,12 +15,15 @@ import { MessageItem } from "../../components/chat/ChatView";
 import { ProjectPicker } from "../../components/chat/ProjectPicker";
 import { MemoryPanel } from "../../components/chat/MemoryPanel";
 import { ShareExportMenu } from "../../components/chat/ShareExportMenu";
+import { ToastContainer } from "../../components/layout/ToastContainer";
 import {
   ArtifactCanvas,
   type ArtifactCanvasArtifact,
 } from "../../components/artifacts/ArtifactCanvas";
+import { useOnlineStatus } from "../../hooks/useOnlineStatus";
 import type { Citation } from "../../hooks/useSessionStream";
 import type { ProjectDto } from "../../hooks/useProject";
+import { showToast } from "../../lib/toast";
 
 const CITATIONS: Citation[] = [
   {
@@ -243,6 +246,94 @@ function greet(name: string) {
 $$\\int_0^1 x^2\\,dx = \\tfrac13$$
 `;
 
+// P10-T6-17 — 에러/신뢰 프리뷰 데모: 재시도 가능/불가능 error 배너, 토스트, 오프라인 배너.
+function ErrorBannerPreview() {
+  return (
+    <ul className="space-y-3">
+      <MessageItem
+        role="assistant"
+        content="요청이 너무 많습니다"
+        error
+        retryable
+        errorCategory="rate-limit"
+        streaming={false}
+        onRegenerate={() => showToast("info", "재시도를 눌렀습니다")}
+      />
+      <MessageItem
+        role="assistant"
+        content="크레딧이 부족합니다"
+        error
+        retryable={false}
+        streaming={false}
+      />
+    </ul>
+  );
+}
+
+function ToastPreview() {
+  return (
+    <div className="space-y-3">
+      <div className="flex flex-wrap gap-2">
+        <button
+          type="button"
+          onClick={() => showToast("error", "전송에 실패했습니다")}
+          className="rounded-md border border-border px-3 py-1.5 text-sm text-fg-muted hover:border-primary hover:text-fg"
+        >
+          에러 토스트
+        </button>
+        <button
+          type="button"
+          onClick={() => showToast("success", "저장되었습니다")}
+          className="rounded-md border border-border px-3 py-1.5 text-sm text-fg-muted hover:border-primary hover:text-fg"
+        >
+          성공 토스트
+        </button>
+        <button
+          type="button"
+          onClick={() => showToast("info", "새 버전이 있습니다")}
+          className="rounded-md border border-border px-3 py-1.5 text-sm text-fg-muted hover:border-primary hover:text-fg"
+        >
+          정보 토스트
+        </button>
+      </div>
+      <ToastContainer />
+    </div>
+  );
+}
+
+function OfflineBannerPreview() {
+  const online = useOnlineStatus();
+  return (
+    <div className="space-y-2">
+      <div className="flex gap-2">
+        <button
+          type="button"
+          onClick={() => window.dispatchEvent(new Event("offline"))}
+          className="rounded-md border border-border px-3 py-1.5 text-sm text-fg-muted hover:border-primary hover:text-fg"
+        >
+          오프라인으로 전환
+        </button>
+        <button
+          type="button"
+          onClick={() => window.dispatchEvent(new Event("online"))}
+          className="rounded-md border border-border px-3 py-1.5 text-sm text-fg-muted hover:border-primary hover:text-fg"
+        >
+          온라인으로 복귀
+        </button>
+      </div>
+      {!online && (
+        <div
+          data-testid="offline-banner"
+          role="status"
+          className="rounded-lg border border-accent/30 bg-accent/10 px-4 py-2 text-center text-xs text-accent"
+        >
+          오프라인 상태입니다 — 연결이 복구되면 다시 전송할 수 있어요.
+        </div>
+      )}
+    </div>
+  );
+}
+
 function Section({
   name,
   children,
@@ -360,6 +451,18 @@ export default function PreviewGallery() {
 
       <Section name="memory-panel">
         <MemoryPanelPreview />
+      </Section>
+
+      <Section name="error-banner">
+        <ErrorBannerPreview />
+      </Section>
+
+      <Section name="toast">
+        <ToastPreview />
+      </Section>
+
+      <Section name="offline-banner">
+        <OfflineBannerPreview />
       </Section>
 
       <Section name="share-export-menu">

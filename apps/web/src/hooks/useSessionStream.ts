@@ -11,6 +11,7 @@
 // 대상 user 메시지와 같은 부모를 공유하는 새 형제 노드를 만들어 활성 자식으로 전환하고,
 // switchBranch 는 활성 자식 포인터만 바꿔 이전에 스트리밍된 형제 분기를 그대로 복원한다.
 import { useCallback, useMemo, useRef, useState } from "react";
+import { showToast } from "../lib/toast";
 
 export type ToolCallStatus = "queued" | "running" | "done" | "error";
 
@@ -37,6 +38,10 @@ export interface StreamMessage {
   parts?: MessagePart[];
   truncated?: boolean;
   error?: boolean;
+  // P10-T6-17 — SerializedError(§14-INTERFACES) 의 retryable/category 를 그대로 반영.
+  // retryable 인 오류만 재시도 버튼을 노출(크레딧부족 등 비재시도 오류는 노출 안 함).
+  retryable?: boolean;
+  errorCategory?: string;
   citations?: Citation[];
   branch?: MessageBranch;
 }
@@ -88,6 +93,9 @@ type ChatStreamEvent =
       messageId: string;
       meta?: { provider: string; model: string };
     }
+  // P10-T6-17 — SSE 드롭 재연결/resume: GET .../messages/:messageId/stream 의 첫 이벤트로
+  // 현재까지 누적된 content 를 동기화(16-API-CONTRACT § resume endpoint).
+  | { type: "message_replace"; messageId: string; contentSoFar: string }
   | { type: "text_delta"; text: string }
   | { type: "tool_use"; toolCallId: string; name: string; args: unknown }
   | { type: "tool_result"; toolCallId: string; content: string | unknown }
@@ -121,7 +129,17 @@ type ChatStreamEvent =
       reason: "end_turn" | "tool_use" | "max_tokens" | "aborted";
       usage?: { inputTokens: number; outputTokens: number };
     }
-  | { type: "error"; error: { code: string; message: string } };
+  | {
+      type: "error";
+      // wire format = SerializedError(§14-INTERFACES/errors.ts) — category/retryable 은
+      // 옵셔널로 받아 누락 시 false/undefined 로 안전 처리.
+      error: {
+        code: string;
+        category?: string;
+        message: string;
+        retryable?: boolean;
+      };
+    };
 
 // AgentToolResult.content(kind:"error") 는 orchestrator 가 { error: WChatError } 로
 // 감싸 emit(orchestrator.ts toToolResultContent) — 그 shape 을 client 에서 재검출.
@@ -240,6 +258,225 @@ export function useSessionStream(sessionId: string) {
       const controller = new AbortController();
       abortRef.current = controller;
       let assistantId: string | null = null;
+      // P10-T6-17 — SSE 드롭 재연결/resume: message_start 가 발급한 서버 messageId 를
+      // 기억해두면, stop/error 없이 스트림이 끊겼을 때 같은 messageId 로
+      // GET .../messages/:messageId/stream (resume) 에 재연결할 수 있다.
+      let lastServerMessageId: string | null = null;
+      // stop/error 이벤트(정상 종결) 또는 재연결 실패 처리 완료를 받았는지 여부.
+      // false 인 채로 read 루프가 끝나면(reader done) "드롭"으로 간주해 재연결을 시도한다.
+      let receivedTerminal = false;
+
+      function emitConnectionError() {
+        const message = "연결이 끊어졌습니다. 다시 시도해주세요.";
+        const errId = `local-err-${idCounterRef.current++}`;
+        addNode(errId, assistantId ?? userNodeId, {
+          id: errId,
+          role: "assistant",
+          content: message,
+          error: true,
+          retryable: true,
+        });
+        showToast("error", message);
+        receivedTerminal = true;
+      }
+
+      function processEvent(event: ChatStreamEvent) {
+        if (event.type === "message_start") {
+          lastServerMessageId = event.messageId;
+          // 트리 노드 키는 항상 내부에서 새로 발급한다 — 서버 messageId 를
+          // 그대로 키로 쓰면 재생성/재시도처럼 같은 messageId 가 다른 턴에서도
+          // 재사용될 수 있는 상황(테스트 목·서버 재사용 등)에서 이전 턴의
+          // parent→child 포인터와 충돌해 트리에 사이클이 생긴다.
+          assistantId = `local-a-${idCounterRef.current++}`;
+          addNode(assistantId, userNodeId, {
+            id: assistantId,
+            role: "assistant",
+            content: "",
+          });
+        } else if (event.type === "message_replace" && assistantId) {
+          // resume 스트림의 첫 이벤트 — 지금까지 누적된 content 로 동기화.
+          updateNode(assistantId, (m) => ({
+            ...m,
+            content: event.contentSoFar,
+            parts: event.contentSoFar
+              ? [{ type: "text", text: event.contentSoFar }]
+              : [],
+          }));
+        } else if (event.type === "text_delta" && assistantId) {
+          updateNode(assistantId, (m) => {
+            const parts = m.parts ?? [];
+            const last = parts.at(-1);
+            const nextParts: MessagePart[] =
+              last?.type === "text"
+                ? [
+                    ...parts.slice(0, -1),
+                    { type: "text", text: last.text + event.text },
+                  ]
+                : [...parts, { type: "text", text: event.text }];
+            return {
+              ...m,
+              content: m.content + event.text,
+              parts: nextParts,
+            };
+          });
+        } else if (event.type === "tool_use" && assistantId) {
+          updateNode(assistantId, (m) => ({
+            ...m,
+            parts: [
+              ...(m.parts ?? []),
+              {
+                type: "tool",
+                toolCallId: event.toolCallId,
+                name: event.name,
+                args: event.args,
+                status: "running",
+              },
+            ],
+          }));
+        } else if (event.type === "tool_result" && assistantId) {
+          updateNode(assistantId, (m) =>
+            m.parts
+              ? {
+                  ...m,
+                  parts: m.parts.map((p) =>
+                    p.type === "tool" && p.toolCallId === event.toolCallId
+                      ? {
+                          ...p,
+                          status: isErrorToolResult(event.content)
+                            ? "error"
+                            : "done",
+                          result: event.content,
+                        }
+                      : p,
+                  ),
+                }
+              : m,
+          );
+        } else if (event.type === "citation" && assistantId) {
+          const citation: Citation = {
+            index: event.index,
+            source: event.source,
+            filename: event.filename,
+            snippet: event.snippet,
+            ...(event.documentId !== undefined
+              ? { documentId: event.documentId }
+              : {}),
+            ...(event.uploadId !== undefined
+              ? { uploadId: event.uploadId }
+              : {}),
+            ...(event.title !== undefined ? { title: event.title } : {}),
+            ...(event.page !== undefined ? { page: event.page } : {}),
+            ...(event.sourceUri !== undefined
+              ? { sourceUri: event.sourceUri }
+              : {}),
+          };
+          updateNode(assistantId, (m) => ({
+            ...m,
+            citations: [...(m.citations ?? []), citation],
+          }));
+        } else if (event.type === "artifact_created") {
+          setArtifacts((prev) => [
+            ...prev,
+            {
+              artifactId: event.artifactId,
+              artifactKind: event.artifactKind,
+              filename: event.filename,
+              sizeBytes: event.sizeBytes,
+              ...(event.downloadUrl !== undefined
+                ? { downloadUrl: event.downloadUrl }
+                : {}),
+            },
+          ]);
+        } else if (event.type === "hitl_request") {
+          setHitlRequest({
+            toolCallId: event.toolCallId,
+            toolName: event.toolName,
+            args: event.args,
+            rationale: event.rationale,
+            expiresAt: event.expiresAt,
+          });
+        } else if (
+          event.type === "hitl_resolved" ||
+          event.type === "hitl_timeout"
+        ) {
+          setHitlRequest((prev) =>
+            prev && prev.toolCallId === event.toolCallId ? null : prev,
+          );
+        } else if (event.type === "stop") {
+          receivedTerminal = true;
+          setIsStreaming(false);
+        } else if (event.type === "error") {
+          receivedTerminal = true;
+          const message = event.error?.message ?? "알 수 없는 오류";
+          const retryable = event.error?.retryable ?? false;
+          const category = event.error?.category;
+          const errId = `local-err-${idCounterRef.current++}`;
+          addNode(errId, assistantId ?? userNodeId, {
+            id: errId,
+            role: "assistant",
+            content: message,
+            error: true,
+            retryable,
+            ...(category ? { errorCategory: category } : {}),
+          });
+          setIsStreaming(false);
+          showToast("error", message);
+        }
+      }
+
+      async function readFrom(res: {
+        body?: ReadableStream<Uint8Array> | null;
+      }): Promise<void> {
+        const reader = res.body?.getReader();
+        if (!reader) return;
+        const decoder = new TextDecoder();
+        let buffer = "";
+
+        for (;;) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+
+          let sepIndex = buffer.indexOf("\n\n");
+          while (sepIndex !== -1) {
+            const frame = buffer.slice(0, sepIndex);
+            buffer = buffer.slice(sepIndex + 2);
+            const event = parseSseFrame(frame);
+            sepIndex = buffer.indexOf("\n\n");
+            if (!event) continue;
+            processEvent(event);
+          }
+        }
+      }
+
+      // 마지막 messageId 로 resume endpoint 에 1회 재연결을 시도한다(16-API-CONTRACT §
+      // GET .../messages/:messageId/stream). 재연결도 실패하면 재시도 가능(retryable:true)
+      // 오류로 사용자에게 알린다 — 무한 재시도로 루프하지 않는다.
+      async function attemptReconnect(): Promise<void> {
+        if (!lastServerMessageId) return;
+        try {
+          const res = await fetch(
+            `/api/v1/sessions/${sessionId}/messages/${lastServerMessageId}/stream`,
+            {
+              credentials: "include",
+              signal: controller.signal,
+              headers: { Accept: "text/event-stream" },
+            },
+          );
+          if ("ok" in res && res.ok === false) {
+            emitConnectionError();
+            return;
+          }
+          await readFrom(res);
+          if (!receivedTerminal && !controller.signal.aborted) {
+            emitConnectionError();
+          }
+        } catch (err) {
+          if ((err as Error).name !== "AbortError") {
+            emitConnectionError();
+          }
+        }
+      }
 
       try {
         const res = await fetch(`/api/v1/sessions/${sessionId}/messages`, {
@@ -264,153 +501,18 @@ export function useSessionStream(sessionId: string) {
           }),
         });
 
-        const reader = res.body?.getReader();
-        if (!reader) return;
-        const decoder = new TextDecoder();
-        let buffer = "";
+        await readFrom(res);
 
-        for (;;) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          buffer += decoder.decode(value, { stream: true });
-
-          let sepIndex = buffer.indexOf("\n\n");
-          while (sepIndex !== -1) {
-            const frame = buffer.slice(0, sepIndex);
-            buffer = buffer.slice(sepIndex + 2);
-            const event = parseSseFrame(frame);
-            sepIndex = buffer.indexOf("\n\n");
-            if (!event) continue;
-
-            if (event.type === "message_start") {
-              // 트리 노드 키는 항상 내부에서 새로 발급한다 — 서버 messageId 를
-              // 그대로 키로 쓰면 재생성/재시도처럼 같은 messageId 가 다른 턴에서도
-              // 재사용될 수 있는 상황(테스트 목·서버 재사용 등)에서 이전 턴의
-              // parent→child 포인터와 충돌해 트리에 사이클이 생긴다.
-              assistantId = `local-a-${idCounterRef.current++}`;
-              addNode(assistantId, userNodeId, {
-                id: assistantId,
-                role: "assistant",
-                content: "",
-              });
-            } else if (event.type === "text_delta" && assistantId) {
-              updateNode(assistantId, (m) => {
-                const parts = m.parts ?? [];
-                const last = parts.at(-1);
-                const nextParts: MessagePart[] =
-                  last?.type === "text"
-                    ? [
-                        ...parts.slice(0, -1),
-                        { type: "text", text: last.text + event.text },
-                      ]
-                    : [...parts, { type: "text", text: event.text }];
-                return {
-                  ...m,
-                  content: m.content + event.text,
-                  parts: nextParts,
-                };
-              });
-            } else if (event.type === "tool_use" && assistantId) {
-              updateNode(assistantId, (m) => ({
-                ...m,
-                parts: [
-                  ...(m.parts ?? []),
-                  {
-                    type: "tool",
-                    toolCallId: event.toolCallId,
-                    name: event.name,
-                    args: event.args,
-                    status: "running",
-                  },
-                ],
-              }));
-            } else if (event.type === "tool_result" && assistantId) {
-              updateNode(assistantId, (m) =>
-                m.parts
-                  ? {
-                      ...m,
-                      parts: m.parts.map((p) =>
-                        p.type === "tool" && p.toolCallId === event.toolCallId
-                          ? {
-                              ...p,
-                              status: isErrorToolResult(event.content)
-                                ? "error"
-                                : "done",
-                              result: event.content,
-                            }
-                          : p,
-                      ),
-                    }
-                  : m,
-              );
-            } else if (event.type === "citation" && assistantId) {
-              const citation: Citation = {
-                index: event.index,
-                source: event.source,
-                filename: event.filename,
-                snippet: event.snippet,
-                ...(event.documentId !== undefined
-                  ? { documentId: event.documentId }
-                  : {}),
-                ...(event.uploadId !== undefined
-                  ? { uploadId: event.uploadId }
-                  : {}),
-                ...(event.title !== undefined ? { title: event.title } : {}),
-                ...(event.page !== undefined ? { page: event.page } : {}),
-                ...(event.sourceUri !== undefined
-                  ? { sourceUri: event.sourceUri }
-                  : {}),
-              };
-              updateNode(assistantId, (m) => ({
-                ...m,
-                citations: [...(m.citations ?? []), citation],
-              }));
-            } else if (event.type === "artifact_created") {
-              setArtifacts((prev) => [
-                ...prev,
-                {
-                  artifactId: event.artifactId,
-                  artifactKind: event.artifactKind,
-                  filename: event.filename,
-                  sizeBytes: event.sizeBytes,
-                  ...(event.downloadUrl !== undefined
-                    ? { downloadUrl: event.downloadUrl }
-                    : {}),
-                },
-              ]);
-            } else if (event.type === "hitl_request") {
-              setHitlRequest({
-                toolCallId: event.toolCallId,
-                toolName: event.toolName,
-                args: event.args,
-                rationale: event.rationale,
-                expiresAt: event.expiresAt,
-              });
-            } else if (
-              event.type === "hitl_resolved" ||
-              event.type === "hitl_timeout"
-            ) {
-              setHitlRequest((prev) =>
-                prev && prev.toolCallId === event.toolCallId ? null : prev,
-              );
-            } else if (event.type === "stop") {
-              setIsStreaming(false);
-            } else if (event.type === "error") {
-              const message = event.error?.message ?? "알 수 없는 오류";
-              const errId = `local-err-${idCounterRef.current++}`;
-              addNode(errId, assistantId ?? userNodeId, {
-                id: errId,
-                role: "assistant",
-                content: message,
-                error: true,
-              });
-              setIsStreaming(false);
-            }
-          }
+        if (!receivedTerminal && !controller.signal.aborted) {
+          await attemptReconnect();
         }
       } catch (err) {
         if ((err as Error).name !== "AbortError") {
-          setIsStreaming(false);
+          if (lastServerMessageId && !receivedTerminal) {
+            await attemptReconnect();
+          } else {
+            setIsStreaming(false);
+          }
         }
       } finally {
         setIsStreaming(false);

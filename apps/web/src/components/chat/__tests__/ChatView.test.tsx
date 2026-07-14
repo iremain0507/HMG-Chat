@@ -9,6 +9,7 @@ import {
   fireEvent,
   waitFor,
   cleanup,
+  act,
 } from "@testing-library/react";
 import "@testing-library/jest-dom/vitest";
 import { ChatView } from "../ChatView";
@@ -531,6 +532,122 @@ describe("ChatView", () => {
           body: JSON.stringify({ content: "실행해줘" }),
         }),
       );
+    });
+  });
+
+  // P10-T6-17 — 에러/신뢰: 원인별 에러배너 + 재시도(재시도 가능 코드만) + 토스트 + 오프라인.
+  it("retryable:true 인 error 이벤트는 재시도 버튼과 rate-limit 안내를 렌더하고, 클릭 시 재전송한다", async () => {
+    const fetchMock = vi.fn(async () => ({
+      body: new ReadableStream<Uint8Array>({
+        start(controller) {
+          const encoder = new TextEncoder();
+          controller.enqueue(
+            encoder.encode(sseFrame("message_start", { messageId: "msg-1" })),
+          );
+          controller.enqueue(
+            encoder.encode(
+              sseFrame("error", {
+                error: {
+                  code: "RATE_LIMITED",
+                  category: "rate-limit",
+                  message: "요청이 너무 많습니다",
+                  retryable: true,
+                },
+              }),
+            ),
+          );
+          controller.close();
+        },
+      }),
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<ChatView sessionId="session-1" />);
+    fireEvent.change(screen.getByLabelText("메시지 입력"), {
+      target: { value: "다시 물어볼게" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "전송" }));
+
+    await waitFor(() => {
+      expect(screen.getByText("요청이 너무 많습니다")).toBeInTheDocument();
+    });
+    expect(screen.getByRole("button", { name: "재시도" })).toBeInTheDocument();
+
+    fetchMock.mockClear();
+    fireEvent.click(screen.getByRole("button", { name: "재시도" }));
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/v1/sessions/session-1/messages",
+        expect.objectContaining({
+          body: JSON.stringify({ content: "다시 물어볼게" }),
+        }),
+      );
+    });
+  });
+
+  it("retryable:false 인 error 이벤트(크레딧 부족 등)는 재시도 버튼을 노출하지 않는다", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({
+        body: new ReadableStream<Uint8Array>({
+          start(controller) {
+            const encoder = new TextEncoder();
+            controller.enqueue(
+              encoder.encode(sseFrame("message_start", { messageId: "msg-1" })),
+            );
+            controller.enqueue(
+              encoder.encode(
+                sseFrame("error", {
+                  error: {
+                    code: "QUOTA_EXCEEDED",
+                    category: "auth",
+                    message: "크레딧이 부족합니다",
+                    retryable: false,
+                  },
+                }),
+              ),
+            );
+            controller.close();
+          },
+        }),
+      })),
+    );
+
+    render(<ChatView sessionId="session-1" />);
+    fireEvent.change(screen.getByLabelText("메시지 입력"), {
+      target: { value: "hi" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "전송" }));
+
+    await waitFor(() => {
+      expect(screen.getByText("크레딧이 부족합니다")).toBeInTheDocument();
+    });
+    expect(
+      screen.queryByRole("button", { name: "재시도" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("오프라인이 되면 배너가 렌더되고 전송 버튼이 비활성화된다", async () => {
+    render(<ChatView sessionId="session-1" />);
+
+    act(() => {
+      window.dispatchEvent(new Event("offline"));
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId("offline-banner")).toBeInTheDocument();
+    });
+    fireEvent.change(screen.getByLabelText("메시지 입력"), {
+      target: { value: "hi" },
+    });
+    expect(screen.getByRole("button", { name: "전송" })).toBeDisabled();
+
+    act(() => {
+      window.dispatchEvent(new Event("online"));
+    });
+    await waitFor(() => {
+      expect(screen.queryByTestId("offline-banner")).not.toBeInTheDocument();
     });
   });
 

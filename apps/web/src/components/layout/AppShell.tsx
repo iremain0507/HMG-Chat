@@ -4,6 +4,7 @@
 // 좌 nav rail(사이드바) + 본문 + 우패널 슬롯의 3분할 셸. 모바일 폭에서 사이드바는 슬라이드오버.
 import React, { useState } from "react";
 import { ThemeToggle } from "./ThemeToggle";
+import { ToastContainer } from "./ToastContainer";
 
 export interface AppShellProps {
   sidebar: React.ReactNode;
@@ -65,6 +66,8 @@ export function AppShell({ sidebar, rightPanel, children }: AppShellProps) {
       >
         {rightPanel}
       </aside>
+
+      <ToastContainer />
     </div>
   );
 }

@@ -12,6 +12,7 @@ import {
   type MessageBranch,
 } from "../../hooks/useSessionStream";
 import { useCurrentUser } from "../../hooks/useCurrentUser";
+import { useOnlineStatus } from "../../hooks/useOnlineStatus";
 import { useProjects } from "../../hooks/useProjects";
 import { useSessionProject } from "../../hooks/useSessionProject";
 import { ArtifactCanvas } from "../artifacts/ArtifactCanvas";
@@ -55,6 +56,7 @@ export function ChatView({ sessionId }: { sessionId: string }) {
     switchBranch,
   } = useSessionStream(sessionId);
   const { org } = useCurrentUser();
+  const online = useOnlineStatus();
   const { projects } = useProjects();
   const { projectId, setProject } = useSessionProject(sessionId);
   const [autoFollow, setAutoFollow] = useState(true);
@@ -232,6 +234,12 @@ export function ChatView({ sessionId }: { sessionId: string }) {
                       {...(m.citations ? { citations: m.citations } : {})}
                       {...(m.branch ? { branch: m.branch } : {})}
                       error={m.error ?? false}
+                      {...(m.retryable !== undefined
+                        ? { retryable: m.retryable }
+                        : {})}
+                      {...(m.errorCategory
+                        ? { errorCategory: m.errorCategory }
+                        : {})}
                       streaming={
                         isStreaming &&
                         i === messages.length - 1 &&
@@ -285,11 +293,22 @@ export function ChatView({ sessionId }: { sessionId: string }) {
           </div>
         )}
 
+        {!online && (
+          <div
+            data-testid="offline-banner"
+            role="status"
+            className="border-t border-accent/30 bg-accent/10 px-4 py-2 text-center text-xs text-accent"
+          >
+            오프라인 상태입니다 — 연결이 복구되면 다시 전송할 수 있어요.
+          </div>
+        )}
+
         <div className="border-t border-border px-4 py-3">
           <ChatInput
             ref={chatInputRef}
             sessionId={sessionId}
             isStreaming={isStreaming}
+            disabled={!online}
             onStop={() => void stop()}
             onSend={(content, attachments, options) =>
               send(content, attachments, options)
@@ -327,6 +346,8 @@ export function MessageItem({
   branch,
   streaming,
   error,
+  retryable,
+  errorCategory,
   onRegenerate,
   onEditSubmit,
   onSwitchBranch,
@@ -338,6 +359,8 @@ export function MessageItem({
   branch?: MessageBranch;
   streaming: boolean;
   error?: boolean;
+  retryable?: boolean;
+  errorCategory?: string;
   onRegenerate?: () => void;
   onEditSubmit?: (nextContent: string) => void;
   onSwitchBranch?: (direction: "prev" | "next") => void;
@@ -351,13 +374,31 @@ export function MessageItem({
     el?.scrollIntoView?.({ block: "nearest" });
   };
   if (error) {
+    // P10-T6-17 — 재시도 가능(retryable:true) 오류만 재시도 버튼 노출(크레딧부족 등
+    // 비재시도 오류는 노출 안 함). rate-limit 카테고리는 429 백오프 안내를 덧붙인다.
     return (
       <li data-role="error" className="flex gap-3">
         <div className="mt-0.5 grid h-8 w-8 flex-none place-items-center rounded-lg bg-accent text-sm font-bold text-white">
           !
         </div>
-        <div className="min-w-0 flex-1 rounded-xl border border-accent/40 bg-accent/10 px-3 py-2 text-sm text-accent">
-          <span className="font-semibold">오류</span> · {content}
+        <div className="flex min-w-0 flex-1 items-start justify-between gap-3 rounded-xl border border-accent/40 bg-accent/10 px-3 py-2 text-sm text-accent">
+          <span>
+            <span className="font-semibold">오류</span> · {content}
+            {errorCategory === "rate-limit" && (
+              <span className="ml-1 text-accent/80">
+                잠시 후 다시 시도해주세요.
+              </span>
+            )}
+          </span>
+          {retryable && onRegenerate && (
+            <button
+              type="button"
+              onClick={onRegenerate}
+              className="flex-none rounded-full border border-accent/40 px-2 py-0.5 text-xs text-accent hover:bg-accent/10"
+            >
+              재시도
+            </button>
+          )}
         </div>
       </li>
     );

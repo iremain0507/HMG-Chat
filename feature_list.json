@@ -842,8 +842,8 @@
     "acceptance": "재시도가능 에러만 Retry 노출(크레딧부족 등 제외) + 토스트 동작; RED→GREEN, verify-gates green",
     "phase": "P10",
     "team": "T6",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P10-T6-18",
