@@ -3,13 +3,7 @@
 // components/chat/ChatView.tsx — LLM 채팅 UI (ChatGPT/Claude 스타일).
 //   헤더 + 메시지 버블(user 우측/assistant 아바타+마크다운) + 스트리밍 커서 + 하단 컴포저.
 //   데이터: useSessionStream({ messages, isStreaming, send, stop }). Hyundai WIA CI 토큰.
-import React, {
-  useEffect,
-  useRef,
-  useState,
-  type FormEvent,
-  type KeyboardEvent,
-} from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   useSessionStream,
@@ -17,6 +11,7 @@ import {
   type Citation,
 } from "../../hooks/useSessionStream";
 import { ArtifactCanvas } from "../artifacts/ArtifactCanvas";
+import { ChatInput, type ChatInputHandle } from "./ChatInput";
 import { HitlPrompt } from "./HitlPrompt";
 import { Markdown } from "./Markdown";
 import { MessageActions } from "./MessageActions";
@@ -42,13 +37,12 @@ export function ChatView({ sessionId }: { sessionId: string }) {
     respondHitl,
     artifacts,
   } = useSessionStream(sessionId);
-  const [input, setInput] = useState("");
   const [autoFollow, setAutoFollow] = useState(true);
   const [announceText, setAnnounceText] = useState("");
   const [artifactPanelOpen, setArtifactPanelOpen] = useState(false);
   const [activeArtifactIndex, setActiveArtifactIndex] = useState(0);
   const scrollRef = useRef<HTMLDivElement>(null);
-  const taRef = useRef<HTMLTextAreaElement>(null);
+  const chatInputRef = useRef<ChatInputHandle>(null);
   const wasStreamingRef = useRef(isStreaming);
   const prevArtifactCountRef = useRef(0);
 
@@ -101,7 +95,7 @@ export function ChatView({ sessionId }: { sessionId: string }) {
       const lostFocus =
         active === document.body ||
         (active instanceof HTMLButtonElement && active.disabled);
-      if (lostFocus) taRef.current?.focus();
+      if (lostFocus) chatInputRef.current?.focus();
     }
     wasStreamingRef.current = isStreaming;
   }, [isStreaming]);
@@ -117,33 +111,6 @@ export function ChatView({ sessionId }: { sessionId: string }) {
     const el = scrollRef.current;
     if (el) el.scrollTop = el.scrollHeight;
     setAutoFollow(true);
-  }
-
-  function autogrow() {
-    const ta = taRef.current;
-    if (!ta) return;
-    ta.style.height = "auto";
-    ta.style.height = `${Math.min(ta.scrollHeight, 200)}px`;
-  }
-
-  async function submit() {
-    const content = input.trim();
-    if (!content || isStreaming) return;
-    setInput("");
-    if (taRef.current) taRef.current.style.height = "auto";
-    await send(content);
-  }
-
-  function onSubmit(e: FormEvent) {
-    e.preventDefault();
-    void submit();
-  }
-
-  function onKeyDown(e: KeyboardEvent<HTMLTextAreaElement>) {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      void submit();
-    }
   }
 
   const empty = messages.length === 0;
@@ -200,8 +167,8 @@ export function ChatView({ sessionId }: { sessionId: string }) {
                         key={s}
                         type="button"
                         onClick={() => {
-                          setInput(s);
-                          taRef.current?.focus();
+                          chatInputRef.current?.setValue(s);
+                          chatInputRef.current?.focus();
                         }}
                         className="rounded-full border border-border bg-surface px-3.5 py-2 text-sm text-fg-muted hover:border-primary hover:text-fg"
                       >
@@ -266,44 +233,13 @@ export function ChatView({ sessionId }: { sessionId: string }) {
         )}
 
         <div className="border-t border-border px-4 py-3">
-          <form
-            onSubmit={onSubmit}
-            className="mx-auto flex max-w-3xl items-end gap-2 rounded-2xl border border-border bg-surface p-2"
-          >
-            <textarea
-              id="chat-input"
-              ref={taRef}
-              rows={1}
-              aria-label="메시지 입력"
-              value={input}
-              onChange={(e) => {
-                setInput(e.target.value);
-                autogrow();
-              }}
-              onKeyDown={onKeyDown}
-              placeholder="메시지를 입력하세요…  (Enter 전송 · Shift+Enter 줄바꿈)"
-              className="max-h-[200px] flex-1 resize-none bg-transparent px-2 py-1.5 text-fg outline-none placeholder:text-fg-muted"
-            />
-            {isStreaming ? (
-              <button
-                type="button"
-                onClick={() => stop()}
-                aria-label="Stop"
-                className="grid h-9 w-9 flex-none place-items-center rounded-xl bg-accent text-lg leading-none text-white"
-              >
-                ■
-              </button>
-            ) : (
-              <button
-                type="submit"
-                aria-label="전송"
-                disabled={!input.trim()}
-                className="grid h-9 w-9 flex-none place-items-center rounded-xl bg-primary text-lg leading-none text-primary-fg transition disabled:opacity-40"
-              >
-                ↑
-              </button>
-            )}
-          </form>
+          <ChatInput
+            ref={chatInputRef}
+            sessionId={sessionId}
+            isStreaming={isStreaming}
+            onStop={() => void stop()}
+            onSend={(content, attachments) => send(content, attachments)}
+          />
           <p className="mx-auto mt-2 max-w-3xl text-center text-xs text-fg-muted">
             WChat은 dev-stub 응답을 표시할 수 있습니다.
           </p>

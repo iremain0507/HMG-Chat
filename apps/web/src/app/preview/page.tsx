@@ -10,6 +10,7 @@ import { Reasoning } from "../../components/chat/Reasoning";
 import { MessageActions } from "../../components/chat/MessageActions";
 import { ToolCallRenderer } from "../../components/chat/ToolCallRenderer";
 import { HitlPrompt } from "../../components/chat/HitlPrompt";
+import { ChatInput } from "../../components/chat/ChatInput";
 import {
   ArtifactCanvas,
   type ArtifactCanvasArtifact,
@@ -217,6 +218,15 @@ export default function PreviewGallery() {
 
       <Section name="artifact-canvas">
         <ArtifactCanvasPreview />
+      </Section>
+
+      <Section name="chat-input">
+        <ChatInput
+          sessionId="preview-session"
+          isStreaming={false}
+          onSend={() => {}}
+          onStop={() => {}}
+        />
       </Section>
     </div>
   );

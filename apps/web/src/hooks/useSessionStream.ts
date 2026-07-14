@@ -133,7 +133,7 @@ export function useSessionStream(sessionId: string) {
   const abortRef = useRef<AbortController | null>(null);
 
   const send = useCallback(
-    async (content: string) => {
+    async (content: string, attachments?: Array<{ uploadId: string }>) => {
       setMessages((prev) => [
         ...prev,
         { id: `local-${prev.length}-${content}`, role: "user", content },
@@ -153,7 +153,10 @@ export function useSessionStream(sessionId: string) {
             "Content-Type": "application/json",
             Accept: "text/event-stream",
           },
-          body: JSON.stringify({ content }),
+          body: JSON.stringify({
+            content,
+            ...(attachments && attachments.length > 0 ? { attachments } : {}),
+          }),
         });
 
         const reader = res.body?.getReader();

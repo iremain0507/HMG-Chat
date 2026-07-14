@@ -788,8 +788,8 @@
     "acceptance": "드롭/붙여넣기→업로드→칩 + 전송 시 attachments 포함; RED→GREEN, verify-gates green",
     "phase": "P10",
     "team": "T6",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P10-T6-12",

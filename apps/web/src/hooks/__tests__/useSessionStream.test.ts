@@ -66,6 +66,36 @@ describe("useSessionStream", () => {
     );
   });
 
+  it("send 에 attachments 를 전달하면 POST body 에 그대로 포함된다 (P10-T6-11)", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({
+        body: sseBody([
+          sseFrame("message_start", { messageId: "msg-1" }),
+          sseFrame("text_delta", { text: "확인했습니다" }),
+          sseFrame("stop", { reason: "end_turn" }),
+        ]),
+      })),
+    );
+
+    const { result } = renderHook(() => useSessionStream("session-1"));
+
+    await act(async () => {
+      await result.current.send("이 문서 요약해줘", [{ uploadId: "upload-1" }]);
+    });
+
+    expect(fetch).toHaveBeenCalledWith(
+      "/api/v1/sessions/session-1/messages",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({
+          content: "이 문서 요약해줘",
+          attachments: [{ uploadId: "upload-1" }],
+        }),
+      }),
+    );
+  });
+
   it("stop() 호출 시 즉시 isStreaming 이 false 가 되고 DELETE /active-run 을 호출한다 (Stop 클릭 시 즉시 중단)", async () => {
     let releaseStream: (() => void) | undefined;
     const encoder = new TextEncoder();

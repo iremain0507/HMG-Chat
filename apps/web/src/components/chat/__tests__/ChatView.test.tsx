@@ -879,4 +879,69 @@ describe("ChatView", () => {
     fireEvent.keyDown(window, { key: "\\", metaKey: true });
     expect(screen.getByTestId("artifact-panel")).toBeInTheDocument();
   });
+
+  it("첨부 파일을 드롭해 업로드한 뒤 전송하면 attachments 가 POST body 에 포함된다 (P10-T6-11)", async () => {
+    const encoder = new TextEncoder();
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === "/api/v1/uploads") {
+        return {
+          ok: true,
+          status: 201,
+          json: async () => ({
+            data: {
+              id: "upload-9",
+              filename: "notes.md",
+              mimeType: "text/markdown",
+            },
+          }),
+        };
+      }
+      return {
+        body: new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.enqueue(
+              encoder.encode(sseFrame("message_start", { messageId: "msg-1" })),
+            );
+            controller.enqueue(
+              encoder.encode(sseFrame("text_delta", { text: "확인" })),
+            );
+            controller.enqueue(
+              encoder.encode(sseFrame("stop", { reason: "end_turn" })),
+            );
+            controller.close();
+          },
+        }),
+      };
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<ChatView sessionId="session-1" />);
+
+    const dropzone = screen.getByTestId("composer-dropzone");
+    const file = new File(["hello"], "notes.md", { type: "text/markdown" });
+    fireEvent.drop(dropzone, { dataTransfer: { files: [file] } });
+
+    await waitFor(() => {
+      expect(screen.getByText("notes.md")).toBeInTheDocument();
+    });
+
+    fireEvent.change(screen.getByLabelText("메시지 입력"), {
+      target: { value: "이 문서 요약해줘" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "전송" }));
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/v1/sessions/session-1/messages",
+        expect.objectContaining({
+          method: "POST",
+          body: JSON.stringify({
+            content: "이 문서 요약해줘",
+            attachments: [{ uploadId: "upload-9" }],
+          }),
+        }),
+      );
+    });
+  });
 });
