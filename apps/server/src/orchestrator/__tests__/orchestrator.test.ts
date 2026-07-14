@@ -1112,3 +1112,160 @@ describe("orchestrator.runTurn — 병렬 tool 실행 (P11-T2-09)", () => {
     expect(calls[0]?.parallelToolCalls).toBe(true);
   });
 });
+
+describe("orchestrator.runTurn — arg-validator invoke 직전 검증 (P11-T2-10)", () => {
+  it("필수 필드가 누락된 args 는 allow 툴의 invoke 를 트리거하지 않고 SCHEMA_INVALID tool_result(error) 를 emit 한다", async () => {
+    let calls = 0;
+    const fakeProvider: LLMProvider = {
+      name: "fake",
+      models: ["fake-model"],
+      async *chat() {
+        calls += 1;
+        if (calls === 1) {
+          yield {
+            type: "tool_use",
+            toolCallId: "call-1",
+            name: "strict_tool",
+            args: {},
+          };
+          yield {
+            type: "stop",
+            reason: "tool_use",
+            usage: { inputTokens: 1, outputTokens: 1 },
+          };
+          return;
+        }
+        yield { type: "text_delta", text: "done" };
+        yield {
+          type: "stop",
+          reason: "end_turn",
+          usage: { inputTokens: 2, outputTokens: 2 },
+        };
+      },
+    };
+    const invoked: unknown[] = [];
+    const strictTool: AgentTool = {
+      spec: {
+        name: "strict_tool",
+        description: "필수 인자 있는 툴",
+        inputSchema: {
+          type: "object",
+          properties: { query: { type: "string" } },
+          required: ["query"],
+        },
+        permissionTier: "tool",
+        defaultPolicy: "allow",
+      },
+      async invoke(input) {
+        invoked.push(input.args);
+        return {
+          toolCallId: input.toolCallId,
+          content: { kind: "text", text: "should-not-run" },
+        };
+      },
+    };
+
+    const result: ChatEvent[] = [];
+    for await (const event of runTurn({
+      provider: fakeProvider,
+      model: "fake-model",
+      systemBlocks: [],
+      messages: [{ role: "user", content: "hi" }],
+      maxTokens: 512,
+      signal: new AbortController().signal,
+      tools: [strictTool],
+      toolContext: fakeToolContext(),
+    })) {
+      result.push(event);
+    }
+
+    expect(invoked).toEqual([]);
+    const toolResultEvent = result.find((e) => e.type === "tool_result");
+    expect(toolResultEvent).toMatchObject({
+      toolCallId: "call-1",
+      content: {
+        error: expect.objectContaining({ code: "SCHEMA_INVALID" }),
+      },
+    });
+  });
+
+  it("hitl 정책 툴도 승인 후 args 가 스키마와 불일치하면 invoke 를 트리거하지 않고 SCHEMA_INVALID tool_result(error) 를 emit 한다", async () => {
+    let calls = 0;
+    const fakeProvider: LLMProvider = {
+      name: "fake",
+      models: ["fake-model"],
+      async *chat() {
+        calls += 1;
+        if (calls === 1) {
+          yield {
+            type: "tool_use",
+            toolCallId: "call-1",
+            name: "gated_strict_tool",
+            args: { x: "not-a-number" },
+          };
+          yield {
+            type: "stop",
+            reason: "tool_use",
+            usage: { inputTokens: 1, outputTokens: 1 },
+          };
+          return;
+        }
+        yield { type: "text_delta", text: "후속" };
+        yield {
+          type: "stop",
+          reason: "end_turn",
+          usage: { inputTokens: 2, outputTokens: 2 },
+        };
+      },
+    };
+    const invoked: unknown[] = [];
+    const gatedStrictTool: AgentTool = {
+      spec: {
+        name: "gated_strict_tool",
+        description: "승인 필요 + 스키마 있는 툴",
+        inputSchema: {
+          type: "object",
+          properties: { x: { type: "number" } },
+          required: ["x"],
+        },
+        permissionTier: "user",
+        defaultPolicy: "hitl",
+      },
+      async invoke(input) {
+        invoked.push(input.args);
+        return {
+          toolCallId: input.toolCallId,
+          content: { kind: "text", text: "should-not-run" },
+        };
+      },
+    };
+    const hitl: HitlBridge = {
+      async askApproval() {
+        return { kind: "approved" };
+      },
+    };
+
+    const result: ChatEvent[] = [];
+    for await (const event of runTurn({
+      provider: fakeProvider,
+      model: "fake-model",
+      systemBlocks: [],
+      messages: [{ role: "user", content: "hi" }],
+      maxTokens: 512,
+      signal: new AbortController().signal,
+      tools: [gatedStrictTool],
+      toolContext: fakeToolContext(hitl),
+    })) {
+      result.push(event);
+    }
+
+    expect(invoked).toEqual([]);
+    const toolResultEvent = result.find((e) => e.type === "tool_result");
+    expect(toolResultEvent).toMatchObject({
+      toolCallId: "call-1",
+      content: {
+        error: expect.objectContaining({ code: "SCHEMA_INVALID" }),
+      },
+    });
+  });
+});

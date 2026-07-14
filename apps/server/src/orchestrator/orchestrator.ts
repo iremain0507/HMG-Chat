@@ -10,6 +10,7 @@ import type {
   PromptBlock,
   ToolContext,
 } from "@wchat/interfaces";
+import { validateArgs } from "../tools/arg-validator.js";
 
 export function hello(): string {
   return "orchestrator: hello-world";
@@ -31,6 +32,30 @@ export interface RunTurnInput {
   // Promise.all 로 동시 invoke 한다(20-MULTI-AGENT-TOOL.md §20.4-4) — 이 필드는
   // provider 가 모델에게 병렬 tool_use 생성을 허용할지 여부만 제어.
   parallelToolCalls?: boolean;
+}
+
+// invoke 직전 args 를 spec.inputSchema 로 검증 — 스키마 불일치(필수 필드 누락/타입 불일치)
+// args 가 tool 환각 side-effect 로 새는 것을 차단한다 (20-MULTI-AGENT-TOOL.md § P11-T2-10).
+// invoke 를 트리거하지 않고 곧바로 SCHEMA_INVALID AgentToolResult 를 반환.
+function schemaInvalidResult(
+  toolCallId: string,
+  tool: AgentTool,
+  args: Record<string, unknown>,
+): AgentToolResult | undefined {
+  const validation = validateArgs(args, tool.spec.inputSchema);
+  if (validation.valid) return undefined;
+  return {
+    toolCallId,
+    content: {
+      kind: "error",
+      error: new WChatError(
+        "SCHEMA_INVALID",
+        "tool",
+        false,
+        `"${tool.spec.name}" 인자가 inputSchema 와 불일치: ${validation.errors?.join("; ")}`,
+      ),
+    },
+  };
 }
 
 function toToolResultContent(result: AgentToolResult): string | unknown {
@@ -199,11 +224,12 @@ export async function* runTurn(input: RunTurnInput): AsyncIterable<ChatEvent> {
       const tool = toolsByName.get(toolUse.name);
       const args = (toolUse.args ?? {}) as Record<string, unknown>;
       const result: AgentToolResult = tool
-        ? await tool.invoke({
+        ? (schemaInvalidResult(toolUse.toolCallId, tool, args) ??
+          (await tool.invoke({
             toolCallId: toolUse.toolCallId,
             args,
             ctx: { ...input.toolContext!, signal: input.signal },
-          })
+          })))
         : {
             toolCallId: toolUse.toolCallId,
             content: {
@@ -317,11 +343,13 @@ export async function* runTurn(input: RunTurnInput): AsyncIterable<ChatEvent> {
         continue;
       }
 
-      const result = await tool.invoke({
-        toolCallId: toolUse.toolCallId,
-        args,
-        ctx: { ...input.toolContext!, signal: input.signal },
-      });
+      const result: AgentToolResult =
+        schemaInvalidResult(toolUse.toolCallId, tool, args) ??
+        (await tool.invoke({
+          toolCallId: toolUse.toolCallId,
+          args,
+          ctx: { ...input.toolContext!, signal: input.signal },
+        }));
       const content = toToolResultContent(result);
       yield { type: "tool_result", toolCallId: toolUse.toolCallId, content };
       toolResultParts.push({
