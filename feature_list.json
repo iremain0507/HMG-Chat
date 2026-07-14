@@ -932,8 +932,8 @@
     "acceptance": "GET /config가 org별 availableModels 반환 + route-mount 가드 통과; RED→GREEN, verify-gates green",
     "phase": "P11",
     "team": "T1",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P11-T2-09",

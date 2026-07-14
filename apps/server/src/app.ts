@@ -34,6 +34,7 @@ import { createPgUsageLogDataAccess } from "./db/usage-log-data-access.js";
 import { createErrorRoutes } from "./routes/errors.js";
 import { createPgErrorLogDataAccess } from "./db/error-log-data-access.js";
 import { createAdminRoutes } from "./routes/admin.js";
+import { createConfigRoutes } from "./routes/config.js";
 import { createPgHealthHistoryDataAccess } from "./db/health-history-data-access.js";
 import { createPgAdminDataAccess } from "./db/admin-data-access.js";
 import { createSkillRegistry } from "./tools/skills-engine.js";
@@ -300,6 +301,17 @@ export function createApp(env: Env) {
     }),
   );
   app.route("/api/v1/admin", adminApp);
+
+  const configApp = new Hono<{ Variables: AuthedVariables }>();
+  configApp.use("*", authMiddleware);
+  configApp.route(
+    "/",
+    createConfigRoutes({
+      organizations: authDa.organizations,
+      models: provider.models,
+    }),
+  );
+  app.route("/api/v1/config", configApp);
 
   return app;
 }
