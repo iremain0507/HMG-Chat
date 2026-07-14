@@ -675,3 +675,162 @@ describe("orchestrator.runTurn — knowledge_search citation emit (P10-T2-03)", 
     ]);
   });
 });
+
+describe("orchestrator.runTurn — artifact-create artifact_created emit (P10-T2-04)", () => {
+  it("생성 툴이 artifact 를 담은 json 결과를 반환하면 tool_result 뒤에 artifact_created 이벤트를 emit 한다", async () => {
+    let calls = 0;
+    const fakeProvider: LLMProvider = {
+      name: "fake",
+      models: ["fake-model"],
+      async *chat() {
+        calls += 1;
+        if (calls === 1) {
+          yield {
+            type: "tool_use",
+            toolCallId: "call-1",
+            name: "artifact_create",
+            args: { filename: "notes.md", type: "markdown", content: "# hi" },
+          };
+          yield {
+            type: "stop",
+            reason: "tool_use",
+            usage: { inputTokens: 1, outputTokens: 1 },
+          };
+          return;
+        }
+        yield { type: "text_delta", text: "생성 완료" };
+        yield {
+          type: "stop",
+          reason: "end_turn",
+          usage: { inputTokens: 2, outputTokens: 2 },
+        };
+      },
+    };
+    const artifactCreateTool: AgentTool = {
+      spec: {
+        name: "artifact_create",
+        description: "아티팩트 생성",
+        inputSchema: { type: "object" },
+        permissionTier: "tool",
+        defaultPolicy: "allow",
+      },
+      async invoke(input) {
+        return {
+          toolCallId: input.toolCallId,
+          content: {
+            kind: "json",
+            data: {
+              artifact: {
+                artifactId: "artifact-1",
+                artifactKind: "markdown",
+                filename: "notes.md",
+                sizeBytes: 4,
+                downloadUrl: "/api/v1/artifacts/artifact-1/content",
+              },
+            },
+          },
+        };
+      },
+    };
+
+    const result: ChatEvent[] = [];
+    for await (const event of runTurn({
+      provider: fakeProvider,
+      model: "fake-model",
+      systemBlocks: [],
+      messages: [{ role: "user", content: "메모 만들어줘" }],
+      maxTokens: 512,
+      signal: new AbortController().signal,
+      tools: [artifactCreateTool],
+      toolContext: fakeToolContext(),
+    })) {
+      result.push(event);
+    }
+
+    expect(result.map((e) => e.type)).toEqual([
+      "tool_use",
+      "stop",
+      "tool_result",
+      "artifact_created",
+      "text_delta",
+      "stop",
+    ]);
+    const artifactEvent = result.find((e) => e.type === "artifact_created");
+    expect(artifactEvent).toMatchObject({
+      type: "artifact_created",
+      artifactId: "artifact-1",
+      artifactKind: "markdown",
+      filename: "notes.md",
+      sizeBytes: 4,
+      downloadUrl: "/api/v1/artifacts/artifact-1/content",
+    });
+  });
+
+  it("tool json 결과에 artifact 필드가 없으면 artifact_created 이벤트를 emit 하지 않는다", async () => {
+    let calls = 0;
+    const fakeProvider: LLMProvider = {
+      name: "fake",
+      models: ["fake-model"],
+      async *chat() {
+        calls += 1;
+        if (calls === 1) {
+          yield {
+            type: "tool_use",
+            toolCallId: "call-1",
+            name: "other_tool",
+            args: {},
+          };
+          yield {
+            type: "stop",
+            reason: "tool_use",
+            usage: { inputTokens: 1, outputTokens: 1 },
+          };
+          return;
+        }
+        yield { type: "text_delta", text: "done" };
+        yield {
+          type: "stop",
+          reason: "end_turn",
+          usage: { inputTokens: 2, outputTokens: 2 },
+        };
+      },
+    };
+    const otherTool: AgentTool = {
+      spec: {
+        name: "other_tool",
+        description: "기타",
+        inputSchema: { type: "object" },
+        permissionTier: "tool",
+        defaultPolicy: "allow",
+      },
+      async invoke(input) {
+        return {
+          toolCallId: input.toolCallId,
+          content: { kind: "json", data: { ok: true } },
+        };
+      },
+    };
+
+    const result: ChatEvent[] = [];
+    for await (const event of runTurn({
+      provider: fakeProvider,
+      model: "fake-model",
+      systemBlocks: [],
+      messages: [{ role: "user", content: "hi" }],
+      maxTokens: 512,
+      signal: new AbortController().signal,
+      tools: [otherTool],
+      toolContext: fakeToolContext(),
+    })) {
+      result.push(event);
+    }
+
+    expect(result.map((e) => e.type)).toEqual([
+      "tool_use",
+      "stop",
+      "tool_result",
+      "text_delta",
+      "stop",
+    ]);
+  });
+});

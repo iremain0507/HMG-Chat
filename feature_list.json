@@ -752,8 +752,8 @@
     "acceptance": "생성 툴 turn 이 artifact_created emit + GET /sessions/:id/artifacts 반영; RED→GREEN, verify-gates green",
     "phase": "P10",
     "team": "T2",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P10-T2-05",

@@ -5,6 +5,8 @@ import { randomUUID } from "node:crypto";
 import { Hono } from "hono";
 import { abortRun } from "../orchestrator/run-registry.js";
 import { resolveHitl, listPendingHitl } from "../tools/hitl-manager.js";
+import { createPgArtifactDataAccess } from "../db/artifact-data-access.js";
+import type { ArtifactDataAccess } from "../db/artifact-service.js";
 
 function errorJson(code: string, message: string) {
   return {
@@ -12,7 +14,12 @@ function errorJson(code: string, message: string) {
   };
 }
 
-export function createSessionRoutes(): Hono {
+export interface SessionRoutesDeps {
+  artifactDa?: ArtifactDataAccess;
+}
+
+export function createSessionRoutes(deps: SessionRoutesDeps = {}): Hono {
+  const artifactDa = deps.artifactDa ?? createPgArtifactDataAccess();
   const app = new Hono();
 
   app.delete("/:id/active-run", (c) => {
@@ -67,6 +74,25 @@ export function createSessionRoutes(): Hono {
     const sessionId = c.req.param("id");
     return c.json({
       data: listPendingHitl(sessionId),
+      meta: { requestId: randomUUID() },
+    });
+  });
+
+  // P10-T2-04 — artifact-create 툴이 emit 한 artifact_created 가 세션에 실제 반영됐는지
+  // 클라이언트가 확인/재조회할 수 있는 목록 엔드포인트.
+  app.get("/:id/artifacts", async (c) => {
+    const sessionId = c.req.param("id");
+    const page = await artifactDa.artifacts.list({ sessionId }, { limit: 50 });
+    return c.json({
+      data: page.items.map((artifact) => ({
+        id: artifact.id,
+        sessionId: artifact.sessionId,
+        type: artifact.type,
+        filename: artifact.filename,
+        sizeBytes: artifact.sizeBytes,
+        storageKind: artifact.storageKind,
+        createdAt: artifact.createdAt.toISOString(),
+      })),
       meta: { requestId: randomUUID() },
     });
   });

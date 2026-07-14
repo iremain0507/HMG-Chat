@@ -3,6 +3,7 @@
 import { describe, it, expect } from "vitest";
 import { createSessionRoutes } from "../sessions.js";
 import { hitlBridge } from "../../tools/hitl-manager.js";
+import type { ArtifactDataAccess } from "../../db/artifact-service.js";
 
 describe("routes/sessions — HITL 응답 브리지 (P10-T2-02)", () => {
   it("POST /:id/messages/hitl 은 pending 요청을 approved 로 resolve 하고 delivered:true 를 반환한다", async () => {
@@ -130,5 +131,93 @@ describe("routes/sessions — HITL 응답 브리지 (P10-T2-02)", () => {
     // 정리 — pending 을 남기지 않는다.
     controller.abort();
     await decisionPromise;
+  });
+});
+
+describe("routes/sessions — GET /:id/artifacts (P10-T2-04)", () => {
+  it("세션에 생성된 artifact 목록을 반환한다", async () => {
+    const now = new Date("2026-07-15T00:00:00Z");
+    const artifactDa: ArtifactDataAccess = {
+      artifacts: {
+        async insert() {
+          throw new Error("not implemented");
+        },
+        async bulkInsert() {
+          return [];
+        },
+        async update() {
+          throw new Error("not implemented");
+        },
+        async delete() {},
+        async byId() {
+          return null;
+        },
+        async list(filter) {
+          if (filter?.sessionId !== "session-art-1") {
+            return { items: [] };
+          }
+          return {
+            items: [
+              {
+                id: "artifact-1",
+                sessionId: "session-art-1",
+                createdBy: "user-1",
+                type: "markdown",
+                filename: "notes.md",
+                mimeType: null,
+                sizeBytes: 4,
+                storageKind: "inline",
+                s3Key: null,
+                inlineContent: null,
+                sharedAt: null,
+                createdAt: now,
+              },
+            ],
+          };
+        },
+      },
+    };
+
+    const app = createSessionRoutes({ artifactDa });
+    const res = await app.request("/session-art-1/artifacts");
+    expect(res.status).toBe(200);
+    const json = (await res.json()) as {
+      data: Array<{ id: string; filename: string; type: string }>;
+    };
+    expect(json.data).toHaveLength(1);
+    expect(json.data[0]).toMatchObject({
+      id: "artifact-1",
+      filename: "notes.md",
+      type: "markdown",
+    });
+  });
+
+  it("artifact 가 없는 세션은 빈 배열을 반환한다", async () => {
+    const artifactDa: ArtifactDataAccess = {
+      artifacts: {
+        async insert() {
+          throw new Error("not implemented");
+        },
+        async bulkInsert() {
+          return [];
+        },
+        async update() {
+          throw new Error("not implemented");
+        },
+        async delete() {},
+        async byId() {
+          return null;
+        },
+        async list() {
+          return { items: [] };
+        },
+      },
+    };
+
+    const app = createSessionRoutes({ artifactDa });
+    const res = await app.request("/session-empty/artifacts");
+    expect(res.status).toBe(200);
+    const json = (await res.json()) as { data: unknown[] };
+    expect(json.data).toEqual([]);
   });
 });

@@ -58,6 +58,42 @@ function extractCitations(data: unknown): CitationPayload[] {
   return (data as { citations: CitationPayload[] }).citations;
 }
 
+type ArtifactCreatedPayload = Omit<
+  Extract<ChatEvent, { type: "artifact_created" }>,
+  "type"
+>;
+
+// artifact-create 등 아티팩트 생성 툴이 json 결과에 { artifact: {...} } 형태를 담아 반환하면
+// (apps/server/src/tools/handlers/artifact-create-handler.ts, P10-T2-04) artifact_created
+// ChatEvent 로 펼쳐 emit — extractCitations 와 동일한 duck-typing 방식(신규 ChatEvent 변형 없음).
+function extractArtifact(data: unknown): ArtifactCreatedPayload | undefined {
+  if (typeof data !== "object" || data === null) {
+    return undefined;
+  }
+  const artifact = (data as { artifact?: unknown }).artifact;
+  if (typeof artifact !== "object" || artifact === null) {
+    return undefined;
+  }
+  const a = artifact as Record<string, unknown>;
+  if (
+    typeof a.artifactId !== "string" ||
+    typeof a.artifactKind !== "string" ||
+    typeof a.filename !== "string" ||
+    typeof a.sizeBytes !== "number"
+  ) {
+    return undefined;
+  }
+  return {
+    artifactId: a.artifactId,
+    artifactKind: a.artifactKind,
+    filename: a.filename,
+    sizeBytes: a.sizeBytes,
+    ...(typeof a.downloadUrl === "string"
+      ? { downloadUrl: a.downloadUrl }
+      : {}),
+  };
+}
+
 // 메시지 → LLM → SSE 루프 (14-INTERFACES.md § 6 ChatEvent 는 16-API-CONTRACT SSE
 // 이벤트와 1:1이므로, 이 async generator 를 그대로 SSE 로 relay 하면 된다).
 // tools 등록 시: provider.chat 이 stop.reason==="tool_use" 로 끝나면(비종결) 해당
@@ -226,6 +262,10 @@ export async function* runTurn(input: RunTurnInput): AsyncIterable<ChatEvent> {
       if (result.content.kind === "json") {
         for (const citation of extractCitations(result.content.data)) {
           yield { type: "citation", ...citation };
+        }
+        const artifact = extractArtifact(result.content.data);
+        if (artifact) {
+          yield { type: "artifact_created", ...artifact };
         }
       }
     }
