@@ -698,8 +698,8 @@
     "acceptance": "툴 1개 등록 시 tool_use→tool_result→최종 text 시퀀스 + abort 즉시 중단; RED→GREEN, server ≥ 80%, verify-gates green",
     "phase": "P10",
     "team": "T2",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P10-T6-07",

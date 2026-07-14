@@ -1,6 +1,44 @@
 import { describe, it, expect } from "vitest";
-import type { ChatEvent, ChatInput, LLMProvider } from "@wchat/interfaces";
+import type {
+  AgentTool,
+  ChatEvent,
+  ChatInput,
+  LLMProvider,
+  ToolContext,
+} from "@wchat/interfaces";
 import { hello, runTurn } from "../orchestrator.js";
+
+function fakeToolContext(): ToolContext {
+  const logger: ToolContext["logger"] = {
+    debug() {},
+    info() {},
+    warn() {},
+    error() {},
+    fatal() {},
+    child() {
+      return logger;
+    },
+  };
+  return {
+    requestId: "req-1",
+    userId: "user-1",
+    orgId: "org-1",
+    sessionId: "session-1",
+    signal: new AbortController().signal,
+    logger,
+    hitl: {
+      async askApproval() {
+        return { kind: "approved" };
+      },
+    },
+    budget: {
+      async claim() {},
+      async settle() {},
+      async refund() {},
+      remaining: Infinity,
+    },
+  };
+}
 
 describe("orchestrator.hello", () => {
   it("도메인 진입점이 hello-world 문자열을 반환한다", () => {
@@ -95,5 +133,176 @@ describe("orchestrator.runTurn — 메시지 → LLM → SSE 흐름", () => {
 
     expect(result).toHaveLength(1);
     expect(result[0]?.type).toBe("error");
+  });
+});
+
+describe("orchestrator.runTurn — tool-execution 루프", () => {
+  it("tool_use 이후 등록된 툴을 실행하고 tool_result emit 후 모델을 재호출해 최종 text 로 마무리한다", async () => {
+    const calls: ChatInput[] = [];
+    const fakeProvider: LLMProvider = {
+      name: "fake",
+      models: ["fake-model"],
+      async *chat(input) {
+        calls.push(input);
+        if (calls.length === 1) {
+          yield {
+            type: "message_start",
+            messageId: "msg-1",
+            meta: { provider: "fake", model: "fake-model" },
+          };
+          yield {
+            type: "tool_use",
+            toolCallId: "call-1",
+            name: "test_tool",
+            args: { x: 1 },
+          };
+          yield {
+            type: "stop",
+            reason: "tool_use",
+            usage: { inputTokens: 1, outputTokens: 1 },
+          };
+          return;
+        }
+        yield { type: "text_delta", text: "done" };
+        yield {
+          type: "stop",
+          reason: "end_turn",
+          usage: { inputTokens: 2, outputTokens: 2 },
+        };
+      },
+    };
+
+    const invokeArgs: unknown[] = [];
+    const fakeTool: AgentTool = {
+      spec: {
+        name: "test_tool",
+        description: "테스트 툴",
+        inputSchema: { type: "object" },
+        permissionTier: "user",
+        defaultPolicy: "allow",
+      },
+      async invoke(input) {
+        invokeArgs.push(input.args);
+        return {
+          toolCallId: input.toolCallId,
+          content: { kind: "text", text: "tool-output" },
+        };
+      },
+    };
+
+    const result: ChatEvent[] = [];
+    for await (const event of runTurn({
+      provider: fakeProvider,
+      model: "fake-model",
+      systemBlocks: [],
+      messages: [{ role: "user", content: "hi" }],
+      maxTokens: 512,
+      signal: new AbortController().signal,
+      tools: [fakeTool],
+      toolContext: fakeToolContext(),
+    })) {
+      result.push(event);
+    }
+
+    expect(result.map((e) => e.type)).toEqual([
+      "message_start",
+      "tool_use",
+      "stop",
+      "tool_result",
+      "text_delta",
+      "stop",
+    ]);
+    expect(calls).toHaveLength(2);
+    expect(calls[0]?.tools).toEqual([
+      {
+        name: "test_tool",
+        description: "테스트 툴",
+        inputSchema: { type: "object" },
+        permissionTier: "user",
+        defaultPolicy: "allow",
+      },
+    ]);
+    expect(invokeArgs).toEqual([{ x: 1 }]);
+    const toolResultEvent = result.find((e) => e.type === "tool_result");
+    expect(toolResultEvent).toMatchObject({
+      toolCallId: "call-1",
+      content: "tool-output",
+    });
+    expect(calls[1]?.messages).toEqual([
+      { role: "user", content: "hi" },
+      {
+        role: "assistant",
+        content: [
+          {
+            type: "tool_use",
+            toolCallId: "call-1",
+            name: "test_tool",
+            args: { x: 1 },
+          },
+        ],
+      },
+      {
+        role: "tool",
+        content: [
+          { type: "tool_result", toolCallId: "call-1", content: "tool-output" },
+        ],
+      },
+    ]);
+  });
+
+  it("abort 시 pending tool 실행 없이 즉시 중단한다", async () => {
+    const controller = new AbortController();
+    let toolInvoked = false;
+    const fakeProvider: LLMProvider = {
+      name: "fake",
+      models: ["fake-model"],
+      async *chat() {
+        yield {
+          type: "tool_use",
+          toolCallId: "call-1",
+          name: "test_tool",
+          args: {},
+        };
+        controller.abort();
+        yield {
+          type: "stop",
+          reason: "tool_use",
+          usage: { inputTokens: 1, outputTokens: 1 },
+        };
+      },
+    };
+    const fakeTool: AgentTool = {
+      spec: {
+        name: "test_tool",
+        description: "테스트 툴",
+        inputSchema: { type: "object" },
+        permissionTier: "user",
+        defaultPolicy: "allow",
+      },
+      async invoke(input) {
+        toolInvoked = true;
+        return {
+          toolCallId: input.toolCallId,
+          content: { kind: "text", text: "x" },
+        };
+      },
+    };
+
+    const result: ChatEvent[] = [];
+    for await (const event of runTurn({
+      provider: fakeProvider,
+      model: "fake-model",
+      systemBlocks: [],
+      messages: [{ role: "user", content: "hi" }],
+      maxTokens: 512,
+      signal: controller.signal,
+      tools: [fakeTool],
+      toolContext: fakeToolContext(),
+    })) {
+      result.push(event);
+    }
+
+    expect(toolInvoked).toBe(false);
+    expect(result.map((e) => e.type)).toEqual(["tool_use", "stop"]);
   });
 });
