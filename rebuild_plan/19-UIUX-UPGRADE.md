@@ -19,6 +19,7 @@
 - G5. 컴포저: 첨부(드래그/붙여넣기/업로드) + 슬래시/@멘션 + 모델·모드 피커.
 - G6. 대화관리/신뢰: 프로젝트 스코핑·메모리 노출·메시지 편집/분기(트리)·공유/내보내기·원인별 에러+재시도+토스트+재연결.
 - G7. 커버리지: web ≥ 60%, server ≥ 80% 유지([09-TDD-GUIDE.md](09-TDD-GUIDE.md)). 모든 신규 behavior 는 RED-first.
+- G8. **브라우저 검증**: 모든 FE 태스크는 실제 headless 브라우저(Playwright)로 렌더/인터랙션이 검증되고 스크린샷이 남는다(§19.4.1). jsdom/RTL 로는 Tailwind 컴파일·CSS·rehype·테마 실렌더를 못 잡는다.
 
 ---
 
@@ -78,6 +79,15 @@
 ### 동결 `ChatEvent` 변형 (그대로 사용 — 신규 금지)
 
 `message_start` · `message_replace` · `text_delta` · `tool_use` · `tool_result` · `hitl_request` · `hitl_resolved` · `hitl_timeout` · `citation` · `artifact_created` · `stop` · `error`. SSE 판별자는 `type`(=`event:` 라인), `data:` 는 `type` 제외 payload. (아티팩트 엔티티 종류는 `artifactKind` — 판별자 `type` 과 구분.)
+
+### 19.4.1 브라우저 검증 (2계층 — 게이트 G8, 모든 FE 태스크 DoD)
+
+jsdom/RTL 은 실렌더를 못 본다(초기 "빈 화면" = Tailwind 미컴파일 버그가 그 예). 실제 headless 브라우저(Playwright chromium)로 2계층 검증한다.
+
+- **Layer 1 — 태스크별 스모크(빠름, 매 FE 태스크)**: 프리뷰 라우트 `apps/web/src/app/preview/page.tsx`(dev 전용, 인증·서버 불필요)에 컴포넌트를 목/stub 상태로 렌더 — 각 FE 태스크는 자기 컴포넌트 섹션(`data-testid="preview-<name>"`)을 추가. Playwright 스펙 `apps/web/e2e/*.pw.ts`(vitest 충돌 회피 네이밍)가 프리뷰를 열어 렌더/인터랙션 검증 + 스크린샷 `.ralph/screenshots/`. 실행: `bash scripts/verify-browser.sh`(전용 3100 포트 자동기동, dev :3000 무충돌, chromium 자동설치). **FE 태스크 DoD = RTL GREEN + verify-browser.sh 통과 + 스크린샷 산출.**
+- **Layer 2 — phase-end 풀스택 e2e(P10-T6-18, 1회)**: 로컬 풀스택(docker DB + server + web, 테스트 유저 시드) → Playwright 가 magic-link 콘솔 토큰 로그인 → 채팅 → 전송 → 툴/인용/아티팩트 실화면 스크린샷. P9-T6-02 에서 배포-시로 미룬 e2e 를 P10 완료 시 로컬 실행.
+- **적용 범위**: Layer 1 은 T6-07 이후 모든 FE 태스크 필수. 이미 완료된 T6-01~06 은 프리뷰 갤러리 + Layer 2 e2e 로 소급 커버.
+- **의존성(계획 명시)**: `@playwright/test`(apps/web devDep). chromium 바이너리는 로컬 1회 설치(`verify-browser.sh` 가드).
 
 ---
 
@@ -144,6 +154,11 @@
 - **P10-T6-17 · 에러/신뢰 [D4]** — turn 내 원인별 에러배너 + 재시도(재시도 가능 코드만; 429=백오프 메시지) + 토스트 시스템(앱레벨 이벤트) + SSE 드롭 재연결/resume + 오프라인 상태. 입력 draft 보존.
   - RED: 재시도가능 에러만 Retry 노출, 비재시도(크레딧 부족 등)엔 없음; 토스트.
 
+### 검증 (V)
+
+- **P10-T6-18 · phase-end 풀스택 e2e [Layer 2]** — 로컬 풀스택(docker DB + server + web, 테스트 유저 시드) + Playwright: magic-link 콘솔 토큰 로그인 → 채팅 → 전송 → 툴콜/인용/아티팩트/HITL 실화면 스크린샷. P10 완료 직전 1회(§19.4.1 Layer 2, P9-T6-02 의 로컬 실행판). 스택 기동/시드가 세션에서 불가하면 격리.
+  - Accept: 로그인→채팅→전송 e2e green + 각 P10 화면 스크린샷 `.ralph/screenshots/e2e/`.
+
 **태스크 간 의존/시퀀스**: B 기능은 대응 T2(emit) + T6(렌더) 두 태스크가 모두 passes 되어야 end-to-end 로 산다. `feature_list.json` 배열 순서 = 루프 우선순위(기반 → 각 B의 srv→FE 쌍 → C → D). 서버 편집이 T3/T4 소유 파일까지 필요하면 해당 태스크를 격리하고 다음으로 진행(루프를 멈추지 않는다).
 
 ---
@@ -156,7 +171,7 @@
 - [ ] RED 증거: 신규 behavior 테스트가 구현 전 올바른 이유로 실패. SSE UI 는 `ChatView.test.tsx` 스텁 패턴.
 - [ ] `bash scripts/verify-gates.sh` exit 0 (typecheck·lint·test·validate-state·lint-plan). web ≥ 60% 커버리지.
 - [ ] `feature_list.json` 은 해당 항목 `passes` 만 true(+`attempts`). 다른 필드/항목 불변.
-- [ ] 시각 태스크(A/B FE): dev 서버 + 브라우저에서 실제 렌더 확인(스크린샷) — "실행하지 않은 검증 통과 서술 금지".
+- [ ] **브라우저 검증(G8)**: FE 태스크는 프리뷰 갤러리에 컴포넌트 추가 + `apps/web/e2e/*.pw.ts` 스펙 + `bash scripts/verify-browser.sh` 통과 + `.ralph/screenshots/` 스크린샷 산출. "실행하지 않은 검증 통과 서술 금지".
 
 ---
 

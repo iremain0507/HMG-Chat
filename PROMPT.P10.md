@@ -52,7 +52,12 @@
 ## 4. 검증 (커밋 전 필수)
 
 - `bash scripts/verify-gates.sh` exit 0 (typecheck·lint·test·validate-state·lint-plan). web ≥ 60% 커버리지 유지.
-- 시각 태스크는 가능하면 dev 서버 기동 후 실제 렌더를 확인. **실행하지 않은 검증을 통과했다고 서술하지 말 것.**
+- **FE 태스크(P10-T6-\*) 브라우저 검증 필수 (G8, 19 § 19.4.1)** — RTL(jsdom)만으로는 불충분:
+  1. 컴포넌트를 `apps/web/src/app/preview/page.tsx` 갤러리에 `data-testid="preview-<name>"` 섹션으로 추가(인증·서버 불필요, 목/stub props).
+  2. `apps/web/e2e/<name>.pw.ts` Playwright 스펙으로 실제 렌더 + 핵심 인터랙션 검증 + 스크린샷 `.ralph/screenshots/` 저장. 파일명은 반드시 **`*.pw.ts`**(vitest 의 .test/.spec 와 미매칭 — 안 그러면 test 게이트가 Playwright 스펙을 vitest 로 돌려 깨진다).
+  3. `bash scripts/verify-browser.sh` 통과 확인(전용 3100 포트 자동기동).
+  - 브라우저 검증이 환경상 불가(설치/포트/네트워크 거부)하면 그 태스크를 **격리**하고 사유 기록 — 통과했다고 서술 금지.
+- **실행하지 않은 검증을 통과했다고 서술하지 말 것.**
 
 ## 5. 기록 & 커밋
 

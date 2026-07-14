@@ -1,0 +1,79 @@
+"use client";
+
+// app/preview/page.tsx — P10 브라우저 검증용 컴포넌트 갤러리 (dev 전용, 인증/서버 불필요).
+//   Playwright(e2e/*.pw.ts)가 이 라우트를 headless 로 열어 실제 렌더/CSS/인터랙션을 검증.
+//   각 FE 태스크는 자기 컴포넌트를 data-testid="preview-<name>" 섹션으로 여기에 추가한다.
+import React from "react";
+import { ThemeToggle } from "../../components/layout/ThemeToggle";
+import { Markdown } from "../../components/chat/Markdown";
+import { Reasoning } from "../../components/chat/Reasoning";
+import { MessageActions } from "../../components/chat/MessageActions";
+
+const MD = `# 렌더 검증
+
+**볼드**, _이탤릭_, 그리고 \`인라인 코드\`.
+
+\`\`\`ts
+const answer: number = 42;
+function greet(name: string) {
+  return \`안녕 \${name}\`;
+}
+\`\`\`
+
+| 열 A | 열 B |
+| --- | --- |
+| 1 | 2 |
+
+인라인 수식 $E = mc^2$ 그리고 블록:
+
+$$\\int_0^1 x^2\\,dx = \\tfrac13$$
+`;
+
+function Section({
+  name,
+  children,
+}: {
+  name: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <section
+      data-testid={`preview-${name}`}
+      className="rounded-lg border border-border p-4"
+    >
+      <h2 className="mb-3 text-xs font-semibold uppercase tracking-wide text-fg-muted">
+        {name}
+      </h2>
+      {children}
+    </section>
+  );
+}
+
+export default function PreviewGallery() {
+  return (
+    <div className="mx-auto max-w-3xl space-y-6 bg-bg p-6 text-fg">
+      <div className="flex items-center justify-between">
+        <h1 className="text-lg font-semibold text-primary">
+          P10 컴포넌트 프리뷰
+        </h1>
+        <ThemeToggle />
+      </div>
+
+      <Section name="markdown">
+        <Markdown>{MD}</Markdown>
+      </Section>
+
+      <Section name="reasoning">
+        <Reasoning
+          content={"단계 1: 문제 파악\n단계 2: 근거 수집\n단계 3: 답변 구성"}
+          streaming={false}
+          durationSec={3}
+        />
+      </Section>
+
+      <Section name="message-actions">
+        <MessageActions role="assistant" content="복사 대상 텍스트" />
+      </Section>
+    </div>
+  );
+}
