@@ -923,8 +923,8 @@
     "acceptance": "primary throw(첫토큰前)→secondary + 첫토큰 후 오류→무음전환 안 함; RED→GREEN, verify-gates green",
     "phase": "P11",
     "team": "T2",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P11-T1-01",
