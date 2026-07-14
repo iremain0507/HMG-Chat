@@ -869,8 +869,8 @@
     "acceptance": "실HTTP(createApp) tool_use↔tool_result 왕복 + HITL 툴 승인 전 미실행 + 모델 선택 실반영; RED→GREEN, verify-gates green",
     "phase": "P11",
     "team": "T2",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P11-T2-03",

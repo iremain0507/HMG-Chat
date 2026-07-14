@@ -3,11 +3,18 @@
 import { randomUUID } from "node:crypto";
 import { Hono } from "hono";
 import { streamSSE } from "hono/streaming";
-import type {
-  ActiveRunStatus,
-  LLMMessage,
-  LLMProvider,
-  PromptBlock,
+import {
+  WChatError,
+  type ActiveRunStatus,
+  type AgentTool,
+  type BudgetClaim,
+  type HitlBridge,
+  type LLMMessage,
+  type LLMProvider,
+  type Logger,
+  type Organization,
+  type PromptBlock,
+  type ToolContext,
 } from "@wchat/interfaces";
 import { runTurn } from "../orchestrator/orchestrator.js";
 import { registerRun, unregisterRun } from "../orchestrator/run-registry.js";
@@ -16,6 +23,9 @@ import {
   recordMessageRunEvent,
   subscribeMessageRun,
 } from "../orchestrator/message-run-registry.js";
+import type { AuthedVariables } from "../middleware/auth-middleware.js";
+import { hitlBridge } from "../tools/hitl-manager.js";
+import { createLogger } from "../lib/logger.js";
 
 // abort flow (L06) — Stop 클릭(routes/sessions.ts DELETE /:id/active-run) 이 run-registry 를 통해
 // 이 run 의 signal 을 abort() 시킨 뒤, 여기서 sessions_active_runs.status 를 갱신한다.
@@ -51,6 +61,38 @@ const noopAttachments: AttachmentsPort = {
   },
 };
 
+// P11-T2-02 — 라우트가 매 요청마다 (필요 시) 조립하는 tool 실행 예산. BudgetClaim
+// (14-INTERFACES.md § 10) 의 최소 in-memory 구현 — 단일 누적 카운터만 유지하며 claim
+// 이력 스택은 두지 않는다(현재 어떤 tool handler 도 ctx.budget 을 소비하지 않음). 배포 시
+// db/quota-store.ts + Redis 카운터로 교체(BudgetClaim.ts 주석과 동일 방침).
+function createBudgetClaim(limitMicros: number | null): BudgetClaim {
+  let used = 0;
+  return {
+    async claim(estimateMicros) {
+      if (limitMicros !== null && used + estimateMicros > limitMicros) {
+        throw new WChatError(
+          "QUOTA_EXCEEDED",
+          "rate-limit",
+          false,
+          "툴 실행 예산을 초과했습니다.",
+        );
+      }
+      used += estimateMicros;
+    },
+    async settle(actualMicros) {
+      used += actualMicros;
+    },
+    async refund() {
+      used = 0;
+    },
+    get remaining() {
+      return limitMicros === null
+        ? Number.POSITIVE_INFINITY
+        : limitMicros - used;
+    },
+  };
+}
+
 export interface MessageRouteDeps {
   provider: LLMProvider;
   model: string;
@@ -58,6 +100,14 @@ export interface MessageRouteDeps {
   maxTokens?: number;
   activeRuns?: ActiveRunsPort;
   attachments?: AttachmentsPort;
+  // P11-T2-02 — 내장 handler 로 조립된 정적 AgentTool[](artifact_create 등, app.ts 조립).
+  tools?: AgentTool[];
+  // org 소유 MCP 서버 발견 결과를 AgentTool[] 로 조립(org 경계 밖 서버 유출 방지 위해
+  // per-request 로 호출 — bridge.listRegisteredTools() 는 org 필터가 없는 전역 registry).
+  mcpTools?: (orgId: string) => Promise<AgentTool[]>;
+  organizations?: { byId(id: string): Promise<Organization | null> };
+  hitl?: HitlBridge;
+  logger?: Logger;
 }
 
 function errorJson(code: string, message: string) {
@@ -66,20 +116,24 @@ function errorJson(code: string, message: string) {
   };
 }
 
-export function createMessageRoutes(deps: MessageRouteDeps): Hono {
-  const app = new Hono();
+export function createMessageRoutes(
+  deps: MessageRouteDeps,
+): Hono<{ Variables: AuthedVariables }> {
+  const app = new Hono<{ Variables: AuthedVariables }>();
 
   app.post("/:id/messages", async (c) => {
     const body = await c.req
       .json<{
         content?: string;
         attachments?: Array<{ uploadId: string }>;
+        model?: string;
       }>()
       .catch(
         () =>
           ({}) as {
             content?: string;
             attachments?: Array<{ uploadId: string }>;
+            model?: string;
           },
       );
     const content = body.content?.trim();
@@ -113,6 +167,61 @@ export function createMessageRoutes(deps: MessageRouteDeps): Hono {
     const messages: LLMMessage[] = [{ role: "user", content }];
 
     const sessionId = c.req.param("id");
+
+    // P11-T2-02 — 내장 handler+MCP 툴을 AgentTool[] 로 조립해 runTurn 에 tools+toolContext
+    // 주입 + body.model 을 org.allowedModels 화이트리스트로 검증해 실 turn model 로 반영.
+    // 기존 테스트(auth/tools/model 미사용)는 이 분기에 전혀 들어오지 않아 그대로 통과한다.
+    const requestedModel = body.model;
+    const staticTools = deps.tools ?? [];
+    const needsToolContext =
+      staticTools.length > 0 || deps.mcpTools !== undefined;
+    let model = deps.model;
+    let tools: AgentTool[] = staticTools;
+    let toolContext: Omit<ToolContext, "signal"> | undefined;
+
+    if (requestedModel !== undefined || needsToolContext) {
+      const auth = c.get("auth");
+      if (!auth) {
+        return c.json(errorJson("UNAUTHENTICATED", "인증이 필요합니다."), 401);
+      }
+      const org = deps.organizations
+        ? await deps.organizations.byId(auth.org)
+        : null;
+
+      if (requestedModel !== undefined) {
+        if (!org || !org.allowedModels.includes(requestedModel)) {
+          return c.json(
+            errorJson(
+              "MODEL_NOT_ALLOWED",
+              `허용되지 않은 모델입니다: ${requestedModel}`,
+            ),
+            400,
+          );
+        }
+        model = requestedModel;
+      }
+
+      if (needsToolContext) {
+        if (deps.mcpTools) {
+          tools = [...staticTools, ...(await deps.mcpTools(auth.org))];
+        }
+        const requestId = randomUUID();
+        toolContext = {
+          requestId,
+          userId: auth.sub,
+          orgId: auth.org,
+          sessionId,
+          logger: (deps.logger ?? createLogger()).child({
+            requestId,
+            userId: auth.sub,
+            orgId: auth.org,
+          }),
+          hitl: deps.hitl ?? hitlBridge,
+          budget: createBudgetClaim(org?.defaultTokenBudgetMicros ?? null),
+        };
+      }
+    }
+
     const jobId = randomUUID();
     const activeRuns = deps.activeRuns ?? noopActiveRuns;
     const handle = registerRun(sessionId, jobId);
@@ -134,11 +243,13 @@ export function createMessageRoutes(deps: MessageRouteDeps): Hono {
       try {
         const events = runTurn({
           provider: deps.provider,
-          model: deps.model,
+          model,
           systemBlocks: [...systemBlocks, ...ephemeralBlock],
           messages,
           maxTokens: deps.maxTokens ?? 1024,
           signal: handle.controller.signal,
+          ...(tools.length > 0 ? { tools } : {}),
+          ...(toolContext ? { toolContext } : {}),
         });
         for await (const event of events) {
           if (event.type === "message_start") {

@@ -37,6 +37,8 @@ import { createAdminRoutes } from "./routes/admin.js";
 import { createPgHealthHistoryDataAccess } from "./db/health-history-data-access.js";
 import { createPgAdminDataAccess } from "./db/admin-data-access.js";
 import { createSkillRegistry } from "./tools/skills-engine.js";
+import { createArtifactCreateTool } from "./tools/handlers/artifact-create-handler.js";
+import { hitlBridge } from "./tools/hitl-manager.js";
 import { createInlineArtifactStore } from "./lib/artifact-store.inline.js";
 import { createS3ArtifactStore } from "./lib/artifact-store.s3.js";
 import { createLocalObjectStore } from "./lib/object-store.js";
@@ -50,6 +52,45 @@ import {
 import { createAnthropicLLMProvider } from "./orchestrator/llm-provider-anthropic.js";
 import { createDevStubLLMProvider } from "./orchestrator/llm-provider-dev-stub.js";
 import { setActiveRun } from "./db/active-runs-service.js";
+import { createLogger } from "./lib/logger.js";
+import type { AgentTool } from "@wchat/interfaces";
+import type { McpServerDataAccess } from "./db/mcp-server-data-access.js";
+
+// P11-T2-02 — org 소유 MCP 서버가 discover 로 이미 등록해 둔 tool spec 을 실행 가능한
+// AgentTool[] 로 조립한다(초대 후 org 경계 밖 서버 유출을 막기 위해 org 자신의
+// mcp_servers 만 조회 — mcpBridge.listRegisteredTools() 자체는 전역 registry 라 서버
+// 단위로 필터링). tool name 은 mcp-tool-adapter.ts 의 `mcp:{serverId}:{toolName}` 규칙.
+function assembleOrgMcpTools(
+  mcpServerDa: McpServerDataAccess,
+  mcpBridge: ReturnType<typeof createMcpBridge>,
+  mcpClientPool: ReturnType<typeof createMcpClientPool>,
+) {
+  return async (orgId: string): Promise<AgentTool[]> => {
+    const page = await mcpServerDa.mcpServers.list({ orgId });
+    const tools: AgentTool[] = [];
+    for (const server of page.items) {
+      for (const spec of mcpBridge.listRegisteredTools(server.id)) {
+        const prefix = `mcp:${server.id}:`;
+        const toolName = spec.name.startsWith(prefix)
+          ? spec.name.slice(prefix.length)
+          : spec.name;
+        tools.push({
+          spec,
+          async invoke({ toolCallId, args, ctx }) {
+            const result = await mcpClientPool.invoke(
+              server.id,
+              toolName,
+              args,
+              ctx.signal,
+            );
+            return { ...result, toolCallId };
+          },
+        });
+      }
+    }
+    return tools;
+  };
+}
 
 export function createApp(env: Env) {
   const app = new Hono<{ Variables: AuthedVariables }>();
@@ -71,10 +112,11 @@ export function createApp(env: Env) {
 
   const appOrigin = env.APP_ORIGIN ?? "http://localhost:3000";
 
+  const authDa = createPgAuthDataAccess();
   app.route(
     "/api/v1/auth",
     createAuthRoutes({
-      da: createPgAuthDataAccess(),
+      da: authDa,
       emailSender: createEmailSender(env.EMAIL_SENDER_KIND),
       allowedDomains: env.ALLOWED_DOMAINS.split(",").map((d) => d.trim()),
       appOrigin,
@@ -89,6 +131,14 @@ export function createApp(env: Env) {
       })
     : createDevStubLLMProvider();
 
+  // P11-T2-02 — routes/messages.ts 가 tools+toolContext 를 조립하는 데 필요한 built-in
+  // handler(artifact_create) + MCP 조립 함수. mcp-servers 라우트(§ 아래)와 인스턴스를
+  // 공유해 discover 로 채워진 mcpBridge registry 를 그대로 재사용한다.
+  const artifactDa = createPgArtifactDataAccess();
+  const mcpServerDa = createPgMcpServerDataAccess();
+  const mcpClientPool = createMcpClientPool({ da: mcpServerDa });
+  const mcpBridge = createMcpBridge({ pool: mcpClientPool });
+
   const sessionsApp = new Hono<{ Variables: AuthedVariables }>();
   sessionsApp.use("*", authMiddleware);
   sessionsApp.route("/", createSessionRoutes());
@@ -99,6 +149,11 @@ export function createApp(env: Env) {
       // 실 Anthropic 은 env.LLM_MODEL(기본 Haiku 4.5) 사용. dev-stub 은 모델명 무시(에코).
       model: env.LLM_MODEL,
       activeRuns: { setActiveRun },
+      organizations: authDa.organizations,
+      tools: [createArtifactCreateTool({ da: artifactDa })],
+      mcpTools: assembleOrgMcpTools(mcpServerDa, mcpBridge, mcpClientPool),
+      hitl: hitlBridge,
+      logger: createLogger(),
     }),
   );
   app.route("/api/v1/sessions", sessionsApp);
@@ -134,7 +189,6 @@ export function createApp(env: Env) {
 
   const artifactsApp = new Hono<{ Variables: AuthedVariables }>();
   artifactsApp.use("*", authMiddleware);
-  const artifactDa = createPgArtifactDataAccess();
   const artifactShareDa = createPgArtifactShareDataAccess();
   const artifactAndShareDa = { ...artifactDa, ...artifactShareDa };
   const inlineArtifactStore = createInlineArtifactStore(artifactDa.artifacts);
@@ -175,10 +229,6 @@ export function createApp(env: Env) {
   );
   app.route("/api/v1/memories", memoriesApp);
 
-  const mcpServerDa = createPgMcpServerDataAccess();
-  const mcpBridge = createMcpBridge({
-    pool: createMcpClientPool({ da: mcpServerDa }),
-  });
   const mcpServersApp = new Hono<{ Variables: AuthedVariables }>();
   mcpServersApp.use("*", authMiddleware);
   mcpServersApp.route(
