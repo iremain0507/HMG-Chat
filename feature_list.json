@@ -653,8 +653,8 @@
     "acceptance": "세션 목록 날짜그룹 렌더 + 새세션이 POST /sessions 호출 + 이름변경 PATCH; RED→GREEN, verify-gates green",
     "phase": "P10",
     "team": "T6",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P10-T6-03",
