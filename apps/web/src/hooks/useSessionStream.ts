@@ -6,10 +6,24 @@
 // tool_use/hitl_*/citation/artifact_created/message_replace 는 Phase 3/4 이후 확장.
 import { useCallback, useRef, useState } from "react";
 
+export type ToolCallStatus = "queued" | "running" | "done" | "error";
+
+export type MessagePart =
+  | { type: "text"; text: string }
+  | {
+      type: "tool";
+      toolCallId: string;
+      name: string;
+      args: unknown;
+      status: ToolCallStatus;
+      result?: string | unknown;
+    };
+
 export interface StreamMessage {
   id: string;
   role: "user" | "assistant";
   content: string;
+  parts?: MessagePart[];
   truncated?: boolean;
   error?: boolean;
 }
@@ -21,12 +35,20 @@ type ChatStreamEvent =
       meta?: { provider: string; model: string };
     }
   | { type: "text_delta"; text: string }
+  | { type: "tool_use"; toolCallId: string; name: string; args: unknown }
+  | { type: "tool_result"; toolCallId: string; content: string | unknown }
   | {
       type: "stop";
       reason: "end_turn" | "tool_use" | "max_tokens" | "aborted";
       usage?: { inputTokens: number; outputTokens: number };
     }
   | { type: "error"; error: { code: string; message: string } };
+
+// AgentToolResult.content(kind:"error") 는 orchestrator 가 { error: WChatError } 로
+// 감싸 emit(orchestrator.ts toToolResultContent) — 그 shape 을 client 에서 재검출.
+function isErrorToolResult(content: unknown): boolean {
+  return typeof content === "object" && content !== null && "error" in content;
+}
 
 function parseSseFrame(frame: string): ChatStreamEvent | null {
   let eventName: string | null = null;
@@ -103,8 +125,65 @@ export function useSessionStream(sessionId: string) {
             } else if (event.type === "text_delta" && assistantId) {
               const id = assistantId;
               setMessages((prev) =>
+                prev.map((m) => {
+                  if (m.id !== id) return m;
+                  const parts = m.parts ?? [];
+                  const last = parts.at(-1);
+                  const nextParts: MessagePart[] =
+                    last?.type === "text"
+                      ? [
+                          ...parts.slice(0, -1),
+                          { type: "text", text: last.text + event.text },
+                        ]
+                      : [...parts, { type: "text", text: event.text }];
+                  return {
+                    ...m,
+                    content: m.content + event.text,
+                    parts: nextParts,
+                  };
+                }),
+              );
+            } else if (event.type === "tool_use" && assistantId) {
+              const id = assistantId;
+              setMessages((prev) =>
                 prev.map((m) =>
-                  m.id === id ? { ...m, content: m.content + event.text } : m,
+                  m.id === id
+                    ? {
+                        ...m,
+                        parts: [
+                          ...(m.parts ?? []),
+                          {
+                            type: "tool",
+                            toolCallId: event.toolCallId,
+                            name: event.name,
+                            args: event.args,
+                            status: "running",
+                          },
+                        ],
+                      }
+                    : m,
+                ),
+              );
+            } else if (event.type === "tool_result" && assistantId) {
+              const id = assistantId;
+              setMessages((prev) =>
+                prev.map((m) =>
+                  m.id === id && m.parts
+                    ? {
+                        ...m,
+                        parts: m.parts.map((p) =>
+                          p.type === "tool" && p.toolCallId === event.toolCallId
+                            ? {
+                                ...p,
+                                status: isErrorToolResult(event.content)
+                                  ? "error"
+                                  : "done",
+                                result: event.content,
+                              }
+                            : p,
+                        ),
+                      }
+                    : m,
                 ),
               );
             } else if (event.type === "stop") {

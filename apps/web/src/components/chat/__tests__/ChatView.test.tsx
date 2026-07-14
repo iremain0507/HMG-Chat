@@ -412,4 +412,125 @@ describe("ChatView", () => {
 
     expect(document.activeElement).toBe(screen.getByLabelText("메시지 입력"));
   });
+
+  it("tool_use/tool_result 가 스트림 위치에 인터리브되어 running→done 상태로 렌더된다", async () => {
+    const encoder = new TextEncoder();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({
+        body: new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.enqueue(
+              encoder.encode(sseFrame("message_start", { messageId: "msg-1" })),
+            );
+            controller.enqueue(
+              encoder.encode(sseFrame("text_delta", { text: "확인해볼게요." })),
+            );
+            controller.enqueue(
+              encoder.encode(
+                sseFrame("tool_use", {
+                  toolCallId: "call-1",
+                  name: "knowledge_search",
+                  args: { query: "wchat" },
+                }),
+              ),
+            );
+            controller.enqueue(
+              encoder.encode(
+                sseFrame("tool_result", {
+                  toolCallId: "call-1",
+                  content: "검색 결과 3건",
+                }),
+              ),
+            );
+            controller.enqueue(
+              encoder.encode(sseFrame("text_delta", { text: "찾았습니다." })),
+            );
+            controller.enqueue(
+              encoder.encode(sseFrame("stop", { reason: "end_turn" })),
+            );
+            controller.close();
+          },
+        }),
+      })),
+    );
+
+    render(<ChatView sessionId="session-1" />);
+    fireEvent.change(screen.getByLabelText("메시지 입력"), {
+      target: { value: "검색해줘" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "전송" }));
+
+    await waitFor(() => {
+      expect(screen.getByText("knowledge_search")).toBeInTheDocument();
+    });
+    await waitFor(() => {
+      expect(screen.getByTestId("status-chip")).toHaveAttribute(
+        "data-status",
+        "done",
+      );
+    });
+    expect(screen.getByText("확인해볼게요.")).toBeInTheDocument();
+    expect(screen.getByText("찾았습니다.")).toBeInTheDocument();
+  });
+
+  it("tool_result 가 error content 를 담으면 재시도 칩이 렌더되고 클릭 시 마지막 user 메시지를 재전송한다", async () => {
+    const encoder = new TextEncoder();
+    const fetchMock = vi.fn(async () => ({
+      body: new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.enqueue(
+            encoder.encode(sseFrame("message_start", { messageId: "msg-1" })),
+          );
+          controller.enqueue(
+            encoder.encode(
+              sseFrame("tool_use", {
+                toolCallId: "call-1",
+                name: "bash",
+                args: { cmd: "ls" },
+              }),
+            ),
+          );
+          controller.enqueue(
+            encoder.encode(
+              sseFrame("tool_result", {
+                toolCallId: "call-1",
+                content: { error: { code: "TOOL_NOT_FOUND", message: "no" } },
+              }),
+            ),
+          );
+          controller.enqueue(
+            encoder.encode(sseFrame("stop", { reason: "end_turn" })),
+          );
+          controller.close();
+        },
+      }),
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<ChatView sessionId="session-1" />);
+    fireEvent.change(screen.getByLabelText("메시지 입력"), {
+      target: { value: "실행해줘" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "전송" }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("status-chip")).toHaveAttribute(
+        "data-status",
+        "error",
+      );
+    });
+
+    fetchMock.mockClear();
+    fireEvent.click(screen.getByRole("button", { name: "재시도" }));
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/v1/sessions/session-1/messages",
+        expect.objectContaining({
+          body: JSON.stringify({ content: "실행해줘" }),
+        }),
+      );
+    });
+  });
 });

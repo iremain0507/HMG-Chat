@@ -11,9 +11,13 @@ import React, {
   type KeyboardEvent,
 } from "react";
 import { useRouter } from "next/navigation";
-import { useSessionStream } from "../../hooks/useSessionStream";
+import {
+  useSessionStream,
+  type MessagePart,
+} from "../../hooks/useSessionStream";
 import { Markdown } from "./Markdown";
 import { MessageActions } from "./MessageActions";
+import { ToolCallRenderer } from "./ToolCallRenderer";
 
 const BOTTOM_THRESHOLD_PX = 80;
 const ANNOUNCE_DEBOUNCE_MS = 500;
@@ -183,6 +187,7 @@ export function ChatView({ sessionId }: { sessionId: string }) {
                     key={m.id}
                     role={m.role}
                     content={m.content}
+                    {...(m.parts ? { parts: m.parts } : {})}
                     error={m.error ?? false}
                     streaming={
                       isStreaming &&
@@ -267,12 +272,14 @@ export function ChatView({ sessionId }: { sessionId: string }) {
 function MessageItem({
   role,
   content,
+  parts,
   streaming,
   error,
   onRegenerate,
 }: {
   role: "user" | "assistant";
   content: string;
+  parts?: MessagePart[];
   streaming: boolean;
   error?: boolean;
   onRegenerate?: () => void;
@@ -303,14 +310,41 @@ function MessageItem({
       </li>
     );
   }
+  const hasToolParts = (parts ?? []).some((p) => p.type === "tool");
   return (
     <li data-role="assistant" className="group flex gap-3">
       <div className="mt-0.5 grid h-8 w-8 flex-none place-items-center rounded-lg bg-primary text-sm font-bold text-primary-fg">
         W
       </div>
       <div className="min-w-0 flex-1 pt-1">
-        {content ? <Markdown streaming={streaming}>{content}</Markdown> : null}
-        {streaming && !content && (
+        {hasToolParts ? (
+          <div className="space-y-3">
+            {(parts ?? []).map((part, idx) =>
+              part.type === "tool" ? (
+                <ToolCallRenderer
+                  key={part.toolCallId}
+                  toolCallId={part.toolCallId}
+                  name={part.name}
+                  args={part.args}
+                  status={part.status}
+                  {...(part.result !== undefined
+                    ? { result: part.result }
+                    : {})}
+                  {...(part.status === "error" && onRegenerate
+                    ? { onRetry: onRegenerate }
+                    : {})}
+                />
+              ) : part.text ? (
+                <Markdown key={`text-${idx}`} streaming={streaming}>
+                  {part.text}
+                </Markdown>
+              ) : null,
+            )}
+          </div>
+        ) : content ? (
+          <Markdown streaming={streaming}>{content}</Markdown>
+        ) : null}
+        {streaming && !content && !hasToolParts && (
           <div
             data-testid="shimmer"
             aria-label="응답 생성 중"

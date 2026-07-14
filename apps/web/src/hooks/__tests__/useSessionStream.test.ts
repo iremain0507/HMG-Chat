@@ -116,4 +116,90 @@ describe("useSessionStream", () => {
       await sendPromise.catch(() => {});
     });
   });
+
+  it("tool_use/tool_result 이벤트를 parts 에 순서대로 누적하고 상태를 running→done 으로 전이시킨다", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({
+        body: sseBody([
+          sseFrame("message_start", {
+            messageId: "msg-1",
+            meta: { provider: "fake", model: "fake-model" },
+          }),
+          sseFrame("text_delta", { text: "확인해볼게요. " }),
+          sseFrame("tool_use", {
+            toolCallId: "call-1",
+            name: "knowledge_search",
+            args: { query: "wchat" },
+          }),
+          sseFrame("tool_result", {
+            toolCallId: "call-1",
+            content: "검색 결과 3건",
+          }),
+          sseFrame("text_delta", { text: "결과를 찾았습니다." }),
+          sseFrame("stop", {
+            reason: "end_turn",
+            usage: { inputTokens: 1, outputTokens: 1 },
+          }),
+        ]),
+      })),
+    );
+
+    const { result } = renderHook(() => useSessionStream("session-1"));
+
+    await act(async () => {
+      await result.current.send("검색해줘");
+    });
+
+    const assistantMessage = result.current.messages.find(
+      (m) => m.role === "assistant",
+    );
+    expect(assistantMessage?.parts).toEqual([
+      { type: "text", text: "확인해볼게요. " },
+      {
+        type: "tool",
+        toolCallId: "call-1",
+        name: "knowledge_search",
+        args: { query: "wchat" },
+        status: "done",
+        result: "검색 결과 3건",
+      },
+      { type: "text", text: "결과를 찾았습니다." },
+    ]);
+  });
+
+  it("tool_result 의 content 가 error 를 담으면 해당 tool part 의 상태가 error 가 된다", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({
+        body: sseBody([
+          sseFrame("message_start", { messageId: "msg-1" }),
+          sseFrame("tool_use", {
+            toolCallId: "call-1",
+            name: "bash",
+            args: { cmd: "ls" },
+          }),
+          sseFrame("tool_result", {
+            toolCallId: "call-1",
+            content: { error: { code: "TOOL_NOT_FOUND", message: "no" } },
+          }),
+          sseFrame("stop", { reason: "end_turn" }),
+        ]),
+      })),
+    );
+
+    const { result } = renderHook(() => useSessionStream("session-1"));
+
+    await act(async () => {
+      await result.current.send("실행해줘");
+    });
+
+    const assistantMessage = result.current.messages.find(
+      (m) => m.role === "assistant",
+    );
+    expect(assistantMessage?.parts?.[0]).toMatchObject({
+      type: "tool",
+      status: "error",
+    });
+  });
 });

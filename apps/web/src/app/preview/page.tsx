@@ -8,6 +8,7 @@ import { ThemeToggle } from "../../components/layout/ThemeToggle";
 import { Markdown } from "../../components/chat/Markdown";
 import { Reasoning } from "../../components/chat/Reasoning";
 import { MessageActions } from "../../components/chat/MessageActions";
+import { ToolCallRenderer } from "../../components/chat/ToolCallRenderer";
 
 const MD = `# 렌더 검증
 
@@ -73,6 +74,32 @@ export default function PreviewGallery() {
 
       <Section name="message-actions">
         <MessageActions role="assistant" content="복사 대상 텍스트" />
+      </Section>
+
+      <Section name="tool-call-renderer">
+        <div className="space-y-3">
+          <ToolCallRenderer
+            toolCallId="preview-running"
+            name="knowledge_search"
+            args={{ query: "wchat" }}
+            status="running"
+          />
+          <ToolCallRenderer
+            toolCallId="preview-done"
+            name="mcp:srv-1:search"
+            args={{ query: "wchat rollout" }}
+            status="done"
+            result="검색 결과 3건: A, B, C"
+          />
+          <ToolCallRenderer
+            toolCallId="preview-error"
+            name="bash"
+            args={{ cmd: "ls -la" }}
+            status="error"
+            result={{ error: { code: "TOOL_NOT_FOUND", message: "no" } }}
+            onRetry={() => {}}
+          />
+        </div>
       </Section>
     </div>
   );

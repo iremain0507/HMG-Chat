@@ -707,8 +707,8 @@
     "acceptance": "tool_use→running, tool_result→done+요약, error→재시도 칩; SSE-stub RED→GREEN, verify-gates green",
     "phase": "P10",
     "team": "T6",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P10-T2-02",
