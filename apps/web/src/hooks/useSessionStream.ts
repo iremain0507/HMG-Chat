@@ -26,6 +26,20 @@ export interface StreamMessage {
   parts?: MessagePart[];
   truncated?: boolean;
   error?: boolean;
+  citations?: Citation[];
+}
+
+// 14-INTERFACES § ChatEvent.citation 과 1:1 (type 필드 제외).
+export interface Citation {
+  index: number;
+  source: "project" | "ephemeral";
+  documentId?: string;
+  uploadId?: string;
+  filename: string;
+  title?: string;
+  page?: number;
+  sourceUri?: string;
+  snippet: string;
 }
 
 // 14-INTERFACES § ChatEvent.hitl_request 와 1:1 (toolCallId/toolName/args/rationale/expiresAt).
@@ -62,6 +76,7 @@ type ChatStreamEvent =
       reason?: string;
     }
   | { type: "hitl_timeout"; toolCallId: string }
+  | ({ type: "citation" } & Citation)
   | {
       type: "stop";
       reason: "end_turn" | "tool_use" | "max_tokens" | "aborted";
@@ -209,6 +224,32 @@ export function useSessionStream(sessionId: string) {
                             : p,
                         ),
                       }
+                    : m,
+                ),
+              );
+            } else if (event.type === "citation" && assistantId) {
+              const id = assistantId;
+              const citation: Citation = {
+                index: event.index,
+                source: event.source,
+                filename: event.filename,
+                snippet: event.snippet,
+                ...(event.documentId !== undefined
+                  ? { documentId: event.documentId }
+                  : {}),
+                ...(event.uploadId !== undefined
+                  ? { uploadId: event.uploadId }
+                  : {}),
+                ...(event.title !== undefined ? { title: event.title } : {}),
+                ...(event.page !== undefined ? { page: event.page } : {}),
+                ...(event.sourceUri !== undefined
+                  ? { sourceUri: event.sourceUri }
+                  : {}),
+              };
+              setMessages((prev) =>
+                prev.map((m) =>
+                  m.id === id
+                    ? { ...m, citations: [...(m.citations ?? []), citation] }
                     : m,
                 ),
               );

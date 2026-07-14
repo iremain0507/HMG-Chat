@@ -14,6 +14,7 @@ import { useRouter } from "next/navigation";
 import {
   useSessionStream,
   type MessagePart,
+  type Citation,
 } from "../../hooks/useSessionStream";
 import { HitlPrompt } from "./HitlPrompt";
 import { Markdown } from "./Markdown";
@@ -190,6 +191,7 @@ export function ChatView({ sessionId }: { sessionId: string }) {
                     role={m.role}
                     content={m.content}
                     {...(m.parts ? { parts: m.parts } : {})}
+                    {...(m.citations ? { citations: m.citations } : {})}
                     error={m.error ?? false}
                     streaming={
                       isStreaming &&
@@ -281,6 +283,7 @@ function MessageItem({
   role,
   content,
   parts,
+  citations,
   streaming,
   error,
   onRegenerate,
@@ -288,10 +291,17 @@ function MessageItem({
   role: "user" | "assistant";
   content: string;
   parts?: MessagePart[];
+  citations?: Citation[];
   streaming: boolean;
   error?: boolean;
   onRegenerate?: () => void;
 }) {
+  const [focusedCitation, setFocusedCitation] = useState<number | null>(null);
+  const onCitationClick = (index: number) => {
+    setFocusedCitation(index);
+    const el = document.getElementById(`citation-ref-${index}`);
+    el?.scrollIntoView?.({ block: "nearest" });
+  };
   if (error) {
     return (
       <li data-role="error" className="flex gap-3">
@@ -343,15 +353,48 @@ function MessageItem({
                     : {})}
                 />
               ) : part.text ? (
-                <Markdown key={`text-${idx}`} streaming={streaming}>
+                <Markdown
+                  key={`text-${idx}`}
+                  streaming={streaming}
+                  {...(citations ? { citations } : {})}
+                  onCitationClick={onCitationClick}
+                >
                   {part.text}
                 </Markdown>
               ) : null,
             )}
           </div>
         ) : content ? (
-          <Markdown streaming={streaming}>{content}</Markdown>
+          <Markdown
+            streaming={streaming}
+            {...(citations ? { citations } : {})}
+            onCitationClick={onCitationClick}
+          >
+            {content}
+          </Markdown>
         ) : null}
+        {citations && citations.length > 0 && (
+          <div
+            data-testid="citation-reference-footer"
+            className="mt-3 border-t border-border pt-2 text-xs text-fg-muted"
+          >
+            <div className="font-semibold text-fg">Reference</div>
+            <ul className="mt-1 space-y-1">
+              {citations.map((c) => (
+                <li
+                  key={c.index}
+                  id={`citation-ref-${c.index}`}
+                  data-testid={`citation-ref-${c.index}`}
+                  data-focused={focusedCitation === c.index}
+                  className="rounded px-1 py-0.5 data-[focused=true]:bg-primary/10 data-[focused=true]:text-fg"
+                >
+                  [{c.index}] {c.filename}
+                  {c.page ? ` p.${c.page}` : ""}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
         {streaming && !content && !hasToolParts && (
           <div
             data-testid="shimmer"

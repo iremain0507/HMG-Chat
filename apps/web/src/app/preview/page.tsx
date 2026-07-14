@@ -3,13 +3,63 @@
 // app/preview/page.tsx — P10 브라우저 검증용 컴포넌트 갤러리 (dev 전용, 인증/서버 불필요).
 //   Playwright(e2e/*.pw.ts)가 이 라우트를 headless 로 열어 실제 렌더/CSS/인터랙션을 검증.
 //   각 FE 태스크는 자기 컴포넌트를 data-testid="preview-<name>" 섹션으로 여기에 추가한다.
-import React from "react";
+import React, { useState } from "react";
 import { ThemeToggle } from "../../components/layout/ThemeToggle";
 import { Markdown } from "../../components/chat/Markdown";
 import { Reasoning } from "../../components/chat/Reasoning";
 import { MessageActions } from "../../components/chat/MessageActions";
 import { ToolCallRenderer } from "../../components/chat/ToolCallRenderer";
 import { HitlPrompt } from "../../components/chat/HitlPrompt";
+import type { Citation } from "../../hooks/useSessionStream";
+
+const CITATIONS: Citation[] = [
+  {
+    index: 1,
+    source: "project",
+    documentId: "doc-1",
+    filename: "manual.pdf",
+    page: 3,
+    snippet: "42 는 만물의 답이다.",
+  },
+  {
+    index: 2,
+    source: "ephemeral",
+    uploadId: "upload-1",
+    filename: "notes.md",
+    snippet: "세션에 첨부된 임시 메모.",
+  },
+];
+
+function CitationPreview() {
+  const [focused, setFocused] = useState<number | null>(null);
+  return (
+    <div>
+      <Markdown citations={CITATIONS} onCitationClick={setFocused}>
+        {"정답은 42입니다[1]. 추가로 메모도 참고했습니다[2]."}
+      </Markdown>
+      <div
+        data-testid="citation-reference-footer"
+        className="mt-3 border-t border-border pt-2 text-xs text-fg-muted"
+      >
+        <div className="font-semibold text-fg">Reference</div>
+        <ul className="mt-1 space-y-1">
+          {CITATIONS.map((c) => (
+            <li
+              key={c.index}
+              id={`citation-ref-${c.index}`}
+              data-testid={`citation-ref-${c.index}`}
+              data-focused={focused === c.index}
+              className="rounded px-1 py-0.5 data-[focused=true]:bg-primary/10 data-[focused=true]:text-fg"
+            >
+              [{c.index}] {c.filename}
+              {c.page ? ` p.${c.page}` : ""}
+            </li>
+          ))}
+        </ul>
+      </div>
+    </div>
+  );
+}
 
 const MD = `# 렌더 검증
 
@@ -101,6 +151,10 @@ export default function PreviewGallery() {
             onRetry={() => {}}
           />
         </div>
+      </Section>
+
+      <Section name="citation">
+        <CitationPreview />
       </Section>
 
       <Section name="hitl-prompt">

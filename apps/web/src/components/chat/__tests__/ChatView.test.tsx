@@ -666,4 +666,60 @@ describe("ChatView", () => {
       );
     });
   });
+
+  it("citation 이벤트가 오면 [N] 칩과 Reference 푸터가 렌더되고, 칩 클릭 시 해당 참조 항목이 포커스된다", async () => {
+    const encoder = new TextEncoder();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({
+        body: new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.enqueue(
+              encoder.encode(sseFrame("message_start", { messageId: "msg-1" })),
+            );
+            controller.enqueue(
+              encoder.encode(
+                sseFrame("text_delta", { text: "정답은 42입니다[1]." }),
+              ),
+            );
+            controller.enqueue(
+              encoder.encode(
+                sseFrame("citation", {
+                  index: 1,
+                  source: "project",
+                  documentId: "doc-1",
+                  filename: "manual.pdf",
+                  page: 3,
+                  snippet: "42 는 만물의 답이다.",
+                }),
+              ),
+            );
+            controller.enqueue(
+              encoder.encode(sseFrame("stop", { reason: "end_turn" })),
+            );
+            controller.close();
+          },
+        }),
+      })),
+    );
+
+    render(<ChatView sessionId="session-1" />);
+    fireEvent.change(screen.getByLabelText("메시지 입력"), {
+      target: { value: "질문" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "전송" }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("citation-chip-1")).toBeInTheDocument();
+    });
+    const footer = screen.getByTestId("citation-reference-footer");
+    expect(footer).toHaveTextContent("manual.pdf");
+    expect(footer).toHaveTextContent("p.3");
+    const refItem = screen.getByTestId("citation-ref-1");
+    expect(refItem).toHaveAttribute("data-focused", "false");
+
+    fireEvent.click(screen.getByTestId("citation-chip-1"));
+
+    expect(refItem).toHaveAttribute("data-focused", "true");
+  });
 });

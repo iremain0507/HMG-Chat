@@ -203,6 +203,47 @@ describe("useSessionStream", () => {
     });
   });
 
+  it("citation 이벤트를 받으면 해당 assistant 메시지의 citations 배열에 순서대로 누적한다", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({
+        body: sseBody([
+          sseFrame("message_start", { messageId: "msg-1" }),
+          sseFrame("text_delta", { text: "정답은 42입니다[1]." }),
+          sseFrame("citation", {
+            index: 1,
+            source: "project",
+            documentId: "doc-1",
+            filename: "manual.pdf",
+            page: 3,
+            snippet: "42 는 만물의 답이다.",
+          }),
+          sseFrame("stop", { reason: "end_turn" }),
+        ]),
+      })),
+    );
+
+    const { result } = renderHook(() => useSessionStream("session-1"));
+
+    await act(async () => {
+      await result.current.send("질문");
+    });
+
+    const assistantMessage = result.current.messages.find(
+      (m) => m.role === "assistant",
+    );
+    expect(assistantMessage?.citations).toEqual([
+      {
+        index: 1,
+        source: "project",
+        documentId: "doc-1",
+        filename: "manual.pdf",
+        page: 3,
+        snippet: "42 는 만물의 답이다.",
+      },
+    ]);
+  });
+
   it("hitl_request 이벤트를 받으면 hitlRequest 상태를 채우고, hitl_resolved 로 같은 toolCallId 가 도착하면 비운다", async () => {
     let releaseStream: (() => void) | undefined;
     const encoder = new TextEncoder();
