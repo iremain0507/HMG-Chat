@@ -15,6 +15,8 @@ import { useSessionStream } from "../../hooks/useSessionStream";
 import { Markdown } from "./Markdown";
 import { MessageActions } from "./MessageActions";
 
+const BOTTOM_THRESHOLD_PX = 80;
+
 const SUGGESTIONS = [
   "프로젝트 요약해줘",
   "회의록 초안 작성해줘",
@@ -25,13 +27,27 @@ export function ChatView({ sessionId }: { sessionId: string }) {
   const router = useRouter();
   const { messages, isStreaming, send, stop } = useSessionStream(sessionId);
   const [input, setInput] = useState("");
+  const [autoFollow, setAutoFollow] = useState(true);
   const scrollRef = useRef<HTMLDivElement>(null);
   const taRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
     const el = scrollRef.current;
+    if (el && autoFollow) el.scrollTop = el.scrollHeight;
+  }, [messages, isStreaming, autoFollow]);
+
+  function onScroll() {
+    const el = scrollRef.current;
+    if (!el) return;
+    const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+    setAutoFollow(distanceFromBottom < BOTTOM_THRESHOLD_PX);
+  }
+
+  function scrollToBottom() {
+    const el = scrollRef.current;
     if (el) el.scrollTop = el.scrollHeight;
-  }, [messages, isStreaming]);
+    setAutoFollow(true);
+  }
 
   function autogrow() {
     const ta = taRef.current;
@@ -82,69 +98,85 @@ export function ChatView({ sessionId }: { sessionId: string }) {
         </button>
       </header>
 
-      <div ref={scrollRef} className="flex-1 overflow-y-auto">
-        {empty ? (
-          <div className="grid h-full place-items-center px-6">
-            <div className="text-center">
-              <div className="mx-auto grid h-14 w-14 place-items-center rounded-2xl bg-primary text-2xl font-bold text-primary-fg">
-                W
-              </div>
-              <h1 className="mt-5 text-2xl font-semibold">
-                무엇을 도와드릴까요?
-              </h1>
-              <p className="mt-2 text-fg-muted">
-                메시지를 입력해 대화를 시작하세요.
-              </p>
-              <div className="mt-6 flex flex-wrap justify-center gap-2">
-                {SUGGESTIONS.map((s) => (
-                  <button
-                    key={s}
-                    type="button"
-                    onClick={() => {
-                      setInput(s);
-                      taRef.current?.focus();
-                    }}
-                    className="rounded-full border border-border bg-surface px-3.5 py-2 text-sm text-fg-muted hover:border-primary hover:text-fg"
-                  >
-                    {s}
-                  </button>
-                ))}
+      <div className="relative flex-1 overflow-hidden">
+        <div
+          ref={scrollRef}
+          data-testid="chat-scroll"
+          onScroll={onScroll}
+          className="h-full overflow-y-auto"
+        >
+          {empty ? (
+            <div className="grid h-full place-items-center px-6">
+              <div className="text-center">
+                <div className="mx-auto grid h-14 w-14 place-items-center rounded-2xl bg-primary text-2xl font-bold text-primary-fg">
+                  W
+                </div>
+                <h1 className="mt-5 text-2xl font-semibold">
+                  무엇을 도와드릴까요?
+                </h1>
+                <p className="mt-2 text-fg-muted">
+                  메시지를 입력해 대화를 시작하세요.
+                </p>
+                <div className="mt-6 flex flex-wrap justify-center gap-2">
+                  {SUGGESTIONS.map((s) => (
+                    <button
+                      key={s}
+                      type="button"
+                      onClick={() => {
+                        setInput(s);
+                        taRef.current?.focus();
+                      }}
+                      className="rounded-full border border-border bg-surface px-3.5 py-2 text-sm text-fg-muted hover:border-primary hover:text-fg"
+                    >
+                      {s}
+                    </button>
+                  ))}
+                </div>
               </div>
             </div>
-          </div>
-        ) : (
-          <ul
-            aria-label="메시지 목록"
-            className="mx-auto max-w-3xl space-y-6 px-4 py-6"
+          ) : (
+            <ul
+              aria-label="메시지 목록"
+              className="mx-auto max-w-3xl space-y-6 px-4 py-6"
+            >
+              {messages.map((m, i) => {
+                const canRegenerate = m.role === "assistant" && !isStreaming;
+                return (
+                  <MessageItem
+                    key={m.id}
+                    role={m.role}
+                    content={m.content}
+                    error={m.error ?? false}
+                    streaming={
+                      isStreaming &&
+                      i === messages.length - 1 &&
+                      m.role === "assistant"
+                    }
+                    {...(canRegenerate
+                      ? {
+                          onRegenerate: () => {
+                            const priorUser = messages
+                              .slice(0, i)
+                              .reverse()
+                              .find((prev) => prev.role === "user");
+                            if (priorUser) void send(priorUser.content);
+                          },
+                        }
+                      : {})}
+                  />
+                );
+              })}
+            </ul>
+          )}
+        </div>
+        {!autoFollow && (
+          <button
+            type="button"
+            onClick={scrollToBottom}
+            className="absolute bottom-3 left-1/2 -translate-x-1/2 rounded-full border border-border bg-surface px-3 py-1.5 text-xs text-fg-muted shadow-md hover:border-primary hover:text-fg"
           >
-            {messages.map((m, i) => {
-              const canRegenerate = m.role === "assistant" && !isStreaming;
-              return (
-                <MessageItem
-                  key={m.id}
-                  role={m.role}
-                  content={m.content}
-                  error={m.error ?? false}
-                  streaming={
-                    isStreaming &&
-                    i === messages.length - 1 &&
-                    m.role === "assistant"
-                  }
-                  {...(canRegenerate
-                    ? {
-                        onRegenerate: () => {
-                          const priorUser = messages
-                            .slice(0, i)
-                            .reverse()
-                            .find((prev) => prev.role === "user");
-                          if (priorUser) void send(priorUser.content);
-                        },
-                      }
-                    : {})}
-                />
-              );
-            })}
-          </ul>
+            최신으로↓
+          </button>
         )}
       </div>
 
@@ -241,7 +273,17 @@ function MessageItem({
       </div>
       <div className="min-w-0 flex-1 pt-1">
         {content ? <Markdown streaming={streaming}>{content}</Markdown> : null}
-        {streaming && (
+        {streaming && !content && (
+          <div
+            data-testid="shimmer"
+            aria-label="응답 생성 중"
+            className="space-y-2"
+          >
+            <div className="h-3.5 w-3/4 animate-pulse rounded bg-surface" />
+            <div className="h-3.5 w-1/2 animate-pulse rounded bg-surface" />
+          </div>
+        )}
+        {streaming && content && (
           <span
             className="ml-0.5 inline-block h-4 w-[3px] animate-pulse bg-fg align-middle"
             aria-label="응답 생성 중"

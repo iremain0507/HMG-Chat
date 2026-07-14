@@ -680,8 +680,8 @@
     "acceptance": "스크롤 이탈 시 자동추종 해제+pill, reasoning 접힘/펼침; RED→GREEN, verify-gates green",
     "phase": "P10",
     "team": "T6",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P10-T6-06",

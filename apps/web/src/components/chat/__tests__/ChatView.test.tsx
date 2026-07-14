@@ -208,4 +208,102 @@ describe("ChatView", () => {
       );
     });
   });
+
+  it("첫 토큰 도착 전에는 shimmer 스켈레톤을 보여주고 델타 도착 시 사라진다", async () => {
+    const encoder = new TextEncoder();
+    let sendDelta: (() => void) | undefined;
+    const streamingBody = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(
+          encoder.encode(sseFrame("message_start", { messageId: "msg-1" })),
+        );
+        sendDelta = () => {
+          controller.enqueue(
+            encoder.encode(sseFrame("text_delta", { text: "hello" })),
+          );
+          controller.enqueue(
+            encoder.encode(sseFrame("stop", { reason: "end_turn" })),
+          );
+          controller.close();
+        };
+      },
+    });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({ body: streamingBody })),
+    );
+
+    render(<ChatView sessionId="session-1" />);
+    fireEvent.change(screen.getByLabelText("메시지 입력"), {
+      target: { value: "hi" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "전송" }));
+
+    await screen.findByTestId("shimmer");
+
+    sendDelta?.();
+
+    await waitFor(() => {
+      expect(screen.getByText("hello")).toBeInTheDocument();
+    });
+    expect(screen.queryByTestId("shimmer")).not.toBeInTheDocument();
+  });
+
+  it("스크롤이 하단에서 벗어나면 자동추종을 해제하고 '최신으로↓' pill 을 보여준다; 클릭 시 하단으로 스크롤한다", async () => {
+    const encoder = new TextEncoder();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({
+        body: new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.enqueue(
+              encoder.encode(sseFrame("message_start", { messageId: "msg-1" })),
+            );
+            controller.enqueue(
+              encoder.encode(sseFrame("text_delta", { text: "hello" })),
+            );
+            controller.enqueue(
+              encoder.encode(sseFrame("stop", { reason: "end_turn" })),
+            );
+            controller.close();
+          },
+        }),
+      })),
+    );
+
+    render(<ChatView sessionId="session-1" />);
+    fireEvent.change(screen.getByLabelText("메시지 입력"), {
+      target: { value: "hi" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "전송" }));
+
+    await waitFor(() => {
+      expect(screen.getByText("hello")).toBeInTheDocument();
+    });
+
+    expect(
+      screen.queryByRole("button", { name: "최신으로↓" }),
+    ).not.toBeInTheDocument();
+
+    const scrollEl = screen.getByTestId("chat-scroll");
+    Object.defineProperty(scrollEl, "scrollHeight", {
+      value: 1000,
+      configurable: true,
+    });
+    Object.defineProperty(scrollEl, "clientHeight", {
+      value: 500,
+      configurable: true,
+    });
+    scrollEl.scrollTop = 0;
+    fireEvent.scroll(scrollEl);
+
+    const pill = await screen.findByRole("button", { name: "최신으로↓" });
+
+    fireEvent.click(pill);
+
+    expect(scrollEl.scrollTop).toBe(1000);
+    expect(
+      screen.queryByRole("button", { name: "최신으로↓" }),
+    ).not.toBeInTheDocument();
+  });
 });
