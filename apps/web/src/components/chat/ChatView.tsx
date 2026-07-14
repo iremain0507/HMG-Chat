@@ -25,6 +25,7 @@ import { Markdown } from "./Markdown";
 import { MemoryPanel } from "./MemoryPanel";
 import { MessageActions } from "./MessageActions";
 import { ProjectPicker } from "./ProjectPicker";
+import { ShareExportMenu } from "./ShareExportMenu";
 import { ToolCallRenderer } from "./ToolCallRenderer";
 
 const SLASH_COMMANDS: SlashCommand[] = [
@@ -154,13 +155,23 @@ export function ChatView({ sessionId }: { sessionId: string }) {
               onSelect={(next) => void setProject(next)}
             />
           </div>
-          <button
-            type="button"
-            onClick={() => router.push(`/chat/${crypto.randomUUID()}`)}
-            className="rounded-lg border border-border px-3 py-1 text-sm text-fg-muted hover:border-primary hover:text-fg"
-          >
-            ＋ 새 채팅
-          </button>
+          <div className="flex items-center gap-2">
+            <ShareExportMenu
+              title="WChat 대화"
+              messages={messages.map((m) => ({
+                role: m.role,
+                content: m.content,
+              }))}
+              artifacts={artifacts}
+            />
+            <button
+              type="button"
+              onClick={() => router.push(`/chat/${crypto.randomUUID()}`)}
+              className="rounded-lg border border-border px-3 py-1 text-sm text-fg-muted hover:border-primary hover:text-fg"
+            >
+              ＋ 새 채팅
+            </button>
+          </div>
         </header>
 
         <div className="relative flex-1 overflow-hidden">

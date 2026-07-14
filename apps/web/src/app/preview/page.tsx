@@ -14,6 +14,7 @@ import { ChatInput } from "../../components/chat/ChatInput";
 import { MessageItem } from "../../components/chat/ChatView";
 import { ProjectPicker } from "../../components/chat/ProjectPicker";
 import { MemoryPanel } from "../../components/chat/MemoryPanel";
+import { ShareExportMenu } from "../../components/chat/ShareExportMenu";
 import {
   ArtifactCanvas,
   type ArtifactCanvasArtifact,
@@ -359,6 +360,22 @@ export default function PreviewGallery() {
 
       <Section name="memory-panel">
         <MemoryPanelPreview />
+      </Section>
+
+      <Section name="share-export-menu">
+        <div className="flex justify-end">
+          <ShareExportMenu
+            title="WChat 대화"
+            messages={[
+              { role: "user", content: "이번 분기 매출 요약해줘" },
+              {
+                role: "assistant",
+                content: "이번 분기 매출은 전분기 대비 12% 상승했습니다.",
+              },
+            ]}
+            artifacts={ARTIFACTS}
+          />
+        </div>
       </Section>
     </div>
   );
