@@ -62,14 +62,14 @@ for ((i=1; i<=MAX_ITERS; i++)); do
     fi
   fi
 
-  # 종료·전이 신호 처리
-  if grep -q "$SENTINEL_ALL" ".ralph/logs/iter-$i.md"; then
+  # 종료·전이 신호 처리 — 신호는 반드시 "라인 시작"에 있어야 인정(산문 속 부분문자열 오탐 방지).
+  if grep -qE "^[[:space:]]*${SENTINEL_ALL}" ".ralph/logs/iter-$i.md"; then
     echo "✅ ALL TASKS COMPLETE (iter $i)"; notify; break
   fi
-  if grep -q "<PHASE_BLOCKED:" ".ralph/logs/iter-$i.md"; then
+  if grep -qE "^[[:space:]]*<PHASE_BLOCKED:" ".ralph/logs/iter-$i.md"; then
     echo "⛔ phase의 남은 태스크가 전부 격리됨 — .ralph/blocked_tasks 리뷰 필요"; notify; break
   fi
-  if grep -q "<PHASE_COMPLETE:" ".ralph/logs/iter-$i.md"; then
+  if grep -qE "^[[:space:]]*<PHASE_COMPLETE:" ".ralph/logs/iter-$i.md"; then
     CUR=$(cat .ralph/current_phase)
     echo "── phase $CUR 완료 신호"
     if [ "${PHASE_VERIFY:-0}" != "1" ]; then

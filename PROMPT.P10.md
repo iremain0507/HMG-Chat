@@ -65,7 +65,10 @@
   `.ralph/blocked_tasks` 에 `<task-id> | <한 줄 사유>` append 후 **같은 phase 의 다음 태스크로 진행**.
 - `.ralph/BLOCKED` 는 쓰지 않는다(wrapper 전용).
 
-## 7. 신호
+## 7. 신호 (엄격 — 오탐 방지)
 
-- P10 에서 격리 안된 항목 전부 passes=true → `.ralph/PHASE_DONE` 에 `P10` 기록, 정확히 `<PHASE_COMPLETE:P10>` 출력 후 종료.
-- P10 의 남은 미완 항목이 전부 격리 → 정확히 `<PHASE_BLOCKED:P10>` 출력 후 종료.
+- 신호를 낼 때만, **출력의 마지막 줄에 신호 문자열만 단독**으로(앞뒤 다른 텍스트·백틱·따옴표 없이) 쓴다. 래퍼가 "라인 시작 = 신호" 로 감지하므로 산문 중간/인용에 이 토큰을 쓰면 오탐 break 가 난다.
+- **신호를 내지 않을 때는 `<PHASE_COMPLETE:...>`·`<PHASE_BLOCKED:...>`·`<ALL_TASKS_COMPLETE>` 문자열을 출력 어디에도 쓰지 말 것**(설명/부정문에도 금지). "다음 태스크가 남아있다" 처럼 토큰 없이 서술.
+- P10 에서 격리 안된 항목 전부 passes=true → `.ralph/PHASE_DONE` 에 `P10` 기록 후, 마지막 줄에 `<PHASE_COMPLETE:P10>` 단독 출력하고 종료.
+- P10 의 남은 미완 항목이 전부 격리 → 마지막 줄에 `<PHASE_BLOCKED:P10>` 단독 출력하고 종료.
+- 그 외(태스크 1개 완료, 다음 태스크 남음) → 신호 없이 간단 요약만 출력.
