@@ -28,6 +28,7 @@
     "@wchat/interfaces": "workspace:*",
     "@wchat/shared": "workspace:*",
     "drizzle-orm": "0.36.0",
+    "e2b": "^2.33.0",
     "hono": "4.6.0",
     "jsonwebtoken": "^9.0.0",
     "jszip": "^3.10.1",
