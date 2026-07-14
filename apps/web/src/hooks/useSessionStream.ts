@@ -4,7 +4,13 @@
 // DELETE /sessions/:id/active-run 소비. 18-FRONTEND-WIREFRAMES § 18.6.3 stream 처리
 // reducer 를 Phase 2 서버 구현 범위(message_start/text_delta/stop/error)로 좁혀 구현 —
 // tool_use/hitl_*/citation/artifact_created/message_replace 는 Phase 3/4 이후 확장.
-import { useCallback, useRef, useState } from "react";
+//
+// P10-T6-15 — 19-UIUX-UPGRADE 원칙 2(메시지=트리 데이터모델): 메시지를 부모 포인터
+// (parentOf) + 형제 순서(childrenOf) + 활성 자식(activeChildOf) 로 저장하고, 공개
+// `messages` 는 root→tip 활성경로만 매 렌더 계산해 노출한다. 편집(editMessage)은
+// 대상 user 메시지와 같은 부모를 공유하는 새 형제 노드를 만들어 활성 자식으로 전환하고,
+// switchBranch 는 활성 자식 포인터만 바꿔 이전에 스트리밍된 형제 분기를 그대로 복원한다.
+import { useCallback, useMemo, useRef, useState } from "react";
 
 export type ToolCallStatus = "queued" | "running" | "done" | "error";
 
@@ -19,6 +25,11 @@ export type MessagePart =
       result?: string | unknown;
     };
 
+export interface MessageBranch {
+  index: number;
+  count: number;
+}
+
 export interface StreamMessage {
   id: string;
   role: "user" | "assistant";
@@ -27,6 +38,7 @@ export interface StreamMessage {
   truncated?: boolean;
   error?: boolean;
   citations?: Citation[];
+  branch?: MessageBranch;
 }
 
 // 14-INTERFACES § ChatEvent.citation 과 1:1 (type 필드 제외).
@@ -135,23 +147,94 @@ function parseSseFrame(frame: string): ChatStreamEvent | null {
   }
 }
 
+// 트리 루트(부모가 없는 노드들)의 부모 키로 쓰는 센티널.
+const ROOT = "";
+
+interface TreeData {
+  nodes: Record<string, StreamMessage>;
+  parentOf: Record<string, string | null>;
+  childrenOf: Record<string, string[]>;
+  activeChildOf: Record<string, string>;
+}
+
+function createTree(): TreeData {
+  return { nodes: {}, parentOf: {}, childrenOf: {}, activeChildOf: {} };
+}
+
+function getTipId(t: TreeData): string | null {
+  let key = ROOT;
+  let tip: string | null = null;
+  for (;;) {
+    const childId = t.activeChildOf[key];
+    if (!childId) break;
+    tip = childId;
+    key = childId;
+  }
+  return tip;
+}
+
 export function useSessionStream(sessionId: string) {
-  const [messages, setMessages] = useState<StreamMessage[]>([]);
+  const treeRef = useRef<TreeData>(createTree());
+  const idCounterRef = useRef(0);
+  const [version, setVersion] = useState(0);
+  const bump = useCallback(() => setVersion((v) => v + 1), []);
+
+  const addNode = useCallback(
+    (id: string, parentId: string | null, message: StreamMessage) => {
+      const t = treeRef.current;
+      t.nodes[id] = message;
+      t.parentOf[id] = parentId;
+      const key = parentId ?? ROOT;
+      t.childrenOf[key] = [...(t.childrenOf[key] ?? []), id];
+      t.activeChildOf[key] = id;
+      bump();
+    },
+    [bump],
+  );
+
+  const updateNode = useCallback(
+    (id: string, updater: (m: StreamMessage) => StreamMessage) => {
+      const t = treeRef.current;
+      const cur = t.nodes[id];
+      if (!cur) return;
+      t.nodes[id] = updater(cur);
+      bump();
+    },
+    [bump],
+  );
+
   const [isStreaming, setIsStreaming] = useState(false);
   const [hitlRequest, setHitlRequest] = useState<HitlPromptData | null>(null);
   const [artifacts, setArtifacts] = useState<ArtifactSummary[]>([]);
   const abortRef = useRef<AbortController | null>(null);
 
-  const send = useCallback(
+  const messages = useMemo<StreamMessage[]>(() => {
+    const t = treeRef.current;
+    const path: StreamMessage[] = [];
+    let key = ROOT;
+    for (;;) {
+      const childId = t.activeChildOf[key];
+      if (!childId) break;
+      const node = t.nodes[childId];
+      if (!node) break;
+      const siblings = t.childrenOf[key] ?? [];
+      const branch: MessageBranch | undefined =
+        siblings.length > 1
+          ? { index: siblings.indexOf(childId) + 1, count: siblings.length }
+          : undefined;
+      path.push(branch ? { ...node, branch } : node);
+      key = childId;
+    }
+    return path;
+  }, [version]);
+
+  const streamTurn = useCallback(
     async (
+      userNodeId: string,
       content: string,
       attachments?: Array<{ uploadId: string }>,
       options?: SendOptions,
     ) => {
-      setMessages((prev) => [
-        ...prev,
-        { id: `local-${prev.length}-${content}`, role: "user", content },
-      ]);
       setIsStreaming(true);
 
       const controller = new AbortController();
@@ -200,78 +283,67 @@ export function useSessionStream(sessionId: string) {
             if (!event) continue;
 
             if (event.type === "message_start") {
-              assistantId = event.messageId;
-              const id = assistantId;
-              setMessages((prev) => [
-                ...prev,
-                { id, role: "assistant", content: "" },
-              ]);
+              // 트리 노드 키는 항상 내부에서 새로 발급한다 — 서버 messageId 를
+              // 그대로 키로 쓰면 재생성/재시도처럼 같은 messageId 가 다른 턴에서도
+              // 재사용될 수 있는 상황(테스트 목·서버 재사용 등)에서 이전 턴의
+              // parent→child 포인터와 충돌해 트리에 사이클이 생긴다.
+              assistantId = `local-a-${idCounterRef.current++}`;
+              addNode(assistantId, userNodeId, {
+                id: assistantId,
+                role: "assistant",
+                content: "",
+              });
             } else if (event.type === "text_delta" && assistantId) {
-              const id = assistantId;
-              setMessages((prev) =>
-                prev.map((m) => {
-                  if (m.id !== id) return m;
-                  const parts = m.parts ?? [];
-                  const last = parts.at(-1);
-                  const nextParts: MessagePart[] =
-                    last?.type === "text"
-                      ? [
-                          ...parts.slice(0, -1),
-                          { type: "text", text: last.text + event.text },
-                        ]
-                      : [...parts, { type: "text", text: event.text }];
-                  return {
-                    ...m,
-                    content: m.content + event.text,
-                    parts: nextParts,
-                  };
-                }),
-              );
+              updateNode(assistantId, (m) => {
+                const parts = m.parts ?? [];
+                const last = parts.at(-1);
+                const nextParts: MessagePart[] =
+                  last?.type === "text"
+                    ? [
+                        ...parts.slice(0, -1),
+                        { type: "text", text: last.text + event.text },
+                      ]
+                    : [...parts, { type: "text", text: event.text }];
+                return {
+                  ...m,
+                  content: m.content + event.text,
+                  parts: nextParts,
+                };
+              });
             } else if (event.type === "tool_use" && assistantId) {
-              const id = assistantId;
-              setMessages((prev) =>
-                prev.map((m) =>
-                  m.id === id
-                    ? {
-                        ...m,
-                        parts: [
-                          ...(m.parts ?? []),
-                          {
-                            type: "tool",
-                            toolCallId: event.toolCallId,
-                            name: event.name,
-                            args: event.args,
-                            status: "running",
-                          },
-                        ],
-                      }
-                    : m,
-                ),
-              );
+              updateNode(assistantId, (m) => ({
+                ...m,
+                parts: [
+                  ...(m.parts ?? []),
+                  {
+                    type: "tool",
+                    toolCallId: event.toolCallId,
+                    name: event.name,
+                    args: event.args,
+                    status: "running",
+                  },
+                ],
+              }));
             } else if (event.type === "tool_result" && assistantId) {
-              const id = assistantId;
-              setMessages((prev) =>
-                prev.map((m) =>
-                  m.id === id && m.parts
-                    ? {
-                        ...m,
-                        parts: m.parts.map((p) =>
-                          p.type === "tool" && p.toolCallId === event.toolCallId
-                            ? {
-                                ...p,
-                                status: isErrorToolResult(event.content)
-                                  ? "error"
-                                  : "done",
-                                result: event.content,
-                              }
-                            : p,
-                        ),
-                      }
-                    : m,
-                ),
+              updateNode(assistantId, (m) =>
+                m.parts
+                  ? {
+                      ...m,
+                      parts: m.parts.map((p) =>
+                        p.type === "tool" && p.toolCallId === event.toolCallId
+                          ? {
+                              ...p,
+                              status: isErrorToolResult(event.content)
+                                ? "error"
+                                : "done",
+                              result: event.content,
+                            }
+                          : p,
+                      ),
+                    }
+                  : m,
               );
             } else if (event.type === "citation" && assistantId) {
-              const id = assistantId;
               const citation: Citation = {
                 index: event.index,
                 source: event.source,
@@ -289,13 +361,10 @@ export function useSessionStream(sessionId: string) {
                   ? { sourceUri: event.sourceUri }
                   : {}),
               };
-              setMessages((prev) =>
-                prev.map((m) =>
-                  m.id === id
-                    ? { ...m, citations: [...(m.citations ?? []), citation] }
-                    : m,
-                ),
-              );
+              updateNode(assistantId, (m) => ({
+                ...m,
+                citations: [...(m.citations ?? []), citation],
+              }));
             } else if (event.type === "artifact_created") {
               setArtifacts((prev) => [
                 ...prev,
@@ -328,15 +397,13 @@ export function useSessionStream(sessionId: string) {
               setIsStreaming(false);
             } else if (event.type === "error") {
               const message = event.error?.message ?? "알 수 없는 오류";
-              setMessages((prev) => [
-                ...prev,
-                {
-                  id: `err-${prev.length}`,
-                  role: "assistant",
-                  content: message,
-                  error: true,
-                },
-              ]);
+              const errId = `local-err-${idCounterRef.current++}`;
+              addNode(errId, assistantId ?? userNodeId, {
+                id: errId,
+                role: "assistant",
+                content: message,
+                error: true,
+              });
               setIsStreaming(false);
             }
           }
@@ -350,29 +417,79 @@ export function useSessionStream(sessionId: string) {
         abortRef.current = null;
       }
     },
-    [sessionId],
+    [sessionId, addNode, updateNode],
+  );
+
+  const send = useCallback(
+    async (
+      content: string,
+      attachments?: Array<{ uploadId: string }>,
+      options?: SendOptions,
+    ) => {
+      const tipId = getTipId(treeRef.current);
+      const userId = `local-u-${idCounterRef.current++}`;
+      addNode(userId, tipId, { id: userId, role: "user", content });
+      await streamTurn(userId, content, attachments, options);
+    },
+    [addNode, streamTurn],
+  );
+
+  const editMessage = useCallback(
+    async (messageId: string, newContent: string) => {
+      const t = treeRef.current;
+      const target = t.nodes[messageId];
+      if (!target || target.role !== "user") return;
+      const parentId = t.parentOf[messageId] ?? null;
+      const userId = `local-u-${idCounterRef.current++}`;
+      addNode(userId, parentId, {
+        id: userId,
+        role: "user",
+        content: newContent,
+      });
+      await streamTurn(userId, newContent);
+    },
+    [addNode, streamTurn],
+  );
+
+  const switchBranch = useCallback(
+    (messageId: string, direction: "prev" | "next") => {
+      const t = treeRef.current;
+      const parentId = t.parentOf[messageId];
+      if (parentId === undefined) return;
+      const key = parentId ?? ROOT;
+      const siblings = t.childrenOf[key] ?? [];
+      const idx = siblings.indexOf(messageId);
+      if (idx === -1) return;
+      const nextIdx = direction === "prev" ? idx - 1 : idx + 1;
+      if (nextIdx < 0 || nextIdx >= siblings.length) return;
+      const nextId = siblings[nextIdx];
+      if (!nextId) return;
+      t.activeChildOf[key] = nextId;
+      bump();
+    },
+    [bump],
   );
 
   const stop = useCallback(async () => {
     abortRef.current?.abort();
     setIsStreaming(false);
-    setMessages((prev) => {
-      if (prev.length === 0) return prev;
-      const last = prev[prev.length - 1];
-      if (!last || last.role !== "assistant") return prev;
-      const updated = prev.slice();
-      updated[updated.length - 1] = {
-        ...last,
-        content: `${last.content}\n\n[잘림]`,
-        truncated: true,
-      };
-      return updated;
-    });
+    const t = treeRef.current;
+    const tipId = getTipId(t);
+    if (tipId) {
+      const tip = t.nodes[tipId];
+      if (tip && tip.role === "assistant") {
+        updateNode(tipId, (m) => ({
+          ...m,
+          content: `${m.content}\n\n[잘림]`,
+          truncated: true,
+        }));
+      }
+    }
     await fetch(`/api/v1/sessions/${sessionId}/active-run`, {
       method: "DELETE",
       credentials: "include",
     }).catch(() => {});
-  }, [sessionId]);
+  }, [sessionId, updateNode]);
 
   const respondHitl = useCallback(
     async (
@@ -404,5 +521,7 @@ export function useSessionStream(sessionId: string) {
     hitlRequest,
     respondHitl,
     artifacts,
+    editMessage,
+    switchBranch,
   };
 }

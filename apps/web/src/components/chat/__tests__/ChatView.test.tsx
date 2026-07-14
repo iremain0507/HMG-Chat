@@ -1062,4 +1062,81 @@ describe("ChatView", () => {
     fireEvent.click(screen.getByRole("button", { name: "닫기" }));
     expect(screen.queryByTestId("memory-panel")).not.toBeInTheDocument();
   });
+
+  it("user 메시지를 편집하면 새 분기로 전환되고, 페이저로 형제 분기 사이를 오갈 수 있다 (P10-T6-15)", async () => {
+    const encoder = new TextEncoder();
+    const fetchMock = vi.fn(async () => ({
+      body: new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.enqueue(
+            encoder.encode(sseFrame("message_start", { messageId: "msg-1" })),
+          );
+          controller.enqueue(
+            encoder.encode(sseFrame("text_delta", { text: "첫 응답" })),
+          );
+          controller.enqueue(
+            encoder.encode(sseFrame("stop", { reason: "end_turn" })),
+          );
+          controller.close();
+        },
+      }),
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<ChatView sessionId="session-1" />);
+    fireEvent.change(screen.getByLabelText("메시지 입력"), {
+      target: { value: "원본 질문" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "전송" }));
+
+    await waitFor(() => {
+      expect(screen.getByText("첫 응답")).toBeInTheDocument();
+    });
+
+    expect(
+      screen.queryByTestId("message-branch-pager"),
+    ).not.toBeInTheDocument();
+
+    fetchMock.mockImplementationOnce(async () => ({
+      body: new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.enqueue(
+            encoder.encode(sseFrame("message_start", { messageId: "msg-2" })),
+          );
+          controller.enqueue(
+            encoder.encode(sseFrame("text_delta", { text: "편집된 응답" })),
+          );
+          controller.enqueue(
+            encoder.encode(sseFrame("stop", { reason: "end_turn" })),
+          );
+          controller.close();
+        },
+      }),
+    }));
+
+    fireEvent.click(screen.getByRole("button", { name: "편집" }));
+    fireEvent.change(screen.getByLabelText("메시지 편집"), {
+      target: { value: "편집된 질문" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "저장" }));
+
+    await waitFor(() => {
+      expect(screen.getByText("편집된 응답")).toBeInTheDocument();
+    });
+    expect(screen.getByText("편집된 질문")).toBeInTheDocument();
+    expect(screen.queryByText("원본 질문")).not.toBeInTheDocument();
+    expect(screen.getByTestId("message-branch-pager")).toHaveTextContent(
+      "2 / 2",
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "이전 분기" }));
+
+    await waitFor(() => {
+      expect(screen.getByText("원본 질문")).toBeInTheDocument();
+    });
+    expect(screen.getByText("첫 응답")).toBeInTheDocument();
+    expect(screen.getByTestId("message-branch-pager")).toHaveTextContent(
+      "1 / 2",
+    );
+  });
 });

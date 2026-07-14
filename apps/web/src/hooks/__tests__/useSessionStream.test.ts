@@ -479,4 +479,102 @@ describe("useSessionStream", () => {
 
     releaseStream?.();
   });
+
+  it("editMessage 는 대상 user 메시지의 형제 분기를 새로 만들고, 활성경로가 새 분기로 전환된다 (P10-T6-15)", async () => {
+    const fetchMock = vi.fn(async () => ({
+      body: sseBody([
+        sseFrame("message_start", { messageId: "msg-1" }),
+        sseFrame("text_delta", { text: "첫 응답" }),
+        sseFrame("stop", { reason: "end_turn" }),
+      ]),
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { result } = renderHook(() => useSessionStream("session-1"));
+
+    await act(async () => {
+      await result.current.send("원본 질문");
+    });
+
+    const userMessage = result.current.messages.find((m) => m.role === "user");
+    expect(userMessage).toBeDefined();
+    expect(userMessage?.branch).toBeUndefined();
+
+    fetchMock.mockImplementationOnce(async () => ({
+      body: sseBody([
+        sseFrame("message_start", { messageId: "msg-2" }),
+        sseFrame("text_delta", { text: "편집된 응답" }),
+        sseFrame("stop", { reason: "end_turn" }),
+      ]),
+    }));
+
+    await act(async () => {
+      await result.current.editMessage(userMessage!.id, "편집된 질문");
+    });
+
+    // 활성경로가 새 분기로 전환: user 메시지 2개(형제 각 1/2, 2/2)가 아니라
+    // 활성경로에는 편집된 user 메시지 1개만 렌더되고, 페이저 정보를 담는다.
+    const userMessages = result.current.messages.filter(
+      (m) => m.role === "user",
+    );
+    expect(userMessages).toHaveLength(1);
+    expect(userMessages[0]?.content).toBe("편집된 질문");
+    expect(userMessages[0]?.branch).toEqual({ index: 2, count: 2 });
+
+    const assistantMessage = result.current.messages.find(
+      (m) => m.role === "assistant",
+    );
+    expect(assistantMessage?.content).toBe("편집된 응답");
+  });
+
+  it("switchBranch 로 형제 분기를 전환하면 활성경로가 해당 분기의 이전에 스트리밍된 내용으로 복원된다 (P10-T6-15)", async () => {
+    const fetchMock = vi.fn(async () => ({
+      body: sseBody([
+        sseFrame("message_start", { messageId: "msg-1" }),
+        sseFrame("text_delta", { text: "첫 응답" }),
+        sseFrame("stop", { reason: "end_turn" }),
+      ]),
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { result } = renderHook(() => useSessionStream("session-1"));
+
+    await act(async () => {
+      await result.current.send("원본 질문");
+    });
+    const originalUserId = result.current.messages.find(
+      (m) => m.role === "user",
+    )!.id;
+
+    fetchMock.mockImplementationOnce(async () => ({
+      body: sseBody([
+        sseFrame("message_start", { messageId: "msg-2" }),
+        sseFrame("text_delta", { text: "편집된 응답" }),
+        sseFrame("stop", { reason: "end_turn" }),
+      ]),
+    }));
+    await act(async () => {
+      await result.current.editMessage(originalUserId, "편집된 질문");
+    });
+
+    const editedUserId = result.current.messages.find(
+      (m) => m.role === "user",
+    )!.id;
+
+    act(() => {
+      result.current.switchBranch(editedUserId, "prev");
+    });
+
+    const afterSwitch = result.current.messages;
+    expect(afterSwitch.find((m) => m.role === "user")?.content).toBe(
+      "원본 질문",
+    );
+    expect(afterSwitch.find((m) => m.role === "user")?.branch).toEqual({
+      index: 1,
+      count: 2,
+    });
+    expect(afterSwitch.find((m) => m.role === "assistant")?.content).toBe(
+      "첫 응답",
+    );
+  });
 });

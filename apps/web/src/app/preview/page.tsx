@@ -11,6 +11,7 @@ import { MessageActions } from "../../components/chat/MessageActions";
 import { ToolCallRenderer } from "../../components/chat/ToolCallRenderer";
 import { HitlPrompt } from "../../components/chat/HitlPrompt";
 import { ChatInput } from "../../components/chat/ChatInput";
+import { MessageItem } from "../../components/chat/ChatView";
 import { ProjectPicker } from "../../components/chat/ProjectPicker";
 import { MemoryPanel } from "../../components/chat/MemoryPanel";
 import {
@@ -145,6 +146,51 @@ function ProjectPickerPreview() {
       projectId={projectId}
       onSelect={setProjectId}
     />
+  );
+}
+
+// P10-T6-15 — 메시지 편집/분기(트리) + 형제 페이저 프리뷰 데모.
+//   실제 useSessionStream 대신 로컬 state 로 분기 배열을 흉내내 SSE 없이도
+//   편집→새 분기 생성→페이저 전환 인터랙션을 그대로 재현한다.
+function MessageBranchPreview() {
+  const [branches, setBranches] = useState(["원본 질문입니다."]);
+  const [replies] = useState(["이것이 첫 번째 응답입니다."]);
+  const [activeIndex, setActiveIndex] = useState(0);
+
+  return (
+    <ul className="space-y-3">
+      <MessageItem
+        role="user"
+        content={branches[activeIndex] ?? ""}
+        streaming={false}
+        error={false}
+        {...(branches.length > 1
+          ? { branch: { index: activeIndex + 1, count: branches.length } }
+          : {})}
+        onEditSubmit={(nextContent) => {
+          setBranches((prev) => {
+            const next = [...prev, nextContent];
+            setActiveIndex(next.length - 1);
+            return next;
+          });
+        }}
+        onSwitchBranch={(direction) => {
+          setActiveIndex((idx) =>
+            direction === "prev"
+              ? Math.max(0, idx - 1)
+              : Math.min(branches.length - 1, idx + 1),
+          );
+        }}
+      />
+      <MessageItem
+        role="assistant"
+        content={
+          replies[activeIndex] ?? "새 분기에 대한 응답을 기다리는 중입니다."
+        }
+        streaming={false}
+        error={false}
+      />
+    </ul>
   );
 }
 
@@ -301,6 +347,10 @@ export default function PreviewGallery() {
           availableModels={AVAILABLE_MODELS}
           availableTools={AVAILABLE_TOOLS}
         />
+      </Section>
+
+      <Section name="message-branch">
+        <MessageBranchPreview />
       </Section>
 
       <Section name="project-picker">

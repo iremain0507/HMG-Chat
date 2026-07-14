@@ -824,8 +824,8 @@
     "acceptance": "user 편집→새 분기 + 페이저로 형제 전환 + 활성경로 렌더; RED→GREEN, verify-gates green",
     "phase": "P10",
     "team": "T6",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P10-T6-16",

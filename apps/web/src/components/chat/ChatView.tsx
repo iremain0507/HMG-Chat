@@ -9,6 +9,7 @@ import {
   useSessionStream,
   type MessagePart,
   type Citation,
+  type MessageBranch,
 } from "../../hooks/useSessionStream";
 import { useCurrentUser } from "../../hooks/useCurrentUser";
 import { useProjects } from "../../hooks/useProjects";
@@ -49,6 +50,8 @@ export function ChatView({ sessionId }: { sessionId: string }) {
     hitlRequest,
     respondHitl,
     artifacts,
+    editMessage,
+    switchBranch,
   } = useSessionStream(sessionId);
   const { org } = useCurrentUser();
   const { projects } = useProjects();
@@ -216,6 +219,7 @@ export function ChatView({ sessionId }: { sessionId: string }) {
                       content={m.content}
                       {...(m.parts ? { parts: m.parts } : {})}
                       {...(m.citations ? { citations: m.citations } : {})}
+                      {...(m.branch ? { branch: m.branch } : {})}
                       error={m.error ?? false}
                       streaming={
                         isStreaming &&
@@ -231,6 +235,14 @@ export function ChatView({ sessionId }: { sessionId: string }) {
                                 .find((prev) => prev.role === "user");
                               if (priorUser) void send(priorUser.content);
                             },
+                          }
+                        : {})}
+                      {...(m.role === "user"
+                        ? {
+                            onEditSubmit: (nextContent: string) =>
+                              void editMessage(m.id, nextContent),
+                            onSwitchBranch: (direction: "prev" | "next") =>
+                              switchBranch(m.id, direction),
                           }
                         : {})}
                     />
@@ -296,24 +308,32 @@ export function ChatView({ sessionId }: { sessionId: string }) {
   );
 }
 
-function MessageItem({
+export function MessageItem({
   role,
   content,
   parts,
   citations,
+  branch,
   streaming,
   error,
   onRegenerate,
+  onEditSubmit,
+  onSwitchBranch,
 }: {
   role: "user" | "assistant";
   content: string;
   parts?: MessagePart[];
   citations?: Citation[];
+  branch?: MessageBranch;
   streaming: boolean;
   error?: boolean;
   onRegenerate?: () => void;
+  onEditSubmit?: (nextContent: string) => void;
+  onSwitchBranch?: (direction: "prev" | "next") => void;
 }) {
   const [focusedCitation, setFocusedCitation] = useState<number | null>(null);
+  const [isEditing, setIsEditing] = useState(false);
+  const [draft, setDraft] = useState(content);
   const onCitationClick = (index: number) => {
     setFocusedCitation(index);
     const el = document.getElementById(`citation-ref-${index}`);
@@ -332,14 +352,85 @@ function MessageItem({
     );
   }
   if (role === "user") {
+    if (isEditing) {
+      return (
+        <li data-role="user" className="flex justify-end">
+          <div className="w-full max-w-[80%]">
+            <div className="flex flex-col gap-2 rounded-2xl border border-primary bg-surface p-2">
+              <textarea
+                aria-label="메시지 편집"
+                value={draft}
+                onChange={(e) => setDraft(e.target.value)}
+                className="min-h-[60px] w-full resize-none bg-transparent px-1 py-1 text-sm text-fg outline-none"
+              />
+              <div className="flex justify-end gap-2 text-xs">
+                <button
+                  type="button"
+                  onClick={() => setIsEditing(false)}
+                  className="rounded-md px-2 py-1 text-fg-muted hover:text-fg"
+                >
+                  취소
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsEditing(false);
+                    if (draft.trim() && draft !== content) {
+                      onEditSubmit?.(draft);
+                    }
+                  }}
+                  className="rounded-md bg-primary px-2 py-1 text-primary-fg"
+                >
+                  저장
+                </button>
+              </div>
+            </div>
+          </div>
+        </li>
+      );
+    }
     return (
       <li data-role="user" className="group flex justify-end">
         <div className="max-w-[80%]">
           <div className="whitespace-pre-wrap rounded-2xl bg-primary px-4 py-2.5 text-primary-fg">
             {content}
           </div>
-          <div className="mt-1 flex justify-end opacity-0 transition-opacity group-hover:opacity-100">
-            <MessageActions role="user" content={content} />
+          <div className="mt-1 flex items-center justify-end gap-2">
+            {branch && branch.count > 1 && (
+              <div className="flex items-center gap-1 text-fg-muted">
+                <button
+                  type="button"
+                  aria-label="이전 분기"
+                  disabled={branch.index === 1}
+                  onClick={() => onSwitchBranch?.("prev")}
+                  className="rounded-md px-1 py-0.5 text-xs hover:text-fg disabled:opacity-30"
+                >
+                  ‹
+                </button>
+                <span data-testid="message-branch-pager" className="text-xs">
+                  {branch.index} / {branch.count}
+                </span>
+                <button
+                  type="button"
+                  aria-label="다음 분기"
+                  disabled={branch.index === branch.count}
+                  onClick={() => onSwitchBranch?.("next")}
+                  className="rounded-md px-1 py-0.5 text-xs hover:text-fg disabled:opacity-30"
+                >
+                  ›
+                </button>
+              </div>
+            )}
+            <div className="opacity-0 transition-opacity group-hover:opacity-100">
+              <MessageActions
+                role="user"
+                content={content}
+                onEdit={() => {
+                  setDraft(content);
+                  setIsEditing(true);
+                }}
+              />
+            </div>
           </div>
         </div>
       </li>

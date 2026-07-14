@@ -8,10 +8,12 @@ export function MessageActions({
   role,
   content,
   onRegenerate,
+  onEdit,
 }: {
   role: "user" | "assistant";
   content: string;
   onRegenerate?: () => void;
+  onEdit?: () => void;
 }) {
   const [copied, setCopied] = useState(false);
   const [feedback, setFeedback] = useState<"up" | "down" | null>(null);
@@ -32,6 +34,16 @@ export function MessageActions({
       >
         {copied ? "복사됨" : "복사"}
       </button>
+      {role === "user" && onEdit && (
+        <button
+          type="button"
+          aria-label="편집"
+          onClick={onEdit}
+          className="rounded-md p-1 text-xs hover:bg-surface hover:text-fg"
+        >
+          편집
+        </button>
+      )}
       {role === "assistant" && onRegenerate && (
         <button
           type="button"
