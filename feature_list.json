@@ -851,7 +851,7 @@
     "acceptance": "로그인→채팅→전송 e2e green + P10 화면 스크린샷 .ralph/screenshots/e2e/; 스택 기동/시드 세션 불가 시 격리",
     "phase": "P10",
     "team": "T6",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   }
 ]
