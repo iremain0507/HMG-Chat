@@ -689,8 +689,8 @@
     "acceptance": "live region 속성 존재 + 빠른 델타에서 announce 디바운스; RED→GREEN, verify-gates green",
     "phase": "P10",
     "team": "T6",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P10-T2-01",

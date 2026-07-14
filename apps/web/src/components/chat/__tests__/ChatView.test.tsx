@@ -306,4 +306,110 @@ describe("ChatView", () => {
       screen.queryByRole("button", { name: "최신으로↓" }),
     ).not.toBeInTheDocument();
   });
+
+  it("스트리밍 컨테이너에 role=log + aria-live=polite + aria-atomic=false 가 있다", () => {
+    render(<ChatView sessionId="session-1" />);
+
+    const scrollEl = screen.getByTestId("chat-scroll");
+    expect(scrollEl).toHaveAttribute("role", "log");
+    expect(scrollEl).toHaveAttribute("aria-live", "polite");
+    expect(scrollEl).toHaveAttribute("aria-atomic", "false");
+  });
+
+  it("빠른 연속 text_delta 에서도 SR 안내(announcer)는 즉시 갱신되지 않고 디바운스된 뒤 반영된다", async () => {
+    const encoder = new TextEncoder();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({
+        body: new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.enqueue(
+              encoder.encode(sseFrame("message_start", { messageId: "msg-1" })),
+            );
+            controller.enqueue(
+              encoder.encode(sseFrame("text_delta", { text: "h" })),
+            );
+            controller.enqueue(
+              encoder.encode(sseFrame("text_delta", { text: "e" })),
+            );
+            controller.enqueue(
+              encoder.encode(sseFrame("text_delta", { text: "l" })),
+            );
+            controller.enqueue(
+              encoder.encode(sseFrame("text_delta", { text: "l" })),
+            );
+            controller.enqueue(
+              encoder.encode(sseFrame("text_delta", { text: "o" })),
+            );
+            controller.enqueue(
+              encoder.encode(sseFrame("stop", { reason: "end_turn" })),
+            );
+            controller.close();
+          },
+        }),
+      })),
+    );
+
+    render(<ChatView sessionId="session-1" />);
+    fireEvent.change(screen.getByLabelText("메시지 입력"), {
+      target: { value: "hi" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "전송" }));
+
+    await waitFor(() => {
+      expect(screen.getByText("hello")).toBeInTheDocument();
+    });
+
+    const announcer = screen.getByTestId("stream-announcer");
+    expect(announcer).not.toHaveTextContent("hello");
+
+    await waitFor(
+      () => {
+        expect(announcer).toHaveTextContent("hello");
+      },
+      { timeout: 2000 },
+    );
+  });
+
+  it("스트리밍 종료로 Stop 버튼이 사라져 포커스를 잃으면 입력창으로 포커스를 복귀시킨다(새 turn 포커스 탈취 방지)", async () => {
+    let releaseStream: (() => void) | undefined;
+    const encoder = new TextEncoder();
+    const streamingBody = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(
+          encoder.encode(sseFrame("message_start", { messageId: "msg-1" })),
+        );
+        releaseStream = () => {
+          controller.enqueue(
+            encoder.encode(sseFrame("stop", { reason: "end_turn" })),
+          );
+          controller.close();
+        };
+      },
+    });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({ body: streamingBody })),
+    );
+
+    render(<ChatView sessionId="session-1" />);
+    fireEvent.change(screen.getByLabelText("메시지 입력"), {
+      target: { value: "hi" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "전송" }));
+
+    const stopButton = await screen.findByRole("button", { name: "Stop" });
+    stopButton.focus();
+    expect(document.activeElement).toBe(stopButton);
+
+    releaseStream?.();
+
+    await waitFor(() => {
+      expect(
+        screen.queryByRole("button", { name: "Stop" }),
+      ).not.toBeInTheDocument();
+    });
+
+    expect(document.activeElement).toBe(screen.getByLabelText("메시지 입력"));
+  });
 });

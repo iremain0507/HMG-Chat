@@ -16,6 +16,7 @@ import { Markdown } from "./Markdown";
 import { MessageActions } from "./MessageActions";
 
 const BOTTOM_THRESHOLD_PX = 80;
+const ANNOUNCE_DEBOUNCE_MS = 500;
 
 const SUGGESTIONS = [
   "프로젝트 요약해줘",
@@ -28,13 +29,43 @@ export function ChatView({ sessionId }: { sessionId: string }) {
   const { messages, isStreaming, send, stop } = useSessionStream(sessionId);
   const [input, setInput] = useState("");
   const [autoFollow, setAutoFollow] = useState(true);
+  const [announceText, setAnnounceText] = useState("");
   const scrollRef = useRef<HTMLDivElement>(null);
   const taRef = useRef<HTMLTextAreaElement>(null);
+  const wasStreamingRef = useRef(isStreaming);
 
   useEffect(() => {
     const el = scrollRef.current;
     if (el && autoFollow) el.scrollTop = el.scrollHeight;
   }, [messages, isStreaming, autoFollow]);
+
+  const lastMessage = messages[messages.length - 1];
+  const lastAssistantContent =
+    lastMessage?.role === "assistant" ? lastMessage.content : "";
+
+  // 빠른 델타마다 SR 안내가 갱신되면 스크린리더가 매 글자를 읽어 소음이 되므로,
+  // 델타가 잠잠해진 뒤(트레일링 디바운스)에만 announcer 텍스트를 갱신한다.
+  useEffect(() => {
+    if (!lastAssistantContent) return;
+    const timer = setTimeout(() => {
+      setAnnounceText(lastAssistantContent);
+    }, ANNOUNCE_DEBOUNCE_MS);
+    return () => clearTimeout(timer);
+  }, [lastAssistantContent]);
+
+  // Stop 버튼이 사라지며(또는 disabled 전송 버튼으로 대체되며) 포커스가 유실된
+  // 경우에만 입력창으로 복귀시킨다 — 사용자가 다른 요소에 의도적으로 포커스했다면
+  // 그대로 둔다 (그것이야말로 "새 turn 이 포커스를 탈취"하지 않는다는 뜻이다).
+  useEffect(() => {
+    if (wasStreamingRef.current && !isStreaming) {
+      const active = document.activeElement;
+      const lostFocus =
+        active === document.body ||
+        (active instanceof HTMLButtonElement && active.disabled);
+      if (lostFocus) taRef.current?.focus();
+    }
+    wasStreamingRef.current = isStreaming;
+  }, [isStreaming]);
 
   function onScroll() {
     const el = scrollRef.current;
@@ -103,8 +134,14 @@ export function ChatView({ sessionId }: { sessionId: string }) {
           ref={scrollRef}
           data-testid="chat-scroll"
           onScroll={onScroll}
+          role="log"
+          aria-live="polite"
+          aria-atomic="false"
           className="h-full overflow-y-auto"
         >
+          <div className="sr-only" data-testid="stream-announcer">
+            {announceText}
+          </div>
           {empty ? (
             <div className="grid h-full place-items-center px-6">
               <div className="text-center">
