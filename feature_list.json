@@ -887,8 +887,8 @@
     "acceptance": "3 프로바이더 포맷 골든테스트 통과 + toolChoice 매핑; RED→GREEN, verify-gates green",
     "phase": "P11",
     "team": "T2",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P11-T2-05",
