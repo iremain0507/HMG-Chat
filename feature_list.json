@@ -853,5 +853,239 @@
     "team": "T6",
     "passes": true,
     "attempts": 1
+  },
+  {
+    "id": "P11-T2-01",
+    "desc": "Anthropic provider tool 배선 — llm-provider-anthropic chat()가 input.tools→tools(inputSchema→input_schema)·toolChoice→tool_choice·parallelToolCalls===false→disable_parallel_tool_use forward + partial_json JSON.parse try/catch 견고화",
+    "acceptance": "tools 주입 시 body.tools/tool_choice 세팅 + 잘린 partial_json이 turn 안 죽임; RED→GREEN, verify-gates green",
+    "phase": "P11",
+    "team": "T2",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P11-T2-02",
+    "desc": "라우트 tool/model 주입 — routes/messages.ts가 내장핸들러+MCP툴을 AgentTool[]로 조립해 runTurn에 tools+toolContext(hitl/budget/logger) 주입 + body.model 파싱→org.allowedModels 화이트리스트→turn model; MessageRouteDeps에 tools/toolContext 필드",
+    "acceptance": "실HTTP(createApp) tool_use↔tool_result 왕복 + HITL 툴 승인 전 미실행 + 모델 선택 실반영; RED→GREEN, verify-gates green",
+    "phase": "P11",
+    "team": "T2",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P11-T2-03",
+    "desc": "llm-provider-registry.ts — LLMProvider 구현(name=registry, models=하위 union), input.model로 concrete provider 위임, 미등록 model→WChatError. app.ts가 레지스트리를 provider로 주입",
+    "acceptance": "unknown model→WChatError, 등록 model→해당 provider 위임; RED→GREEN, verify-gates green",
+    "phase": "P11",
+    "team": "T2",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P11-T2-04",
+    "desc": "tool-schema-codec.ts — AgentToolSpec→{anthropic input_schema / openai function.parameters / gemini functionDeclarations} 순수변환 + toolChoice(any↔required↔ANY) 매핑, 골든테스트",
+    "acceptance": "3 프로바이더 포맷 골든테스트 통과 + toolChoice 매핑; RED→GREEN, verify-gates green",
+    "phase": "P11",
+    "team": "T2",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P11-T2-05",
+    "desc": "llm-provider-openai.ts — OpenAI 어댑터(tool-schema-codec 사용 + args JSON-string parse→tool_use ChatEvent + 스트림→ChatEvent 정규화), fake client RED. dep: openai",
+    "acceptance": "fake client로 tool_use/text_delta/stop 정규화 + args parse; RED→GREEN, verify-gates green",
+    "phase": "P11",
+    "team": "T2",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P11-T2-06",
+    "desc": "llm-provider-google.ts — Gemini 어댑터(functionDeclarations, mode ANY, 스트림→ChatEvent), fake client RED. dep: @google/generative-ai",
+    "acceptance": "fake client로 functionCall→tool_use 정규화; RED→GREEN, verify-gates green",
+    "phase": "P11",
+    "team": "T2",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P11-T2-07",
+    "desc": "model-router.ts — 정적 role→model 맵(오케스트레이터=상위, memory/titling=경량) + org/plan 상한, selectModel이 ChatInput.model 설정, message_start.meta 관측",
+    "acceptance": "역할별 model 선택 + org 상한 초과 model 차단; RED→GREEN, verify-gates green",
+    "phase": "P11",
+    "team": "T2",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P11-T2-08",
+    "desc": "llm-failover.ts — first-token 이전에만 failover + context-window fallback + backoff + cooldown, AbortSignal-safe(첫 토큰 후 오류=error 이벤트, 무음전환 금지)",
+    "acceptance": "primary throw(첫토큰前)→secondary + 첫토큰 후 오류→무음전환 안 함; RED→GREEN, verify-gates green",
+    "phase": "P11",
+    "team": "T2",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P11-T1-01",
+    "desc": "GET /config 라우트 — availableModels(레지스트리 models ∩ org.allowedModels)+features 반환, app.ts 마운트 + routes-mounted.test.ts EXPECTED_ROUTES 추가 + org.allowedModels 시드",
+    "acceptance": "GET /config가 org별 availableModels 반환 + route-mount 가드 통과; RED→GREEN, verify-gates green",
+    "phase": "P11",
+    "team": "T1",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P11-T2-09",
+    "desc": "runTurn 병렬 tool 실행 — allow 정책 툴 Promise.all 병렬 + hitl 툴 직렬(승인 순서 보존) + tool_result 원래 tool_use 순서·id 정합. provider.chat에 parallelToolCalls 전달",
+    "acceptance": "독립 allow 툴 2개 동시 invoke + 결과 순서보존 + hitl 직렬승인; RED→GREEN, verify-gates green",
+    "phase": "P11",
+    "team": "T2",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P11-T2-10",
+    "desc": "arg-validator — tools/arg-validator.ts 순수함수 validateArgs(args, spec.inputSchema), runTurn이 invoke 직전 호출, 실패=tool_result(kind error, WChatError SCHEMA_INVALID), invoke 미트리거",
+    "acceptance": "필수 필드 누락/타입 불일치 args가 invoke 안 함 + tool_result error emit; RED→GREEN, verify-gates green",
+    "phase": "P11",
+    "team": "T2",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P11-T2-11",
+    "desc": "web_search 툴(Tavily) — 서버-로컬 WebSearchPort + Tavily 어댑터 + in-memory dev-stub + createWebSearchTool. defaultPolicy allow, tags read-only/idempotent/web. dep: tavily(또는 REST)",
+    "acceptance": "dev-stub 주입으로 검색 tool_result json 반환 + tags/policy; RED→GREEN, verify-gates green",
+    "phase": "P11",
+    "team": "T2",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P11-T1-02",
+    "desc": "SandboxTransport E2B 구현 — tools/sandbox/**에 frozen SandboxTransport(start/runCommand:AsyncIterable/writeFile/readFile/uploadToS3/stop) E2B 구현 + in-memory fake(runCommand chunk 시뮬), egress 기본 차단. dep: @e2b/*",
+    "acceptance": "fake로 runCommand chunk 스트림 + writeFile/readFile + egress 차단 검증; RED→GREEN, verify-gates green",
+    "phase": "P11",
+    "team": "T1",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P11-T2-12",
+    "desc": "code_interpreter 툴 — SandboxTransport DI, stdout 버퍼→text, 생성파일→artifact-store→kind:file→artifact_created emit, ctx.signal 취소 관통. defaultPolicy allow(순수)/hitl(부작용)",
+    "acceptance": "fake transport로 코드실행→stdout text + 파일→artifact_created + signal 취소 중단; RED→GREEN, verify-gates green",
+    "phase": "P11",
+    "team": "T2",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P11-T3-01",
+    "desc": "web-result citation 확정 — web_search/knowledge tool_result json을 search_result 호환 citation 페이로드(source ephemeral+sourceUri+title+snippet)로 확정, orchestrator 기존 unpack이 citation ChatEvent fan-out",
+    "acceptance": "web tool_result가 citation ChatEvent(ephemeral+sourceUri)로 fan-out; RED→GREEN, verify-gates green",
+    "phase": "P11",
+    "team": "T3",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P11-T1-03",
+    "desc": "MCP 보안 하드닝 — url-validator(SSRF)를 discover뿐 아니라 매 invoke에도 적용 + supportedTools description 변경감지/재승인(HITL), 첫-등장 MCP툴 defaultPolicy hitl",
+    "acceptance": "invoke마다 SSRF 재검증 + 변조 description이 재승인 트리거; RED→GREEN, verify-gates green",
+    "phase": "P11",
+    "team": "T1",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P11-T2-13",
+    "desc": "툴 관측 — 각 tool invoke를 lib/tool-metrics.ts + OTel gen_ai.* child span(툴명·durationMs·정책결정)으로 계측, 결과 본문은 span event",
+    "acceptance": "invoke가 tool-metrics 기록 + span 생성; RED→GREEN, verify-gates green",
+    "phase": "P11",
+    "team": "T2",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P12-T2-01",
+    "desc": "Orchestrator-Worker 조합 — worker=격리 컨텍스트+스코프 AgentToolSpec[]로 호출되는 runTurn 인스턴스, 중간 tool_use/result는 내부에 머물고 압축 최종텍스트만 부모 tool_result로 반환. 부모 스트림은 기존 ChatEvent만",
+    "acceptance": "worker fan-out + 최종메시지만 반환 + 부모 스트림 기존 ChatEvent만; RED→GREEN, verify-gates green",
+    "phase": "P12",
+    "team": "T2",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P12-T2-02",
+    "desc": "의존성 DAG 플래너 + 병렬 실행 — 목표→서브태스크+의존그래프(placeholder 변수), 독립노드 Promise.all(다수 runTurn 동시소비), 의존노드 순차. read-heavy·독립만 병렬, shared-state 단일 (LLMCompiler/ReWOO)",
+    "acceptance": "독립노드 병렬(시작 겹침)+의존노드 순차+placeholder 해소; RED→GREEN, verify-gates green",
+    "phase": "P12",
+    "team": "T2",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P12-T2-03",
+    "desc": "AbortSignal fan-out 취소 전파 — 오케스트레이터가 signal을 모든 worker runTurn에 전파, 부모 취소 시 진행중 병렬 worker 전부 즉시 중단",
+    "acceptance": "부모 취소→전 worker 중단; RED→GREEN, verify-gates green",
+    "phase": "P12",
+    "team": "T2",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P12-T2-04",
+    "desc": "Routing/Handoff 노드 — 분류→specialist worker(knowledge/artifact/일반) 위임, handoff payload는 orchestrator 내부 타입(ChatEvent 승격 금지). A2A는 격리",
+    "acceptance": "요청 분류→해당 worker 위임+handoff payload 내부타입; RED→GREEN, verify-gates green",
+    "phase": "P12",
+    "team": "T2",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P12-T2-05",
+    "desc": "Evaluator-Optimizer 래퍼 — artifact worker를 생성기+평가기 닫힌 루프로(평가=무툴 runTurn), 명확 기준일 때만 반복 개선",
+    "acceptance": "생성→평가→기준 미달 시 재생성 루프; RED→GREEN, verify-gates green",
+    "phase": "P12",
+    "team": "T2",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P12-T2-06",
+    "desc": "MAST 신뢰성 가드 4종 — 스텝반복 감지·차단(동일 tool_use 반복) + 명시적 종료조건(최대스텝) + 추론-행동 일치 체크 + 검증 worker(종합 전). 각 실패재현 RED",
+    "acceptance": "스텝반복 차단·종료조건·추론행동·검증 각 실패재현→가드 동작; RED→GREEN, verify-gates green",
+    "phase": "P12",
+    "team": "T2",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P12-T2-07",
+    "desc": "tool-router.ts 대규모 카탈로그 — MCP툴 다수 시 AgentToolSpec.description 임베딩(dev-stub)+pgvector top-k 선택 후 subset만 runTurn 주입",
+    "acceptance": "N개 중 관련 top-k tool subset 반환 주입; RED→GREEN, verify-gates green",
+    "phase": "P12",
+    "team": "T2",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P12-T2-08",
+    "desc": "deep_research 툴 — tools/handlers/deep-research-handler.ts, P12 orchestrator-worker 위 파사드(plan→서브질문 DAG→격리 병렬 researcher[web_search/knowledge_search read-only]→압축→gap 반성(max_iter/max_tool_calls/budget hard cap)→종합→별도 citation 패스(source_id 미존재 인용 drop)). 반환 kind:json+{artifact markdown, citations ephemeral+sourceUri, message}→기존 duck-typing이 artifact_created+citation fan-out. 동기 buffered invoke(수분)+streamSSE keep-alive 코멘트. 수십분 백그라운드/tool_progress/citation source web은 격리",
+    "acceptance": "fake worker/검색으로 plan→병렬 researcher→종합→인용 리포트 artifact_created+citation, hard cap 종료, 미존재 인용 drop; RED→GREEN, verify-gates green",
+    "phase": "P12",
+    "team": "T2",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P12-T6-01",
+    "desc": "멀티에이전트 활동 UI — 서브에이전트/플랜 진행을 우패널에 표시(기존 tool_use 카드 범위). 새 ChatEvent 변형 필요 시 격리",
+    "acceptance": "worker 진행이 기존 tool_use/tool_result 카드로 표시; SSE-stub RED→GREEN, verify-gates green",
+    "phase": "P12",
+    "team": "T6",
+    "passes": false,
+    "attempts": 0
   }
 ]
