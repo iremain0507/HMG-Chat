@@ -28,6 +28,15 @@ export interface StreamMessage {
   error?: boolean;
 }
 
+// 14-INTERFACES § ChatEvent.hitl_request 와 1:1 (toolCallId/toolName/args/rationale/expiresAt).
+export interface HitlPromptData {
+  toolCallId: string;
+  toolName: string;
+  args: Record<string, unknown>;
+  rationale: string;
+  expiresAt: string;
+}
+
 type ChatStreamEvent =
   | {
       type: "message_start";
@@ -37,6 +46,22 @@ type ChatStreamEvent =
   | { type: "text_delta"; text: string }
   | { type: "tool_use"; toolCallId: string; name: string; args: unknown }
   | { type: "tool_result"; toolCallId: string; content: string | unknown }
+  | {
+      type: "hitl_request";
+      toolCallId: string;
+      toolName: string;
+      args: Record<string, unknown>;
+      rationale: string;
+      expiresAt: string;
+    }
+  | {
+      type: "hitl_resolved";
+      toolCallId: string;
+      decision: "approved" | "denied";
+      modifiedArgs?: Record<string, unknown>;
+      reason?: string;
+    }
+  | { type: "hitl_timeout"; toolCallId: string }
   | {
       type: "stop";
       reason: "end_turn" | "tool_use" | "max_tokens" | "aborted";
@@ -71,6 +96,7 @@ function parseSseFrame(frame: string): ChatStreamEvent | null {
 export function useSessionStream(sessionId: string) {
   const [messages, setMessages] = useState<StreamMessage[]>([]);
   const [isStreaming, setIsStreaming] = useState(false);
+  const [hitlRequest, setHitlRequest] = useState<HitlPromptData | null>(null);
   const abortRef = useRef<AbortController | null>(null);
 
   const send = useCallback(
@@ -186,6 +212,21 @@ export function useSessionStream(sessionId: string) {
                     : m,
                 ),
               );
+            } else if (event.type === "hitl_request") {
+              setHitlRequest({
+                toolCallId: event.toolCallId,
+                toolName: event.toolName,
+                args: event.args,
+                rationale: event.rationale,
+                expiresAt: event.expiresAt,
+              });
+            } else if (
+              event.type === "hitl_resolved" ||
+              event.type === "hitl_timeout"
+            ) {
+              setHitlRequest((prev) =>
+                prev && prev.toolCallId === event.toolCallId ? null : prev,
+              );
             } else if (event.type === "stop") {
               setIsStreaming(false);
             } else if (event.type === "error") {
@@ -236,5 +277,27 @@ export function useSessionStream(sessionId: string) {
     }).catch(() => {});
   }, [sessionId]);
 
-  return { messages, isStreaming, send, stop };
+  const respondHitl = useCallback(
+    async (
+      decision: "approved" | "denied",
+      modifiedArgs?: Record<string, unknown>,
+      reason?: string,
+    ) => {
+      if (!hitlRequest) return;
+      await fetch(`/api/v1/sessions/${sessionId}/messages/hitl`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          toolCallId: hitlRequest.toolCallId,
+          decision,
+          ...(modifiedArgs ? { modifiedArgs } : {}),
+          ...(reason ? { reason } : {}),
+        }),
+      }).catch(() => {});
+    },
+    [sessionId, hitlRequest],
+  );
+
+  return { messages, isStreaming, send, stop, hitlRequest, respondHitl };
 }

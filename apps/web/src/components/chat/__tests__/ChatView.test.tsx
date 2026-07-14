@@ -533,4 +533,137 @@ describe("ChatView", () => {
       );
     });
   });
+
+  it("hitl_request 이벤트가 오면 HitlPrompt 카드가 렌더되고, 승인 클릭 시 POST /messages/hitl 을 호출한다", async () => {
+    let releaseStream: (() => void) | undefined;
+    const encoder = new TextEncoder();
+    const streamingBody = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(
+          encoder.encode(sseFrame("message_start", { messageId: "msg-1" })),
+        );
+        controller.enqueue(
+          encoder.encode(
+            sseFrame("hitl_request", {
+              toolCallId: "call-1",
+              toolName: "send_email",
+              args: { to: "a@b.com" },
+              rationale: "외부로 이메일을 발송합니다.",
+              expiresAt: "2026-07-14T00:05:00.000Z",
+            }),
+          ),
+        );
+        releaseStream = () => {
+          controller.enqueue(
+            encoder.encode(
+              sseFrame("hitl_resolved", {
+                toolCallId: "call-1",
+                decision: "approved",
+              }),
+            ),
+          );
+          controller.enqueue(
+            encoder.encode(sseFrame("stop", { reason: "end_turn" })),
+          );
+          controller.close();
+        };
+      },
+    });
+
+    const fetchMock = vi.fn(async (_url: string, opts?: RequestInit) => {
+      if (opts?.method === "POST" && String(_url).endsWith("/messages/hitl")) {
+        return { ok: true, json: async () => ({ data: { delivered: true } }) };
+      }
+      return { body: streamingBody };
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<ChatView sessionId="session-1" />);
+    fireEvent.change(screen.getByLabelText("메시지 입력"), {
+      target: { value: "메일 보내줘" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "전송" }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("hitl-prompt")).toBeInTheDocument();
+    });
+    expect(screen.getByText("외부로 이메일을 발송합니다.")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "승인" }));
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/v1/sessions/session-1/messages/hitl",
+        expect.objectContaining({
+          method: "POST",
+          body: JSON.stringify({ toolCallId: "call-1", decision: "approved" }),
+        }),
+      );
+    });
+
+    releaseStream?.();
+    await waitFor(() => {
+      expect(screen.queryByTestId("hitl-prompt")).not.toBeInTheDocument();
+    });
+  });
+
+  it("HitlPrompt 에서 인자를 수정하고 승인하면 modifiedArgs 를 담아 POST 한다", async () => {
+    const encoder = new TextEncoder();
+    const fetchMock = vi.fn(async (_url: string, opts?: RequestInit) => {
+      if (opts?.method === "POST" && String(_url).endsWith("/messages/hitl")) {
+        return { ok: true, json: async () => ({ data: { delivered: true } }) };
+      }
+      return {
+        body: new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.enqueue(
+              encoder.encode(sseFrame("message_start", { messageId: "msg-1" })),
+            );
+            controller.enqueue(
+              encoder.encode(
+                sseFrame("hitl_request", {
+                  toolCallId: "call-1",
+                  toolName: "send_email",
+                  args: { to: "a@b.com" },
+                  rationale: "외부로 이메일을 발송합니다.",
+                  expiresAt: "2026-07-14T00:05:00.000Z",
+                }),
+              ),
+            );
+          },
+        }),
+      };
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<ChatView sessionId="session-1" />);
+    fireEvent.change(screen.getByLabelText("메시지 입력"), {
+      target: { value: "메일 보내줘" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "전송" }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("hitl-prompt")).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "수정" }));
+    fireEvent.change(screen.getByLabelText("인자 편집"), {
+      target: { value: JSON.stringify({ to: "c@d.com" }) },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "승인" }));
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/v1/sessions/session-1/messages/hitl",
+        expect.objectContaining({
+          method: "POST",
+          body: JSON.stringify({
+            toolCallId: "call-1",
+            decision: "approved",
+            modifiedArgs: { to: "c@d.com" },
+          }),
+        }),
+      );
+    });
+  });
 });

@@ -9,6 +9,7 @@ import { Markdown } from "../../components/chat/Markdown";
 import { Reasoning } from "../../components/chat/Reasoning";
 import { MessageActions } from "../../components/chat/MessageActions";
 import { ToolCallRenderer } from "../../components/chat/ToolCallRenderer";
+import { HitlPrompt } from "../../components/chat/HitlPrompt";
 
 const MD = `# 렌더 검증
 
@@ -100,6 +101,19 @@ export default function PreviewGallery() {
             onRetry={() => {}}
           />
         </div>
+      </Section>
+
+      <Section name="hitl-prompt">
+        <HitlPrompt
+          request={{
+            toolCallId: "preview-hitl-1",
+            toolName: "send_email",
+            args: { to: "a@b.com", subject: "안녕하세요" },
+            rationale: "외부로 이메일을 발송합니다.",
+            expiresAt: "2026-07-14T00:05:00.000Z",
+          }}
+          onRespond={() => {}}
+        />
       </Section>
     </div>
   );

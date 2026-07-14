@@ -15,6 +15,7 @@ import {
   useSessionStream,
   type MessagePart,
 } from "../../hooks/useSessionStream";
+import { HitlPrompt } from "./HitlPrompt";
 import { Markdown } from "./Markdown";
 import { MessageActions } from "./MessageActions";
 import { ToolCallRenderer } from "./ToolCallRenderer";
@@ -30,7 +31,8 @@ const SUGGESTIONS = [
 
 export function ChatView({ sessionId }: { sessionId: string }) {
   const router = useRouter();
-  const { messages, isStreaming, send, stop } = useSessionStream(sessionId);
+  const { messages, isStreaming, send, stop, hitlRequest, respondHitl } =
+    useSessionStream(sessionId);
   const [input, setInput] = useState("");
   const [autoFollow, setAutoFollow] = useState(true);
   const [announceText, setAnnounceText] = useState("");
@@ -221,6 +223,12 @@ export function ChatView({ sessionId }: { sessionId: string }) {
           </button>
         )}
       </div>
+
+      {hitlRequest && (
+        <div className="border-t border-border px-4 pt-3">
+          <HitlPrompt request={hitlRequest} onRespond={respondHitl} />
+        </div>
+      )}
 
       <div className="border-t border-border px-4 py-3">
         <form

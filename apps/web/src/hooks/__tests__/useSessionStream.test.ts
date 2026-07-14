@@ -202,4 +202,125 @@ describe("useSessionStream", () => {
       status: "error",
     });
   });
+
+  it("hitl_request 이벤트를 받으면 hitlRequest 상태를 채우고, hitl_resolved 로 같은 toolCallId 가 도착하면 비운다", async () => {
+    let releaseStream: (() => void) | undefined;
+    const encoder = new TextEncoder();
+    const streamingBody = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(
+          encoder.encode(sseFrame("message_start", { messageId: "msg-1" })),
+        );
+        controller.enqueue(
+          encoder.encode(
+            sseFrame("hitl_request", {
+              toolCallId: "call-1",
+              toolName: "send_email",
+              args: { to: "a@b.com" },
+              rationale: "외부로 이메일을 발송합니다.",
+              expiresAt: "2026-07-14T00:05:00.000Z",
+            }),
+          ),
+        );
+        releaseStream = () => {
+          controller.enqueue(
+            encoder.encode(
+              sseFrame("hitl_resolved", {
+                toolCallId: "call-1",
+                decision: "approved",
+              }),
+            ),
+          );
+          controller.enqueue(
+            encoder.encode(sseFrame("stop", { reason: "end_turn" })),
+          );
+          controller.close();
+        };
+      },
+    });
+
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({ body: streamingBody })),
+    );
+
+    const { result } = renderHook(() => useSessionStream("session-1"));
+
+    let sendPromise!: Promise<void>;
+    await act(async () => {
+      sendPromise = result.current.send("보내줘");
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(result.current.hitlRequest).toEqual({
+      toolCallId: "call-1",
+      toolName: "send_email",
+      args: { to: "a@b.com" },
+      rationale: "외부로 이메일을 발송합니다.",
+      expiresAt: "2026-07-14T00:05:00.000Z",
+    });
+
+    await act(async () => {
+      releaseStream?.();
+      await sendPromise;
+    });
+
+    expect(result.current.hitlRequest).toBeNull();
+  });
+
+  it("respondHitl 은 대기 중인 hitlRequest 의 toolCallId 로 POST /messages/hitl 을 호출한다", async () => {
+    let releaseStream: (() => void) | undefined;
+    const encoder = new TextEncoder();
+    const streamingBody = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(
+          encoder.encode(
+            sseFrame("hitl_request", {
+              toolCallId: "call-1",
+              toolName: "send_email",
+              args: { to: "a@b.com" },
+              rationale: "외부로 이메일을 발송합니다.",
+              expiresAt: "2026-07-14T00:05:00.000Z",
+            }),
+          ),
+        );
+        releaseStream = () => controller.close();
+      },
+    });
+
+    const fetchMock = vi.fn(async (_url: string, opts?: RequestInit) => {
+      if (opts?.method === "POST" && String(_url).endsWith("/messages/hitl")) {
+        return { ok: true, json: async () => ({ data: { delivered: true } }) };
+      }
+      return { body: streamingBody };
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { result } = renderHook(() => useSessionStream("session-1"));
+
+    await act(async () => {
+      void result.current.send("보내줘");
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    await act(async () => {
+      await result.current.respondHitl("approved", { to: "c@d.com" });
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/v1/sessions/session-1/messages/hitl",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({
+          toolCallId: "call-1",
+          decision: "approved",
+          modifiedArgs: { to: "c@d.com" },
+        }),
+      }),
+    );
+
+    releaseStream?.();
+  });
 });

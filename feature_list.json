@@ -725,8 +725,8 @@
     "acceptance": "카드가 승인/거부 전송 + 인자수정→modifiedArgs 반영; SSE-stub RED→GREEN, verify-gates green",
     "phase": "P10",
     "team": "T6",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P10-T2-03",
