@@ -914,8 +914,8 @@
     "acceptance": "역할별 model 선택 + org 상한 초과 model 차단; RED→GREEN, verify-gates green",
     "phase": "P11",
     "team": "T2",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P11-T2-08",
