@@ -1,4 +1,5 @@
-// routes/messages.ts — 16-API-CONTRACT.md § 3 Messages (`POST /sessions/:id/messages`, SSE) 단일 출처.
+// routes/messages.ts — 16-API-CONTRACT.md § 3 Messages (`POST /sessions/:id/messages`, SSE)
+// + `GET /sessions/:id/messages/:messageId/stream`(resume) 단일 출처.
 import { randomUUID } from "node:crypto";
 import { Hono } from "hono";
 import { streamSSE } from "hono/streaming";
@@ -10,6 +11,11 @@ import type {
 } from "@wchat/interfaces";
 import { runTurn } from "../orchestrator/orchestrator.js";
 import { registerRun, unregisterRun } from "../orchestrator/run-registry.js";
+import {
+  startMessageRun,
+  recordMessageRunEvent,
+  subscribeMessageRun,
+} from "../orchestrator/message-run-registry.js";
 
 // abort flow (L06) — Stop 클릭(routes/sessions.ts DELETE /:id/active-run) 이 run-registry 를 통해
 // 이 run 의 signal 을 abort() 시킨 뒤, 여기서 sessions_active_runs.status 를 갱신한다.
@@ -84,6 +90,11 @@ export function createMessageRoutes(deps: MessageRouteDeps): Hono {
     }
 
     return streamSSE(c, async (stream) => {
+      // GET resume 엔드포인트(message-run-registry.ts)가 캐치업할 수 있도록, 현재 leg 의
+      // messageId(message_start 로 파악) 기준으로 매 event 를 기록한다. tool_use 로 인한
+      // 재호출로 leg 가 여러 개 생기면 그때마다 message_start 가 새 messageId 를 발급하므로
+      // currentMessageId 도 그에 맞춰 갱신된다.
+      let currentMessageId: string | undefined;
       try {
         const events = runTurn({
           provider: deps.provider,
@@ -94,6 +105,12 @@ export function createMessageRoutes(deps: MessageRouteDeps): Hono {
           signal: handle.controller.signal,
         });
         for await (const event of events) {
+          if (event.type === "message_start") {
+            currentMessageId = event.messageId;
+            startMessageRun(event.messageId, sessionId);
+          } else if (currentMessageId) {
+            recordMessageRunEvent(currentMessageId, event);
+          }
           const { type, ...payload } = event;
           await stream.writeSSE({ event: type, data: JSON.stringify(payload) });
         }
@@ -104,6 +121,50 @@ export function createMessageRoutes(deps: MessageRouteDeps): Hono {
         );
       } finally {
         unregisterRun(sessionId, jobId);
+      }
+    });
+  });
+
+  // resume 후 재연결 — stop reason='tool_use' 뒤 또는 네트워크 재연결. 첫 event 는 항상
+  // message_replace(contentSoFar 로 캐치업) 후 이어지는 live event 를 relay(단일 구독,
+  // 동시 구독은 409).
+  app.get("/:id/messages/:messageId/stream", (c) => {
+    const sessionId = c.req.param("id");
+    const messageId = c.req.param("messageId");
+    const subscription = subscribeMessageRun(messageId, sessionId);
+
+    if (subscription.kind === "not_found") {
+      return c.json(errorJson("NOT_FOUND", "메시지를 찾을 수 없습니다."), 404);
+    }
+    if (subscription.kind === "gone") {
+      return c.json(errorJson("GONE", "이미 종료된 메시지입니다."), 410);
+    }
+    if (subscription.kind === "conflict") {
+      return c.json(
+        errorJson("CONCURRENT_RUN", "이미 다른 클라이언트가 구독 중입니다."),
+        409,
+      );
+    }
+
+    return streamSSE(c, async (stream) => {
+      const requestSignal = c.req.raw.signal;
+      const onAbort = () => subscription.unsubscribe();
+      requestSignal.addEventListener("abort", onAbort, { once: true });
+      try {
+        await stream.writeSSE({
+          event: "message_replace",
+          data: JSON.stringify({
+            messageId,
+            contentSoFar: subscription.contentSoFar,
+          }),
+        });
+        for await (const event of subscription.events) {
+          const { type, ...payload } = event;
+          await stream.writeSSE({ event: type, data: JSON.stringify(payload) });
+        }
+      } finally {
+        requestSignal.removeEventListener("abort", onAbort);
+        subscription.unsubscribe();
       }
     });
   });

@@ -96,3 +96,142 @@ describe("POST /:id/messages (SSE) — 16-API-CONTRACT § /sessions/:id/messages
     expect(json.error.code).toBe("ATTACHMENTS_NOT_SUPPORTED");
   });
 });
+
+describe("GET /:id/messages/:messageId/stream (resume) — 16-API-CONTRACT § resume", () => {
+  it("모르는 messageId 는 404 NOT_FOUND", async () => {
+    const app = createMessageRoutes({
+      provider: fakeHelloProvider(),
+      model: "fake-model",
+    });
+
+    const res = await app.request(
+      "/session-1/messages/unknown-message-id/stream",
+    );
+    expect(res.status).toBe(404);
+    const json = (await res.json()) as { error: { code: string } };
+    expect(json.error.code).toBe("NOT_FOUND");
+  });
+
+  it("이미 terminal 로 종료된 messageId 는 410 GONE", async () => {
+    const app = createMessageRoutes({
+      provider: fakeHelloProvider(),
+      model: "fake-model",
+    });
+
+    const postRes = await app.request("/session-1/messages", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ content: "hi" }),
+    });
+    await postRes.text();
+
+    const res = await app.request("/session-1/messages/msg-1/stream");
+    expect(res.status).toBe(410);
+    const json = (await res.json()) as { error: { code: string } };
+    expect(json.error.code).toBe("GONE");
+  });
+
+  it("재연결 시 message_replace 로 누적 content 를 먼저 받고 이어지는 이벤트를 계속 받는다", async () => {
+    let resolveGate: () => void = () => {};
+    const gate = new Promise<void>((resolve) => {
+      resolveGate = resolve;
+    });
+    const provider: LLMProvider = {
+      name: "fake",
+      models: ["fake-model"],
+      async *chat() {
+        const events: ChatEvent[] = [
+          {
+            type: "message_start",
+            messageId: "msg-resume-1",
+            meta: { provider: "fake", model: "fake-model" },
+          },
+          { type: "text_delta", text: "hello " },
+        ];
+        for (const event of events) yield event;
+        await gate;
+        yield { type: "text_delta", text: "world" };
+        yield {
+          type: "stop",
+          reason: "end_turn",
+          usage: { inputTokens: 1, outputTokens: 1 },
+        };
+      },
+    };
+    const app = createMessageRoutes({ provider, model: "fake-model" });
+
+    const postPromise = app.request("/session-1/messages", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ content: "hi" }),
+    });
+    await new Promise((resolve) => setTimeout(resolve, 30));
+
+    const resumeRes = await app.request(
+      "/session-1/messages/msg-resume-1/stream",
+    );
+    expect(resumeRes.status).toBe(200);
+
+    resolveGate();
+    const [resumeText] = await Promise.all([
+      resumeRes.text(),
+      postPromise.then((r) => r.text()),
+    ]);
+
+    const replaceIdx = resumeText.indexOf("event: message_replace");
+    expect(replaceIdx).toBe(0);
+    expect(resumeText).toContain('"contentSoFar":"hello "');
+
+    const worldIdx = resumeText.indexOf('"text":"world"');
+    expect(worldIdx).toBeGreaterThan(replaceIdx);
+    expect(resumeText).toContain("event: stop");
+  });
+
+  it("동일 messageId 에 이미 다른 구독자가 있으면 409 CONCURRENT_RUN", async () => {
+    let resolveGate: () => void = () => {};
+    const gate = new Promise<void>((resolve) => {
+      resolveGate = resolve;
+    });
+    const provider: LLMProvider = {
+      name: "fake",
+      models: ["fake-model"],
+      async *chat() {
+        yield {
+          type: "message_start",
+          messageId: "msg-conflict-1",
+          meta: { provider: "fake", model: "fake-model" },
+        };
+        yield { type: "text_delta", text: "hi" };
+        await gate;
+        yield {
+          type: "stop",
+          reason: "end_turn",
+          usage: { inputTokens: 1, outputTokens: 1 },
+        };
+      },
+    };
+    const app = createMessageRoutes({ provider, model: "fake-model" });
+
+    const postPromise = app.request("/session-1/messages", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ content: "hi" }),
+    });
+    await new Promise((resolve) => setTimeout(resolve, 30));
+
+    const firstRes = await app.request(
+      "/session-1/messages/msg-conflict-1/stream",
+    );
+    expect(firstRes.status).toBe(200);
+
+    const secondRes = await app.request(
+      "/session-1/messages/msg-conflict-1/stream",
+    );
+    expect(secondRes.status).toBe(409);
+    const json = (await secondRes.json()) as { error: { code: string } };
+    expect(json.error.code).toBe("CONCURRENT_RUN");
+
+    resolveGate();
+    await Promise.all([firstRes.text(), postPromise.then((r) => r.text())]);
+  });
+});

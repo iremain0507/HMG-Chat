@@ -761,8 +761,8 @@
     "acceptance": "재연결 시 message_replace 선행 + 이어받기; 신규 prefix 아님(기존 sessions 하위); RED→GREEN, verify-gates green",
     "phase": "P10",
     "team": "T2",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P10-T6-10",
