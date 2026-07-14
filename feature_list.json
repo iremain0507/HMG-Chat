@@ -716,8 +716,8 @@
     "acceptance": "게이트 툴이 hitl_request 후 pause; approved→실행, denied→스킵, 만료→timeout; RED→GREEN, verify-gates green",
     "phase": "P10",
     "team": "T2",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P10-T6-08",

@@ -3,12 +3,13 @@ import type {
   AgentTool,
   ChatEvent,
   ChatInput,
+  HitlBridge,
   LLMProvider,
   ToolContext,
 } from "@wchat/interfaces";
 import { hello, runTurn } from "../orchestrator.js";
 
-function fakeToolContext(): ToolContext {
+function fakeToolContext(hitl?: HitlBridge): ToolContext {
   const logger: ToolContext["logger"] = {
     debug() {},
     info() {},
@@ -26,7 +27,7 @@ function fakeToolContext(): ToolContext {
     sessionId: "session-1",
     signal: new AbortController().signal,
     logger,
-    hitl: {
+    hitl: hitl ?? {
       async askApproval() {
         return { kind: "approved" };
       },
@@ -304,5 +305,207 @@ describe("orchestrator.runTurn — tool-execution 루프", () => {
 
     expect(toolInvoked).toBe(false);
     expect(result.map((e) => e.type)).toEqual(["tool_use", "stop"]);
+  });
+});
+
+describe("orchestrator.runTurn — HITL 게이팅 (P10-T2-02)", () => {
+  function fakeHitlTool(): { tool: AgentTool; invoked: unknown[] } {
+    const invoked: unknown[] = [];
+    const tool: AgentTool = {
+      spec: {
+        name: "gated_tool",
+        description: "부수효과 있는 위험 툴",
+        inputSchema: { type: "object" },
+        permissionTier: "user",
+        defaultPolicy: "hitl",
+      },
+      async invoke(input) {
+        invoked.push(input.args);
+        return {
+          toolCallId: input.toolCallId,
+          content: { kind: "text", text: "gated-output" },
+        };
+      },
+    };
+    return { tool, invoked };
+  }
+
+  function twoLegProvider(): { provider: LLMProvider; calls: ChatInput[] } {
+    const calls: ChatInput[] = [];
+    const provider: LLMProvider = {
+      name: "fake",
+      models: ["fake-model"],
+      async *chat(input) {
+        calls.push(input);
+        if (calls.length === 1) {
+          yield {
+            type: "message_start",
+            messageId: "msg-1",
+            meta: { provider: "fake", model: "fake-model" },
+          };
+          yield {
+            type: "tool_use",
+            toolCallId: "call-1",
+            name: "gated_tool",
+            args: { x: 1 },
+          };
+          yield {
+            type: "stop",
+            reason: "tool_use",
+            usage: { inputTokens: 1, outputTokens: 1 },
+          };
+          return;
+        }
+        yield { type: "text_delta", text: "후속 응답" };
+        yield {
+          type: "stop",
+          reason: "end_turn",
+          usage: { inputTokens: 2, outputTokens: 2 },
+        };
+      },
+    };
+    return { provider, calls };
+  }
+
+  it("defaultPolicy='hitl' 툴은 tool_use 를 즉시 emit 하지 않고 hitl_request 후 pause, approved 시 tool_use→invoke→tool_result 순으로 재개한다", async () => {
+    const { tool: gatedTool, invoked } = fakeHitlTool();
+    const { provider: fakeProvider, calls } = twoLegProvider();
+    const askApprovalArgs: unknown[] = [];
+    const hitl: HitlBridge = {
+      async askApproval(input) {
+        askApprovalArgs.push(input);
+        return { kind: "approved", modifiedArgs: { x: 2 } };
+      },
+    };
+
+    const result: ChatEvent[] = [];
+    for await (const event of runTurn({
+      provider: fakeProvider,
+      model: "fake-model",
+      systemBlocks: [],
+      messages: [{ role: "user", content: "hi" }],
+      maxTokens: 512,
+      signal: new AbortController().signal,
+      tools: [gatedTool],
+      toolContext: fakeToolContext(hitl),
+    })) {
+      result.push(event);
+    }
+
+    expect(result.map((e) => e.type)).toEqual([
+      "message_start",
+      "stop",
+      "hitl_request",
+      "hitl_resolved",
+      "tool_use",
+      "tool_result",
+      "text_delta",
+      "stop",
+    ]);
+    expect(askApprovalArgs).toEqual([
+      expect.objectContaining({
+        sessionId: "session-1",
+        toolCallId: "call-1",
+        toolName: "gated_tool",
+        args: { x: 1 },
+      }),
+    ]);
+    const hitlRequest = result.find((e) => e.type === "hitl_request");
+    expect(hitlRequest).toMatchObject({
+      toolCallId: "call-1",
+      toolName: "gated_tool",
+      args: { x: 1 },
+    });
+    const hitlResolved = result.find((e) => e.type === "hitl_resolved");
+    expect(hitlResolved).toMatchObject({
+      toolCallId: "call-1",
+      decision: "approved",
+      modifiedArgs: { x: 2 },
+    });
+    const toolUseEvent = result.find((e) => e.type === "tool_use");
+    expect(toolUseEvent).toMatchObject({
+      toolCallId: "call-1",
+      name: "gated_tool",
+      args: { x: 2 },
+    });
+    // 승인 후 invoke 는 modifiedArgs 를 사용한다.
+    expect(invoked).toEqual([{ x: 2 }]);
+    expect(calls).toHaveLength(2);
+  });
+
+  it("denied 시 tool_use/tool_result 를 emit 하지 않고 invoke 를 스킵, 모델이 후속 응답을 생성한다", async () => {
+    const { tool: gatedTool, invoked } = fakeHitlTool();
+    const { provider: fakeProvider, calls } = twoLegProvider();
+    const hitl: HitlBridge = {
+      async askApproval() {
+        return { kind: "denied", reason: "위험함" };
+      },
+    };
+
+    const result: ChatEvent[] = [];
+    for await (const event of runTurn({
+      provider: fakeProvider,
+      model: "fake-model",
+      systemBlocks: [],
+      messages: [{ role: "user", content: "hi" }],
+      maxTokens: 512,
+      signal: new AbortController().signal,
+      tools: [gatedTool],
+      toolContext: fakeToolContext(hitl),
+    })) {
+      result.push(event);
+    }
+
+    expect(result.map((e) => e.type)).toEqual([
+      "message_start",
+      "stop",
+      "hitl_request",
+      "hitl_resolved",
+      "text_delta",
+      "stop",
+    ]);
+    const hitlResolved = result.find((e) => e.type === "hitl_resolved");
+    expect(hitlResolved).toMatchObject({
+      toolCallId: "call-1",
+      decision: "denied",
+      reason: "위험함",
+    });
+    expect(invoked).toEqual([]);
+    // 두번째 leg 재호출 시에도 tool_use/tool_result 페어링이 메시지 히스토리에 남는다.
+    expect(calls[1]?.messages.at(-1)).toMatchObject({ role: "tool" });
+  });
+
+  it("timeout 시 hitl_timeout 만 emit 하고 invoke 를 스킵한다", async () => {
+    const { tool: gatedTool, invoked } = fakeHitlTool();
+    const { provider: fakeProvider } = twoLegProvider();
+    const hitl: HitlBridge = {
+      async askApproval() {
+        return { kind: "timeout" };
+      },
+    };
+
+    const result: ChatEvent[] = [];
+    for await (const event of runTurn({
+      provider: fakeProvider,
+      model: "fake-model",
+      systemBlocks: [],
+      messages: [{ role: "user", content: "hi" }],
+      maxTokens: 512,
+      signal: new AbortController().signal,
+      tools: [gatedTool],
+      toolContext: fakeToolContext(hitl),
+    })) {
+      result.push(event);
+    }
+
+    expect(result.map((e) => e.type)).toEqual([
+      "message_start",
+      "stop",
+      "hitl_request",
+      "hitl_timeout",
+      "text_delta",
+      "stop",
+    ]);
+    expect(invoked).toEqual([]);
   });
 });

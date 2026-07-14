@@ -4,6 +4,7 @@ import type {
   AgentToolResult,
   ChatEvent,
   ContentPart,
+  HitlDecision,
   LLMMessage,
   LLMProvider,
   PromptBlock,
@@ -68,8 +69,8 @@ export async function* runTurn(input: RunTurnInput): AsyncIterable<ChatEvent> {
       input.signal,
     );
     for await (const event of chatEvents) {
-      yield event;
       if (event.type === "text_delta") {
+        yield event;
         const last = assistantParts.at(-1);
         if (last?.type === "text") {
           last.text += event.text;
@@ -84,10 +85,20 @@ export async function* runTurn(input: RunTurnInput): AsyncIterable<ChatEvent> {
           name: event.name,
           args: event.args,
         });
+        // hitl 정책 툴은 승인 후에만 tool_use 를 emit (16-API-CONTRACT § sub-state 표
+        // "streaming → waiting_hitl | tool_use(policy=hitl) | hitl_request(tool_use 는
+        // approved 후에 emit)"). allow 정책은 기존과 동일하게 즉시 emit.
+        if (toolsByName.get(event.name)?.spec.defaultPolicy !== "hitl") {
+          yield event;
+        }
       } else if (event.type === "stop") {
+        yield event;
         stopEvent = event;
       } else if (event.type === "error") {
+        yield event;
         return;
+      } else {
+        yield event;
       }
     }
 
@@ -101,10 +112,79 @@ export async function* runTurn(input: RunTurnInput): AsyncIterable<ChatEvent> {
     const toolResultParts: ContentPart[] = [];
     for (const toolUse of pendingToolUses) {
       const tool = toolsByName.get(toolUse.name);
+      let args = (toolUse.args ?? {}) as Record<string, unknown>;
+      let skipReason: "denied" | "timeout" | undefined;
+
+      if (tool?.spec.defaultPolicy === "hitl") {
+        const toolCallId = toolUse.toolCallId;
+        const timeoutMs = 300_000;
+        const rationale = `"${tool.spec.name}" 실행에는 사용자 승인이 필요합니다: ${tool.spec.description}`;
+        const expiresAt = new Date(Date.now() + timeoutMs).toISOString();
+        yield {
+          type: "hitl_request",
+          toolCallId,
+          toolName: tool.spec.name,
+          args,
+          rationale,
+          expiresAt,
+        };
+
+        let decision: HitlDecision;
+        try {
+          decision = await input.toolContext!.hitl.askApproval(
+            {
+              sessionId: input.toolContext!.sessionId,
+              toolCallId,
+              toolName: tool.spec.name,
+              args,
+              rationale,
+              timeoutMs,
+            },
+            input.signal,
+          );
+        } catch {
+          // abort 중 HITL 대기 취소 — 진행 중이던 turn 을 즉시 종료.
+          return;
+        }
+
+        if (decision.kind === "timeout") {
+          yield { type: "hitl_timeout", toolCallId };
+          skipReason = "timeout";
+        } else {
+          yield {
+            type: "hitl_resolved",
+            toolCallId,
+            decision: decision.kind,
+            ...(decision.kind === "approved" && decision.modifiedArgs
+              ? { modifiedArgs: decision.modifiedArgs }
+              : {}),
+            ...(decision.kind === "denied" && decision.reason
+              ? { reason: decision.reason }
+              : {}),
+          };
+          if (decision.kind === "denied") {
+            skipReason = "denied";
+          } else {
+            args = decision.modifiedArgs ?? args;
+            yield { type: "tool_use", toolCallId, name: tool.spec.name, args };
+          }
+        }
+      }
+
+      if (skipReason) {
+        const content = { hitl: skipReason };
+        toolResultParts.push({
+          type: "tool_result",
+          toolCallId: toolUse.toolCallId,
+          content,
+        });
+        continue;
+      }
+
       const result: AgentToolResult = tool
         ? await tool.invoke({
             toolCallId: toolUse.toolCallId,
-            args: (toolUse.args ?? {}) as Record<string, unknown>,
+            args,
             ctx: { ...input.toolContext!, signal: input.signal },
           })
         : {
