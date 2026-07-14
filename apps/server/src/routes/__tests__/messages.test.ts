@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
-import type { ChatEvent, LLMProvider } from "@wchat/interfaces";
-import { createMessageRoutes } from "../messages.js";
+import type { ChatEvent, LLMProvider, PromptBlock } from "@wchat/interfaces";
+import { createMessageRoutes, type AttachmentsPort } from "../messages.js";
 
 function fakeHelloProvider(): LLMProvider {
   return {
@@ -76,7 +76,7 @@ describe("POST /:id/messages (SSE) — 16-API-CONTRACT § /sessions/:id/messages
     expect(json.error.code).toBe("INVALID_INPUT");
   });
 
-  it("attachments 가 비어있지 않으면 400 ATTACHMENTS_NOT_SUPPORTED (Phase 2/4 boundary — 16-API-CONTRACT § POST /sessions/:id/messages)", async () => {
+  it("attachments 에 uploadId 가 있어도 400 이 아니다 (P10-T2-06 — Phase 2/4 boundary 조기 해제)", async () => {
     const app = createMessageRoutes({
       provider: fakeHelloProvider(),
       model: "fake-model",
@@ -84,16 +84,71 @@ describe("POST /:id/messages (SSE) — 16-API-CONTRACT § /sessions/:id/messages
 
     const res = await app.request("/session-1/messages", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "text/event-stream",
+      },
       body: JSON.stringify({
         content: "hi",
         attachments: [{ uploadId: "u1" }],
       }),
     });
 
-    expect(res.status).toBe(400);
-    const json = (await res.json()) as { error: { code: string } };
-    expect(json.error.code).toBe("ATTACHMENTS_NOT_SUPPORTED");
+    expect(res.status).toBe(200);
+    await res.text();
+  });
+
+  it("attachments 의 uploadId 가 ephemeral 컨텍스트로 turn 의 system 블록에 반영된다", async () => {
+    const capturedSystemBlocks: PromptBlock[][] = [];
+    const provider: LLMProvider = {
+      name: "fake",
+      models: ["fake-model"],
+      async *chat(req) {
+        capturedSystemBlocks.push(req.systemBlocks);
+        const events: ChatEvent[] = [
+          {
+            type: "message_start",
+            messageId: "msg-attach-1",
+            meta: { provider: "fake", model: "fake-model" },
+          },
+          { type: "text_delta", text: "ok" },
+          {
+            type: "stop",
+            reason: "end_turn",
+            usage: { inputTokens: 1, outputTokens: 1 },
+          },
+        ];
+        for (const event of events) yield event;
+      },
+    };
+    const attachments: AttachmentsPort = {
+      async resolveEphemeralContext(uploadId) {
+        expect(uploadId).toBe("u1");
+        return { filename: "spec.pdf" };
+      },
+    };
+    const app = createMessageRoutes({
+      provider,
+      model: "fake-model",
+      attachments,
+    });
+
+    const res = await app.request("/session-1/messages", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "text/event-stream",
+      },
+      body: JSON.stringify({
+        content: "hi",
+        attachments: [{ uploadId: "u1" }],
+      }),
+    });
+    await res.text();
+
+    expect(capturedSystemBlocks).toHaveLength(1);
+    const blockText = capturedSystemBlocks[0].map((b) => b.content).join("\n");
+    expect(blockText).toContain("spec.pdf");
   });
 });
 

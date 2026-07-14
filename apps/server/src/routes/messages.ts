@@ -34,12 +34,30 @@ const noopActiveRuns: ActiveRunsPort = {
   },
 };
 
+// P10-T2-06 — attachments:[{uploadId}] 의 ephemeral RAG 컨텍스트 조회 포트.
+// 16-API-CONTRACT § POST /sessions/:id/messages 의 parser-pipeline/chunker/embedding
+// 전체 인덱싱(ephemeral_chunks, 0014_uploads.sql)은 knowledge/**(T3) 소유라 이 태스크
+// 범위 밖 — 여기선 uploadId → filename 만 조회해 system 블록에 "검색 가능" 안내를 추가한다.
+// (knowledge_search 툴이 실제 인덱스 조회는 담당, P10-T2-03 KnowledgeRetrievalPort 와 동일 DI 패턴.)
+export interface AttachmentsPort {
+  resolveEphemeralContext(
+    uploadId: string,
+  ): Promise<{ filename: string } | null>;
+}
+
+const noopAttachments: AttachmentsPort = {
+  async resolveEphemeralContext() {
+    return null;
+  },
+};
+
 export interface MessageRouteDeps {
   provider: LLMProvider;
   model: string;
   systemBlocks?: PromptBlock[];
   maxTokens?: number;
   activeRuns?: ActiveRunsPort;
+  attachments?: AttachmentsPort;
 }
 
 function errorJson(code: string, message: string) {
@@ -57,22 +75,40 @@ export function createMessageRoutes(deps: MessageRouteDeps): Hono {
         content?: string;
         attachments?: Array<{ uploadId: string }>;
       }>()
-      .catch(() => ({}) as { content?: string; attachments?: unknown[] });
+      .catch(
+        () =>
+          ({}) as {
+            content?: string;
+            attachments?: Array<{ uploadId: string }>;
+          },
+      );
     const content = body.content?.trim();
     if (!content) {
       return c.json(errorJson("INVALID_INPUT", "content 가 필요합니다."), 400);
     }
-    // Phase 2/4 boundary — 16-API-CONTRACT § POST /sessions/:id/messages:
-    // attachments 는 Phase 4(knowledge 인덱싱) 전까지 미지원, 빈 배열일 때만 통과.
-    if (body.attachments && body.attachments.length > 0) {
-      return c.json(
-        errorJson(
-          "ATTACHMENTS_NOT_SUPPORTED",
-          "첨부파일은 아직 지원하지 않습니다 (Phase 4 예정).",
-        ),
-        400,
-      );
-    }
+    // P10-T2-06 — attachments:[{uploadId}] 를 ephemeral RAG 컨텍스트로 수용
+    // (16-API-CONTRACT § POST /sessions/:id/messages 의 Phase 2/4 boundary 조기 해제).
+    const attachmentsPort = deps.attachments ?? noopAttachments;
+    const resolvedAttachments = await Promise.all(
+      (body.attachments ?? []).map((a) =>
+        attachmentsPort.resolveEphemeralContext(a.uploadId),
+      ),
+    );
+    const attachmentFilenames = resolvedAttachments
+      .filter((a): a is { filename: string } => a !== null)
+      .map((a) => a.filename);
+
+    const systemBlocks = deps.systemBlocks ?? [];
+    const ephemeralBlock: PromptBlock[] =
+      attachmentFilenames.length > 0
+        ? [
+            {
+              tier: "user",
+              content: `다음 첨부 문서 검색 가능: ${attachmentFilenames.join(", ")}`,
+              cacheControl: "ephemeral",
+            },
+          ]
+        : [];
 
     const messages: LLMMessage[] = [{ role: "user", content }];
 
@@ -99,7 +135,7 @@ export function createMessageRoutes(deps: MessageRouteDeps): Hono {
         const events = runTurn({
           provider: deps.provider,
           model: deps.model,
-          systemBlocks: deps.systemBlocks ?? [],
+          systemBlocks: [...systemBlocks, ...ephemeralBlock],
           messages,
           maxTokens: deps.maxTokens ?? 1024,
           signal: handle.controller.signal,

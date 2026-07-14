@@ -779,8 +779,8 @@
     "acceptance": "uploadId 포함 메시지가 400 아님 + ephemeral 소스 반영; RED→GREEN, verify-gates green",
     "phase": "P10",
     "team": "T2",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P10-T6-11",
