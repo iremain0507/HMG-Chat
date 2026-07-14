@@ -815,8 +815,8 @@
     "acceptance": "프로젝트 전환이 세션 스코프 반영 + 메모리 표시; RED→GREEN, verify-gates green",
     "phase": "P10",
     "team": "T6",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P10-T6-15",

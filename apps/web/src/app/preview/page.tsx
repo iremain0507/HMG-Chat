@@ -11,11 +11,14 @@ import { MessageActions } from "../../components/chat/MessageActions";
 import { ToolCallRenderer } from "../../components/chat/ToolCallRenderer";
 import { HitlPrompt } from "../../components/chat/HitlPrompt";
 import { ChatInput } from "../../components/chat/ChatInput";
+import { ProjectPicker } from "../../components/chat/ProjectPicker";
+import { MemoryPanel } from "../../components/chat/MemoryPanel";
 import {
   ArtifactCanvas,
   type ArtifactCanvasArtifact,
 } from "../../components/artifacts/ArtifactCanvas";
 import type { Citation } from "../../hooks/useSessionStream";
+import type { ProjectDto } from "../../hooks/useProject";
 
 const CITATIONS: Citation[] = [
   {
@@ -111,6 +114,54 @@ const SLASH_COMMANDS = [
   { id: "clear", label: "대화 지우기" },
   { id: "search", label: "웹 검색" },
 ];
+
+// P10-T6-14 — 프로젝트 스코핑 프리뷰 데모 데이터.
+const PREVIEW_PROJECTS: ProjectDto[] = [
+  {
+    id: "proj-1",
+    name: "영업 RFP 분석",
+    description: null,
+    visibility: "private",
+    orgUnitId: null,
+    ownerId: "user-1",
+    createdAt: "2026-04-01T00:00:00Z",
+  },
+  {
+    id: "proj-2",
+    name: "사내 정책",
+    description: null,
+    visibility: "org",
+    orgUnitId: null,
+    ownerId: "user-2",
+    createdAt: "2026-04-02T00:00:00Z",
+  },
+];
+
+function ProjectPickerPreview() {
+  const [projectId, setProjectId] = useState<string | null>(null);
+  return (
+    <ProjectPicker
+      projects={PREVIEW_PROJECTS}
+      projectId={projectId}
+      onSelect={setProjectId}
+    />
+  );
+}
+
+function MemoryPanelPreview() {
+  const [open, setOpen] = useState(true);
+  return open ? (
+    <MemoryPanel onClose={() => setOpen(false)} />
+  ) : (
+    <button
+      type="button"
+      onClick={() => setOpen(true)}
+      className="rounded-md border border-border px-3 py-1.5 text-sm text-fg-muted hover:border-primary hover:text-fg"
+    >
+      메모리 패널 다시 열기
+    </button>
+  );
+}
 
 // P10-T6-13 — 모델/모드 피커 프리뷰 데모 데이터.
 const AVAILABLE_MODELS = ["claude-opus-4-7", "claude-sonnet-4-6"];
@@ -250,6 +301,14 @@ export default function PreviewGallery() {
           availableModels={AVAILABLE_MODELS}
           availableTools={AVAILABLE_TOOLS}
         />
+      </Section>
+
+      <Section name="project-picker">
+        <ProjectPickerPreview />
+      </Section>
+
+      <Section name="memory-panel">
+        <MemoryPanelPreview />
       </Section>
     </div>
   );

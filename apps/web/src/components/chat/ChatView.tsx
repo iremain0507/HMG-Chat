@@ -11,12 +11,24 @@ import {
   type Citation,
 } from "../../hooks/useSessionStream";
 import { useCurrentUser } from "../../hooks/useCurrentUser";
+import { useProjects } from "../../hooks/useProjects";
+import { useSessionProject } from "../../hooks/useSessionProject";
 import { ArtifactCanvas } from "../artifacts/ArtifactCanvas";
-import { ChatInput, type ChatInputHandle } from "./ChatInput";
+import {
+  ChatInput,
+  type ChatInputHandle,
+  type SlashCommand,
+} from "./ChatInput";
 import { HitlPrompt } from "./HitlPrompt";
 import { Markdown } from "./Markdown";
+import { MemoryPanel } from "./MemoryPanel";
 import { MessageActions } from "./MessageActions";
+import { ProjectPicker } from "./ProjectPicker";
 import { ToolCallRenderer } from "./ToolCallRenderer";
+
+const SLASH_COMMANDS: SlashCommand[] = [
+  { id: "memories", label: "memories", description: "저장된 메모리 보기" },
+];
 
 const BOTTOM_THRESHOLD_PX = 80;
 const ANNOUNCE_DEBOUNCE_MS = 500;
@@ -39,10 +51,13 @@ export function ChatView({ sessionId }: { sessionId: string }) {
     artifacts,
   } = useSessionStream(sessionId);
   const { org } = useCurrentUser();
+  const { projects } = useProjects();
+  const { projectId, setProject } = useSessionProject(sessionId);
   const [autoFollow, setAutoFollow] = useState(true);
   const [announceText, setAnnounceText] = useState("");
   const [artifactPanelOpen, setArtifactPanelOpen] = useState(false);
   const [activeArtifactIndex, setActiveArtifactIndex] = useState(0);
+  const [memoryPanelOpen, setMemoryPanelOpen] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const chatInputRef = useRef<ChatInputHandle>(null);
   const wasStreamingRef = useRef(isStreaming);
@@ -128,7 +143,14 @@ export function ChatView({ sessionId }: { sessionId: string }) {
           >
             ← 홈
           </button>
-          <span className="text-sm font-semibold text-primary">WChat</span>
+          <div className="flex items-center gap-2">
+            <span className="text-sm font-semibold text-primary">WChat</span>
+            <ProjectPicker
+              projects={projects}
+              projectId={projectId}
+              onSelect={(next) => void setProject(next)}
+            />
+          </div>
           <button
             type="button"
             onClick={() => router.push(`/chat/${crypto.randomUUID()}`)}
@@ -234,6 +256,12 @@ export function ChatView({ sessionId }: { sessionId: string }) {
           </div>
         )}
 
+        {memoryPanelOpen && (
+          <div className="border-t border-border px-4 pt-3">
+            <MemoryPanel onClose={() => setMemoryPanelOpen(false)} />
+          </div>
+        )}
+
         <div className="border-t border-border px-4 py-3">
           <ChatInput
             ref={chatInputRef}
@@ -243,6 +271,10 @@ export function ChatView({ sessionId }: { sessionId: string }) {
             onSend={(content, attachments, options) =>
               send(content, attachments, options)
             }
+            slashCommands={SLASH_COMMANDS}
+            onSlashCommand={(command) => {
+              if (command.id === "memories") setMemoryPanelOpen(true);
+            }}
             availableModels={org?.allowedModels ?? []}
             availableTools={org?.allowedTools ?? []}
           />

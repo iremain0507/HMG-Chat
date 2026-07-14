@@ -28,6 +28,8 @@ export function useProjects(): UseProjectsResult {
         }
         const body = (await res.json()) as { data: ProjectDto[] };
         if (!cancelled) setProjects(body.data);
+      } catch {
+        if (!cancelled) setError("프로젝트 목록을 불러오지 못했습니다.");
       } finally {
         if (!cancelled) setLoading(false);
       }

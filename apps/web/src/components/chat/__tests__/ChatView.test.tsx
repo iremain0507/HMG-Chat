@@ -944,4 +944,122 @@ describe("ChatView", () => {
       );
     });
   });
+
+  it("헤더 프로젝트 피커에서 프로젝트를 선택하면 세션의 projectId 를 PATCH 한다 (P10-T6-14)", async () => {
+    const fetchMock = vi.fn(async (url: string, opts?: RequestInit) => {
+      const u = String(url);
+      if (u === "/api/v1/projects") {
+        return {
+          ok: true,
+          json: async () => ({
+            data: [
+              {
+                id: "proj-1",
+                name: "영업 RFP 분석",
+                description: null,
+                visibility: "private",
+                orgUnitId: null,
+                ownerId: "user-1",
+                createdAt: "2026-04-01T00:00:00Z",
+              },
+            ],
+          }),
+        };
+      }
+      if (u === "/api/v1/sessions/session-1" && opts?.method === "PATCH") {
+        return {
+          ok: true,
+          json: async () => ({
+            data: { id: "session-1", projectId: "proj-1" },
+          }),
+        };
+      }
+      if (u === "/api/v1/sessions/session-1") {
+        return {
+          ok: true,
+          json: async () => ({
+            data: { id: "session-1", projectId: null, createdAt: "x" },
+          }),
+        };
+      }
+      return {
+        body: new ReadableStream<Uint8Array>({ start: (c) => c.close() }),
+      };
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<ChatView sessionId="session-1" />);
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("button", { name: /프로젝트 없음/ }),
+      ).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: /프로젝트 없음/ }));
+    fireEvent.click(screen.getByText("영업 RFP 분석"));
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/v1/sessions/session-1",
+        expect.objectContaining({
+          method: "PATCH",
+          body: JSON.stringify({ projectId: "proj-1" }),
+        }),
+      );
+    });
+    await waitFor(() => {
+      expect(
+        screen.getByRole("button", { name: /영업 RFP 분석/ }),
+      ).toBeInTheDocument();
+    });
+  });
+
+  it("'/memories' 슬래시 커맨드를 선택하면 메모리 패널이 열리고 닫기로 다시 닫을 수 있다 (P10-T6-14)", async () => {
+    const fetchMock = vi.fn(async (url: string) => {
+      const u = String(url);
+      if (u.startsWith("/api/v1/memories")) {
+        return {
+          ok: true,
+          json: async () => ({
+            data: [
+              {
+                id: "mem-1",
+                userId: "user-1",
+                category: "user",
+                content: "사용자는 데이터 과학자다",
+                source: "auto-extract",
+                sessionId: null,
+                pinned: false,
+                metadata: null,
+                createdAt: "2026-04-01T00:00:00Z",
+                updatedAt: "2026-04-01T00:00:00Z",
+              },
+            ],
+          }),
+        };
+      }
+      return {
+        body: new ReadableStream<Uint8Array>({ start: (c) => c.close() }),
+      };
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<ChatView sessionId="session-1" />);
+
+    fireEvent.change(screen.getByLabelText("메시지 입력"), {
+      target: { value: "/memories" },
+    });
+    fireEvent.click(screen.getByTestId("composer-popover-item-memories"));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("memory-panel")).toBeInTheDocument();
+    });
+    await waitFor(() => {
+      expect(screen.getByText("사용자는 데이터 과학자다")).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "닫기" }));
+    expect(screen.queryByTestId("memory-panel")).not.toBeInTheDocument();
+  });
 });
