@@ -2,7 +2,3 @@ P0-T1-01 | AWS 실계정 프로비저닝 필요(VPC/RDS/Redis/ECR/ECS) — proje
 P9-T6-02 | e2e Playwright + A11y audit — 전체 스택(server+web+DB) 기동 + 브라우저 e2e 필요. 코드는 준비 가능하나 LOCAL_ONLY 세션에서 실 e2e green 확정은 배포/스테이징 환경에서. 배포-시 human gate.
 P9-ALL-01 | GA 게이트: 커버리지 임계 + docs/decisions ADR INDEX 는 가능하나 "24시간 staging soak 오류 0" 요건이 세션에서 불가(장시간 실행+스테이징 환경). 배포-시 human gate.
 P9-ALL-02 | v1.0 GA production 배포 = AWS(LOCAL_ONLY 라 불가) + 회고 ADR. 실 배포는 사람이 AWS 프로비저닝(P0-T1-01) 후 수행. 배포-시 human gate.
-P10-T6-10 | 아티팩트 패널 — components/artifacts/** 의 PdfRenderer(pdfjs-dist)/PptxRenderer 가 vitest/jsdom 에서 hang(웹워커/canvas). pdfjs 모킹 필요, 워커 3회 stall(attempts 0). follow-up(직접 처리).
-P10-T2-04 | artifact-create emit — artifact-store(T4) 배선 + 서버-스트리밍 vitest hang 반복(회복실패). follow-up(직접).
-P10-T2-05 | resume-stream 엔드포인트 — 서버 SSE 재연결+message_replace, vitest hang 위험. follow-up(직접).
-P10-T2-06 | 첨부 수용(routes/messages) — 메시지 SSE 라우트 테스트 vitest hang 반복(회복실패, 서버 스트리밍). follow-up(직접).
