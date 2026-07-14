@@ -959,8 +959,8 @@
     "acceptance": "dev-stub 주입으로 검색 tool_result json 반환 + tags/policy; RED→GREEN, verify-gates green",
     "phase": "P11",
     "team": "T2",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P11-T1-02",
