@@ -60,6 +60,16 @@ export interface ArtifactSummary {
   downloadUrl?: string;
 }
 
+// P10-T6-13 — 모델/모드 피커 선택값. 서버 계약(16-API-CONTRACT § POST /sessions/:id/messages)에
+// 아직 없는 필드라 서버는 무시하지만(attachments 와 동일하게 알 수 없는 키는 c.req.json<{...}>()
+// 파싱에서 그냥 버려짐), acceptance("선택이 전송 payload 반영")를 위해 body 에 포함해 전달한다.
+export interface SendOptions {
+  model?: string;
+  mode?: "agent" | "chat";
+  reasoningEffort?: "low" | "medium" | "high";
+  webSearch?: boolean;
+}
+
 type ChatStreamEvent =
   | {
       type: "message_start";
@@ -133,7 +143,11 @@ export function useSessionStream(sessionId: string) {
   const abortRef = useRef<AbortController | null>(null);
 
   const send = useCallback(
-    async (content: string, attachments?: Array<{ uploadId: string }>) => {
+    async (
+      content: string,
+      attachments?: Array<{ uploadId: string }>,
+      options?: SendOptions,
+    ) => {
       setMessages((prev) => [
         ...prev,
         { id: `local-${prev.length}-${content}`, role: "user", content },
@@ -156,6 +170,14 @@ export function useSessionStream(sessionId: string) {
           body: JSON.stringify({
             content,
             ...(attachments && attachments.length > 0 ? { attachments } : {}),
+            ...(options?.model ? { model: options.model } : {}),
+            ...(options?.mode ? { mode: options.mode } : {}),
+            ...(options?.reasoningEffort
+              ? { reasoningEffort: options.reasoningEffort }
+              : {}),
+            ...(options?.webSearch !== undefined
+              ? { webSearch: options.webSearch }
+              : {}),
           }),
         });
 

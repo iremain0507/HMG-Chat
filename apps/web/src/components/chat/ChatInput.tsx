@@ -1,12 +1,15 @@
 "use client";
 
-// components/chat/ChatInput.tsx — 19-UIUX-UPGRADE § 컴포저(C1-FE/C2) P10-T6-11/12.
+// components/chat/ChatInput.tsx — 19-UIUX-UPGRADE § 컴포저(C1-FE/C2/C3) P10-T6-11/12/13.
 //   📎 버튼 + 드래그드롭(드롭존 하이라이트) + 이미지 붙여넣기 → useAttachments 로 업로드해
 //   제거가능한 첨부 칩을 렌더. 전송 시 onSend(content, [{uploadId}]) 로 완료된 첨부만 전달.
 //   메시지 시작이 "/" 면 슬래시 액션 팝오버(필터→선택 시 onSlashCommand 콜백), "@" 면 멘션
 //   엔티티 픽커(첨부된 파일 + 호출부가 넘긴 tool/knowledge 엔티티 → "@label " 참조 토큰 삽입).
+//   availableModels 가 있으면 ModelModePicker(모델+추론강도+모드+웹검색) 를 렌더 — 선택값은
+//   onSend 3번째 인자(SendOptions)로 전달(availableModels 없으면 기존 2-인자 호출 그대로 유지).
 import React, {
   forwardRef,
+  useEffect,
   useImperativeHandle,
   useMemo,
   useRef,
@@ -18,7 +21,13 @@ import React, {
   type KeyboardEvent,
 } from "react";
 import { useAttachments } from "../../hooks/useAttachments";
+import type { SendOptions } from "../../hooks/useSessionStream";
 import { ComposerPopover, type ComposerPopoverItem } from "./ComposerPopover";
+import {
+  ModelModePicker,
+  type ChatMode,
+  type ReasoningEffort,
+} from "./ModelModePicker";
 
 export interface ChatInputHandle {
   setValue(value: string): void;
@@ -76,11 +85,14 @@ export interface ChatInputProps {
   onSend: (
     content: string,
     attachments: Array<{ uploadId: string }>,
+    options?: SendOptions,
   ) => void | Promise<void>;
   onStop: () => void;
   slashCommands?: SlashCommand[];
   onSlashCommand?: (command: SlashCommand) => void;
   mentionEntities?: MentionEntity[];
+  availableModels?: string[];
+  availableTools?: string[];
 }
 
 export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
@@ -93,6 +105,8 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
       slashCommands = [],
       onSlashCommand,
       mentionEntities = [],
+      availableModels = [],
+      availableTools = [],
     },
     ref,
   ) {
@@ -100,10 +114,22 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
     const [dragActive, setDragActive] = useState(false);
     const [trigger, setTrigger] = useState<TriggerState | null>(null);
     const [activeIndex, setActiveIndex] = useState(0);
+    const [model, setModel] = useState(availableModels[0] ?? "");
+    const [effort, setEffort] = useState<ReasoningEffort>("medium");
+    const [mode, setMode] = useState<ChatMode>("agent");
+    const [webSearch, setWebSearch] = useState(false);
     const taRef = useRef<HTMLTextAreaElement>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
     const { items, addFiles, remove, clear, readyUploadIds } =
       useAttachments(sessionId);
+    const webSearchAvailable = availableTools.includes("web_search");
+
+    // availableModels 가 마운트 후 비동기로 로드되면(useCurrentUser → org.allowedModels) 첫 항목을 기본 선택.
+    useEffect(() => {
+      if (availableModels.length > 0 && !availableModels.includes(model)) {
+        setModel(availableModels[0] ?? "");
+      }
+    }, [availableModels, model]);
 
     const fileMentionEntities = useMemo<MentionEntity[]>(
       () =>
@@ -201,7 +227,16 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
       setTrigger(null);
       if (taRef.current) taRef.current.style.height = "auto";
       clear();
-      await onSend(content, attachments);
+      if (availableModels.length > 0) {
+        await onSend(content, attachments, {
+          model,
+          mode,
+          reasoningEffort: effort,
+          ...(webSearchAvailable ? { webSearch } : {}),
+        });
+      } else {
+        await onSend(content, attachments);
+      }
     }
 
     function onFormSubmit(e: FormEvent) {
@@ -288,6 +323,18 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
         data-drag-active={dragActive}
         className="mx-auto flex max-w-3xl flex-col gap-2 rounded-2xl border border-border bg-surface p-2 transition-colors data-[drag-active=true]:border-primary data-[drag-active=true]:bg-primary/5"
       >
+        <ModelModePicker
+          models={availableModels}
+          model={model}
+          onModelChange={setModel}
+          effort={effort}
+          onEffortChange={setEffort}
+          mode={mode}
+          onModeChange={setMode}
+          webSearchAvailable={webSearchAvailable}
+          webSearch={webSearch}
+          onWebSearchChange={setWebSearch}
+        />
         {items.length > 0 && (
           <ul
             aria-label="첨부 파일"

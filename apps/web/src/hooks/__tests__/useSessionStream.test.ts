@@ -96,6 +96,44 @@ describe("useSessionStream", () => {
     );
   });
 
+  it("send 에 model/mode 옵션을 전달하면 POST body 에 반영된다 (P10-T6-13)", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({
+        body: sseBody([
+          sseFrame("message_start", { messageId: "msg-1" }),
+          sseFrame("text_delta", { text: "확인했습니다" }),
+          sseFrame("stop", { reason: "end_turn" }),
+        ]),
+      })),
+    );
+
+    const { result } = renderHook(() => useSessionStream("session-1"));
+
+    await act(async () => {
+      await result.current.send("웹에서 최신 뉴스 찾아줘", undefined, {
+        model: "claude-opus-4-7",
+        mode: "chat",
+        reasoningEffort: "high",
+        webSearch: true,
+      });
+    });
+
+    expect(fetch).toHaveBeenCalledWith(
+      "/api/v1/sessions/session-1/messages",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({
+          content: "웹에서 최신 뉴스 찾아줘",
+          model: "claude-opus-4-7",
+          mode: "chat",
+          reasoningEffort: "high",
+          webSearch: true,
+        }),
+      }),
+    );
+  });
+
   it("stop() 호출 시 즉시 isStreaming 이 false 가 되고 DELETE /active-run 을 호출한다 (Stop 클릭 시 즉시 중단)", async () => {
     let releaseStream: (() => void) | undefined;
     const encoder = new TextEncoder();

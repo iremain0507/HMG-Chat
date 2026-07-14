@@ -291,3 +291,138 @@ describe("ChatInput 슬래시/멘션", () => {
     expect(textarea.value).toBe("/대");
   });
 });
+
+describe("ChatInput 모델/모드 피커 (P10-T6-13)", () => {
+  afterEach(() => {
+    cleanup();
+    vi.unstubAllGlobals();
+  });
+
+  const MODELS = ["claude-opus-4-7", "claude-sonnet-4-6"];
+
+  it("availableModels 가 없으면 피커를 렌더하지 않는다", () => {
+    render(
+      <ChatInput
+        sessionId="session-1"
+        isStreaming={false}
+        onSend={vi.fn()}
+        onStop={vi.fn()}
+      />,
+    );
+    expect(screen.queryByTestId("model-mode-picker")).not.toBeInTheDocument();
+  });
+
+  it("availableModels 가 있으면 피커를 렌더하고 기본 선택 모델을 전송 payload 에 반영한다", async () => {
+    const onSend = vi.fn();
+    render(
+      <ChatInput
+        sessionId="session-1"
+        isStreaming={false}
+        onSend={onSend}
+        onStop={vi.fn()}
+        availableModels={MODELS}
+      />,
+    );
+    expect(screen.getByLabelText("모델 선택")).toHaveValue("claude-opus-4-7");
+
+    fireEvent.change(screen.getByLabelText("메시지 입력"), {
+      target: { value: "안녕" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "전송" }));
+
+    await waitFor(() => {
+      expect(onSend).toHaveBeenCalledWith(
+        "안녕",
+        [],
+        expect.objectContaining({
+          model: "claude-opus-4-7",
+          mode: "agent",
+          reasoningEffort: "medium",
+        }),
+      );
+    });
+  });
+
+  it("모델/모드/추론강도를 변경하면 전송 payload 에 반영된다", async () => {
+    const onSend = vi.fn();
+    render(
+      <ChatInput
+        sessionId="session-1"
+        isStreaming={false}
+        onSend={onSend}
+        onStop={vi.fn()}
+        availableModels={MODELS}
+      />,
+    );
+
+    fireEvent.change(screen.getByLabelText("모델 선택"), {
+      target: { value: "claude-sonnet-4-6" },
+    });
+    fireEvent.change(screen.getByLabelText("모드 선택"), {
+      target: { value: "chat" },
+    });
+    fireEvent.change(screen.getByLabelText("추론 강도"), {
+      target: { value: "high" },
+    });
+    fireEvent.change(screen.getByLabelText("메시지 입력"), {
+      target: { value: "질문 있어" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "전송" }));
+
+    await waitFor(() => {
+      expect(onSend).toHaveBeenCalledWith(
+        "질문 있어",
+        [],
+        expect.objectContaining({
+          model: "claude-sonnet-4-6",
+          mode: "chat",
+          reasoningEffort: "high",
+        }),
+      );
+    });
+  });
+
+  it("availableTools 에 web_search 가 없으면 웹검색 토글을 숨긴다", () => {
+    render(
+      <ChatInput
+        sessionId="session-1"
+        isStreaming={false}
+        onSend={vi.fn()}
+        onStop={vi.fn()}
+        availableModels={MODELS}
+        availableTools={["knowledge_search"]}
+      />,
+    );
+    expect(
+      screen.queryByTestId("model-picker-websearch"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("웹검색을 켜고 전송하면 payload 에 webSearch:true 가 반영된다", async () => {
+    const onSend = vi.fn();
+    render(
+      <ChatInput
+        sessionId="session-1"
+        isStreaming={false}
+        onSend={onSend}
+        onStop={vi.fn()}
+        availableModels={MODELS}
+        availableTools={["web_search"]}
+      />,
+    );
+
+    fireEvent.click(screen.getByTestId("model-picker-websearch"));
+    fireEvent.change(screen.getByLabelText("메시지 입력"), {
+      target: { value: "최신 뉴스 찾아줘" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "전송" }));
+
+    await waitFor(() => {
+      expect(onSend).toHaveBeenCalledWith(
+        "최신 뉴스 찾아줘",
+        [],
+        expect.objectContaining({ webSearch: true }),
+      );
+    });
+  });
+});

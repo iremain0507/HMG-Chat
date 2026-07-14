@@ -112,6 +112,10 @@ const SLASH_COMMANDS = [
   { id: "search", label: "웹 검색" },
 ];
 
+// P10-T6-13 — 모델/모드 피커 프리뷰 데모 데이터.
+const AVAILABLE_MODELS = ["claude-opus-4-7", "claude-sonnet-4-6"];
+const AVAILABLE_TOOLS = ["knowledge_search", "web_search"];
+
 const MENTION_ENTITIES = [
   {
     id: "tool-knowledge-search",
@@ -243,6 +247,8 @@ export default function PreviewGallery() {
           slashCommands={SLASH_COMMANDS}
           onSlashCommand={() => {}}
           mentionEntities={MENTION_ENTITIES}
+          availableModels={AVAILABLE_MODELS}
+          availableTools={AVAILABLE_TOOLS}
         />
       </Section>
     </div>

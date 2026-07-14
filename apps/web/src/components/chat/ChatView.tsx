@@ -10,6 +10,7 @@ import {
   type MessagePart,
   type Citation,
 } from "../../hooks/useSessionStream";
+import { useCurrentUser } from "../../hooks/useCurrentUser";
 import { ArtifactCanvas } from "../artifacts/ArtifactCanvas";
 import { ChatInput, type ChatInputHandle } from "./ChatInput";
 import { HitlPrompt } from "./HitlPrompt";
@@ -37,6 +38,7 @@ export function ChatView({ sessionId }: { sessionId: string }) {
     respondHitl,
     artifacts,
   } = useSessionStream(sessionId);
+  const { org } = useCurrentUser();
   const [autoFollow, setAutoFollow] = useState(true);
   const [announceText, setAnnounceText] = useState("");
   const [artifactPanelOpen, setArtifactPanelOpen] = useState(false);
@@ -238,7 +240,11 @@ export function ChatView({ sessionId }: { sessionId: string }) {
             sessionId={sessionId}
             isStreaming={isStreaming}
             onStop={() => void stop()}
-            onSend={(content, attachments) => send(content, attachments)}
+            onSend={(content, attachments, options) =>
+              send(content, attachments, options)
+            }
+            availableModels={org?.allowedModels ?? []}
+            availableTools={org?.allowedTools ?? []}
           />
           <p className="mx-auto mt-2 max-w-3xl text-center text-xs text-fg-muted">
             WChat은 dev-stub 응답을 표시할 수 있습니다.
