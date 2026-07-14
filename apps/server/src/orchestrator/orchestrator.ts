@@ -41,6 +41,23 @@ function toToolResultContent(result: AgentToolResult): string | unknown {
   }
 }
 
+type CitationPayload = Omit<Extract<ChatEvent, { type: "citation" }>, "type">;
+
+// knowledge_search 등 검색 툴이 json 결과에 { citations: [...] } 형태를 담아 반환하면
+// (apps/server/src/tools/handlers/knowledge-search-handler.ts, P10-T2-03) 각 항목을
+// citation ChatEvent 로 펼쳐 emit — 신규 ChatEvent 변형 없이 기존 tool_result json 페이로드
+// 형태를 detect 하는 방식 (14-INTERFACES.md 의 12변형 동결 준수).
+function extractCitations(data: unknown): CitationPayload[] {
+  if (
+    typeof data !== "object" ||
+    data === null ||
+    !Array.isArray((data as { citations?: unknown }).citations)
+  ) {
+    return [];
+  }
+  return (data as { citations: CitationPayload[] }).citations;
+}
+
 // 메시지 → LLM → SSE 루프 (14-INTERFACES.md § 6 ChatEvent 는 16-API-CONTRACT SSE
 // 이벤트와 1:1이므로, 이 async generator 를 그대로 SSE 로 relay 하면 된다).
 // tools 등록 시: provider.chat 이 stop.reason==="tool_use" 로 끝나면(비종결) 해당
@@ -206,6 +223,11 @@ export async function* runTurn(input: RunTurnInput): AsyncIterable<ChatEvent> {
         toolCallId: toolUse.toolCallId,
         content,
       });
+      if (result.content.kind === "json") {
+        for (const citation of extractCitations(result.content.data)) {
+          yield { type: "citation", ...citation };
+        }
+      }
     }
 
     messages = [

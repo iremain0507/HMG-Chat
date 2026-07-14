@@ -734,8 +734,8 @@
     "acceptance": "검색 툴 turn 이 index/filename/snippet 갖춘 citation emit; RED→GREEN, verify-gates green",
     "phase": "P10",
     "team": "T2",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P10-T6-09",

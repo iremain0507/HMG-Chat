@@ -509,3 +509,169 @@ describe("orchestrator.runTurn — HITL 게이팅 (P10-T2-02)", () => {
     expect(invoked).toEqual([]);
   });
 });
+
+describe("orchestrator.runTurn — knowledge_search citation emit (P10-T2-03)", () => {
+  it("검색 툴이 citations 를 담은 json 결과를 반환하면 tool_result 뒤에 citation 이벤트를 index/filename/snippet 과 함께 emit 한다", async () => {
+    const calls: ChatInput[] = [];
+    const fakeProvider: LLMProvider = {
+      name: "fake",
+      models: ["fake-model"],
+      async *chat(input) {
+        calls.push(input);
+        if (calls.length === 1) {
+          yield {
+            type: "tool_use",
+            toolCallId: "call-1",
+            name: "knowledge_search",
+            args: { query: "widget" },
+          };
+          yield {
+            type: "stop",
+            reason: "tool_use",
+            usage: { inputTokens: 1, outputTokens: 1 },
+          };
+          return;
+        }
+        yield {
+          type: "text_delta",
+          text: "widget 은 [1] 에 설명되어 있습니다",
+        };
+        yield {
+          type: "stop",
+          reason: "end_turn",
+          usage: { inputTokens: 2, outputTokens: 2 },
+        };
+      },
+    };
+
+    const knowledgeSearchTool: AgentTool = {
+      spec: {
+        name: "knowledge_search",
+        description: "문서 검색",
+        inputSchema: { type: "object" },
+        permissionTier: "tool",
+        defaultPolicy: "allow",
+      },
+      async invoke(input) {
+        return {
+          toolCallId: input.toolCallId,
+          content: {
+            kind: "json",
+            data: {
+              citations: [
+                {
+                  index: 1,
+                  source: "project",
+                  documentId: "doc-1",
+                  filename: "widget-guide.pdf",
+                  snippet: "widget 사용법...",
+                },
+              ],
+              message: null,
+            },
+          },
+        };
+      },
+    };
+
+    const result: ChatEvent[] = [];
+    for await (const event of runTurn({
+      provider: fakeProvider,
+      model: "fake-model",
+      systemBlocks: [],
+      messages: [{ role: "user", content: "widget 이 뭐야" }],
+      maxTokens: 512,
+      signal: new AbortController().signal,
+      tools: [knowledgeSearchTool],
+      toolContext: fakeToolContext(),
+    })) {
+      result.push(event);
+    }
+
+    expect(result.map((e) => e.type)).toEqual([
+      "tool_use",
+      "stop",
+      "tool_result",
+      "citation",
+      "text_delta",
+      "stop",
+    ]);
+    const citationEvent = result.find((e) => e.type === "citation");
+    expect(citationEvent).toMatchObject({
+      type: "citation",
+      index: 1,
+      source: "project",
+      documentId: "doc-1",
+      filename: "widget-guide.pdf",
+      snippet: "widget 사용법...",
+    });
+  });
+
+  it("tool json 결과에 citations 배열이 없으면 citation 이벤트를 emit 하지 않는다", async () => {
+    let calls = 0;
+    const fakeProvider: LLMProvider = {
+      name: "fake",
+      models: ["fake-model"],
+      async *chat() {
+        calls += 1;
+        if (calls === 1) {
+          yield {
+            type: "tool_use",
+            toolCallId: "call-1",
+            name: "other_tool",
+            args: {},
+          };
+          yield {
+            type: "stop",
+            reason: "tool_use",
+            usage: { inputTokens: 1, outputTokens: 1 },
+          };
+          return;
+        }
+        yield { type: "text_delta", text: "done" };
+        yield {
+          type: "stop",
+          reason: "end_turn",
+          usage: { inputTokens: 2, outputTokens: 2 },
+        };
+      },
+    };
+    const otherTool: AgentTool = {
+      spec: {
+        name: "other_tool",
+        description: "기타",
+        inputSchema: { type: "object" },
+        permissionTier: "tool",
+        defaultPolicy: "allow",
+      },
+      async invoke(input) {
+        return {
+          toolCallId: input.toolCallId,
+          content: { kind: "json", data: { ok: true } },
+        };
+      },
+    };
+
+    const result: ChatEvent[] = [];
+    for await (const event of runTurn({
+      provider: fakeProvider,
+      model: "fake-model",
+      systemBlocks: [],
+      messages: [{ role: "user", content: "hi" }],
+      maxTokens: 512,
+      signal: new AbortController().signal,
+      tools: [otherTool],
+      toolContext: fakeToolContext(),
+    })) {
+      result.push(event);
+    }
+
+    expect(result.map((e) => e.type)).toEqual([
+      "tool_use",
+      "stop",
+      "tool_result",
+      "text_delta",
+      "stop",
+    ]);
+  });
+});
