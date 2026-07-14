@@ -878,8 +878,8 @@
     "acceptance": "unknown model→WChatError, 등록 model→해당 provider 위임; RED→GREEN, verify-gates green",
     "phase": "P11",
     "team": "T2",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P11-T2-04",

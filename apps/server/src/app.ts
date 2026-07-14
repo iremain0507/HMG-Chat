@@ -51,6 +51,7 @@ import {
 } from "./middleware/auth-middleware.js";
 import { createAnthropicLLMProvider } from "./orchestrator/llm-provider-anthropic.js";
 import { createDevStubLLMProvider } from "./orchestrator/llm-provider-dev-stub.js";
+import { createLLMProviderRegistry } from "./orchestrator/llm-provider-registry.js";
 import { setActiveRun } from "./db/active-runs-service.js";
 import { createLogger } from "./lib/logger.js";
 import type { AgentTool } from "@wchat/interfaces";
@@ -125,11 +126,19 @@ export function createApp(env: Env) {
   );
 
   // ANTHROPIC_API_KEY 미설정(dev/CI) 시 실 네트워크 호출 없는 dev-stub 으로 fail-soft.
-  const provider = env.ANTHROPIC_API_KEY
+  // P11-T2-03 — 레지스트리 뒤에서 조립: 오늘은 concrete provider 가 하나뿐이지만, 이후
+  // provider 가 추가돼도 routes/messages.ts·runTurn 은 registry 하나만 알면 된다.
+  const concreteProvider = env.ANTHROPIC_API_KEY
     ? createAnthropicLLMProvider({
         client: new Anthropic({ apiKey: env.ANTHROPIC_API_KEY }),
       })
     : createDevStubLLMProvider();
+  // fallback=concreteProvider: 현재는 provider 가 하나뿐이라 provider.models 밖의 model
+  // (org.allowedModels 로 동적 허용된 값 포함)도 그대로 위임 — 기존 동작 보존.
+  const provider = createLLMProviderRegistry({
+    providers: [concreteProvider],
+    fallback: concreteProvider,
+  });
 
   // P11-T2-02 — routes/messages.ts 가 tools+toolContext 를 조립하는 데 필요한 built-in
   // handler(artifact_create) + MCP 조립 함수. mcp-servers 라우트(§ 아래)와 인스턴스를
