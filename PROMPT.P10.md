@@ -34,6 +34,10 @@
 - **SSE UI 태스크**(스트림/툴콜/HITL/citation/artifact 렌더러): 서버 emit 전이라도
   `apps/web/src/components/chat/__tests__/ChatView.test.tsx` 의 스텁 패턴으로 테스트 —
   `fetch`→`ReadableStream` 로 `event: <type>\ndata: {...}\n\n` 프레임 주입, 동결 이벤트 shape 로 렌더 검증.
+  - ⚠️ **필수**: 스텁 `ReadableStream` 은 프레임을 모두 emit 한 뒤 반드시 `controller.close()` 로 닫아라
+    (보통 마지막에 `stop`/`error` 프레임 → `close()`). **안 닫으면 reader 가 `done` 을 못 받아 `send()` 가
+    영원히 대기 → vitest 가 hang(6분+ 뒤 watchdog 이 killing → 테스트 실패)**. 열린 타이머/AbortController 도
+    테스트 종료 시 정리. RED 확인 시 테스트가 5초 내 끝나는지 확인(안 끝나면 스트림 close 누락 의심).
 - **테스트 환경**: web vitest 는 파일 상단 `// @vitest-environment jsdom` 프래그마 사용(전역 config 없음).
   `next/navigation` 은 `vi.mock`. React 컴포넌트는 `import React` 필요.
 
