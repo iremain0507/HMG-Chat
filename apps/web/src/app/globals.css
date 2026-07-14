@@ -1,4 +1,13 @@
 @import "tailwindcss";
+
+/* Pretendard self-host — 실 폰트 바이너리는 로고 자산과 동일하게 배포 시 제공(현재 fallback 스택으로 동작). */
+@font-face {
+  font-family: "Pretendard";
+  src: url("/fonts/Pretendard-Regular.woff2") format("woff2");
+  font-weight: 400;
+  font-display: swap;
+}
+
 @theme {
   --color-primary: #00287a;
   --color-primary-fg: #ffffff;
@@ -12,7 +21,7 @@
   --radius: 0.5rem;
 }
 @media (prefers-color-scheme: dark) {
-  @theme {
+  :root:not([data-theme]) {
     --color-primary: #3d6fd4;
     --color-primary-fg: #0b1220;
     --color-accent: #f0576e;
@@ -23,4 +32,33 @@
     --color-fg-muted: #b3b3b3;
   }
 }
+/* data-theme 수동 토글 — prefers-color-scheme 를 양방향 override */
+:root[data-theme="dark"] {
+  --color-primary: #3d6fd4;
+  --color-primary-fg: #0b1220;
+  --color-accent: #f0576e;
+  --color-bg: #0f141a;
+  --color-surface: #161c24;
+  --color-border: #2a3340;
+  --color-fg: #e6e9ed;
+  --color-fg-muted: #b3b3b3;
+}
+:root[data-theme="light"] {
+  --color-primary: #00287a;
+  --color-primary-fg: #ffffff;
+  --color-accent: #c8102e;
+  --color-bg: #ffffff;
+  --color-surface: #f5f7fa;
+  --color-border: #d9d9d9;
+  --color-fg: #1a1d21;
+  --color-fg-muted: #666666;
+}
+
+:root {
+  /* z-index 토큰 — 19-UIUX-UPGRADE.md § P10-T6-01 */
+  --z-modal: 100;
+  --z-toast: 200;
+  --z-hitl: 300;
+}
+
 body { background: var(--color-bg); color: var(--color-fg); }

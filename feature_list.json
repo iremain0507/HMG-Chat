@@ -644,8 +644,8 @@
     "acceptance": "AppShell 이 3 region 렌더 + 테마 토글이 data-theme 스탬프 + 모바일에서 사이드바 슬라이드오버; vitest RED→GREEN, verify-gates green",
     "phase": "P10",
     "team": "T6",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P10-T6-02",

@@ -62,7 +62,7 @@ export function ChatView({ sessionId }: { sessionId: string }) {
   const empty = messages.length === 0;
 
   return (
-    <div className="flex h-[100dvh] flex-col bg-bg text-fg">
+    <div className="flex h-full flex-col bg-bg text-fg">
       <header className="flex items-center justify-between border-b border-border px-4 py-3">
         <button
           type="button"
