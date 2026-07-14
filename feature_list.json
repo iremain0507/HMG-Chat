@@ -896,8 +896,8 @@
     "acceptance": "fake client로 tool_use/text_delta/stop 정규화 + args parse; RED→GREEN, verify-gates green",
     "phase": "P11",
     "team": "T2",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P11-T2-06",
