@@ -834,3 +834,281 @@ describe("orchestrator.runTurn — artifact-create artifact_created emit (P10-T2
     ]);
   });
 });
+
+describe("orchestrator.runTurn — 병렬 tool 실행 (P11-T2-09)", () => {
+  it("독립 allow 툴 2개는 Promise.all 로 동시에 invoke 되고, tool_result 는 완료 순서와 무관하게 원래 tool_use 순서를 보존한다", async () => {
+    let calls = 0;
+    const fakeProvider: LLMProvider = {
+      name: "fake",
+      models: ["fake-model"],
+      async *chat() {
+        calls += 1;
+        if (calls === 1) {
+          yield {
+            type: "tool_use",
+            toolCallId: "call-1",
+            name: "slow_tool",
+            args: {},
+          };
+          yield {
+            type: "tool_use",
+            toolCallId: "call-2",
+            name: "fast_tool",
+            args: {},
+          };
+          yield {
+            type: "stop",
+            reason: "tool_use",
+            usage: { inputTokens: 1, outputTokens: 1 },
+          };
+          return;
+        }
+        yield { type: "text_delta", text: "done" };
+        yield {
+          type: "stop",
+          reason: "end_turn",
+          usage: { inputTokens: 2, outputTokens: 2 },
+        };
+      },
+    };
+
+    const order: string[] = [];
+    const slowTool: AgentTool = {
+      spec: {
+        name: "slow_tool",
+        description: "느린 독립 툴",
+        inputSchema: { type: "object" },
+        permissionTier: "tool",
+        defaultPolicy: "allow",
+      },
+      async invoke(input) {
+        order.push("start:slow");
+        await new Promise((resolve) => setTimeout(resolve, 10));
+        order.push("end:slow");
+        return {
+          toolCallId: input.toolCallId,
+          content: { kind: "text", text: "slow-done" },
+        };
+      },
+    };
+    const fastTool: AgentTool = {
+      spec: {
+        name: "fast_tool",
+        description: "빠른 독립 툴",
+        inputSchema: { type: "object" },
+        permissionTier: "tool",
+        defaultPolicy: "allow",
+      },
+      async invoke(input) {
+        order.push("start:fast");
+        return {
+          toolCallId: input.toolCallId,
+          content: { kind: "text", text: "fast-done" },
+        };
+      },
+    };
+
+    const result: ChatEvent[] = [];
+    for await (const event of runTurn({
+      provider: fakeProvider,
+      model: "fake-model",
+      systemBlocks: [],
+      messages: [{ role: "user", content: "hi" }],
+      maxTokens: 512,
+      signal: new AbortController().signal,
+      tools: [slowTool, fastTool],
+      toolContext: fakeToolContext(),
+    })) {
+      result.push(event);
+    }
+
+    // slow_tool 이 아직 끝나기 전에 fast_tool 이 이미 시작됐어야 동시 invoke 증거.
+    expect(order).toEqual(["start:slow", "start:fast", "end:slow"]);
+    const toolResultEvents = result.filter(
+      (e): e is Extract<ChatEvent, { type: "tool_result" }> =>
+        e.type === "tool_result",
+    );
+    expect(toolResultEvents.map((e) => e.toolCallId)).toEqual([
+      "call-1",
+      "call-2",
+    ]);
+  });
+
+  it("hitl 정책 툴은 allow 병렬 배치와 분리되어 직렬로 승인되며(승인 순서 보존), tool_result 순서도 원래 tool_use 순서를 유지한다", async () => {
+    const calls: ChatInput[] = [];
+    const askApprovalOrder: string[] = [];
+    let resolveFirstApproval: (() => void) | undefined;
+    const firstApprovalGate = new Promise<void>((resolve) => {
+      resolveFirstApproval = resolve;
+    });
+    const hitl: HitlBridge = {
+      async askApproval(input) {
+        askApprovalOrder.push(`start:${input.toolCallId}`);
+        if (input.toolCallId === "call-1") {
+          await firstApprovalGate;
+        }
+        askApprovalOrder.push(`resolved:${input.toolCallId}`);
+        return { kind: "approved" };
+      },
+    };
+
+    const invoked: string[] = [];
+    const gatedTool2: AgentTool = {
+      spec: {
+        name: "gated_tool_2",
+        description: "두번째 승인 필요 툴",
+        inputSchema: { type: "object" },
+        permissionTier: "user",
+        defaultPolicy: "hitl",
+      },
+      async invoke(input) {
+        invoked.push(input.toolCallId);
+        return {
+          toolCallId: input.toolCallId,
+          content: { kind: "text", text: "gated-2-output" },
+        };
+      },
+    };
+    const invokedFirst: unknown[] = [];
+    const gatedTool: AgentTool = {
+      spec: {
+        name: "gated_tool",
+        description: "부수효과 있는 위험 툴",
+        inputSchema: { type: "object" },
+        permissionTier: "user",
+        defaultPolicy: "hitl",
+      },
+      async invoke(input) {
+        invokedFirst.push(input.args);
+        return {
+          toolCallId: input.toolCallId,
+          content: { kind: "text", text: "gated-output" },
+        };
+      },
+    };
+
+    const twoToolProvider: LLMProvider = {
+      name: "fake",
+      models: ["fake-model"],
+      async *chat(input) {
+        calls.push(input);
+        if (calls.length === 1) {
+          yield {
+            type: "tool_use",
+            toolCallId: "call-1",
+            name: "gated_tool",
+            args: { x: 1 },
+          };
+          yield {
+            type: "tool_use",
+            toolCallId: "call-2",
+            name: "gated_tool_2",
+            args: { y: 1 },
+          };
+          yield {
+            type: "stop",
+            reason: "tool_use",
+            usage: { inputTokens: 1, outputTokens: 1 },
+          };
+          return;
+        }
+        yield { type: "text_delta", text: "후속" };
+        yield {
+          type: "stop",
+          reason: "end_turn",
+          usage: { inputTokens: 2, outputTokens: 2 },
+        };
+      },
+    };
+
+    const runPromise = (async () => {
+      const result: ChatEvent[] = [];
+      for await (const event of runTurn({
+        provider: twoToolProvider,
+        model: "fake-model",
+        systemBlocks: [],
+        messages: [{ role: "user", content: "hi" }],
+        maxTokens: 512,
+        signal: new AbortController().signal,
+        tools: [gatedTool, gatedTool2],
+        toolContext: fakeToolContext(hitl),
+      })) {
+        result.push(event);
+      }
+      return result;
+    })();
+
+    // call-2 의 승인 요청이 call-1 승인 완료 전에 시작되면(동시 프롬프트) 직렬성 위반.
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    expect(askApprovalOrder).toEqual(["start:call-1"]);
+    resolveFirstApproval!();
+
+    const result = await runPromise;
+
+    expect(askApprovalOrder).toEqual([
+      "start:call-1",
+      "resolved:call-1",
+      "start:call-2",
+      "resolved:call-2",
+    ]);
+    expect(invokedFirst).toEqual([{ x: 1 }]);
+    expect(invoked).toEqual(["call-2"]);
+    const toolResultEvents = result.filter(
+      (e): e is Extract<ChatEvent, { type: "tool_result" }> =>
+        e.type === "tool_result",
+    );
+    expect(toolResultEvents.map((e) => e.toolCallId)).toEqual([
+      "call-1",
+      "call-2",
+    ]);
+  });
+
+  it("tools 가 등록되면 provider.chat 의 ChatInput.parallelToolCalls 로 RunTurnInput.parallelToolCalls 를 그대로 forward 한다", async () => {
+    const calls: ChatInput[] = [];
+    const fakeProvider: LLMProvider = {
+      name: "fake",
+      models: ["fake-model"],
+      async *chat(input) {
+        calls.push(input);
+        yield { type: "text_delta", text: "ok" };
+        yield {
+          type: "stop",
+          reason: "end_turn",
+          usage: { inputTokens: 1, outputTokens: 1 },
+        };
+      },
+    };
+    const noopTool: AgentTool = {
+      spec: {
+        name: "noop_tool",
+        description: "미사용 툴(스펙 forward 확인용)",
+        inputSchema: { type: "object" },
+        permissionTier: "tool",
+        defaultPolicy: "allow",
+      },
+      async invoke(input) {
+        return {
+          toolCallId: input.toolCallId,
+          content: { kind: "text", text: "unused" },
+        };
+      },
+    };
+
+    const result: ChatEvent[] = [];
+    for await (const event of runTurn({
+      provider: fakeProvider,
+      model: "fake-model",
+      systemBlocks: [],
+      messages: [{ role: "user", content: "hi" }],
+      maxTokens: 512,
+      signal: new AbortController().signal,
+      tools: [noopTool],
+      toolContext: fakeToolContext(),
+      parallelToolCalls: true,
+    })) {
+      result.push(event);
+    }
+
+    expect(calls[0]?.parallelToolCalls).toBe(true);
+  });
+});

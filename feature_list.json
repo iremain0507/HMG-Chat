@@ -941,8 +941,8 @@
     "acceptance": "독립 allow 툴 2개 동시 invoke + 결과 순서보존 + hitl 직렬승인; RED→GREEN, verify-gates green",
     "phase": "P11",
     "team": "T2",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P11-T2-10",

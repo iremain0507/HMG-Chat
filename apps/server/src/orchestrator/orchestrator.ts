@@ -26,6 +26,11 @@ export interface RunTurnInput {
   // tools 사용 시 필수 — AgentTool.invoke 에 넘길 ToolContext. signal 은
   // RunTurnInput.signal 을 그대로 쓰므로 여기 별도 필드 없음(중복 방지).
   toolContext?: Omit<ToolContext, "signal">;
+  // provider.chat 에 그대로 forward (ChatInput.parallelToolCalls, 14-INTERFACES §6).
+  // 이 값과 무관하게 runTurn 자체의 tool-execution 루프는 항상 allow 정책 툴을
+  // Promise.all 로 동시 invoke 한다(20-MULTI-AGENT-TOOL.md §20.4-4) — 이 필드는
+  // provider 가 모델에게 병렬 tool_use 생성을 허용할지 여부만 제어.
+  parallelToolCalls?: boolean;
 }
 
 function toToolResultContent(result: AgentToolResult): string | unknown {
@@ -118,6 +123,9 @@ export async function* runTurn(input: RunTurnInput): AsyncIterable<ChatEvent> {
         messages,
         maxTokens: input.maxTokens,
         ...(toolSpecs ? { tools: toolSpecs } : {}),
+        ...(input.parallelToolCalls !== undefined
+          ? { parallelToolCalls: input.parallelToolCalls }
+          : {}),
       },
       input.signal,
     );
@@ -162,78 +170,34 @@ export async function* runTurn(input: RunTurnInput): AsyncIterable<ChatEvent> {
       return;
     }
 
-    const toolResultParts: ContentPart[] = [];
+    // hitl 정책 툴은 승인 순서를 보존해야 하므로 각자 단독 세그먼트, 그 외(allow/미등록)
+    // 툴은 인접한 것끼리 묶어 세그먼트 단위로 Promise.all 동시 invoke (20-MULTI-AGENT-TOOL.md
+    // §20.4-4 "병렬은 allow-툴만, HITL 은 직렬"). 세그먼트를 원래 tool_use 순서대로 처리하고
+    // 세그먼트 내부도 원래 순서로 tool_result 를 emit 하므로 완료(resolve) 순서와 무관하게
+    // toolResultParts 는 항상 pendingToolUses 와 동일한 순서·id 로 정합된다.
+    type ToolUseEvent = Extract<ChatEvent, { type: "tool_use" }>;
+    type Segment =
+      | { kind: "allow"; items: ToolUseEvent[] }
+      | { kind: "hitl"; item: ToolUseEvent };
+    const segments: Segment[] = [];
     for (const toolUse of pendingToolUses) {
-      const tool = toolsByName.get(toolUse.name);
-      let args = (toolUse.args ?? {}) as Record<string, unknown>;
-      let skipReason: "denied" | "timeout" | undefined;
-
-      if (tool?.spec.defaultPolicy === "hitl") {
-        const toolCallId = toolUse.toolCallId;
-        const timeoutMs = 300_000;
-        const rationale = `"${tool.spec.name}" 실행에는 사용자 승인이 필요합니다: ${tool.spec.description}`;
-        const expiresAt = new Date(Date.now() + timeoutMs).toISOString();
-        yield {
-          type: "hitl_request",
-          toolCallId,
-          toolName: tool.spec.name,
-          args,
-          rationale,
-          expiresAt,
-        };
-
-        let decision: HitlDecision;
-        try {
-          decision = await input.toolContext!.hitl.askApproval(
-            {
-              sessionId: input.toolContext!.sessionId,
-              toolCallId,
-              toolName: tool.spec.name,
-              args,
-              rationale,
-              timeoutMs,
-            },
-            input.signal,
-          );
-        } catch {
-          // abort 중 HITL 대기 취소 — 진행 중이던 turn 을 즉시 종료.
-          return;
-        }
-
-        if (decision.kind === "timeout") {
-          yield { type: "hitl_timeout", toolCallId };
-          skipReason = "timeout";
-        } else {
-          yield {
-            type: "hitl_resolved",
-            toolCallId,
-            decision: decision.kind,
-            ...(decision.kind === "approved" && decision.modifiedArgs
-              ? { modifiedArgs: decision.modifiedArgs }
-              : {}),
-            ...(decision.kind === "denied" && decision.reason
-              ? { reason: decision.reason }
-              : {}),
-          };
-          if (decision.kind === "denied") {
-            skipReason = "denied";
-          } else {
-            args = decision.modifiedArgs ?? args;
-            yield { type: "tool_use", toolCallId, name: tool.spec.name, args };
-          }
-        }
-      }
-
-      if (skipReason) {
-        const content = { hitl: skipReason };
-        toolResultParts.push({
-          type: "tool_result",
-          toolCallId: toolUse.toolCallId,
-          content,
-        });
+      if (toolsByName.get(toolUse.name)?.spec.defaultPolicy === "hitl") {
+        segments.push({ kind: "hitl", item: toolUse });
         continue;
       }
+      const last = segments.at(-1);
+      if (last?.kind === "allow") {
+        last.items.push(toolUse);
+      } else {
+        segments.push({ kind: "allow", items: [toolUse] });
+      }
+    }
 
+    async function invokeAllow(
+      toolUse: ToolUseEvent,
+    ): Promise<{ toolUse: ToolUseEvent; result: AgentToolResult }> {
+      const tool = toolsByName.get(toolUse.name);
+      const args = (toolUse.args ?? {}) as Record<string, unknown>;
       const result: AgentToolResult = tool
         ? await tool.invoke({
             toolCallId: toolUse.toolCallId,
@@ -252,6 +216,112 @@ export async function* runTurn(input: RunTurnInput): AsyncIterable<ChatEvent> {
               ),
             },
           };
+      return { toolUse, result };
+    }
+
+    const toolResultParts: ContentPart[] = [];
+    for (const segment of segments) {
+      if (segment.kind === "allow") {
+        const invoked = await Promise.all(segment.items.map(invokeAllow));
+        for (const { toolUse, result } of invoked) {
+          const content = toToolResultContent(result);
+          yield {
+            type: "tool_result",
+            toolCallId: toolUse.toolCallId,
+            content,
+          };
+          toolResultParts.push({
+            type: "tool_result",
+            toolCallId: toolUse.toolCallId,
+            content,
+          });
+          if (result.content.kind === "json") {
+            for (const citation of extractCitations(result.content.data)) {
+              yield { type: "citation", ...citation };
+            }
+            const artifact = extractArtifact(result.content.data);
+            if (artifact) {
+              yield { type: "artifact_created", ...artifact };
+            }
+          }
+        }
+        continue;
+      }
+
+      const toolUse = segment.item;
+      const tool = toolsByName.get(toolUse.name)!;
+      let args = (toolUse.args ?? {}) as Record<string, unknown>;
+      let skipReason: "denied" | "timeout" | undefined;
+
+      const toolCallId = toolUse.toolCallId;
+      const timeoutMs = 300_000;
+      const rationale = `"${tool.spec.name}" 실행에는 사용자 승인이 필요합니다: ${tool.spec.description}`;
+      const expiresAt = new Date(Date.now() + timeoutMs).toISOString();
+      yield {
+        type: "hitl_request",
+        toolCallId,
+        toolName: tool.spec.name,
+        args,
+        rationale,
+        expiresAt,
+      };
+
+      let decision: HitlDecision;
+      try {
+        decision = await input.toolContext!.hitl.askApproval(
+          {
+            sessionId: input.toolContext!.sessionId,
+            toolCallId,
+            toolName: tool.spec.name,
+            args,
+            rationale,
+            timeoutMs,
+          },
+          input.signal,
+        );
+      } catch {
+        // abort 중 HITL 대기 취소 — 진행 중이던 turn 을 즉시 종료.
+        return;
+      }
+
+      if (decision.kind === "timeout") {
+        yield { type: "hitl_timeout", toolCallId };
+        skipReason = "timeout";
+      } else {
+        yield {
+          type: "hitl_resolved",
+          toolCallId,
+          decision: decision.kind,
+          ...(decision.kind === "approved" && decision.modifiedArgs
+            ? { modifiedArgs: decision.modifiedArgs }
+            : {}),
+          ...(decision.kind === "denied" && decision.reason
+            ? { reason: decision.reason }
+            : {}),
+        };
+        if (decision.kind === "denied") {
+          skipReason = "denied";
+        } else {
+          args = decision.modifiedArgs ?? args;
+          yield { type: "tool_use", toolCallId, name: tool.spec.name, args };
+        }
+      }
+
+      if (skipReason) {
+        const content = { hitl: skipReason };
+        toolResultParts.push({
+          type: "tool_result",
+          toolCallId: toolUse.toolCallId,
+          content,
+        });
+        continue;
+      }
+
+      const result = await tool.invoke({
+        toolCallId: toolUse.toolCallId,
+        args,
+        ctx: { ...input.toolContext!, signal: input.signal },
+      });
       const content = toToolResultContent(result);
       yield { type: "tool_result", toolCallId: toolUse.toolCallId, content };
       toolResultParts.push({

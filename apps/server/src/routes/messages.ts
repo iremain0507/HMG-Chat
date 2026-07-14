@@ -248,7 +248,7 @@ export function createMessageRoutes(
           messages,
           maxTokens: deps.maxTokens ?? 1024,
           signal: handle.controller.signal,
-          ...(tools.length > 0 ? { tools } : {}),
+          ...(tools.length > 0 ? { tools, parallelToolCalls: true } : {}),
           ...(toolContext ? { toolContext } : {}),
         });
         for await (const event of events) {
