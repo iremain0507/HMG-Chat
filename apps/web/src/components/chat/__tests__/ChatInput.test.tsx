@@ -204,3 +204,90 @@ describe("ChatInput", () => {
     });
   });
 });
+
+describe("ChatInput 슬래시/멘션", () => {
+  afterEach(() => {
+    cleanup();
+    vi.unstubAllGlobals();
+  });
+
+  const COMMANDS = [
+    { id: "clear", label: "대화 지우기" },
+    { id: "search", label: "웹 검색" },
+  ];
+
+  it("/ 입력 시 필터 팝오버가 뜨고 선택하면 onSlashCommand 가 호출되고 입력이 비워진다", () => {
+    const onSlashCommand = vi.fn();
+    render(
+      <ChatInput
+        sessionId="session-1"
+        isStreaming={false}
+        onSend={vi.fn()}
+        onStop={vi.fn()}
+        slashCommands={COMMANDS}
+        onSlashCommand={onSlashCommand}
+      />,
+    );
+    const textarea = screen.getByLabelText(
+      "메시지 입력",
+    ) as HTMLTextAreaElement;
+
+    fireEvent.change(textarea, { target: { value: "/검" } });
+    expect(screen.getByText("웹 검색")).toBeInTheDocument();
+    expect(screen.queryByText("대화 지우기")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByText("웹 검색"));
+    expect(onSlashCommand).toHaveBeenCalledWith({
+      id: "search",
+      label: "웹 검색",
+    });
+    expect(textarea.value).toBe("");
+  });
+
+  it("@ 입력 시 엔티티 픽커가 뜨고 선택하면 참조 토큰이 삽입된다", () => {
+    render(
+      <ChatInput
+        sessionId="session-1"
+        isStreaming={false}
+        onSend={vi.fn()}
+        onStop={vi.fn()}
+        mentionEntities={[
+          { id: "tool-1", kind: "tool", label: "knowledge_search" },
+          { id: "kb-1", kind: "knowledge", label: "product-spec" },
+        ]}
+      />,
+    );
+    const textarea = screen.getByLabelText(
+      "메시지 입력",
+    ) as HTMLTextAreaElement;
+
+    fireEvent.change(textarea, { target: { value: "@know" } });
+    expect(screen.getByText("knowledge_search")).toBeInTheDocument();
+    expect(screen.queryByText("product-spec")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByText("knowledge_search"));
+    expect(textarea.value).toBe("@knowledge_search ");
+  });
+
+  it("Escape 키로 팝오버를 닫고 입력 텍스트는 유지한다", () => {
+    render(
+      <ChatInput
+        sessionId="session-1"
+        isStreaming={false}
+        onSend={vi.fn()}
+        onStop={vi.fn()}
+        slashCommands={COMMANDS}
+      />,
+    );
+    const textarea = screen.getByLabelText(
+      "메시지 입력",
+    ) as HTMLTextAreaElement;
+
+    fireEvent.change(textarea, { target: { value: "/대" } });
+    expect(screen.getByText("대화 지우기")).toBeInTheDocument();
+
+    fireEvent.keyDown(textarea, { key: "Escape" });
+    expect(screen.queryByText("대화 지우기")).not.toBeInTheDocument();
+    expect(textarea.value).toBe("/대");
+  });
+});

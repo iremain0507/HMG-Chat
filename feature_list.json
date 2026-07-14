@@ -797,8 +797,8 @@
     "acceptance": "/→필터 팝오버 선택 시 액션 실행, @→참조 토큰 삽입; RED→GREEN, verify-gates green",
     "phase": "P10",
     "team": "T6",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P10-T6-13",

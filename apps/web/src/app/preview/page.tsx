@@ -107,6 +107,20 @@ function ArtifactCanvasPreview() {
   );
 }
 
+const SLASH_COMMANDS = [
+  { id: "clear", label: "대화 지우기" },
+  { id: "search", label: "웹 검색" },
+];
+
+const MENTION_ENTITIES = [
+  {
+    id: "tool-knowledge-search",
+    kind: "tool" as const,
+    label: "knowledge_search",
+  },
+  { id: "kb-product-spec", kind: "knowledge" as const, label: "product-spec" },
+];
+
 const MD = `# 렌더 검증
 
 **볼드**, _이탤릭_, 그리고 \`인라인 코드\`.
@@ -226,6 +240,9 @@ export default function PreviewGallery() {
           isStreaming={false}
           onSend={() => {}}
           onStop={() => {}}
+          slashCommands={SLASH_COMMANDS}
+          onSlashCommand={() => {}}
+          mentionEntities={MENTION_ENTITIES}
         />
       </Section>
     </div>
