@@ -5,7 +5,7 @@
 // 이미 자식 <code> 에 적용된 상태로 전달되므로, 여기선 언어 라벨/복사/wrap chrome 만 담당.
 import React, { isValidElement, useState, type ReactNode } from "react";
 
-function extractText(node: ReactNode): string {
+export function extractText(node: ReactNode): string {
   if (node == null || typeof node === "boolean") return "";
   if (typeof node === "string" || typeof node === "number") return String(node);
   if (Array.isArray(node)) return node.map(extractText).join("");

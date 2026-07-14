@@ -2,11 +2,15 @@
 
 // components/chat/Markdown.tsx — 어시스턴트 응답을 마크다운으로 렌더(ChatGPT/Claude 스타일).
 // react-markdown + remark-gfm + rehype-highlight(코드 문법하이라이트). Hyundai WIA CI 토큰 기반.
-import React from "react";
+import React, { isValidElement } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import remarkMath from "remark-math";
 import rehypeHighlight from "rehype-highlight";
-import { CodeBlock } from "./CodeBlock";
+import rehypeKatex from "rehype-katex";
+import "katex/dist/katex.min.css";
+import { CodeBlock, extractText } from "./CodeBlock";
+import { Mermaid } from "./Mermaid";
 
 // 스트리밍 중 미닫힌 코드펜스(```)가 있으면 파서가 이후 텍스트를 통째로 삼켜버리므로,
 // 짝이 맞지 않을 때만 임시로 닫아 코드블록으로 안전하게 렌더한다(완결 메시지는 그대로 둠).
@@ -26,8 +30,8 @@ export function Markdown({
   return (
     <div className="chat-md space-y-3 leading-relaxed break-words">
       <ReactMarkdown
-        remarkPlugins={[remarkGfm]}
-        rehypePlugins={[rehypeHighlight]}
+        remarkPlugins={[remarkGfm, remarkMath]}
+        rehypePlugins={[rehypeHighlight, rehypeKatex]}
         components={{
           p: (props) => <p className="whitespace-pre-wrap" {...props} />,
           a: (props) => (
@@ -61,7 +65,19 @@ export function Markdown({
               </code>
             );
           },
-          pre: CodeBlock,
+          pre: (props) => {
+            const child = props.children;
+            if (
+              isValidElement<{
+                className?: string;
+                children?: React.ReactNode;
+              }>(child) &&
+              /language-mermaid/.test(child.props.className ?? "")
+            ) {
+              return <Mermaid code={extractText(child.props.children)} />;
+            }
+            return <CodeBlock {...props} />;
+          },
           table: (props) => (
             <div className="overflow-x-auto">
               <table {...props} />
