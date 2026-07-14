@@ -49,6 +49,8 @@ coverage/
 .ralph/current_phase
 .ralph/feature_count
 .ralph/*.out
+.ralph/screenshots/
+.ralph/reports/
 
 # ── Python (converter-worker) ──
 apps/converter-worker/**/__pycache__/
