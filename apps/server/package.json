@@ -23,6 +23,7 @@
   "dependencies": {
     "@anthropic-ai/sdk": "0.36.3",
     "@aws-sdk/client-sesv2": "^3.1085.0",
+    "@google/generative-ai": "^0.24.1",
     "@hono/node-server": "^1.13.0",
     "@wchat/interfaces": "workspace:*",
     "@wchat/shared": "workspace:*",
