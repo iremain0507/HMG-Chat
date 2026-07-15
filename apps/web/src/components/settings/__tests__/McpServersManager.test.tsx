@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
-// components/settings/McpServersManager.tsx — 18-FRONTEND-WIREFRAMES § 18.5.6 /settings/mcp.
+// components/settings/McpServersManager.tsx — design-reference F10(커넥터 설정) 핸드오프
+// 정렬(P13-T6-11): 상태 도트·스코프 배지·도구 N개 hover 팝오버·보안 배지 2종 + 등록 3단계 모달.
 import React from "react";
 import { describe, it, expect, vi, afterEach } from "vitest";
 import {
@@ -8,6 +9,7 @@ import {
   cleanup,
   waitFor,
   fireEvent,
+  within,
 } from "@testing-library/react";
 import "@testing-library/jest-dom/vitest";
 import { McpServersManager } from "../McpServersManager";
@@ -22,8 +24,11 @@ const SERVER_1 = {
   transport: "streamable_http" as const,
   authHeaderName: null,
   authSecretArn: null,
-  supportedTools: [],
-  lastDiscoveredAt: null,
+  supportedTools: [
+    { name: "doc.search", description: "검색", inputSchema: {} },
+    { name: "part.update", description: "갱신", inputSchema: {} },
+  ],
+  lastDiscoveredAt: "2026-07-13T00:00:00Z",
   status: "active" as const,
 };
 
@@ -33,7 +38,7 @@ describe("McpServersManager", () => {
     vi.unstubAllGlobals();
   });
 
-  it("등록된 서버 목록을 표시한다", async () => {
+  it("등록된 커넥터 카드를 상태 도트·스코프·도구 개수와 함께 표시한다", async () => {
     vi.stubGlobal(
       "fetch",
       vi.fn(async () => ({
@@ -47,18 +52,77 @@ describe("McpServersManager", () => {
     await waitFor(() => {
       expect(screen.getByText("내부 도구 서버")).toBeInTheDocument();
     });
+    expect(screen.getByText("개인")).toBeInTheDocument();
+    expect(screen.getByText("도구 2개")).toBeInTheDocument();
+    expect(screen.getByText("SSRF 가드 활성")).toBeInTheDocument();
+    expect(screen.getByText("도구 설명 변경 시 재승인")).toBeInTheDocument();
+  });
+
+  it("도구 N개에 hover 하면 정책 배지가 포함된 도구 목록 팝오버가 뜬다", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({
+        ok: true,
+        json: async () => ({ data: [SERVER_1] }),
+      })),
+    );
+
+    render(<McpServersManager />);
+    await waitFor(() => screen.getByText("내부 도구 서버"));
+
     expect(
-      screen.getByText("https://mcp.internal.example.com"),
+      screen.queryByTestId("mcp-tools-popover-srv-1"),
+    ).not.toBeInTheDocument();
+
+    fireEvent.mouseEnter(screen.getByTestId("mcp-tools-trigger-srv-1"));
+
+    const popover = await screen.findByTestId("mcp-tools-popover-srv-1");
+    expect(within(popover).getByText("doc.search")).toBeInTheDocument();
+    expect(within(popover).getByText("읽기 전용")).toBeInTheDocument();
+    expect(within(popover).getByText("승인 필요")).toBeInTheDocument();
+
+    fireEvent.mouseLeave(screen.getByTestId("mcp-tools-trigger-srv-1"));
+    await waitFor(() => {
+      expect(
+        screen.queryByTestId("mcp-tools-popover-srv-1"),
+      ).not.toBeInTheDocument();
+    });
+  });
+
+  it("degraded 상태는 재승인 배너와 변경 검토 버튼을 보여준다", async () => {
+    const degraded = {
+      ...SERVER_1,
+      id: "srv-2",
+      name: "QMS",
+      status: "degraded" as const,
+    };
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({
+        ok: true,
+        json: async () => ({ data: [degraded] }),
+      })),
+    );
+
+    render(<McpServersManager />);
+    await waitFor(() => screen.getByText("QMS"));
+
+    expect(
+      screen.getByText(
+        "도구 설명이 변경되었습니다 — 프롬프트 주입 방지를 위해 재승인이 필요합니다",
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "변경 검토" }),
     ).toBeInTheDocument();
   });
 
-  it("추가 버튼으로 modal 을 열고 등록하면 discovery 성공을 표시한다", async () => {
+  it("＋ 커넥터 등록 클릭 시 3단계(정보 입력 → 발견 중 → 발견된 도구) 모달을 진행한다", async () => {
     const discovered = {
       ...SERVER_1,
       supportedTools: [
-        { name: "search", description: "검색", inputSchema: {} },
+        { name: "stock.query", description: "조회", inputSchema: {} },
       ],
-      lastDiscoveredAt: "2026-07-13T00:00:00Z",
     };
     const fetchMock = vi.fn(
       async (_input: RequestInfo | URL, init?: RequestInit) => {
@@ -77,28 +141,37 @@ describe("McpServersManager", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     render(<McpServersManager />);
-    await waitFor(() => {
-      expect(
-        screen.getByText("등록된 MCP 서버가 없습니다."),
-      ).toBeInTheDocument();
-    });
+    await waitFor(() => screen.getByText("등록된 커넥터가 없습니다."));
 
-    fireEvent.click(screen.getByRole("button", { name: "+ 추가" }));
+    fireEvent.click(screen.getByRole("button", { name: "＋ 커넥터 등록" }));
+    expect(screen.getByText("등록 모달 ① 정보 입력")).toBeInTheDocument();
 
     fireEvent.change(screen.getByLabelText("서버 이름"), {
-      target: { value: "내부 도구 서버" },
+      target: { value: discovered.name },
     });
     fireEvent.change(screen.getByLabelText("서버 URL"), {
-      target: { value: "https://mcp.internal.example.com" },
+      target: { value: discovered.url },
     });
-    fireEvent.click(screen.getByRole("button", { name: "등록" }));
+    fireEvent.click(screen.getByRole("button", { name: "다음 — 검증" }));
+
+    expect(screen.getByText("② 검증·도구 발견")).toBeInTheDocument();
 
     await waitFor(() => {
-      expect(screen.getByText("discovery 성공 (1개 도구)")).toBeInTheDocument();
+      expect(
+        screen.getByText("③ 발견된 도구 — 기본 정책 확인"),
+      ).toBeInTheDocument();
+    });
+    expect(screen.getByText("stock.query")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "등록" }));
+    await waitFor(() => {
+      expect(
+        screen.queryByRole("dialog", { name: "커넥터 등록" }),
+      ).not.toBeInTheDocument();
     });
   });
 
-  it("삭제 버튼으로 서버를 제거한다", async () => {
+  it("비활성화 버튼으로 커넥터를 제거한다", async () => {
     const fetchMock = vi.fn(
       async (_input: RequestInfo | URL, init?: RequestInit) => {
         if (init?.method === "DELETE") {
@@ -116,16 +189,12 @@ describe("McpServersManager", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     render(<McpServersManager />);
-    await waitFor(() => {
-      expect(screen.getByText("내부 도구 서버")).toBeInTheDocument();
-    });
+    await waitFor(() => screen.getByText("내부 도구 서버"));
 
-    fireEvent.click(screen.getByRole("button", { name: "삭제" }));
+    fireEvent.click(screen.getByRole("button", { name: "비활성화" }));
 
     await waitFor(() => {
-      expect(
-        screen.getByText("등록된 MCP 서버가 없습니다."),
-      ).toBeInTheDocument();
+      expect(screen.getByText("등록된 커넥터가 없습니다.")).toBeInTheDocument();
     });
   });
 });

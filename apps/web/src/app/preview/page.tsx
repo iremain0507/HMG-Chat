@@ -21,6 +21,8 @@ import { MemoryPanel } from "../../components/chat/MemoryPanel";
 import { ShareExportMenu } from "../../components/chat/ShareExportMenu";
 import { HomeContent } from "../../components/home/HomeContent";
 import { ProjectDetail } from "../../components/projects/ProjectDetail";
+import { McpServersManager } from "../../components/settings/McpServersManager";
+import { SkillsManager } from "../../components/settings/SkillsManager";
 import { ToastContainer } from "../../components/layout/ToastContainer";
 import {
   ArtifactCanvas,
@@ -126,6 +128,42 @@ function ProjectDetailPreview() {
       className="rounded-md border border-border px-3 py-1.5 text-sm text-fg-muted hover:border-primary hover:text-fg"
     >
       프로젝트 상세 열기
+    </button>
+  );
+}
+
+// P13-T6-11 — McpServersManager/SkillsManager 는 각각 useMcpServers/useSkills 로 마운트 시
+//   내부 fetch 한다. ProjectDetailPreview 와 동일하게 토글 오픈으로 격리해 dev 서버에 백엔드가
+//   없어도 갤러리 전체가 깨지지 않게 한다. 전용 e2e(mcp-servers-manager.pw.ts,
+//   skills-manager.pw.ts)만 page.route() 로 API 를 목킹한 뒤 트리거를 클릭한다.
+function McpServersManagerPreview() {
+  const [open, setOpen] = useState(false);
+  return open ? (
+    <McpServersManager />
+  ) : (
+    <button
+      type="button"
+      data-testid="mcp-servers-manager-preview-trigger"
+      onClick={() => setOpen(true)}
+      className="rounded-md border border-border px-3 py-1.5 text-sm text-fg-muted hover:border-primary hover:text-fg"
+    >
+      커넥터 관리 열기
+    </button>
+  );
+}
+
+function SkillsManagerPreview() {
+  const [open, setOpen] = useState(false);
+  return open ? (
+    <SkillsManager />
+  ) : (
+    <button
+      type="button"
+      data-testid="skills-manager-preview-trigger"
+      onClick={() => setOpen(true)}
+      className="rounded-md border border-border px-3 py-1.5 text-sm text-fg-muted hover:border-primary hover:text-fg"
+    >
+      스킬 관리 열기
     </button>
   );
 }
@@ -715,6 +753,14 @@ export default function PreviewGallery() {
 
       <Section name="artifact-canvas">
         <ArtifactCanvasPreview />
+      </Section>
+
+      <Section name="mcp-servers-manager">
+        <McpServersManagerPreview />
+      </Section>
+
+      <Section name="skills-manager">
+        <SkillsManagerPreview />
       </Section>
 
       <Section name="chat-input">
