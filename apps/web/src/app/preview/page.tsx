@@ -404,6 +404,49 @@ function HomeContentPreview() {
   );
 }
 
+// P13-T6-03 — 채팅(F04 히어로) 핸드오프 정렬 프리뷰: user primary-50 버블(radius 10) +
+//   assistant 풀폭 문서형(버블 없음) + 좌측 Run Rail(발화 위치 인터리브된 툴카드에 눈금).
+function ChatAgenticPreview() {
+  return (
+    <ul className="space-y-6">
+      <MessageItem
+        role="user"
+        content="상반기 등속조인트 불량 원인을 QMS 최신 데이터와 교차 확인해서 표로 정리해줘."
+        streaming={false}
+        error={false}
+      />
+      <MessageItem
+        role="assistant"
+        content=""
+        streaming={false}
+        error={false}
+        parts={[
+          {
+            type: "text",
+            text: "품질관리규정 기준과 대조한 결과, 상반기 불량은 열처리 경도 편차에 집중되어 있습니다.",
+          },
+          {
+            type: "tool",
+            toolCallId: "preview-rail-1",
+            name: "knowledge_search",
+            args: { query: "CVJ 열처리 경도" },
+            status: "done",
+            result: "3개 청크 검색됨",
+          },
+          {
+            type: "tool",
+            toolCallId: "preview-rail-2",
+            name: "defect.query",
+            args: { part: "CVJ", period: "2026H1" },
+            status: "running",
+          },
+          { type: "text", text: "QMS 최신 집계로 교차 확인 중입니다." },
+        ]}
+      />
+    </ul>
+  );
+}
+
 function Section({
   name,
   children,
@@ -448,6 +491,10 @@ export default function PreviewGallery() {
 
       <Section name="home">
         <HomeContentPreview />
+      </Section>
+
+      <Section name="chat-agentic">
+        <ChatAgenticPreview />
       </Section>
 
       <Section name="markdown">

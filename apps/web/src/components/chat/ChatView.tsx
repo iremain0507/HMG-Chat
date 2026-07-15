@@ -27,8 +27,10 @@ import { Markdown } from "./Markdown";
 import { MemoryPanel } from "./MemoryPanel";
 import { MessageActions } from "./MessageActions";
 import { ProjectPicker } from "./ProjectPicker";
+import { RunRail, type RunRailStep } from "./RunRail";
 import { ShareExportMenu } from "./ShareExportMenu";
 import { ToolCallRenderer } from "./ToolCallRenderer";
+import { ArrowDown } from "lucide-react";
 
 const SLASH_COMMANDS: SlashCommand[] = [
   { id: "memories", label: "memories", description: "저장된 메모리 보기" },
@@ -275,9 +277,11 @@ export function ChatView({ sessionId }: { sessionId: string }) {
             <button
               type="button"
               onClick={scrollToBottom}
-              className="absolute bottom-3 left-1/2 -translate-x-1/2 rounded-full border border-border bg-surface px-3 py-1.5 text-xs text-fg-muted shadow-md hover:border-primary hover:text-fg"
+              aria-label="최신으로↓"
+              className="absolute bottom-3 left-1/2 flex -translate-x-1/2 items-center gap-1.5 rounded-full border border-border bg-bg px-3.5 py-2 text-xs font-medium text-primary shadow-md hover:bg-surface"
             >
-              최신으로↓
+              최신으로
+              <ArrowDown size={13} strokeWidth={2} aria-hidden="true" />
             </button>
           )}
         </div>
@@ -445,7 +449,7 @@ export function MessageItem({
     return (
       <li data-role="user" className="group flex justify-end">
         <div className="max-w-[80%]">
-          <div className="whitespace-pre-wrap rounded-2xl bg-primary px-4 py-2.5 text-primary-fg">
+          <div className="whitespace-pre-wrap rounded-[10px] bg-primary-50 px-4 py-2.5 text-fg">
             {content}
           </div>
           <div className="mt-1 flex items-center justify-end gap-2">
@@ -490,12 +494,13 @@ export function MessageItem({
     );
   }
   const hasToolParts = (parts ?? []).some((p) => p.type === "tool");
+  const runRailSteps: RunRailStep[] = (parts ?? [])
+    .filter((p) => p.type === "tool")
+    .map((p) => ({ id: p.toolCallId, label: p.name, status: p.status }));
   return (
     <li data-role="assistant" className="group flex gap-3">
-      <div className="mt-0.5 grid h-8 w-8 flex-none place-items-center rounded-lg bg-primary text-sm font-bold text-primary-fg">
-        W
-      </div>
-      <div className="min-w-0 flex-1 pt-1">
+      {hasToolParts && <RunRail steps={runRailSteps} />}
+      <div className="min-w-0 flex-1">
         {hasToolParts ? (
           <div className="space-y-3">
             {(parts ?? []).map((part, idx) =>

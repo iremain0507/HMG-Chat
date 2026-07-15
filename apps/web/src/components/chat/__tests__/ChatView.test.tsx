@@ -473,6 +473,13 @@ describe("ChatView", () => {
     });
     expect(screen.getByText("확인해볼게요.")).toBeInTheDocument();
     expect(screen.getByText("찾았습니다.")).toBeInTheDocument();
+
+    // Run Rail — 도구를 쓴 턴 좌측에 눈금(F04 시그니처 요소)이 붙고, 완료 상태를 반영한다.
+    expect(screen.getByTestId("run-rail")).toBeInTheDocument();
+    expect(screen.getByTestId("run-rail-tick-call-1")).toHaveAttribute(
+      "data-status",
+      "done",
+    );
   });
 
   it("tool_result 가 error content 를 담으면 재시도 칩이 렌더되고 클릭 시 마지막 user 메시지를 재전송한다", async () => {
