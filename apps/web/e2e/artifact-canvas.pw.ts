@@ -38,12 +38,18 @@ test.describe("P10/P13 preview — ArtifactCanvas", () => {
     await dialog.getByRole("button", { name: "닫기" }).click();
     await expect(dialog).toBeHidden();
 
-    // 출처 탭 — 인용 목록 + 하이라이트
+    // 출처 탭 — 인용 목록 + 하이라이트(클릭 트리거 → 2초 후 자동 페이드아웃, P13-T6-09)
     await panel.getByTestId("artifact-panel-tab-sources").click();
     const sourceItem = panel.getByTestId("source-item-1");
     await expect(sourceItem).toBeVisible();
-    await expect(sourceItem).toHaveAttribute("data-focused", "true");
+    await expect(sourceItem).toHaveAttribute("data-focused", "false");
     await expect(sourceItem).toContainText("열관리모듈_시험성적서.pdf");
+
+    await section.getByTestId("citation-focus-trigger").click();
+    await expect(sourceItem).toHaveAttribute("data-focused", "true");
+    await expect(sourceItem).toHaveAttribute("data-focused", "false", {
+      timeout: 2600,
+    });
 
     // 활동 탭 — 멀티에이전트 진행(ActivityPanel) 재사용
     await panel.getByTestId("artifact-panel-tab-activity").click();

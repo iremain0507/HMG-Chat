@@ -859,6 +859,69 @@ describe("ChatView", () => {
     expect(sourceItem).toHaveTextContent("manual.pdf");
   });
 
+  it("우패널 출처 하이라이트는 클릭 2초 후 자동으로 사라진다(primary-100 페이드)", async () => {
+    const encoder = new TextEncoder();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({
+        body: new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.enqueue(
+              encoder.encode(sseFrame("message_start", { messageId: "msg-1" })),
+            );
+            controller.enqueue(
+              encoder.encode(
+                sseFrame("text_delta", { text: "정답은 42입니다[1]." }),
+              ),
+            );
+            controller.enqueue(
+              encoder.encode(
+                sseFrame("citation", {
+                  index: 1,
+                  source: "project",
+                  documentId: "doc-1",
+                  filename: "manual.pdf",
+                  page: 3,
+                  snippet: "42 는 만물의 답이다.",
+                }),
+              ),
+            );
+            controller.enqueue(
+              encoder.encode(sseFrame("stop", { reason: "end_turn" })),
+            );
+            controller.close();
+          },
+        }),
+      })),
+    );
+
+    render(<ChatView sessionId="session-1" />);
+    fireEvent.change(screen.getByLabelText("메시지 입력"), {
+      target: { value: "질문" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "전송" }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("citation-chip-1")).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByTestId("citation-chip-1"));
+    expect(screen.getByTestId("source-item-1")).toHaveAttribute(
+      "data-focused",
+      "true",
+    );
+
+    await waitFor(
+      () => {
+        expect(screen.getByTestId("source-item-1")).toHaveAttribute(
+          "data-focused",
+          "false",
+        );
+      },
+      { timeout: 2600 },
+    );
+  }, 5000);
+
   it("artifact_created 이벤트가 오면 아티팩트 패널이 자동으로 열리고 미리보기/코드 토글이 동작한다", async () => {
     const encoder = new TextEncoder();
     const fetchMock = vi.fn(async (url: string) => {

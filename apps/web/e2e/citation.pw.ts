@@ -25,9 +25,10 @@ test.describe("P10 preview — Citation", () => {
     await expect(ref1).toHaveAttribute("data-focused", "false");
 
     await chip1.hover();
-    await expect(section.getByTestId("citation-tooltip-1")).toContainText(
-      "42 는 만물의 답이다.",
-    );
+    const tooltip1 = section.getByTestId("citation-tooltip-1");
+    await expect(tooltip1).toContainText("manual.pdf");
+    await expect(tooltip1).toContainText("p.3");
+    await expect(tooltip1).toContainText("42 는 만물의 답이다.");
 
     await chip1.click();
     await expect(ref1).toHaveAttribute("data-focused", "true");

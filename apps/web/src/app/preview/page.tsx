@@ -183,9 +183,22 @@ const PREVIEW_CITATIONS = [
   },
 ];
 
+// P13-T6-09 — design-reference §6 CitationChip: 클릭 시 우패널 '출처' 탭 원문 하이라이트가
+// primary-100 배경으로 2초간 유지되다 페이드아웃된다(ChatView 의 실제 auto-clear 와 동일 패턴).
+function useFadingCitationFocus() {
+  const [focusedIndex, setFocusedIndex] = useState<number | null>(null);
+  React.useEffect(() => {
+    if (focusedIndex === null) return;
+    const timer = setTimeout(() => setFocusedIndex(null), 2000);
+    return () => clearTimeout(timer);
+  }, [focusedIndex]);
+  return { focusedIndex, setFocusedIndex };
+}
+
 function ArtifactCanvasPreview() {
   const [open, setOpen] = useState(true);
   const [activeIndex, setActiveIndex] = useState(1);
+  const { focusedIndex, setFocusedIndex } = useFadingCitationFocus();
   return (
     <div>
       <button
@@ -195,6 +208,14 @@ function ArtifactCanvasPreview() {
       >
         패널 다시 열기
       </button>
+      <button
+        type="button"
+        data-testid="citation-focus-trigger"
+        onClick={() => setFocusedIndex(1)}
+        className="mb-3 ml-2 rounded-md border border-border px-3 py-1.5 text-sm text-fg-muted hover:border-primary hover:text-fg"
+      >
+        출처 하이라이트 트리거
+      </button>
       {open && (
         <div className="relative h-[420px] overflow-hidden rounded-lg border border-border">
           <ArtifactCanvas
@@ -203,7 +224,7 @@ function ArtifactCanvasPreview() {
             onActiveIndexChange={setActiveIndex}
             onClose={() => setOpen(false)}
             citations={PREVIEW_CITATIONS}
-            focusedCitationIndex={1}
+            focusedCitationIndex={focusedIndex}
             activityProgress={ACTIVITY_PROGRESS}
           />
         </div>

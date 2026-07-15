@@ -25,6 +25,7 @@ vi.mock("mermaid", () => ({
 }));
 
 import { Markdown } from "../Markdown";
+import type { Citation } from "../../../hooks/useSessionStream";
 
 const CODE_MD = "```js\nconst x = 1;\n```";
 const TABLE_MD = "| a | b |\n| - | - |\n| 1 | 2 |";
@@ -99,5 +100,23 @@ describe("Markdown", () => {
 
     expect(screen.getByText(/graph TD/)).toBeInTheDocument();
     expect(screen.queryByTestId("mermaid-svg")).not.toBeInTheDocument();
+  });
+
+  it("인용 칩 hover 팝오버는 파일명·페이지·스니펫 3줄을 보여준다", () => {
+    const citations: Citation[] = [
+      {
+        index: 1,
+        source: "project",
+        filename: "manual.pdf",
+        page: 3,
+        snippet: "42 는 만물의 답이다.",
+      },
+    ];
+    render(<Markdown citations={citations}>{"정답은 42입니다[1]."}</Markdown>);
+
+    const tooltip = screen.getByTestId("citation-tooltip-1");
+    expect(tooltip).toHaveTextContent("manual.pdf");
+    expect(tooltip).toHaveTextContent("p.3");
+    expect(tooltip).toHaveTextContent("42 는 만물의 답이다.");
   });
 });

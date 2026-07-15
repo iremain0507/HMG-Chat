@@ -91,6 +91,14 @@ export function ChatView({ sessionId }: { sessionId: string }) {
     });
   }
 
+  // 원문 하이라이트(primary-100)는 2초 후 페이드아웃 — design-reference §6:
+  // "클릭: 우패널 '출처' 탭 활성 + 해당 원문 블록 하이라이트(primary-100 배경 2초 페이드)".
+  useEffect(() => {
+    if (sourcesFocusIndex === null) return;
+    const timer = setTimeout(() => setSourcesFocusIndex(null), 2000);
+    return () => clearTimeout(timer);
+  }, [sourcesFocusIndex]);
+
   // 우패널 '출처' 탭에 보여줄 인용 목록 — 세션 전체가 아니라 인용이 달린 가장 최근
   // assistant 턴 기준(design-reference F4: 그 턴의 Reference 와 동일 집합).
   const sourcesCitations = useMemo(() => {
