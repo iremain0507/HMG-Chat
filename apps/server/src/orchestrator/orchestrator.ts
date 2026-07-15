@@ -14,6 +14,15 @@ import type {
 } from "@wchat/interfaces";
 import { validateArgs } from "../tools/arg-validator.js";
 import { recordToolMetric } from "../lib/tool-metrics.js";
+import {
+  DEFAULT_MAX_STEPS,
+  DEFAULT_STEP_REPETITION_THRESHOLD,
+  checkReasoningActionConsistency,
+  detectStepRepetition,
+  reliabilityError,
+  toolCallSignature,
+  type ReliabilityGuardOptions,
+} from "./reliability-guards.js";
 
 export function hello(): string {
   return "orchestrator: hello-world";
@@ -37,6 +46,9 @@ export interface RunTurnInput {
   parallelToolCalls?: boolean;
   // invoke 계측 대상 — 미주입 시 계측을 건너뛴다(20-MULTI-AGENT-TOOL.md § P11-T2-13).
   toolMetrics?: Pick<ToolMetricRepo, "append">;
+  // MAST 신뢰성 가드(20-MULTI-AGENT-TOOL.md § P12-T2-06) — 옵트인. 미설정 시 스텝반복·
+  // 종료조건·추론-행동 체크를 전혀 수행하지 않아 기존 동작과 100% 동일하다.
+  reliabilityGuards?: ReliabilityGuardOptions;
 }
 
 // invoke 직전 args 를 spec.inputSchema 로 검증 — 스키마 불일치(필수 필드 누락/타입 불일치)
@@ -195,7 +207,24 @@ export async function* runTurn(input: RunTurnInput): AsyncIterable<ChatEvent> {
   const toolSpecs = input.tools?.map((tool) => tool.spec);
   let messages = input.messages;
 
+  // MAST 가드 상태 — reliabilityGuards 미설정 시 아래 값들은 참조되지 않는다.
+  let stepCount = 0;
+  let previousRoundSignatures: string[] = [];
+  let repetitionStreak = 0;
+
   for (;;) {
+    stepCount += 1;
+    if (input.reliabilityGuards) {
+      const maxSteps = input.reliabilityGuards.maxSteps ?? DEFAULT_MAX_STEPS;
+      if (stepCount > maxSteps) {
+        yield reliabilityError(
+          "MAX_STEPS_EXCEEDED",
+          `최대 스텝(${maxSteps})을 초과해 명시적 종료조건(MAST)에 의해 중단합니다.`,
+        );
+        return;
+      }
+    }
+
     const pendingToolUses: Extract<ChatEvent, { type: "tool_use" }>[] = [];
     const assistantParts: ContentPart[] = [];
     let stopEvent: Extract<ChatEvent, { type: "stop" }> | undefined;
@@ -252,6 +281,47 @@ export async function* runTurn(input: RunTurnInput): AsyncIterable<ChatEvent> {
     }
     if (input.signal.aborted) {
       return;
+    }
+
+    if (input.reliabilityGuards?.checkReasoningActionConsistency) {
+      const reasoningText = assistantParts
+        .filter(
+          (part): part is Extract<ContentPart, { type: "text" }> =>
+            part.type === "text",
+        )
+        .map((part) => part.text)
+        .join("");
+      if (
+        !checkReasoningActionConsistency(reasoningText, pendingToolUses.length)
+      ) {
+        yield reliabilityError(
+          "REASONING_ACTION_MISMATCH",
+          "tool_use 직전 추론(reasoning) 텍스트가 없어 추론-행동 불일치(MAST)로 판단해 차단합니다.",
+        );
+        return;
+      }
+    }
+
+    if (input.reliabilityGuards) {
+      const currentRoundSignatures = pendingToolUses.map((toolUse) =>
+        toolCallSignature(toolUse.name, toolUse.args),
+      );
+      const isRepeat = detectStepRepetition(
+        previousRoundSignatures,
+        currentRoundSignatures,
+      );
+      repetitionStreak = isRepeat ? repetitionStreak + 1 : 1;
+      previousRoundSignatures = currentRoundSignatures;
+      const threshold =
+        input.reliabilityGuards.stepRepetitionThreshold ??
+        DEFAULT_STEP_REPETITION_THRESHOLD;
+      if (repetitionStreak >= threshold) {
+        yield reliabilityError(
+          "STEP_REPETITION_DETECTED",
+          `동일 tool_use가 ${threshold}회 연속 반복되어 스텝반복(MAST)으로 판단해 차단합니다.`,
+        );
+        return;
+      }
     }
 
     // hitl 정책 툴은 승인 순서를 보존해야 하므로 각자 단독 세그먼트, 그 외(allow/미등록)

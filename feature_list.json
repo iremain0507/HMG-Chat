@@ -1058,8 +1058,8 @@
     "acceptance": "스텝반복 차단·종료조건·추론행동·검증 각 실패재현→가드 동작; RED→GREEN, verify-gates green",
     "phase": "P12",
     "team": "T2",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P12-T2-07",
