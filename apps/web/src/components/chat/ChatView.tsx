@@ -287,9 +287,7 @@ export function ChatView({ sessionId }: { sessionId: string }) {
         </div>
 
         {hitlRequest && (
-          <div className="border-t border-border px-4 pt-3">
-            <HitlPrompt request={hitlRequest} onRespond={respondHitl} />
-          </div>
+          <HitlPrompt request={hitlRequest} onRespond={respondHitl} />
         )}
 
         {memoryPanelOpen && (

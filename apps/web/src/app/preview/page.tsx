@@ -77,6 +77,34 @@ function CitationPreview() {
   );
 }
 
+// P13-T6-05 — HitlPrompt(F06)는 z-hitl 딤 모달(fixed inset-0)로 재구현되어 항상 마운트하면
+// 갤러리의 다른 섹션을 가려버린다. ArtifactCanvasPreview/MemoryPanelPreview 와 동일하게
+// 기본 닫힘 + 토글 버튼으로 감싸 다른 프리뷰/e2e 스펙과 충돌하지 않게 한다.
+function HitlPromptPreview() {
+  const [open, setOpen] = useState(false);
+  return open ? (
+    <HitlPrompt
+      request={{
+        toolCallId: "preview-hitl-1",
+        toolName: "send_email",
+        args: { to: "a@b.com", subject: "안녕하세요" },
+        rationale: "외부로 이메일을 발송합니다.",
+        expiresAt: new Date(Date.now() + 5 * 60 * 1000).toISOString(),
+      }}
+      onRespond={() => setOpen(false)}
+    />
+  ) : (
+    <button
+      type="button"
+      data-testid="hitl-prompt-preview-trigger"
+      onClick={() => setOpen(true)}
+      className="rounded-md border border-border px-3 py-1.5 text-sm text-fg-muted hover:border-primary hover:text-fg"
+    >
+      HITL 카드 열기
+    </button>
+  );
+}
+
 const ARTIFACTS: ArtifactCanvasArtifact[] = [
   {
     artifactId: "preview-artifact-1",
@@ -554,16 +582,7 @@ export default function PreviewGallery() {
       </Section>
 
       <Section name="hitl-prompt">
-        <HitlPrompt
-          request={{
-            toolCallId: "preview-hitl-1",
-            toolName: "send_email",
-            args: { to: "a@b.com", subject: "안녕하세요" },
-            rationale: "외부로 이메일을 발송합니다.",
-            expiresAt: "2026-07-14T00:05:00.000Z",
-          }}
-          onRespond={() => {}}
-        />
+        <HitlPromptPreview />
       </Section>
 
       <Section name="artifact-canvas">

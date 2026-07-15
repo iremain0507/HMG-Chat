@@ -770,11 +770,11 @@ describe("ChatView", () => {
       expect(screen.getByTestId("hitl-prompt")).toBeInTheDocument();
     });
 
-    fireEvent.click(screen.getByRole("button", { name: "수정" }));
+    fireEvent.click(screen.getByRole("button", { name: "수정 후 승인" }));
     fireEvent.change(screen.getByLabelText("인자 편집"), {
       target: { value: JSON.stringify({ to: "c@d.com" }) },
     });
-    fireEvent.click(screen.getByRole("button", { name: "승인" }));
+    fireEvent.click(screen.getByRole("button", { name: "수정 후 승인" }));
 
     await waitFor(() => {
       expect(fetchMock).toHaveBeenCalledWith(
