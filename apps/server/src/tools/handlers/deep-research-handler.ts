@@ -35,7 +35,10 @@ import {
 export const DEFAULT_MAX_SUB_QUESTIONS = 4;
 export const DEFAULT_MAX_GAP_ITERATIONS = 2;
 // 외부 호출(researcher)이 응답 없이 멈추는 경우를 대비한 전체 상한 시간(hang 방지).
-const DEEP_RESEARCH_TIMEOUT_MS = 120_000;
+//   딥리서치는 planner+병렬 researcher+긴 리포트 synthesis(gap 반성 최대 2회)로 정상적으로
+//   수 분 걸리므로, 정당한 느린 run 을 죽이지 않게 넉넉히 잡는다(진짜 hang 만 차단).
+//   keep-alive(messages.ts) 가 그 사이 연결을 유지한다.
+const DEEP_RESEARCH_TIMEOUT_MS = 300_000;
 
 export interface DeepResearchToolDeps {
   leadProvider: LLMProvider;
