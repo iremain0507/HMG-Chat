@@ -1256,8 +1256,8 @@
     "acceptance": "unit: 부재 행->기본값; 2차 호출은 캐시로 DB skip; invalidate 후 재조회; 주입 DB오류->DEFAULT_ORG_SETTINGS+warn 로깅(L2/L5); verify-gates green",
     "phase": "P14",
     "team": "T1",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P14-T1-05",
