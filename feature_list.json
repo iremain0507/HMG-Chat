@@ -1013,8 +1013,8 @@
     "acceptance": "worker fan-out + 최종메시지만 반환 + 부모 스트림 기존 ChatEvent만; RED→GREEN, verify-gates green",
     "phase": "P12",
     "team": "T2",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P12-T2-02",
