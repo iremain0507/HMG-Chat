@@ -436,6 +436,7 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
             label={trigger.type === "slash" ? "명령 선택" : "멘션 선택"}
             query={trigger.query}
             showFooterHints
+            onDismiss={() => setTrigger(null)}
             {...(trigger.type === "mention"
               ? {
                   categories: MENTION_CATEGORIES,

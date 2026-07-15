@@ -118,4 +118,49 @@ describe("ComposerPopover", () => {
     );
     expect(screen.getByText("에이전트 · 구동부품 품질팀")).toBeInTheDocument();
   });
+
+  it("모바일(F17) 바텀시트 그래버가 항상 렌더된다", () => {
+    render(
+      <ComposerPopover
+        items={ITEMS}
+        activeIndex={0}
+        onSelect={() => {}}
+        onHover={() => {}}
+        label="멘션 선택"
+      />,
+    );
+    expect(screen.getByTestId("composer-popover-grabber")).toBeInTheDocument();
+  });
+
+  it("onDismiss 가 전달되면 백드롭이 렌더되고 클릭 시 onDismiss 를 호출한다", () => {
+    const onDismiss = vi.fn();
+    render(
+      <ComposerPopover
+        items={ITEMS}
+        activeIndex={0}
+        onSelect={() => {}}
+        onHover={() => {}}
+        label="멘션 선택"
+        onDismiss={onDismiss}
+      />,
+    );
+    const backdrop = screen.getByTestId("composer-popover-backdrop");
+    fireEvent.click(backdrop);
+    expect(onDismiss).toHaveBeenCalledTimes(1);
+  });
+
+  it("onDismiss 가 없으면 백드롭을 렌더하지 않는다", () => {
+    render(
+      <ComposerPopover
+        items={ITEMS}
+        activeIndex={0}
+        onSelect={() => {}}
+        onHover={() => {}}
+        label="멘션 선택"
+      />,
+    );
+    expect(
+      screen.queryByTestId("composer-popover-backdrop"),
+    ).not.toBeInTheDocument();
+  });
 });

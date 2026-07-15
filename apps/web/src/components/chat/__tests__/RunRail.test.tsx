@@ -69,4 +69,36 @@ describe("RunRail", () => {
     fireEvent.click(screen.getByTestId("run-rail-tick-s2"));
     expect(onStepClick).toHaveBeenCalledWith("s2");
   });
+
+  it("모바일(F17) 1px 인디케이터가 항상 렌더되고 md 이상에서만 숨겨진다(md:hidden)", () => {
+    render(<RunRail steps={[{ id: "s1", label: "a", status: "done" }]} />);
+    const compact = screen.getByTestId("run-rail-compact");
+    expect(compact).toHaveClass("md:hidden");
+    expect(compact.querySelector(".bg-success") ?? compact).toHaveClass(
+      "bg-success",
+    );
+  });
+
+  it("모바일 인디케이터는 오류>승인 필요>실행 중>완료>대기 순으로 최우선 상태 색을 보여준다", () => {
+    render(
+      <RunRail
+        steps={[
+          { id: "s1", label: "a", status: "done" },
+          { id: "s2", label: "b", status: "pending-approval" },
+          { id: "s3", label: "c", status: "running" },
+        ]}
+      />,
+    );
+    expect(screen.getByTestId("run-rail-compact")).toHaveAttribute(
+      "data-status",
+      "pending-approval",
+    );
+    expect(screen.getByTestId("run-rail-compact")).toHaveClass("bg-warning");
+  });
+
+  it("데스크톱 눈금 버튼은 md:flex 로 md 미만에선 숨김 처리된다", () => {
+    render(<RunRail steps={[{ id: "s1", label: "a", status: "done" }]} />);
+    expect(screen.getByTestId("run-rail-tick-s1")).toHaveClass("hidden");
+    expect(screen.getByTestId("run-rail-tick-s1")).toHaveClass("md:flex");
+  });
 });

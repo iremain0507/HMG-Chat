@@ -284,6 +284,18 @@ describe("ArtifactCanvas", () => {
     expect(screen.getByTestId("source-item-1")).toBeInTheDocument();
   });
 
+  it("모바일(F17) 풀시트 상단 그래버가 렌더된다", () => {
+    render(
+      <ArtifactCanvas
+        artifacts={makeArtifacts()}
+        activeIndex={0}
+        onActiveIndexChange={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+    expect(screen.getByTestId("artifact-panel-grabber")).toBeInTheDocument();
+  });
+
   it("artifacts 가 비어있어도 citations 가 있으면 렌더되고, 아티팩트 탭은 빈 상태 안내를 보여준다", () => {
     render(
       <ArtifactCanvas

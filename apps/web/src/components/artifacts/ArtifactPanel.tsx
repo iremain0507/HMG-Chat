@@ -2,6 +2,7 @@
 
 // components/artifacts/ArtifactPanel.tsx — 18-FRONTEND-WIREFRAMES § artifacts "우측 패널".
 // 16-API-CONTRACT § 7 GET /artifacts/:id 응답 shape 을 그대로 반영한 DTO.
+// P13-T6-15: 포커스 링 토큰 정렬.
 import React from "react";
 import { PdfRenderer } from "./PdfRenderer";
 import { PptxRenderer } from "./PptxRenderer";
@@ -24,7 +25,10 @@ export function ArtifactPanel({ artifact }: { artifact: ArtifactDto }) {
     <section>
       <div className="flex items-center justify-between">
         <span className="text-fg">{artifact.filename}</span>
-        <a href={contentUrl} className="text-primary">
+        <a
+          href={contentUrl}
+          className="rounded text-primary focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--focus-ring)] focus-visible:outline-offset-2"
+        >
           다운로드
         </a>
       </div>

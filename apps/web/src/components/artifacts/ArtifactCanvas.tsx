@@ -226,6 +226,12 @@ export function ArtifactCanvas({
         className="absolute inset-y-0 left-0 hidden w-1 cursor-col-resize border-0 bg-transparent p-0 hover:bg-primary/30 md:block"
       />
 
+      <span
+        aria-hidden="true"
+        data-testid="artifact-panel-grabber"
+        className="mx-auto mt-2 h-1 w-9 shrink-0 rounded-full bg-border md:hidden"
+      />
+
       <div
         role="tablist"
         aria-label="우측 컨텍스트 패널 탭"

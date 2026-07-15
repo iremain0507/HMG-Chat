@@ -20,12 +20,18 @@ test.describe("P13 preview — 채팅(F04 히어로) 핸드오프 정렬", () =>
     await expect(userBubble).toHaveClass(/bg-primary-50/);
     await expect(userBubble).toHaveClass(/rounded-\[10px\]/);
 
-    // assistant 콘텐츠 컬럼(.min-w-0)은 풀폭 문서형(버블 없음) — bg-primary 가 없어야 한다.
-    // (Run Rail 자체는 진행 중 눈금에 bg-primary 를 쓰므로 콘텐츠 컬럼 밖의 형제 요소다.)
+    // assistant 콘텐츠 컬럼(.min-w-0)은 풀폭 문서형(버블 없음) — bg-primary 배경의 "버블"이
+    // 없어야 한다. (Run Rail 자체는 진행 중 눈금에 bg-primary 를 쓰므로 콘텐츠 컬럼 밖의
+    // 형제 요소다. StatusChip 의 running 도트(P13-T6-06 공용 어휘)는 6px 점일 뿐 버블이
+    // 아니므로 제외한다.)
     const assistantContent = section.locator(
       '[data-role="assistant"] .min-w-0',
     );
-    await expect(assistantContent.locator(".bg-primary")).toHaveCount(0);
+    await expect(
+      assistantContent.locator(
+        ".bg-primary:not([data-testid='status-chip-dot'])",
+      ),
+    ).toHaveCount(0);
 
     const rail = section.getByTestId("run-rail");
     await expect(rail).toBeVisible();
