@@ -995,8 +995,8 @@
     "acceptance": "invoke마다 SSRF 재검증 + 변조 description이 재승인 트리거; RED→GREEN, verify-gates green",
     "phase": "P11",
     "team": "T1",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P11-T2-13",

@@ -146,7 +146,10 @@ export function createApp(env: Env) {
   // 공유해 discover 로 채워진 mcpBridge registry 를 그대로 재사용한다.
   const artifactDa = createPgArtifactDataAccess();
   const mcpServerDa = createPgMcpServerDataAccess();
-  const mcpClientPool = createMcpClientPool({ da: mcpServerDa });
+  const mcpClientPool = createMcpClientPool({
+    da: mcpServerDa,
+    nodeEnv: env.NODE_ENV,
+  });
   const mcpBridge = createMcpBridge({ pool: mcpClientPool });
 
   const sessionsApp = new Hono<{ Variables: AuthedVariables }>();

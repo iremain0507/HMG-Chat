@@ -69,6 +69,7 @@ describe("mcp-client-pool invoke rate-limit (L16 quota)", () => {
       fetchImpl: okFetch(),
       now: () => t,
       rateLimit: { maxCalls: 2, windowMs: 60_000 },
+      resolveHostname: async () => ["93.184.216.34"],
     });
     const signal = new AbortController().signal;
 
@@ -91,6 +92,7 @@ describe("mcp-client-pool invoke rate-limit (L16 quota)", () => {
       fetchImpl: okFetch(),
       now: () => t,
       rateLimit: { maxCalls: 1, windowMs: 1_000 },
+      resolveHostname: async () => ["93.184.216.34"],
     });
     const signal = new AbortController().signal;
 
@@ -131,6 +133,7 @@ describe("mcp-client-pool invoke rate-limit (L16 quota)", () => {
       fetchImpl: okFetch(),
       now: () => 0,
       rateLimit: { maxCalls: 1, windowMs: 60_000 },
+      resolveHostname: async () => ["93.184.216.34"],
     });
     const signal = new AbortController().signal;
 

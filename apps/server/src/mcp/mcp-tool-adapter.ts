@@ -22,13 +22,20 @@ export function mcpToolName(serverId: string, toolName: string): string {
 export function mcpToolToAgentToolSpec(
   serverId: string,
   tool: McpRawTool,
+  previousDescription?: string,
 ): AgentToolSpec {
+  const description = tool.description ?? tool.name;
+  // rug-pull 방어(20-MULTI-AGENT-TOOL.md §20.5 P11-T1-02): 이전 discover 시점과
+  // description 이 달라지면 tags 로 표시 — orchestrator/HITL UI 가 재승인 신호로 사용.
+  const descriptionChanged =
+    previousDescription !== undefined && previousDescription !== description;
   return {
     name: mcpToolName(serverId, tool.name),
-    description: tool.description ?? tool.name,
+    description,
     inputSchema: tool.inputSchema ?? { type: "object" },
     permissionTier: "tool",
     defaultPolicy: "hitl",
+    ...(descriptionChanged ? { tags: ["description-changed"] } : {}),
   };
 }
 

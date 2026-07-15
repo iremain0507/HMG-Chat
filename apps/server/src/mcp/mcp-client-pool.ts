@@ -16,6 +16,10 @@ import {
   type McpRawTool,
   type McpRawToolCallResult,
 } from "./mcp-tool-adapter.js";
+import {
+  validateMcpUrl,
+  type McpUrlValidatorOptions,
+} from "./url-validator.js";
 
 export interface McpRateLimitOptions {
   maxCalls: number;
@@ -27,6 +31,10 @@ export interface McpClientPoolOptions {
   fetchImpl?: typeof fetch;
   now?: () => number;
   rateLimit?: McpRateLimitOptions;
+  validateUrl?: typeof validateMcpUrl;
+  nodeEnv?: string;
+  allowedCidrs?: string[];
+  resolveHostname?: McpUrlValidatorOptions["resolveHostname"];
 }
 
 const DEFAULT_RATE_LIMIT: McpRateLimitOptions = {
@@ -92,6 +100,32 @@ export function createMcpClientPool(opts: McpClientPoolOptions): McpClientPool {
   const now = opts.now ?? (() => Date.now());
   const rateLimit = opts.rateLimit ?? DEFAULT_RATE_LIMIT;
   const rateState = new Map<string, { count: number; windowStart: number }>();
+  const validateUrl = opts.validateUrl ?? validateMcpUrl;
+
+  // SSRF 는 등록 시점(routes/mcp-servers.ts)뿐 아니라 discover/invoke 매 호출마다 재검증한다
+  // (20-MULTI-AGENT-TOOL.md §20.5 P11-T1-02) — 등록 이후 DNS 가 사설 IP 로 바뀌는
+  // rebinding 공격은 등록 시점 검증만으로 막을 수 없다.
+  async function assertUrlSafe(url: string) {
+    try {
+      await validateUrl(url, {
+        ...(opts.nodeEnv !== undefined ? { nodeEnv: opts.nodeEnv } : {}),
+        ...(opts.allowedCidrs !== undefined
+          ? { allowedCidrs: opts.allowedCidrs }
+          : {}),
+        ...(opts.resolveHostname !== undefined
+          ? { resolveHostname: opts.resolveHostname }
+          : {}),
+      });
+    } catch (err) {
+      throw new WChatError(
+        "MCP_SSRF_BLOCKED",
+        "mcp",
+        false,
+        err instanceof Error ? err.message : "mcp url 검증에 실패했습니다.",
+        err,
+      );
+    }
+  }
 
   function checkRateLimit(serverId: string) {
     const t = now();
@@ -132,6 +166,7 @@ export function createMcpClientPool(opts: McpClientPoolOptions): McpClientPool {
     async discover(serverId) {
       const server = await opts.da.mcpServers.byId(serverId);
       if (!server) return [];
+      await assertUrlSafe(server.url);
       const result = (await callJsonRpc(
         fetchImpl,
         server,
@@ -140,8 +175,15 @@ export function createMcpClientPool(opts: McpClientPoolOptions): McpClientPool {
       )) as {
         tools?: McpRawTool[];
       };
+      const previousDescriptionByName = new Map(
+        server.supportedTools.map((t) => [t.name, t.description]),
+      );
       return (result.tools ?? []).map((tool) =>
-        mcpToolToAgentToolSpec(server.id, tool),
+        mcpToolToAgentToolSpec(
+          server.id,
+          tool,
+          previousDescriptionByName.get(tool.name),
+        ),
       );
     },
 
@@ -160,6 +202,7 @@ export function createMcpClientPool(opts: McpClientPoolOptions): McpClientPool {
           ],
         });
       }
+      await assertUrlSafe(server.url);
       const result = (await callJsonRpc(
         fetchImpl,
         server,

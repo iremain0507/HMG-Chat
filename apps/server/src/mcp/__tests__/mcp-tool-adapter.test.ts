@@ -36,6 +36,34 @@ describe("mcpToolToAgentToolSpec", () => {
     expect(spec.description).toBe("ping");
     expect(spec.inputSchema).toEqual({ type: "object" });
   });
+
+  it("이전 discover 대비 description 이 변경되면 tags:description-changed 를 추가한다(재승인 트리거)", () => {
+    const spec = mcpToolToAgentToolSpec(
+      "srv-1",
+      { name: "search", description: "새 설명(변조됨)" },
+      "이전 설명",
+    );
+    expect(spec.tags).toContain("description-changed");
+    expect(spec.defaultPolicy).toBe("hitl");
+  });
+
+  it("이전 description 과 동일하면 tags 를 추가하지 않는다", () => {
+    const spec = mcpToolToAgentToolSpec(
+      "srv-1",
+      { name: "search", description: "동일 설명" },
+      "동일 설명",
+    );
+    expect(spec.tags).toBeUndefined();
+  });
+
+  it("첫 등장(이전 description 없음)이면 tags 를 추가하지 않는다", () => {
+    const spec = mcpToolToAgentToolSpec("srv-1", {
+      name: "search",
+      description: "최초 설명",
+    });
+    expect(spec.tags).toBeUndefined();
+    expect(spec.defaultPolicy).toBe("hitl");
+  });
 });
 
 describe("mcpResultToAgentToolResult", () => {

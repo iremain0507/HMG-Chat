@@ -25,6 +25,9 @@ function makeServer(overrides: Partial<McpServerRecord> = {}): McpServerRecord {
   };
 }
 
+// 실 DNS 호출 방지 — 테스트 기본은 안전한 공인 IP 로 고정(dev-stub, 12-OPS-SECURITY.md 부록 B).
+const SAFE_RESOLVE = async () => ["93.184.216.34"];
+
 function makeDa(servers: McpServerRecord[]): McpServerDataAccess {
   return {
     mcpServers: {
@@ -119,7 +122,11 @@ describe("createMcpClientPool", () => {
         { status: 200 },
       );
     }) as typeof fetch;
-    const pool = createMcpClientPool({ da: makeDa([server]), fetchImpl });
+    const pool = createMcpClientPool({
+      da: makeDa([server]),
+      fetchImpl,
+      resolveHostname: SAFE_RESOLVE,
+    });
 
     const specs = await pool.discover(server.id);
     expect(specs).toEqual([
@@ -139,6 +146,60 @@ describe("createMcpClientPool", () => {
     expect(await pool.discover(randomUUID())).toEqual([]);
   });
 
+  it("discover — url 이 SSRF 검증에 실패하면 tools/list 를 호출하지 않고 reject 한다", async () => {
+    const server = makeServer({ url: "https://internal.example.com/" });
+    const calls: unknown[] = [];
+    const fetchImpl = (async () => {
+      calls.push(1);
+      return new Response(
+        JSON.stringify({ jsonrpc: "2.0", id: "x", result: { tools: [] } }),
+        { status: 200 },
+      );
+    }) as typeof fetch;
+    const pool = createMcpClientPool({
+      da: makeDa([server]),
+      fetchImpl,
+      resolveHostname: async () => ["10.0.0.5"], // 사설 IP — DNS rebinding 시나리오
+    });
+
+    await expect(pool.discover(server.id)).rejects.toMatchObject({
+      category: "mcp",
+    });
+    expect(calls).toHaveLength(0);
+  });
+
+  it("discover — 이전 discover 대비 tool description 이 변경되면 tags:description-changed 를 포함한다(rug-pull 방어)", async () => {
+    const server = makeServer({
+      supportedTools: [
+        {
+          name: "search",
+          description: "원래 설명(승인 시점)",
+          inputSchema: { type: "object" },
+        },
+      ],
+    });
+    const fetchImpl = (async () =>
+      new Response(
+        JSON.stringify({
+          jsonrpc: "2.0",
+          id: "x",
+          result: {
+            tools: [{ name: "search", description: "변조된 새 설명" }],
+          },
+        }),
+        { status: 200 },
+      )) as typeof fetch;
+    const pool = createMcpClientPool({
+      da: makeDa([server]),
+      fetchImpl,
+      resolveHostname: SAFE_RESOLVE,
+    });
+
+    const specs = await pool.discover(server.id);
+    expect(specs[0]?.tags).toContain("description-changed");
+    expect(specs[0]?.defaultPolicy).toBe("hitl");
+  });
+
   it("invoke — tools/call 결과를 AgentToolResult 로 변환한다", async () => {
     const server = makeServer();
     const fetchImpl = (async () =>
@@ -150,7 +211,11 @@ describe("createMcpClientPool", () => {
         }),
         { status: 200 },
       )) as typeof fetch;
-    const pool = createMcpClientPool({ da: makeDa([server]), fetchImpl });
+    const pool = createMcpClientPool({
+      da: makeDa([server]),
+      fetchImpl,
+      resolveHostname: SAFE_RESOLVE,
+    });
 
     const result = await pool.invoke(
       server.id,
@@ -165,10 +230,40 @@ describe("createMcpClientPool", () => {
     const server = makeServer();
     const fetchImpl = (async () =>
       new Response("boom", { status: 500 })) as typeof fetch;
-    const pool = createMcpClientPool({ da: makeDa([server]), fetchImpl });
+    const pool = createMcpClientPool({
+      da: makeDa([server]),
+      fetchImpl,
+      resolveHostname: SAFE_RESOLVE,
+    });
 
     await expect(
       pool.invoke(server.id, "search", {}, new AbortController().signal),
     ).rejects.toMatchObject({ category: "mcp" });
+  });
+
+  it("invoke — url 이 SSRF 검증에 실패하면 tools/call 을 호출하지 않고 reject 한다(매 invoke 재검증)", async () => {
+    const server = makeServer({ url: "https://internal.example.com/" });
+    const calls: unknown[] = [];
+    const fetchImpl = (async () => {
+      calls.push(1);
+      return new Response(
+        JSON.stringify({
+          jsonrpc: "2.0",
+          id: "x",
+          result: { content: [] },
+        }),
+        { status: 200 },
+      );
+    }) as typeof fetch;
+    const pool = createMcpClientPool({
+      da: makeDa([server]),
+      fetchImpl,
+      resolveHostname: async () => ["10.0.0.5"], // 등록 이후 DNS 가 사설 IP 로 바뀐 rebinding 시나리오
+    });
+
+    await expect(
+      pool.invoke(server.id, "search", {}, new AbortController().signal),
+    ).rejects.toMatchObject({ category: "mcp" });
+    expect(calls).toHaveLength(0);
   });
 });
