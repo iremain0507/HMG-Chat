@@ -16,6 +16,7 @@
   "dependencies": {
     "@wchat/shared": "workspace:*",
     "katex": "^0.17.0",
+    "lucide-react": "0.451.0",
     "mermaid": "^11.16.0",
     "next": "15.0.0",
     "pdfjs-dist": "4.5.136",

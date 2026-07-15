@@ -24,6 +24,11 @@ describe("SessionList", () => {
     cleanup();
     vi.unstubAllGlobals();
     push.mockClear();
+    try {
+      window.localStorage.clear();
+    } catch {
+      // localStorage 미가용 테스트 환경 — 다음 테스트도 빈 상태로 시작한다.
+    }
   });
 
   it("세션 목록을 날짜그룹(오늘/어제/이전 7일)으로 렌더한다", async () => {
@@ -160,5 +165,98 @@ describe("SessionList", () => {
         }),
       );
     });
+  });
+
+  it("고정 버튼 클릭 시 해당 세션이 '고정' 그룹으로 이동한다", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          data: [
+            {
+              id: "sess-a",
+              title: "세션 A",
+              lastMessageAt: "2026-07-14T01:00:00Z",
+              projectId: null,
+              archived: false,
+            },
+          ],
+        }),
+      })),
+    );
+
+    render(<SessionList now={new Date("2026-07-14T12:00:00Z")} />);
+
+    await waitFor(() => {
+      expect(screen.getByText("세션 A")).toBeInTheDocument();
+    });
+    expect(screen.getByText("오늘")).toBeInTheDocument();
+    expect(screen.queryByText("고정")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByLabelText("고정: 세션 A"));
+
+    expect(screen.getByText("고정")).toBeInTheDocument();
+    expect(screen.queryByText("오늘")).not.toBeInTheDocument();
+    expect(screen.getByLabelText("고정 해제: 세션 A")).toBeInTheDocument();
+  });
+
+  it("⌘N 단축키로 새 세션을 생성한다", async () => {
+    const fetchMock = vi.fn(
+      async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        if (init?.method === "POST" && url === "/api/v1/sessions") {
+          return {
+            ok: true,
+            status: 201,
+            json: async () => ({
+              data: {
+                id: "sess-new",
+                title: null,
+                projectId: null,
+                createdAt: "2026-07-14T02:00:00Z",
+              },
+            }),
+          };
+        }
+        return { ok: true, status: 200, json: async () => ({ data: [] }) };
+      },
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<SessionList now={new Date("2026-07-14T12:00:00Z")} />);
+    await waitFor(() => {
+      expect(screen.getByText("세션이 없습니다.")).toBeInTheDocument();
+    });
+
+    fireEvent.keyDown(window, { key: "n", metaKey: true });
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/v1/sessions",
+        expect.objectContaining({ method: "POST" }),
+      );
+    });
+  });
+
+  it("wchat:cmdk 이벤트 수신 시 세션 검색창에 포커스한다", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({
+        ok: true,
+        status: 200,
+        json: async () => ({ data: [] }),
+      })),
+    );
+
+    render(<SessionList now={new Date("2026-07-14T12:00:00Z")} />);
+    await waitFor(() => {
+      expect(screen.getByText("세션이 없습니다.")).toBeInTheDocument();
+    });
+
+    window.dispatchEvent(new CustomEvent("wchat:cmdk"));
+
+    expect(screen.getByTestId("session-search-input")).toHaveFocus();
   });
 });

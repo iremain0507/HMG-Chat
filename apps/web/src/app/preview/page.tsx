@@ -5,6 +5,8 @@
 //   각 FE 태스크는 자기 컴포넌트를 data-testid="preview-<name>" 섹션으로 여기에 추가한다.
 import React, { useState } from "react";
 import { ThemeToggle } from "../../components/layout/ThemeToggle";
+import { AppShell } from "../../components/layout/AppShell";
+import { SessionList } from "../../components/sessions/SessionList";
 import { Markdown } from "../../components/chat/Markdown";
 import { Reasoning } from "../../components/chat/Reasoning";
 import { MessageActions } from "../../components/chat/MessageActions";
@@ -334,6 +336,22 @@ function OfflineBannerPreview() {
   );
 }
 
+// P13-T6-01 — AppShell(헤더·나비레일·세션사이드바·우패널) 핸드오프 정렬 프리뷰.
+//   실 API 대신 useSessions/useCurrentUser 의 fetch 를 Playwright page.route() 로 목킹해
+//   빈 상태가 아닌 실제 프레임 값으로 렌더 검증한다(e2e/app-shell.pw.ts).
+function AppShellPreview() {
+  return (
+    <AppShell
+      sidebar={<SessionList now={new Date("2026-07-15T09:00:00Z")} />}
+      rightPanel={
+        <div className="p-4 text-sm text-fg-muted">우패널 콘텐츠 예시</div>
+      }
+    >
+      <div className="p-6 text-sm text-fg-muted">본문 예시 영역</div>
+    </AppShell>
+  );
+}
+
 function Section({
   name,
   children,
@@ -363,6 +381,18 @@ export default function PreviewGallery() {
         </h1>
         <ThemeToggle />
       </div>
+
+      <section
+        data-testid="preview-app-shell"
+        className="relative left-1/2 w-screen -translate-x-1/2 border-y border-border"
+      >
+        <h2 className="px-6 py-3 text-xs font-semibold uppercase tracking-wide text-fg-muted">
+          app-shell
+        </h2>
+        <div className="h-[640px]">
+          <AppShellPreview />
+        </div>
+      </section>
 
       <Section name="markdown">
         <Markdown>{MD}</Markdown>
