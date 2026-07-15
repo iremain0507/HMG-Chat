@@ -1049,8 +1049,8 @@
     "acceptance": "생성→평가→기준 미달 시 재생성 루프; RED→GREEN, verify-gates green",
     "phase": "P12",
     "team": "T2",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P12-T2-06",
