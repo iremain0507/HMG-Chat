@@ -1229,8 +1229,8 @@
     "acceptance": "migration-check 통과(nullable-first: 기존 테이블 NOT NULL 추가 없음, settings DEFAULT '{}'; 번호 0017 충돌 없음; rollback=DROP TABLE org_settings). RLS cross-org 격리 테스트: org A admin 은 자기 org 행만 SELECT/UPDATE, org B 행은 불가시/거부; verify-gates green",
     "phase": "P14",
     "team": "T1",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P14-T1-03",
