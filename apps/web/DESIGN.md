@@ -1,8 +1,15 @@
 # WChat 프론트엔드 디자인 시스템 — Hyundai WIA CI 기반
 
+> **시각 정본(단일 출처) = `apps/web/design-reference/`** (하이파이 디자인 핸드오프).
+> 읽기 순서: `README.md` → `WChat Frames.dc.html`(F04 에이전틱 라이브 = 히어로) →
+> `WChat App.dc.html`(인터랙티브 프로토타입) → `claude-design-prompt_wchat_hyundai-wia.md`
+> (§2.3 토큰 표 · §5 프레임 스펙 · §6 컴포넌트 해부가 최종 정본).
+> **새 UI/UX 요소 생성·수정 시 항상 이 핸드오프 디자인을 따른다**(색·타이포·간격·상태·상호작용).
+> 색은 전부 `globals.css` 시맨틱 토큰만 사용 — 하드코딩 hex 금지. `globals.css @theme` 는
+> 핸드오프 토큰 표(primary 50–900 스케일·시맨틱·navy 다크·mono)를 이미 반영한 상태다.
+>
 > 대상 앱은 HMG(현대차그룹) 계열 **현대위아(Hyundai WIA)** 사내 LLM 챗 플랫폼이다.
-> 모든 `apps/web` UI 는 아래 Hyundai WIA CI(Corporate Identity)를 단일 출처로 따른다.
-> 출처: [현대위아 공식 CI](https://www.hyundai-wia.com/about/ci.asp) (2026-07 조사).
+> 아래 CI 근거·토큰 규율은 그 핸드오프와 정합한다. 출처: [현대위아 공식 CI](https://www.hyundai-wia.com/about/ci.asp).
 
 ## 1. 브랜드 색상 (공식 값)
 
@@ -27,19 +34,24 @@ Pantone 186C 실제값 `#C8102E` 를 브랜드 레드로 사용. 레드는 **포
 
 ## 2. 시맨틱 토큰 매핑 (light/dark)
 
-| 시맨틱       | Light     | Dark      | 용도                        |
-| ------------ | --------- | --------- | --------------------------- |
-| `primary`    | `#00287A` | `#3D6FD4` | 1차 버튼/링크/활성/포커스링 |
-| `primary-fg` | `#FFFFFF` | `#0B1220` | primary 위 텍스트           |
-| `accent`     | `#C8102E` | `#F0576E` | 강조·에러·중단(Stop)·실시간 |
-| `bg`         | `#FFFFFF` | `#0F141A` | 페이지 배경                 |
-| `surface`    | `#F5F7FA` | `#161C24` | 카드/패널                   |
-| `border`     | `#D9D9D9` | `#2A3340` | 경계선                      |
-| `fg`         | `#1A1D21` | `#E6E9ED` | 본문 텍스트                 |
-| `fg-muted`   | `#666666` | `#B3B3B3` | 보조 텍스트                 |
+> **전체 토큰(정본)은 핸드오프 §2.3 및 `globals.css @theme`.** 아래는 핵심 시맨틱 요약.
+> 추가로 `primary-50…900` 스케일, `surface-2`, `fg-subtle`/`placeholder`, `success/warning`
+> (soft 포함), `--font-mono`(JetBrains Mono) 가 토큰으로 등록돼 있다.
 
-> 접근성: primary(#00287A) on white 대비 ≈ 11:1 (AAA). accent(#C8102E) on white ≈ 6.3:1 (AA).
-> 다크 모드는 원색을 그대로 쓰면 대비 부족 → 위 밝은 파생값 사용.
+| 시맨틱       | Light     | Dark(navy) | 용도                                |
+| ------------ | --------- | ---------- | ----------------------------------- |
+| `primary`    | `#00287A` | `#8AA0DB`  | CTA/링크/활성 (라이트=600 앵커)     |
+| `primary-fg` | `#FFFFFF` | `#0B1020`  | primary 위 텍스트                   |
+| `primary-50` | `#EEF2FA` | `#1A2547`  | 선택·인용 배경                      |
+| `accent`     | `#C8102E` | `#F0564F`  | danger·중단(Stop)·실시간 (소량)     |
+| `bg`         | `#FFFFFF` | `#0B1020`  | 페이지 배경                         |
+| `surface`    | `#F5F5F5` | `#121A33`  | 카드/패널 (surface-2=100/`#1A2547`) |
+| `border`     | `#D9D9D9` | `#26325C`  | 경계선                              |
+| `fg`         | `#1A1A1A` | `#EAEEF7`  | 본문 텍스트                         |
+| `fg-muted`   | `#666666` | `#B7C0D8`  | 보조 텍스트 (fg-subtle=300 비활성)  |
+
+> 접근성: primary(#00287A) on white ≈ 11:1 (AAA). accent(#C8102E) on white ≈ 6.3:1 (AA).
+> 다크는 navy-tinted 표면 + 밝은 인터랙티브(#8AA0DB)로 대비 확보.
 
 ## 3. 타이포그래피
 
@@ -63,34 +75,11 @@ Pantone 186C 실제값 `#C8102E` 를 브랜드 레드로 사용. 레드는 **포
 
 ## 6. Tailwind v4 적용 (globals.css `@theme`)
 
-아래 블록을 `apps/web/src/app/globals.css` 의 `@theme` 로 반영(단일 출처). 컴포넌트는
-`bg-primary text-primary-fg`, `text-accent`, `border-border` 등 시맨틱 유틸만 사용.
+**단일 출처 = `apps/web/src/app/globals.css`** (핸드오프 §2.3 토큰 표를 반영: primary 50–900
+스케일 · neutral(bg/surface/surface-2/border/fg-subtle/placeholder/fg-muted/fg) · 시맨틱
+(accent=danger, success/warning + soft) · navy 다크 · Pretendard/JetBrains Mono). 문서에
+값을 중복하지 말고 globals.css 를 정본으로 참조.
 
-```css
-@import "tailwindcss";
-@theme {
-  --color-primary: #00287a;
-  --color-primary-fg: #ffffff;
-  --color-accent: #c8102e;
-  --color-bg: #ffffff;
-  --color-surface: #f5f7fa;
-  --color-border: #d9d9d9;
-  --color-fg: #1a1d21;
-  --color-fg-muted: #666666;
-  --font-sans:
-    "Pretendard", -apple-system, "Apple SD Gothic Neo", system-ui, sans-serif;
-  --radius: 0.5rem;
-}
-@media (prefers-color-scheme: dark) {
-  @theme {
-    --color-primary: #3d6fd4;
-    --color-primary-fg: #0b1220;
-    --color-accent: #f0576e;
-    --color-bg: #0f141a;
-    --color-surface: #161c24;
-    --color-border: #2a3340;
-    --color-fg: #e6e9ed;
-    --color-fg-muted: #b3b3b3;
-  }
-}
-```
+컴포넌트는 `bg-primary text-primary-fg`, `bg-primary-50`, `text-accent`, `text-success`,
+`border-border`, `text-fg-muted`, `font-mono tabular-nums` 등 **시맨틱 유틸만** 사용
+(하드코딩 hex 금지). 라이트/다크는 `data-theme` 클래스로 양방향 override.

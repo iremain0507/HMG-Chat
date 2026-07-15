@@ -1,5 +1,8 @@
 @import "tailwindcss";
 
+/* 디자인 정본: apps/web/design-reference/ (README + claude-design-prompt §2.3 토큰 표).
+   모든 색은 아래 시맨틱 토큰만 사용 — 하드코딩 hex 금지. 신규/수정 UI 는 이 토큰을 따른다. */
+
 /* Pretendard self-host — 실 폰트 바이너리는 로고 자산과 동일하게 배포 시 제공(현재 fallback 스택으로 동작). */
 @font-face {
   font-family: "Pretendard";
@@ -9,58 +12,132 @@
 }
 
 @theme {
-  --color-primary: #00287a;
+  /* Primary — WIA Blue 스케일 (600 = 브랜드 앵커: CTA·링크·활성) */
+  --color-primary-50: #eef2fa; /* 선택·인용 배경 */
+  --color-primary-100: #dbe3f4; /* hover·highlight */
+  --color-primary-200: #b6c4e8;
+  --color-primary-300: #8aa0db;
+  --color-primary-400: #5c77c6; /* 포커스 링 */
+  --color-primary-500: #2e4fa6;
+  --color-primary-600: #00287a;
+  --color-primary-700: #001f5f;
+  --color-primary-800: #001646;
+  --color-primary-900: #000f30;
+  --color-primary: #00287a; /* = 600 기본 앵커 */
   --color-primary-fg: #ffffff;
+
+  /* Neutral */
+  --color-bg: #ffffff; /* 0 */
+  --color-surface: #f5f5f5; /* 50 surface-1 */
+  --color-surface-2: #ebebeb; /* 100 */
+  --color-border: #d9d9d9; /* 200 기본 보더 */
+  --color-fg-subtle: #b3b3b3; /* 300 비활성 */
+  --color-placeholder: #8c8c8c; /* 400 */
+  --color-fg-muted: #666666; /* 500 보조 텍스트 */
+  --color-fg: #1a1a1a; /* 900 본문 */
+
+  /* Semantic — danger = UI 빨강(#C8102E), success/warning, info 는 primary 재사용(신설 금지) */
   --color-accent: #c8102e;
-  --color-bg: #ffffff;
-  --color-surface: #f5f7fa;
-  --color-border: #d9d9d9;
-  --color-fg: #1a1d21;
-  --color-fg-muted: #666666;
-  --font-sans: "Pretendard", -apple-system, "Apple SD Gothic Neo", system-ui, sans-serif;
-  --radius: 0.5rem;
+  --color-danger: #c8102e;
+  --color-danger-strong: #a50d26;
+  --color-danger-soft: #fcebee;
+  --color-success: #1b7f4b;
+  --color-success-soft: #e9f7ef;
+  --color-warning: #f5c400;
+  --color-warning-soft: #fff6cc;
+  --color-warning-fg: #6b5300;
+
+  /* Type */
+  --font-sans:
+    "Pretendard", -apple-system, "Apple SD Gothic Neo", system-ui, sans-serif;
+  --font-mono:
+    "JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+
+  --radius: 0.625rem; /* 카드 10px */
 }
+
+/* 다크(navy-tinted) — prefers-color-scheme + data-theme 양방향 */
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme]) {
-    --color-primary: #3d6fd4;
-    --color-primary-fg: #0b1220;
-    --color-accent: #f0576e;
-    --color-bg: #0f141a;
-    --color-surface: #161c24;
-    --color-border: #2a3340;
-    --color-fg: #e6e9ed;
-    --color-fg-muted: #b3b3b3;
+    --color-primary: #8aa0db; /* 다크 인터랙티브 */
+    --color-primary-fg: #0b1020;
+    --color-primary-50: #1a2547; /* 선택·인용 배경(navy) */
+    --color-primary-100: #26325c;
+    --color-primary-400: #8aa0db;
+    --color-bg: #0b1020;
+    --color-surface: #121a33;
+    --color-surface-2: #1a2547;
+    --color-border: #26325c;
+    --color-fg: #eaeef7;
+    --color-fg-muted: #b7c0d8;
+    --color-fg-subtle: #7d89a8;
+    --color-placeholder: #7d89a8;
+    --color-accent: #f0564f;
+    --color-danger: #f0564f;
+    --color-danger-soft: #2a1620;
+    --color-success: #45d18b;
+    --color-success-soft: #14261d;
+    --color-warning: #f0b657;
+    --color-warning-soft: #2a2416;
+    --color-warning-fg: #f0b657;
   }
 }
-/* data-theme 수동 토글 — prefers-color-scheme 를 양방향 override */
 :root[data-theme="dark"] {
-  --color-primary: #3d6fd4;
-  --color-primary-fg: #0b1220;
-  --color-accent: #f0576e;
-  --color-bg: #0f141a;
-  --color-surface: #161c24;
-  --color-border: #2a3340;
-  --color-fg: #e6e9ed;
-  --color-fg-muted: #b3b3b3;
+  --color-primary: #8aa0db;
+  --color-primary-fg: #0b1020;
+  --color-primary-50: #1a2547;
+  --color-primary-100: #26325c;
+  --color-primary-400: #8aa0db;
+  --color-bg: #0b1020;
+  --color-surface: #121a33;
+  --color-surface-2: #1a2547;
+  --color-border: #26325c;
+  --color-fg: #eaeef7;
+  --color-fg-muted: #b7c0d8;
+  --color-fg-subtle: #7d89a8;
+  --color-placeholder: #7d89a8;
+  --color-accent: #f0564f;
+  --color-danger: #f0564f;
+  --color-danger-soft: #2a1620;
+  --color-success: #45d18b;
+  --color-success-soft: #14261d;
+  --color-warning: #f0b657;
+  --color-warning-soft: #2a2416;
+  --color-warning-fg: #f0b657;
 }
 :root[data-theme="light"] {
   --color-primary: #00287a;
   --color-primary-fg: #ffffff;
-  --color-accent: #c8102e;
+  --color-primary-50: #eef2fa;
+  --color-primary-100: #dbe3f4;
+  --color-primary-400: #5c77c6;
   --color-bg: #ffffff;
-  --color-surface: #f5f7fa;
+  --color-surface: #f5f5f5;
+  --color-surface-2: #ebebeb;
   --color-border: #d9d9d9;
-  --color-fg: #1a1d21;
+  --color-fg: #1a1a1a;
   --color-fg-muted: #666666;
+  --color-fg-subtle: #b3b3b3;
+  --color-placeholder: #8c8c8c;
+  --color-accent: #c8102e;
+  --color-danger: #c8102e;
+  --color-danger-soft: #fcebee;
+  --color-success: #1b7f4b;
+  --color-success-soft: #e9f7ef;
+  --color-warning: #f5c400;
+  --color-warning-soft: #fff6cc;
+  --color-warning-fg: #6b5300;
 }
 
 :root {
-  /* z-index 토큰 — 19-UIUX-UPGRADE.md § P10-T6-01 */
+  /* z-index — HITL 300(항상 최상) */
   --z-modal: 100;
   --z-toast: 200;
   --z-hitl: 300;
+  /* 포커스 링 2px #5C77C6, offset 2px (전 인터랙티브 요소) */
+  --focus-ring: #5c77c6;
 
-  /* 코드블록 문법하이라이트 토큰(rehype-highlight, P10-T6-03) — light */
+  /* 코드블록 문법하이라이트(rehype-highlight) — light */
   --code-keyword: #0057b8;
   --code-string: #1a7f37;
   --code-number: #ab5000;
@@ -84,10 +161,33 @@
   }
 }
 
-.hljs-keyword, .hljs-built_in, .hljs-tag, .hljs-selector-tag { color: var(--code-keyword); }
-.hljs-string, .hljs-attr, .hljs-symbol { color: var(--code-string); }
-.hljs-number, .hljs-literal { color: var(--code-number); }
-.hljs-comment, .hljs-quote { color: var(--code-comment); font-style: italic; }
-.hljs-title, .hljs-title.function_, .hljs-section { color: var(--code-function); }
+.hljs-keyword,
+.hljs-built_in,
+.hljs-tag,
+.hljs-selector-tag {
+  color: var(--code-keyword);
+}
+.hljs-string,
+.hljs-attr,
+.hljs-symbol {
+  color: var(--code-string);
+}
+.hljs-number,
+.hljs-literal {
+  color: var(--code-number);
+}
+.hljs-comment,
+.hljs-quote {
+  color: var(--code-comment);
+  font-style: italic;
+}
+.hljs-title,
+.hljs-title.function_,
+.hljs-section {
+  color: var(--code-function);
+}
 
-body { background: var(--color-bg); color: var(--color-fg); }
+body {
+  background: var(--color-bg);
+  color: var(--color-fg);
+}

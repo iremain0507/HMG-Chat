@@ -1,0 +1,972 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet data-dc-atomics>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&display=swap">
+<style>
+html,body{margin:0;height:100%}
+body{font-family:'Pretendard Variable',Pretendard,-apple-system,'Segoe UI',sans-serif;word-break:keep-all;-webkit-font-smoothing:antialiased;
+--sf0:#FFFFFF;--sf1:#F5F5F5;--sf2:#EBEBEB;--bd:#D9D9D9;--bds:#EBEBEB;--tx:#1A1A1A;--tx2:#666666;--tx3:#8C8C8C;
+--pri:#00287A;--priH:#001F5F;--onPri:#FFFFFF;--priBg:#EEF2FA;--priSel:#DBE3F4;--priBd:#B6C4E8;--focus:#5C77C6;
+--ok:#1B7F4B;--okBg:#E9F7EF;--okTx:#1B7F4B;--wn:#F5C400;--wnBg:#FFF6CC;--wnTx:#6B5300;--dg:#C8102E;--dgBg:#FCEBEE;--dgTx:#A50D26;
+--shA:#EBEBEB;--shB:#F5F5F5;--dim:rgba(11,16,32,.18);--pop:0 4px 8px rgba(0,0,0,.08);--mod:0 12px 24px rgba(0,0,0,.10)}
+body.dark{--sf0:#0B1020;--sf1:#121A33;--sf2:#1A2547;--bd:#26325C;--bds:#26325C;--tx:#EAEEF7;--tx2:#B7C0D8;--tx3:#7D89A8;
+--pri:#8AA0DB;--priH:#A6B8E6;--onPri:#0B1020;--priBg:#1A2547;--priSel:#1A2547;--priBd:#26325C;--focus:#5C77C6;
+--okBg:#12233A;--okTx:#B7C0D8;--wnBg:#241F33;--wnTx:#F5C400;--dg:#F0564F;--dgBg:#2A1830;--dgTx:#F0564F;
+--shA:#1A2547;--shB:#26325C;--dim:rgba(0,0,0,.4);--pop:0 4px 12px rgba(0,0,0,.4);--mod:0 12px 32px rgba(0,0,0,.5)}
+a{color:var(--pri)}a:hover{color:var(--priH)}
+textarea{font-family:inherit}
+*::-webkit-scrollbar{width:8px;height:8px}*::-webkit-scrollbar-thumb{background:var(--bd);border-radius:8px}*::-webkit-scrollbar-track{background:transparent}
+@keyframes wpulse{0%,100%{opacity:1}50%{opacity:.3}}
+@keyframes wblink{0%,100%{opacity:1}50%{opacity:0}}
+@keyframes wshimmer{0%{background-position:-360px 0}100%{background-position:360px 0}}
+@keyframes wslide{0%{left:-30%}100%{left:105%}}
+@keyframes wfade{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+@media (prefers-reduced-motion:reduce){*{animation:none!important}}
+</style>
+</helmet>
+
+<div style="height:100vh;display:flex;flex-direction:column;background:var(--sf0);color:var(--tx);overflow:hidden" data-screen-label="WChat">
+<div style="height:48px;flex:none;border-bottom:1px solid var(--bd);display:flex;align-items:center;padding:0 14px;gap:12px">
+<div style="width:96px;height:22px;border:1px dashed var(--tx3);border-radius:3px;display:flex;align-items:center;justify-content:center;font-size:7.5px;color:var(--tx3);text-align:center;line-height:1.2">HYUNDAI WIA<br>시그니처 원본</div>
+<div style="width:1px;height:18px;background:var(--bd)"></div>
+<span style="font-size:15px;font-weight:600;letter-spacing:-0.01em">WChat</span>
+<span style="font-size:10px;color:var(--tx3);border:1px solid var(--bd);border-radius:999px;padding:2px 8px">인터랙티브 프로토타입</span>
+<button onClick="{{ toastCmdK }}" style="margin-left:auto;display:inline-flex;align-items:center;gap:6px;height:28px;padding:0 10px;border-radius:6px;border:1px solid var(--bd);background:none;font-size:12px;color:var(--tx3);font-family:inherit;cursor:pointer"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><path d="m21 21-4.3-4.3"></path></svg>검색<span style="font-family:'JetBrains Mono',monospace;font-size:10px;background:var(--sf1);border:1px solid var(--bd);border-radius:3px;padding:1px 4px">⌘K</span></button>
+<button onClick="{{ toggleDark }}" aria-label="테마 전환" style="width:28px;height:28px;border-radius:6px;border:1px solid var(--bd);background:none;display:flex;align-items:center;justify-content:center;cursor:pointer;color:var(--tx2)">
+<sc-if value="{{ dark }}" hint-placeholder-val="{{ false }}"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"></circle><path d="M12 2v2"></path><path d="M12 20v2"></path><path d="m4.93 4.93 1.41 1.41"></path><path d="m17.66 17.66 1.41 1.41"></path><path d="M2 12h2"></path><path d="M20 12h2"></path><path d="m6.34 17.66-1.41 1.41"></path><path d="m19.07 4.93-1.41 1.41"></path></svg></sc-if>
+<sc-if value="{{ light }}" hint-placeholder-val="{{ true }}"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9"></path></svg></sc-if>
+</button>
+<button onClick="{{ togglePanel }}" aria-label="우패널 토글 (Cmd+\)" style="width:28px;height:28px;border-radius:6px;border:1px solid {{ panelBtnBd }};background:{{ panelBtnBg }};display:flex;align-items:center;justify-content:center;cursor:pointer;color:{{ panelBtnTx }}"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2"></rect><path d="M15 3v18"></path></svg></button>
+</div>
+<div style="flex:1;display:flex;min-height:0;position:relative">
+<div style="width:56px;flex:none;border-right:1px solid var(--bd);display:flex;flex-direction:column;align-items:center;padding:10px 0;gap:4px">
+<button onClick="{{ goHome }}" aria-label="홈" style="width:38px;height:38px;border-radius:10px;border:none;background:{{ navHomeBg }};display:flex;align-items:center;justify-content:center;cursor:pointer;color:{{ navHomeTx }}"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><path d="M9 22V12h6v10"></path></svg></button>
+<button onClick="{{ navStub }}" aria-label="프로젝트" style="width:38px;height:38px;border-radius:10px;border:none;background:none;display:flex;align-items:center;justify-content:center;cursor:pointer;color:var(--tx2)"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg></button>
+<button onClick="{{ navStub }}" aria-label="에이전트" style="width:38px;height:38px;border-radius:10px;border:none;background:none;display:flex;align-items:center;justify-content:center;cursor:pointer;color:var(--tx2)"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 8V4H8"></path><rect width="16" height="12" x="4" y="8" rx="2"></rect><path d="M2 14h2"></path><path d="M20 14h2"></path><path d="M15 13v2"></path><path d="M9 13v2"></path></svg></button>
+<button onClick="{{ navStub }}" aria-label="커넥터" style="width:38px;height:38px;border-radius:10px;border:none;background:none;display:flex;align-items:center;justify-content:center;cursor:pointer;color:var(--tx2)"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22v-5"></path><path d="M9 8V2"></path><path d="M15 8V2"></path><path d="M18 8v5a6 6 0 0 1-12 0V8z"></path></svg></button>
+<button onClick="{{ navStub }}" aria-label="설정" style="width:38px;height:38px;border-radius:10px;border:none;background:none;display:flex;align-items:center;justify-content:center;cursor:pointer;color:var(--tx2)"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"></path><circle cx="12" cy="12" r="3"></circle></svg></button>
+<span style="margin-top:auto;width:30px;height:30px;border-radius:999px;background:var(--pri);color:var(--onPri);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:600">김</span>
+</div>
+<div style="width:256px;flex:none;border-right:1px solid var(--bd);background:var(--sf1);padding:10px;box-sizing:border-box;display:flex;flex-direction:column;gap:3px;min-height:0">
+<button onClick="{{ newSession }}" style="height:34px;flex:none;border-radius:6px;background:var(--pri);border:none;color:var(--onPri);font-size:13px;font-weight:600;font-family:inherit;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M5 12h14"></path><path d="M12 5v14"></path></svg>새 세션<span style="font-family:'JetBrains Mono',monospace;font-size:10px;opacity:.7;font-weight:400">⌘N</span></button>
+<input value="{{ sessionQuery }}" onChange="{{ onSessionQuery }}" placeholder="세션 검색" style="height:30px;flex:none;border-radius:6px;border:1px solid var(--bd);background:var(--sf0);color:var(--tx);padding:0 10px;font-size:12.5px;font-family:inherit;outline:none;margin-top:4px;box-sizing:border-box">
+<div style="flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:2px;margin-top:6px">
+<sc-for list="{{ sessionGroups }}" as="g" hint-placeholder-count="2">
+<div style="font-size:10.5px;font-weight:600;color:var(--tx3);margin:8px 4px 2px;display:flex;align-items:center;gap:4px">{{ g.label }}</div>
+<sc-for list="{{ g.items }}" as="s" hint-placeholder-count="2">
+<div onClick="{{ s.open }}" style="padding:7px 9px;border-radius:6px;font-size:12.5px;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;background:{{ s.bg }};color:{{ s.color }};font-weight:{{ s.weight }}" style-hover="background:var(--sf2)">{{ s.title }}</div>
+</sc-for>
+</sc-for>
+</div>
+</div>
+
+<div style="flex:1;display:flex;flex-direction:column;min-width:0;position:relative">
+<sc-if value="{{ isHome }}" hint-placeholder-val="{{ true }}">
+<div data-screen-label="홈" style="flex:1;overflow-y:auto;display:flex;flex-direction:column;align-items:center;padding:64px 32px 32px">
+<div style="width:680px;max-width:100%">
+<div style="font-size:28px;font-weight:700;letter-spacing:-0.01em;text-align:center">안녕하세요, 김민수님</div>
+<div style="font-size:14.5px;color:var(--tx2);text-align:center;margin-top:7px">사내 지식과 도구를 불러 업무를 시작하세요</div>
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:28px">
+<div onClick="{{ quick1 }}" style="border:1px solid var(--bd);border-radius:10px;padding:13px 15px;display:flex;gap:11px;align-items:flex-start;cursor:pointer;background:var(--sf0)" style-hover="border-color:var(--focus);background:var(--priBg)">
+<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--pri)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="flex:none;margin-top:1px"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7z"></path><path d="M14 2v4a2 2 0 0 0 2 2h4"></path><path d="M16 13H8"></path><path d="M16 17H8"></path></svg>
+<div><div style="font-size:13.5px;font-weight:600">문서 분석·인용 답변</div><div style="font-size:12px;color:var(--tx2);margin-top:2px">지식 검색 + QMS 교차 확인 데모</div></div>
+</div>
+<div onClick="{{ quick2 }}" style="border:1px solid var(--bd);border-radius:10px;padding:13px 15px;display:flex;gap:11px;align-items:flex-start;cursor:pointer;background:var(--sf0)" style-hover="border-color:var(--focus);background:var(--priBg)">
+<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--pri)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="flex:none;margin-top:1px"><path d="M2 3h20"></path><path d="M21 3v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V3"></path><path d="m7 21 5-5 5 5"></path></svg>
+<div><div style="font-size:13.5px;font-weight:600">WIA 브랜드 PPT 만들기</div><div style="font-size:12px;color:var(--tx2);margin-top:2px">스킬 + code_interpreter + 아티팩트</div></div>
+</div>
+<div onClick="{{ quick3 }}" style="border:1px solid var(--bd);border-radius:10px;padding:13px 15px;display:flex;gap:11px;align-items:flex-start;cursor:pointer;background:var(--sf0)" style-hover="border-color:var(--focus);background:var(--priBg)">
+<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--pri)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="flex:none;margin-top:1px"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"></path><path d="M12 9v4"></path><path d="M12 17h.01"></path></svg>
+<div><div style="font-size:13.5px;font-weight:600">MES 작업지시 완료 처리</div><div style="font-size:12px;color:var(--tx2);margin-top:2px">부수효과 도구 — HITL 승인 데모</div></div>
+</div>
+<div onClick="{{ quick4 }}" style="border:1px solid var(--bd);border-radius:10px;padding:13px 15px;display:flex;gap:11px;align-items:flex-start;cursor:pointer;background:var(--sf0)" style-hover="border-color:var(--focus);background:var(--priBg)">
+<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--pri)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="flex:none;margin-top:1px"><path d="M12 8V4H8"></path><rect width="16" height="12" x="4" y="8" rx="2"></rect><path d="M2 14h2"></path><path d="M20 14h2"></path><path d="M15 13v2"></path><path d="M9 13v2"></path></svg>
+<div><div style="font-size:13.5px;font-weight:600">@딥리서치로 시장 조사</div><div style="font-size:12px;color:var(--tx2);margin-top:2px">서브에이전트 병렬 — 활동 패널 데모</div></div>
+</div>
+</div>
+<div style="display:flex;justify-content:center;gap:8px;margin-top:18px;font-size:12px;color:var(--tx2);align-items:center">
+<a onClick="{{ navStub }}" style="text-decoration:none;font-weight:500;cursor:pointer">커넥터 <span style="font-family:'JetBrains Mono',monospace">6</span> 연결됨</a><span style="color:var(--bd)">·</span>
+<a onClick="{{ navStub }}" style="text-decoration:none;font-weight:500;cursor:pointer">에이전트 <span style="font-family:'JetBrains Mono',monospace">4</span></a><span style="color:var(--bd)">·</span>
+<a onClick="{{ navStub }}" style="text-decoration:none;font-weight:500;cursor:pointer">스킬 <span style="font-family:'JetBrains Mono',monospace">13</span></a>
+</div>
+<div style="margin-top:34px">
+<div style="font-size:11.5px;font-weight:600;color:var(--tx3);margin-bottom:4px">최근 세션</div>
+<sc-for list="{{ recentList }}" as="r" hint-placeholder-count="3">
+<div onClick="{{ r.open }}" style="display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:6px;border-bottom:1px solid var(--bds);cursor:pointer" style-hover="background:var(--sf1)">
+<span style="font-size:13px;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ r.title }}</span>
+<span style="font-family:'JetBrains Mono',monospace;font-size:10.5px;color:var(--tx3)">{{ r.time }}</span>
+<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--tx3)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"></path></svg>
+</div>
+</sc-for>
+</div>
+</div>
+</div>
+</sc-if>
+
+<sc-if value="{{ isChat }}" hint-placeholder-val="{{ false }}">
+<div data-screen-label="채팅" style="flex:1;display:flex;flex-direction:column;min-height:0">
+<div style="height:48px;flex:none;border-bottom:1px solid var(--bds);display:flex;align-items:center;gap:9px;padding:0 20px">
+<span style="font-size:14.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ chatTitle }}</span>
+<button onClick="{{ navStub }}" style="flex:none;display:inline-flex;align-items:center;gap:6px;height:27px;padding:0 9px;border-radius:6px;border:1px solid var(--bd);background:none;font-size:11.5px;color:var(--tx2);font-family:inherit;cursor:pointer"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>{{ projectLabel }}<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"></path></svg></button>
+<button onClick="{{ toastMemory }}" aria-label="메모리 3건 적용 중" style="flex:none;position:relative;width:27px;height:27px;border-radius:6px;border:1px solid var(--bd);background:none;display:inline-flex;align-items:center;justify-content:center;cursor:pointer;color:var(--tx2)"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3"></ellipse><path d="M3 5v14a9 3 0 0 0 18 0V5"></path><path d="M3 12a9 3 0 0 0 18 0"></path></svg><span style="position:absolute;top:-5px;right:-5px;min-width:14px;height:14px;border-radius:999px;background:var(--pri);color:var(--onPri);font-family:'JetBrains Mono',monospace;font-size:8.5px;display:flex;align-items:center;justify-content:center;padding:0 3px;box-sizing:border-box">3</span></button>
+<button onClick="{{ toastShare }}" aria-label="공유" style="margin-left:auto;flex:none;width:27px;height:27px;border-radius:6px;border:none;background:none;display:inline-flex;align-items:center;justify-content:center;cursor:pointer;color:var(--tx2)" style-hover="background:var(--sf1)"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"></circle><circle cx="6" cy="12" r="3"></circle><circle cx="18" cy="19" r="3"></circle><path d="m8.59 13.51 6.83 3.98"></path><path d="m15.41 6.51-6.82 3.98"></path></svg></button>
+</div>
+<div ref="{{ scrollRef }}" onScroll="{{ onScroll }}" role="log" aria-live="polite" aria-atomic="false" style="flex:1;overflow-y:auto;padding:20px 28px 8px">
+<div style="max-width:640px;margin:0 auto;width:100%;display:flex;flex-direction:column;gap:20px">
+<sc-if value="{{ chatEmpty }}" hint-placeholder-val="{{ false }}">
+<div style="text-align:center;padding:48px 0 8px">
+<div style="font-size:17px;font-weight:600">새 세션</div>
+<div style="font-size:13px;color:var(--tx2);margin-top:6px">@로 에이전트·도구를 부르거나, 아래 시나리오로 시작해 보세요</div>
+<div style="display:flex;gap:8px;justify-content:center;margin-top:16px;flex-wrap:wrap">
+<button onClick="{{ quick1 }}" style="height:30px;padding:0 12px;border-radius:999px;border:1px solid var(--bd);background:none;font-size:12px;color:var(--tx2);font-family:inherit;cursor:pointer" style-hover="border-color:var(--focus);color:var(--pri)">불량 분석 — 인용·아티팩트</button>
+<button onClick="{{ quick3 }}" style="height:30px;padding:0 12px;border-radius:999px;border:1px solid var(--bd);background:none;font-size:12px;color:var(--tx2);font-family:inherit;cursor:pointer" style-hover="border-color:var(--focus);color:var(--pri)">MES 완료 처리 — HITL</button>
+<button onClick="{{ quick4 }}" style="height:30px;padding:0 12px;border-radius:999px;border:1px solid var(--bd);background:none;font-size:12px;color:var(--tx2);font-family:inherit;cursor:pointer" style-hover="border-color:var(--focus);color:var(--pri)">@딥리서치 — 멀티에이전트</button>
+</div>
+</div>
+</sc-if>
+<sc-for list="{{ msgsV }}" as="m" hint-placeholder-count="0">
+<sc-if value="{{ m.isU }}" hint-placeholder-val="{{ false }}">
+<div style="display:flex;flex-direction:column;align-items:flex-end;gap:6px;animation:wfade .2s ease-out">
+<sc-if value="{{ m.attach }}" hint-placeholder-val="{{ false }}">
+<span style="display:inline-flex;align-items:center;gap:7px;background:var(--sf0);border:1px solid var(--bd);border-radius:6px;padding:5px 10px"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--ok)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7z"></path><path d="M14 2v4a2 2 0 0 0 2 2h4"></path></svg><span style="font-size:12px;font-weight:500">{{ m.attach }}</span></span>
+</sc-if>
+<div style="background:{{ m.bubBg }};border-radius:10px;padding:11px 15px;font-size:15px;line-height:1.65;max-width:480px">
+<sc-for list="{{ m.utokens }}" as="ut" hint-placeholder-count="0"><span style="display:inline-flex;align-items:center;background:var(--priSel);border:1px solid var(--priBd);border-radius:6px;padding:1px 7px;font-size:13.5px;color:var(--pri);font-weight:600;margin-right:4px">{{ ut }}</span></sc-for>{{ m.text }}</div>
+</div>
+</sc-if>
+<sc-if value="{{ m.isA }}" hint-placeholder-val="{{ false }}">
+<div style="display:flex;gap:16px;animation:wfade .2s ease-out">
+<div style="flex:none;position:relative;width:8px;align-self:stretch">
+<div style="position:absolute;left:3px;top:4px;bottom:4px;width:2px;background:var(--sf2);border-radius:2px"></div>
+<div style="position:absolute;left:3px;top:4px;height:{{ m.fill }};width:2px;background:var(--pri);border-radius:2px;transition:height .4s ease-out"></div>
+<sc-for list="{{ m.ticks }}" as="tk" hint-placeholder-count="0">
+<sc-if value="{{ tk.isBar }}" hint-placeholder-val="{{ true }}"><span title="{{ tk.label }}" style="position:absolute;left:0;width:8px;height:2px;background:{{ tk.color }};top:{{ tk.top }}"></span></sc-if>
+<sc-if value="{{ tk.isDot }}" hint-placeholder-val="{{ false }}"><span title="{{ tk.label }}" style="position:absolute;left:-2px;margin-top:-5px;width:12px;height:12px;border-radius:999px;background:{{ tk.dotBg }};border:2px solid {{ tk.color }};box-sizing:border-box;top:{{ tk.top }};animation:wpulse 1.2s ease-in-out infinite"></span></sc-if>
+</sc-for>
+</div>
+<div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:11px">
+<sc-for list="{{ m.parts }}" as="p" hint-placeholder-count="0">
+<sc-if value="{{ p.isRsn }}" hint-placeholder-val="{{ false }}">
+<button onClick="{{ p.toggle }}" style="display:inline-flex;align-items:center;gap:6px;height:24px;padding:0 11px;border-radius:999px;background:var(--sf1);border:1px solid var(--bd);font-size:11.5px;color:var(--tx2);width:fit-content;font-family:inherit;cursor:pointer"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>{{ p.label }}<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"></path></svg></button>
+<sc-if value="{{ p.open }}" hint-placeholder-val="{{ false }}"><div style="background:var(--sf1);border:1px solid var(--bd);border-radius:10px;padding:10px 13px;font-size:12.5px;color:var(--tx2);line-height:1.65;margin-top:-4px">{{ p.body }}</div></sc-if>
+</sc-if>
+<sc-if value="{{ p.isTool }}" hint-placeholder-val="{{ false }}">
+<div style="background:var(--sf1);border:1px solid {{ p.cardBd }};border-radius:10px;padding:10px 13px">
+<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+<sc-if value="{{ p.mcp }}" hint-placeholder-val="{{ false }}"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="{{ p.iconColor }}" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22v-5"></path><path d="M9 8V2"></path><path d="M15 8V2"></path><path d="M18 8v5a6 6 0 0 1-12 0V8z"></path></svg></sc-if>
+<sc-if value="{{ p.builtin }}" hint-placeholder-val="{{ true }}"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="{{ p.iconColor }}" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"></path></svg></sc-if>
+<span style="font-size:12.5px;font-weight:600">{{ p.name }}</span>
+<span style="font-family:'JetBrains Mono',monospace;font-size:10.5px;color:var(--tx3)">{{ p.src }}</span>
+<span style="margin-left:auto;display:inline-flex;align-items:center;gap:5px;height:20px;padding:0 9px;border-radius:999px;background:{{ p.cBg }};border:1px solid {{ p.cBd }};font-size:11px;color:{{ p.cTx }}"><span style="width:5px;height:5px;border-radius:999px;background:{{ p.dot }};animation:{{ p.dotAnim }}"></span>{{ p.statusLabel }}</span>
+<sc-if value="{{ p.elapsed }}" hint-placeholder-val="{{ false }}"><span style="font-family:'JetBrains Mono',monospace;font-size:10.5px;color:var(--tx2);font-variant-numeric:tabular-nums">{{ p.elapsed }}</span></sc-if>
+</div>
+<sc-if value="{{ p.input }}" hint-placeholder-val="{{ false }}"><div style="margin-top:6px;display:flex;gap:6px;font-size:12px;align-items:baseline"><span style="color:var(--tx3);flex:none">입력</span><span style="font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--tx2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ p.input }}</span></div></sc-if>
+<sc-if value="{{ p.showShimmer }}" hint-placeholder-val="{{ false }}"><div style="margin-top:6px;display:flex;gap:6px;align-items:center"><span style="font-size:12px;color:var(--tx3);flex:none">결과</span><span style="height:9px;width:180px;border-radius:4px;background:linear-gradient(90deg,var(--shA) 25%,var(--shB) 50%,var(--shA) 75%);background-size:360px 100%;animation:wshimmer 1.4s linear infinite"></span></div></sc-if>
+<sc-if value="{{ p.result }}" hint-placeholder-val="{{ false }}"><div style="margin-top:6px;display:flex;gap:6px;font-size:12px"><span style="color:var(--tx3);flex:none">결과</span><span style="color:{{ p.resColor }}">{{ p.result }}</span></div></sc-if>
+<sc-if value="{{ p.retry }}" hint-placeholder-val="{{ false }}"><button onClick="{{ p.doRetry }}" style="margin-top:8px;height:26px;padding:0 11px;border-radius:6px;background:var(--sf0);border:1px solid var(--bd);font-size:12px;color:var(--tx);font-family:inherit;cursor:pointer">다시 시도</button></sc-if>
+</div>
+</sc-if>
+<sc-if value="{{ p.isTxt }}" hint-placeholder-val="{{ false }}">
+<div style="font-size:15px;line-height:1.7"><sc-for list="{{ p.segs }}" as="sg" hint-placeholder-count="0"><sc-if value="{{ sg.isT }}" hint-placeholder-val="{{ true }}"><span>{{ sg.s }}</span></sc-if><sc-if value="{{ sg.isB }}" hint-placeholder-val="{{ false }}"><b>{{ sg.s }}</b></sc-if><sc-if value="{{ sg.isC }}" hint-placeholder-val="{{ false }}"><span onClick="{{ sg.openSrc }}" title="클릭 — 출처 탭에서 원문 보기" style="display:inline-flex;align-items:center;justify-content:center;min-width:17px;height:16px;padding:0 4px;border-radius:4px;background:var(--priBg);color:var(--pri);font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:600;vertical-align:2px;margin:0 1px;cursor:pointer" style-hover="background:var(--priSel)">{{ sg.n }}</span></sc-if></sc-for><sc-if value="{{ p.cursor }}" hint-placeholder-val="{{ false }}"><span style="display:inline-block;width:2px;height:15px;background:var(--pri);vertical-align:-2px;margin-left:2px;animation:wblink 1s step-end infinite"></span></sc-if></div>
+</sc-if>
+<sc-if value="{{ p.isTbl }}" hint-placeholder-val="{{ false }}">
+<table style="border-collapse:collapse;width:100%;font-size:13px">
+<thead><tr><th style="text-align:left;padding:7px 11px;background:var(--sf1);border:1px solid var(--bd);font-weight:600">불량 유형</th><th style="text-align:right;padding:7px 11px;background:var(--sf1);border:1px solid var(--bd);font-weight:600">건수</th><th style="text-align:right;padding:7px 11px;background:var(--sf1);border:1px solid var(--bd);font-weight:600">비율</th><th style="text-align:left;padding:7px 11px;background:var(--sf1);border:1px solid var(--bd);font-weight:600">주요 공정</th></tr></thead>
+<tbody>
+<sc-for list="{{ p.rows }}" as="row" hint-placeholder-count="0">
+<tr><td style="padding:7px 11px;border:1px solid var(--bd)">{{ row.t }}</td><td style="padding:7px 11px;border:1px solid var(--bd);text-align:right;font-family:'JetBrains Mono',monospace;font-size:12px">{{ row.n }}</td><td style="padding:7px 11px;border:1px solid var(--bd);text-align:right;font-family:'JetBrains Mono',monospace;font-size:12px">{{ row.p }}</td><td style="padding:7px 11px;border:1px solid var(--bd)">{{ row.proc }}</td></tr>
+</sc-for>
+</tbody>
+</table>
+</sc-if>
+<sc-if value="{{ p.isRef }}" hint-placeholder-val="{{ false }}">
+<div style="border-top:1px solid var(--bds);padding-top:9px">
+<div style="font-size:10.5px;font-weight:600;color:var(--tx3);letter-spacing:.04em">REFERENCE</div>
+<div style="margin-top:6px;display:flex;flex-direction:column;gap:4px;font-size:12.5px">
+<sc-for list="{{ p.refs }}" as="rf" hint-placeholder-count="0">
+<div style="display:flex;align-items:center;gap:7px"><span style="font-family:'JetBrains Mono',monospace;font-size:10.5px;color:var(--pri);background:var(--priBg);border-radius:4px;padding:1px 5px">{{ rf.n }}</span><a onClick="{{ rf.openSrc }}" style="text-decoration:none;font-weight:500;cursor:pointer">{{ rf.f }}</a><span style="font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--tx3)">{{ rf.loc }}</span><span style="font-size:11px;color:var(--tx3)">· {{ rf.via }}</span></div>
+</sc-for>
+</div>
+</div>
+</sc-if>
+<sc-if value="{{ p.isHitl }}" hint-placeholder-val="{{ false }}">
+<div style="background:var(--sf1);border:1px solid {{ p.hBd }};border-radius:10px;padding:10px 13px;display:flex;align-items:center;gap:9px">
+<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="{{ p.hIcon }}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"></path><path d="M12 9v4"></path><path d="M12 17h.01"></path></svg>
+<span style="font-size:12.5px;color:var(--tx2)"><b style="color:var(--tx)">MES › work_order.update</b> — {{ p.hLabel }}</span>
+</div>
+</sc-if>
+</sc-for>
+<sc-if value="{{ m.actions }}" hint-placeholder-val="{{ false }}">
+<div style="display:inline-flex;gap:2px;background:var(--sf0);border:1px solid var(--bd);border-radius:8px;padding:3px;width:fit-content;box-shadow:0 1px 2px rgba(0,0,0,.05)">
+<button onClick="{{ m.copy }}" aria-label="복사" style="width:26px;height:24px;border-radius:5px;border:none;background:none;display:flex;align-items:center;justify-content:center;cursor:pointer;color:var(--tx2)" style-hover="background:var(--sf2)"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect width="13" height="13" x="9" y="9" rx="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg></button>
+<button onClick="{{ m.regen }}" aria-label="재생성" style="width:26px;height:24px;border-radius:5px;border:none;background:none;display:flex;align-items:center;justify-content:center;cursor:pointer;color:var(--tx2)" style-hover="background:var(--sf2)"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"></path><path d="M21 3v5h-5"></path><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"></path><path d="M8 16H3v5"></path></svg></button>
+<button onClick="{{ m.up }}" aria-label="좋아요" style="width:26px;height:24px;border-radius:5px;border:none;background:{{ m.upBg }};display:flex;align-items:center;justify-content:center;cursor:pointer;color:{{ m.upTx }}" style-hover="background:var(--sf2)"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M7 10v12"></path><path d="M15 5.88 14 10h5.83a2 2 0 0 1 1.92 2.56l-2.33 8A2 2 0 0 1 17.5 22H4a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2h2.76a2 2 0 0 0 1.79-1.11L12 2a3.13 3.13 0 0 1 3 3.88Z"></path></svg></button>
+<button onClick="{{ m.down }}" aria-label="별로예요" style="width:26px;height:24px;border-radius:5px;border:none;background:{{ m.downBg }};display:flex;align-items:center;justify-content:center;cursor:pointer;color:{{ m.downTx }}" style-hover="background:var(--sf2)"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17 14V2"></path><path d="M9 18.12 10 14H4.17a2 2 0 0 1-1.92-2.56l2.33-8A2 2 0 0 1 6.5 2H20a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-2.76a2 2 0 0 0-1.79 1.11L12 22a3.13 3.13 0 0 1-3-3.88Z"></path></svg></button>
+</div>
+</sc-if>
+</div>
+</div>
+</sc-if>
+</sc-for>
+<div style="height:8px"></div>
+</div>
+</div>
+<sc-if value="{{ showPill }}" hint-placeholder-val="{{ false }}">
+<button onClick="{{ toLatest }}" style="position:absolute;right:24px;bottom:150px;display:inline-flex;align-items:center;gap:6px;height:32px;padding:0 14px;border-radius:999px;background:var(--sf0);border:1px solid var(--bd);box-shadow:var(--pop);font-size:12.5px;font-weight:500;color:var(--pri);font-family:inherit;cursor:pointer;z-index:20">최신으로<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14"></path><path d="m19 12-7 7-7-7"></path></svg></button>
+</sc-if>
+</div>
+</sc-if>
+
+<div style="flex:none;padding:8px 28px 14px;position:relative">
+<div style="max-width:640px;margin:0 auto;position:relative">
+<sc-if value="{{ mentionOpen }}" hint-placeholder-val="{{ false }}">
+<div style="position:absolute;bottom:100%;left:0;margin-bottom:8px;width:360px;background:var(--sf0);border:1px solid var(--bd);border-radius:10px;box-shadow:var(--pop);overflow:hidden;z-index:30;animation:wfade .15s ease-out">
+<div style="padding:9px 12px;border-bottom:1px solid var(--bds);display:flex;align-items:center;gap:8px"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--tx3)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><path d="m21 21-4.3-4.3"></path></svg><span style="font-size:13px;color:{{ mentionQColor }}">{{ mentionQLabel }}</span></div>
+<div style="display:flex;gap:2px;padding:7px 9px 0;border-bottom:1px solid var(--bds)">
+<sc-for list="{{ mentionTabs }}" as="mt" hint-placeholder-count="0">
+<button onClick="{{ mt.pick }}" style="font-size:11.5px;padding:3px 7px 7px;border:none;background:none;cursor:pointer;font-family:inherit;color:{{ mt.color }};font-weight:{{ mt.weight }};border-bottom:2px solid {{ mt.line }}">{{ mt.label }}</button>
+</sc-for>
+</div>
+<div style="padding:5px;max-height:264px;overflow-y:auto">
+<sc-for list="{{ mentionItems }}" as="mi" hint-placeholder-count="0">
+<div onClick="{{ mi.insert }}" style="display:flex;align-items:center;gap:10px;padding:7px 9px;border-radius:6px;cursor:pointer;background:{{ mi.bg }}" style-hover="background:var(--priBg)">
+<span style="flex:none;width:15px;height:15px;display:inline-flex;align-items:center;justify-content:center;color:{{ mi.iconColor }}">
+<sc-if value="{{ mi.isAgent }}" hint-placeholder-val="{{ false }}"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 8V4H8"></path><rect width="16" height="12" x="4" y="8" rx="2"></rect><path d="M2 14h2"></path><path d="M20 14h2"></path><path d="M15 13v2"></path><path d="M9 13v2"></path></svg></sc-if>
+<sc-if value="{{ mi.isTool }}" hint-placeholder-val="{{ false }}"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"></path></svg></sc-if>
+<sc-if value="{{ mi.isPlug }}" hint-placeholder-val="{{ false }}"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22v-5"></path><path d="M9 8V2"></path><path d="M15 8V2"></path><path d="M18 8v5a6 6 0 0 1-12 0V8z"></path></svg></sc-if>
+<sc-if value="{{ mi.isFile }}" hint-placeholder-val="{{ false }}"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7z"></path><path d="M14 2v4a2 2 0 0 0 2 2h4"></path></svg></sc-if>
+</span>
+<div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:{{ mi.nameWeight }};white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ mi.name }}</div><div style="font-size:10.5px;color:var(--tx3)">{{ mi.sub }}</div></div>
+<sc-if value="{{ mi.badge }}" hint-placeholder-val="{{ false }}"><span style="flex:none;font-size:10.5px;color:{{ mi.bTx }};background:{{ mi.bBg }};border:1px solid {{ mi.bBd }};border-radius:999px;padding:1px 7px">{{ mi.badge }}</span></sc-if>
+</div>
+</sc-for>
+<sc-if value="{{ mentionEmpty }}" hint-placeholder-val="{{ false }}">
+<div style="padding:14px 12px;font-size:12px;color:var(--tx2);line-height:1.6">일치하는 항목이 없습니다 — <a onClick="{{ navStub }}" style="font-weight:500;cursor:pointer">커넥터 등록</a>에서 추가할 수 있습니다</div>
+</sc-if>
+</div>
+<div style="padding:7px 12px;border-top:1px solid var(--bds);font-size:10.5px;color:var(--tx3);display:flex;gap:10px"><span>↑↓ 이동</span><span>↵ 삽입</span><span>Esc 닫기</span></div>
+</div>
+</sc-if>
+<sc-if value="{{ slashOpen }}" hint-placeholder-val="{{ false }}">
+<div style="position:absolute;bottom:100%;left:0;margin-bottom:8px;width:260px;background:var(--sf0);border:1px solid var(--bd);border-radius:10px;box-shadow:var(--pop);padding:5px;z-index:30;animation:wfade .15s ease-out">
+<sc-for list="{{ slashItems }}" as="si" hint-placeholder-count="0">
+<div onClick="{{ si.pick }}" style="padding:7px 10px;border-radius:6px;cursor:pointer;font-size:13px;display:flex;gap:8px;align-items:baseline" style-hover="background:var(--priBg)"><span style="color:var(--pri);font-weight:600">{{ si.cmd }}</span><span style="font-size:11px;color:var(--tx3)">{{ si.desc }}</span></div>
+</sc-for>
+</div>
+</sc-if>
+<sc-if value="{{ modelOpen }}" hint-placeholder-val="{{ false }}">
+<div style="position:absolute;bottom:52px;left:110px;width:320px;background:var(--sf0);border:1px solid var(--bd);border-radius:10px;box-shadow:var(--pop);padding:5px;z-index:30;animation:wfade .15s ease-out">
+<sc-for list="{{ modelGroups }}" as="mg" hint-placeholder-count="0">
+<div style="padding:6px 10px 3px;font-size:10.5px;font-weight:600;color:var(--tx3);letter-spacing:.04em">{{ mg.label }}</div>
+<sc-for list="{{ mg.models }}" as="md" hint-placeholder-count="0">
+<div onClick="{{ md.pick }}" style="display:flex;align-items:center;gap:8px;padding:7px 10px;border-radius:6px;cursor:pointer;background:{{ md.bg }}" style-hover="background:var(--priBg)">
+<div style="flex:1"><span style="font-size:13px;font-weight:{{ md.weight }}">{{ md.name }}</span></div>
+<span style="font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--tx2)">{{ md.ctx }}</span>
+<sc-if value="{{ md.sel }}" hint-placeholder-val="{{ false }}"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--pri)" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"></path></svg></sc-if>
+</div>
+</sc-for>
+</sc-for>
+<div style="border-top:1px solid var(--bds);margin:4px 0"></div>
+<div style="padding:6px 10px 8px;display:flex;align-items:center;gap:10px"><span style="font-size:11.5px;color:var(--tx2)">추론 강도</span>
+<span style="display:inline-flex;background:var(--sf1);border:1px solid var(--bd);border-radius:6px;padding:2px">
+<sc-for list="{{ efforts }}" as="ef" hint-placeholder-count="0"><button onClick="{{ ef.pick }}" style="font-size:11px;padding:3px 9px;border-radius:4px;border:none;cursor:pointer;font-family:inherit;background:{{ ef.bg }};color:{{ ef.color }};font-weight:{{ ef.weight }}">{{ ef.label }}</button></sc-for>
+</span>
+</div>
+<div style="padding:0 10px 7px;font-size:10.5px;color:var(--tx3)">조직 허용 모델만 표시됩니다</div>
+</div>
+</sc-if>
+<div style="background:var(--sf0);border:1px solid {{ composerBd }};border-radius:14px;padding:10px 12px 8px;box-shadow:0 1px 2px rgba(0,0,0,.05)">
+<sc-if value="{{ hasTokens }}" hint-placeholder-val="{{ false }}">
+<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px">
+<sc-for list="{{ tokenChips }}" as="tc" hint-placeholder-count="0">
+<span style="display:inline-flex;align-items:center;gap:5px;background:var(--priBg);border:1px solid var(--priBd);border-radius:6px;padding:2px 8px;font-size:12.5px;color:var(--pri);font-weight:500">{{ tc.label }}<svg onClick="{{ tc.remove }}" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" style="cursor:pointer"><path d="M18 6 6 18"></path><path d="m6 6 12 12"></path></svg></span>
+</sc-for>
+</div>
+</sc-if>
+<textarea ref="{{ inputRef }}" value="{{ composer }}" onChange="{{ onType }}" onKeyDown="{{ onKey }}" placeholder="{{ composerPh }}" rows="1" aria-label="메시지 입력" style="width:100%;border:none;outline:none;resize:none;background:none;color:var(--tx);font-size:15px;line-height:1.5;min-height:24px;max-height:160px;box-sizing:border-box;padding:0"></textarea>
+<div style="display:flex;align-items:center;gap:6px;margin-top:8px">
+<button onClick="{{ toastAttach }}" aria-label="첨부" style="width:28px;height:28px;border-radius:6px;border:1px solid var(--bd);background:none;display:flex;align-items:center;justify-content:center;cursor:pointer;color:var(--tx2)"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M5 12h14"></path><path d="M12 5v14"></path></svg></button>
+<button onClick="{{ openMention }}" aria-label="멘션" style="width:28px;height:28px;border-radius:6px;border:1px solid {{ atBd }};background:{{ atBg }};display:flex;align-items:center;justify-content:center;cursor:pointer;color:{{ atTx }};font-size:13px;font-weight:600;font-family:inherit">@</button>
+<button onClick="{{ openSlash }}" aria-label="커맨드" style="width:28px;height:28px;border-radius:6px;border:1px solid var(--bd);background:none;display:flex;align-items:center;justify-content:center;cursor:pointer;color:var(--tx2);font-size:13px;font-weight:500;font-family:inherit">/</button>
+<button onClick="{{ openModel }}" style="display:inline-flex;align-items:center;gap:5px;height:28px;padding:0 9px;border-radius:6px;border:1px solid var(--bd);background:none;font-size:12px;color:var(--tx2);font-family:inherit;cursor:pointer;margin-left:4px">{{ model }}<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"></path></svg></button>
+<span style="display:inline-flex;background:var(--sf1);border:1px solid var(--bd);border-radius:6px;padding:2px">
+<button onClick="{{ modeAgent }}" style="font-size:11.5px;padding:3px 9px;border-radius:4px;border:none;cursor:pointer;font-family:inherit;background:{{ modeABg }};color:{{ modeATx }};font-weight:{{ modeAW }}">에이전트</button>
+<button onClick="{{ modeChat }}" style="font-size:11.5px;padding:3px 9px;border-radius:4px;border:none;cursor:pointer;font-family:inherit;background:{{ modeCBg }};color:{{ modeCTx }};font-weight:{{ modeCW }}">채팅</button>
+</span>
+<button onClick="{{ toggleWeb }}" style="display:inline-flex;align-items:center;gap:5px;height:28px;padding:0 9px;border-radius:6px;border:1px solid {{ webBd }};background:{{ webBg }};font-size:12px;color:{{ webTx }};font-family:inherit;cursor:pointer"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"></path><path d="M2 12h20"></path></svg>웹 검색</button>
+<span style="margin-left:auto;font-family:'JetBrains Mono',monospace;font-size:10.5px;color:var(--tx3)">{{ ctxGauge }}</span>
+<sc-if value="{{ streaming }}" hint-placeholder-val="{{ false }}">
+<button onClick="{{ stop }}" aria-label="중지" style="width:32px;height:32px;border-radius:999px;background:var(--tx);border:none;display:flex;align-items:center;justify-content:center;cursor:pointer"><span style="width:10px;height:10px;background:var(--sf0);border-radius:2px"></span></button>
+</sc-if>
+<sc-if value="{{ notStreaming }}" hint-placeholder-val="{{ true }}">
+<button onClick="{{ send }}" aria-label="전송" style="width:32px;height:32px;border-radius:999px;background:{{ sendBg }};border:none;display:flex;align-items:center;justify-content:center;cursor:{{ sendCursor }}"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--onPri)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5"></path><path d="m5 12 7-7 7 7"></path></svg></button>
+</sc-if>
+</div>
+<sc-if value="{{ composerHint }}" hint-placeholder-val="{{ false }}">
+<div style="margin-top:7px;font-size:10.5px;color:var(--tx3);display:flex;align-items:center;gap:6px"><span style="width:5px;height:5px;border-radius:999px;background:{{ hintDot }};animation:wpulse 1.2s ease-in-out infinite"></span>{{ composerHint }}</div>
+</sc-if>
+</div>
+</div>
+</div>
+</div>
+
+<sc-if value="{{ panelOpen }}" hint-placeholder-val="{{ false }}">
+<div data-screen-label="우패널" style="width:380px;flex:none;border-left:1px solid var(--bd);display:flex;flex-direction:column;background:var(--sf0);min-height:0">
+<div style="height:42px;flex:none;border-bottom:1px solid var(--bds);display:flex;align-items:center;padding:0 6px;gap:0">
+<span style="width:3px;height:22px;border-radius:3px;background:var(--bd);margin:0 6px"></span>
+<sc-for list="{{ panelTabs }}" as="pt" hint-placeholder-count="0">
+<button onClick="{{ pt.pick }}" style="font-size:12.5px;padding:0 12px;height:42px;border:none;background:none;cursor:pointer;font-family:inherit;color:{{ pt.color }};font-weight:{{ pt.weight }};border-bottom:2px solid {{ pt.line }};box-sizing:border-box">{{ pt.label }}<sc-if value="{{ pt.count }}" hint-placeholder-val="{{ false }}"><span style="margin-left:5px;font-family:'JetBrains Mono',monospace;font-size:10px;background:var(--sf1);border:1px solid var(--bd);border-radius:999px;padding:0 5px">{{ pt.count }}</span></sc-if></button>
+</sc-for>
+<button onClick="{{ togglePanel }}" aria-label="패널 닫기" style="margin-left:auto;width:26px;height:26px;border:none;background:none;display:flex;align-items:center;justify-content:center;cursor:pointer;color:var(--tx3);margin-right:6px"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18"></path><path d="m6 6 12 12"></path></svg></button>
+</div>
+<div style="flex:1;overflow-y:auto;padding:14px;display:flex;flex-direction:column;gap:10px">
+
+<sc-if value="{{ tabArtifact }}" hint-placeholder-val="{{ false }}">
+<sc-if value="{{ noArtifacts }}" hint-placeholder-val="{{ true }}">
+<div style="text-align:center;padding:44px 16px">
+<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--tx3)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="margin:0 auto"><rect width="18" height="18" x="3" y="3" rx="2"></rect><circle cx="9" cy="9" r="2"></circle><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"></path></svg>
+<div style="font-size:12.5px;color:var(--tx2);margin-top:10px">아직 아티팩트가 없습니다<br>도구가 생성하면 이 탭이 자동으로 열립니다</div>
+</div>
+</sc-if>
+<sc-if value="{{ hasArtifact }}" hint-placeholder-val="{{ false }}">
+<div style="display:flex;align-items:center;gap:8px">
+<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--tx2)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2"></rect><circle cx="9" cy="9" r="2"></circle><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"></path></svg>
+<span style="font-size:13px;font-weight:600;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ artName }}</span>
+<span style="display:inline-flex;background:var(--sf1);border:1px solid var(--bd);border-radius:6px;padding:2px">
+<button onClick="{{ artPrev }}" style="font-size:11px;padding:3px 9px;border-radius:4px;border:none;cursor:pointer;font-family:inherit;background:{{ artPvBg }};color:{{ artPvTx }};font-weight:{{ artPvW }}">미리보기</button>
+<button onClick="{{ artCode }}" style="font-size:11px;padding:3px 9px;border-radius:4px;border:none;cursor:pointer;font-family:inherit;background:{{ artCdBg }};color:{{ artCdTx }};font-weight:{{ artCdW }}">코드</button>
+</span>
+</div>
+<sc-if value="{{ artShowPareto }}" hint-placeholder-val="{{ false }}">
+<div style="border:1px solid var(--bd);border-radius:10px;padding:16px 12px;background:var(--sf0)">
+<div style="font-size:10.5px;color:var(--tx2);text-align:center;margin-bottom:10px">CVJ 불량 유형 파레토 — 2026 상반기</div>
+<svg width="100%" height="190" viewBox="0 0 336 200" preserveAspectRatio="xMidYMid meet">
+<line x1="34" y1="170" x2="320" y2="170" stroke="var(--bd)" stroke-width="1"></line>
+<line x1="34" y1="10" x2="34" y2="170" stroke="var(--bd)" stroke-width="1"></line>
+<rect x="52" y="40" width="44" height="130" fill="var(--pri)"></rect>
+<rect x="118" y="82" width="44" height="88" fill="#2E4FA6"></rect>
+<rect x="184" y="105" width="44" height="65" fill="#5C77C6"></rect>
+<rect x="250" y="128" width="44" height="42" fill="#8AA0DB"></rect>
+<polyline points="74,96 140,58 206,34 272,22" fill="none" stroke="var(--tx3)" stroke-width="1.5" stroke-dasharray="3 3"></polyline>
+<text x="74" y="184" text-anchor="middle" font-size="9" fill="var(--tx3)" font-family="Pretendard, sans-serif">열처리</text>
+<text x="140" y="184" text-anchor="middle" font-size="9" fill="var(--tx3)" font-family="Pretendard, sans-serif">연삭</text>
+<text x="206" y="184" text-anchor="middle" font-size="9" fill="var(--tx3)" font-family="Pretendard, sans-serif">단조</text>
+<text x="272" y="184" text-anchor="middle" font-size="9" fill="var(--tx3)" font-family="Pretendard, sans-serif">기타</text>
+<text x="74" y="34" text-anchor="middle" font-size="9" fill="var(--tx)" font-family="JetBrains Mono, monospace">142</text>
+<text x="140" y="76" text-anchor="middle" font-size="9" fill="var(--tx)" font-family="JetBrains Mono, monospace">96</text>
+<text x="206" y="99" text-anchor="middle" font-size="9" fill="var(--tx)" font-family="JetBrains Mono, monospace">71</text>
+<text x="272" y="122" text-anchor="middle" font-size="9" fill="var(--tx)" font-family="JetBrains Mono, monospace">63</text>
+</svg>
+</div>
+</sc-if>
+<sc-if value="{{ artShowDoc }}" hint-placeholder-val="{{ false }}">
+<div style="border:1px solid var(--bd);border-radius:10px;padding:18px 20px;background:var(--sf0)">
+<div style="font-size:13px;font-weight:700">{{ artDocTitle }}</div>
+<div style="height:8px;width:88%;background:var(--sf2);border-radius:4px;margin-top:12px"></div>
+<div style="height:8px;width:94%;background:var(--sf2);border-radius:4px;margin-top:7px"></div>
+<div style="height:8px;width:78%;background:var(--sf2);border-radius:4px;margin-top:7px"></div>
+<div style="height:64px;width:100%;background:var(--sf1);border:1px solid var(--bds);border-radius:6px;margin-top:12px;display:flex;align-items:center;justify-content:center;font-size:10px;color:var(--tx3)">{{ artDocHint }}</div>
+<div style="height:8px;width:90%;background:var(--sf2);border-radius:4px;margin-top:12px"></div>
+<div style="height:8px;width:84%;background:var(--sf2);border-radius:4px;margin-top:7px"></div>
+</div>
+</sc-if>
+<sc-if value="{{ artShowCode }}" hint-placeholder-val="{{ false }}">
+<div style="border:1px solid var(--bd);border-radius:10px;padding:12px 14px;background:var(--sf1);font-family:'JetBrains Mono',monospace;font-size:11px;line-height:1.8;color:var(--tx2);overflow-x:auto"><span style="color:var(--pri)">import</span> pandas <span style="color:var(--pri)">as</span> pd<br><span style="color:var(--pri)">import</span> matplotlib.pyplot <span style="color:var(--pri)">as</span> plt<br>df = pd.read_excel(<span style="color:var(--okTx)">"불량이력_2026H1.xlsx"</span>)<br>agg = df.groupby(<span style="color:var(--okTx)">"defect_type"</span>).size()<br>agg.sort_values(ascending=<span style="color:var(--pri)">False</span>).plot.bar()<br>plt.savefig(<span style="color:var(--okTx)">"pareto.png"</span>, dpi=<span style="color:var(--pri)">160</span>)</div>
+</sc-if>
+<div style="display:flex;align-items:center;gap:8px">
+<span style="font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--tx2)">{{ artPager }}</span>
+<span style="margin-left:auto"></span>
+<button onClick="{{ toastDownload }}" style="height:29px;padding:0 11px;border-radius:6px;background:var(--sf0);border:1px solid var(--bd);font-size:12px;font-weight:500;color:var(--tx);font-family:inherit;cursor:pointer">다운로드</button>
+<button onClick="{{ toastShare }}" style="height:29px;padding:0 11px;border-radius:6px;background:var(--pri);border:none;font-size:12px;font-weight:600;color:var(--onPri);font-family:inherit;cursor:pointer">공유</button>
+</div>
+<div style="font-size:11px;color:var(--tx3);border-top:1px solid var(--bds);padding-top:9px">{{ artMeta }}</div>
+</sc-if>
+</sc-if>
+
+<sc-if value="{{ tabSources }}" hint-placeholder-val="{{ false }}">
+<sc-if value="{{ noSources }}" hint-placeholder-val="{{ true }}">
+<div style="text-align:center;padding:44px 16px">
+<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--tx3)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="margin:0 auto"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7z"></path><path d="M14 2v4a2 2 0 0 0 2 2h4"></path></svg>
+<div style="font-size:12.5px;color:var(--tx2);margin-top:10px">이 세션의 인용 출처가 여기에 모입니다<br>본문의 [N] 칩을 클릭해 보세요</div>
+</div>
+</sc-if>
+<sc-if value="{{ hasSources }}" hint-placeholder-val="{{ false }}">
+<div style="font-size:11.5px;color:var(--tx3)">이 응답의 출처 <span style="font-family:'JetBrains Mono',monospace">{{ srcCount }}</span>건</div>
+<sc-for list="{{ sourcesV }}" as="src" hint-placeholder-count="0">
+<div style="background:{{ src.bg }};border:1px solid {{ src.bd }};border-radius:10px;padding:11px 13px;transition:background .6s ease,border-color .6s ease">
+<div style="display:flex;align-items:center;gap:7px"><span style="font-family:'JetBrains Mono',monospace;font-size:10px;color:{{ src.nTx }};background:{{ src.nBg }};border-radius:4px;padding:1px 6px">{{ src.n }}</span><span style="font-size:12px;font-weight:600;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ src.f }}</span><span style="font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--tx3)">{{ src.loc }}</span></div>
+<div style="margin-top:6px;font-size:12px;color:var(--tx2);line-height:1.6">{{ src.snippet }}</div>
+</div>
+</sc-for>
+</sc-if>
+</sc-if>
+
+<sc-if value="{{ tabActivity }}" hint-placeholder-val="{{ false }}">
+<sc-if value="{{ noActivity }}" hint-placeholder-val="{{ true }}">
+<div style="text-align:center;padding:44px 16px">
+<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--tx3)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="margin:0 auto"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+<div style="font-size:12.5px;color:var(--tx2);margin-top:10px">턴의 스텝 트레이스가 여기에 표시됩니다</div>
+</div>
+</sc-if>
+<sc-if value="{{ hasPlan }}" hint-placeholder-val="{{ false }}">
+<div style="background:var(--priBg);border:1px solid var(--priBd);border-radius:10px;padding:9px 12px;font-size:12px;color:var(--pri)"><b>계획</b> — {{ planLabel }}</div>
+<sc-for list="{{ workersV }}" as="w" hint-placeholder-count="0">
+<div style="background:var(--sf0);border:1px solid {{ w.bd }};border-radius:10px;padding:10px 12px;opacity:{{ w.op }}">
+<div style="display:flex;align-items:center;gap:8px"><span style="font-size:12px;font-weight:600;flex:1">{{ w.title }}</span><span style="display:inline-flex;align-items:center;gap:5px;height:19px;padding:0 8px;border-radius:999px;background:{{ w.cBg }};border:1px solid {{ w.cBd }};font-size:10px;color:{{ w.cTx }}"><span style="width:4px;height:4px;border-radius:999px;background:{{ w.dot }};animation:{{ w.dotAnim }}"></span>{{ w.status }}</span></div>
+<div style="margin-top:4px;font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--tx3)">{{ w.metrics }}</div>
+</div>
+</sc-for>
+</sc-if>
+<sc-if value="{{ hasSteps }}" hint-placeholder-val="{{ false }}">
+<div style="border-top:1px solid var(--bds);padding-top:10px">
+<div style="font-size:10.5px;font-weight:600;color:var(--tx3);letter-spacing:.04em;margin-bottom:8px">스텝 트레이스</div>
+<sc-for list="{{ stepsV }}" as="st" hint-placeholder-count="0">
+<div style="display:flex;gap:10px">
+<div style="flex:none;display:flex;flex-direction:column;align-items:center;width:10px">
+<span style="width:9px;height:9px;border-radius:999px;background:{{ st.dotBg }};border:2px solid {{ st.dotBd }};box-sizing:border-box;margin-top:3px;animation:{{ st.anim }}"></span>
+<sc-if value="{{ st.line }}" hint-placeholder-val="{{ true }}"><span style="width:2px;flex:1;background:{{ st.lineColor }};min-height:12px"></span></sc-if>
+</div>
+<div style="padding-bottom:11px;font-size:12px;color:{{ st.color }};font-weight:{{ st.weight }}">{{ st.label }}<sc-if value="{{ st.meta }}" hint-placeholder-val="{{ false }}"><span style="margin-left:6px;font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--tx3);font-weight:400">{{ st.meta }}</span></sc-if></div>
+</div>
+</sc-for>
+</div>
+</sc-if>
+</sc-if>
+</div>
+<sc-if value="{{ drRunning }}" hint-placeholder-val="{{ false }}">
+<div style="flex:none;padding:10px 14px;border-top:1px solid var(--bds)">
+<button onClick="{{ stop }}" style="width:100%;height:34px;border-radius:6px;background:var(--sf0);border:1px solid var(--bd);font-size:12.5px;font-weight:600;color:var(--tx);font-family:inherit;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px"><span style="width:9px;height:9px;background:var(--tx);border-radius:2px"></span>실행 중지</button>
+</div>
+</sc-if>
+</div>
+</sc-if>
+
+<sc-if value="{{ hitlOpen }}" hint-placeholder-val="{{ false }}">
+<div style="position:absolute;inset:0;background:var(--dim);z-index:40;animation:wfade .2s ease-out"></div>
+<div role="alertdialog" aria-live="assertive" aria-label="도구 실행 승인 필요" style="position:absolute;left:50%;top:120px;transform:translateX(-58%);width:460px;background:var(--sf0);border:1px solid var(--wn);border-radius:14px;box-shadow:var(--mod);padding:18px 20px;z-index:41;animation:wfade .25s ease-out" data-screen-label="HITL 승인">
+<div style="display:flex;gap:11px;align-items:flex-start">
+<span style="flex:none;width:32px;height:32px;border-radius:999px;background:var(--wnBg);display:flex;align-items:center;justify-content:center"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--wnTx)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"></path><path d="M12 9v4"></path><path d="M12 17h.01"></path></svg></span>
+<div>
+<div style="font-size:15.5px;font-weight:600">도구 실행 승인이 필요합니다</div>
+<div style="font-size:13px;color:var(--tx2);line-height:1.6;margin-top:4px"><b style="color:var(--tx)">MES › work_order.update</b> — 작업지시 <b style="color:var(--tx)">WO-24031</b>의 상태를 '완료'로 변경합니다. 이 작업은 되돌릴 수 없습니다.</div>
+</div>
+</div>
+<sc-if value="{{ hitlViewing }}" hint-placeholder-val="{{ true }}">
+<div style="margin-top:12px;background:var(--sf1);border:1px solid var(--bd);border-radius:6px;padding:11px 13px;font-family:'JetBrains Mono',monospace;font-size:11.5px;line-height:1.75;color:var(--tx2);white-space:pre-wrap">{{ hitlArgs }}</div>
+</sc-if>
+<sc-if value="{{ hitlEditing }}" hint-placeholder-val="{{ false }}">
+<textarea value="{{ hitlArgs }}" onChange="{{ onHitlEdit }}" rows="5" style="margin-top:12px;width:100%;box-sizing:border-box;background:var(--sf0);border:1px solid var(--focus);outline:2px solid var(--focus);outline-offset:2px;border-radius:6px;padding:11px 13px;font-family:'JetBrains Mono',monospace;font-size:11.5px;line-height:1.75;color:var(--tx);resize:vertical"></textarea>
+<div style="margin-top:6px;font-size:11px;color:var(--tx2)">수정된 인자로 실행됩니다 — 원본과의 차이가 활동 로그에 기록됩니다</div>
+</sc-if>
+<div style="margin-top:11px;display:flex;align-items:center;gap:8px">
+<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--wnTx)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+<span style="font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--wnTx);font-variant-numeric:tabular-nums">{{ hitlCountdown }} 후 자동 거부</span>
+<div style="flex:1;height:3px;border-radius:3px;background:var(--sf2);margin-left:4px"><div style="width:{{ hitlPct }};height:3px;border-radius:3px;background:var(--wn);transition:width 1s linear"></div></div>
+</div>
+<div style="margin-top:14px;display:flex;gap:8px;justify-content:flex-end">
+<button onClick="{{ hitlDeny }}" style="height:33px;padding:0 14px;border-radius:6px;background:none;border:none;font-size:13px;font-weight:500;color:var(--tx2);font-family:inherit;cursor:pointer">거부</button>
+<button onClick="{{ hitlEditToggle }}" style="height:33px;padding:0 14px;border-radius:6px;background:var(--sf0);border:1px solid var(--bd);font-size:13px;font-weight:500;color:var(--tx);font-family:inherit;cursor:pointer">{{ hitlEditLabel }}</button>
+<button onClick="{{ hitlApprove }}" style="height:33px;padding:0 17px;border-radius:6px;background:var(--pri);border:none;font-size:13px;font-weight:600;color:var(--onPri);font-family:inherit;cursor:pointer">{{ hitlApproveLabel }}</button>
+</div>
+</div>
+</sc-if>
+
+<sc-if value="{{ toastMsg }}" hint-placeholder-val="{{ false }}">
+<div style="position:absolute;top:12px;right:16px;display:flex;align-items:center;gap:10px;background:var(--sf0);border:1px solid var(--bd);border-left:3px solid {{ toastColor }};border-radius:10px;padding:10px 14px;box-shadow:var(--pop);z-index:60;animation:wfade .2s ease-out;max-width:340px">
+<span style="font-size:12.5px">{{ toastMsg }}</span>
+</div>
+</sc-if>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;speed&quot;:{&quot;editor&quot;:&quot;range&quot;,&quot;default&quot;:1,&quot;min&quot;:0.5,&quot;max&quot;:3,&quot;step&quot;:0.25,&quot;tsType&quot;:&quot;number&quot;,&quot;section&quot;:&quot;시뮬레이션&quot;},&quot;hitlTimeoutSec&quot;:{&quot;editor&quot;:&quot;int&quot;,&quot;default&quot;:272,&quot;min&quot;:20,&quot;max&quot;:600,&quot;unit&quot;:&quot;초&quot;,&quot;tsType&quot;:&quot;number&quot;,&quot;section&quot;:&quot;시뮬레이션&quot;},&quot;autoOpenPanel&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;동작&quot;}}">
+class Component extends DCLogic {
+  constructor(props){
+    super(props);
+    this.d = {
+      dark:false, view:'home', panelOpen:false, panelTab:'artifact',
+      sessions:[
+        {id:'p1', title:'등속조인트 공정 불량 원인 분석', group:'고정', time:'10분 전'},
+        {id:'t1', title:'열관리 모듈 시험성적서 요약', group:'오늘', time:'2시간 전'},
+        {id:'t2', title:'협력사 RFQ 회신 초안', group:'오늘', time:'5시간 전'},
+        {id:'y1', title:'공작기계 알람 코드 조회', group:'어제', time:'어제'},
+        {id:'w1', title:'스마트팩토리 PoC 회의록 정리', group:'이전 7일', time:'3일 전'}
+      ],
+      sessionQuery:'', active:null, titles:{}, msgs:{},
+      streaming:false, stick:true, showPill:false,
+      composer:'', tokens:[], mention:{open:false,q:'',tab:'전체'}, slash:false, modelOpen:false,
+      model:'Claude Sonnet', effort:'보통', mode:'agent', web:true,
+      hitl:null, artifacts:[], artView:'prev', sources:[], hiSrc:0,
+      plan:'', workers:[], steps:[], dr:false, toast:null, sendLock:false
+    };
+    this.jobs=[]; this.typing=null; this.runId=0; this.seq=0;
+  }
+  componentDidMount(){
+    try{ if(localStorage.getItem('wchat-theme')==='dark'){ this.d.dark=true; document.body.classList.add('dark'); this.sync(); } }catch(e){}
+    this.keyH = (e)=>{
+      if((e.metaKey||e.ctrlKey) && e.key==='\\'){ e.preventDefault(); this.togglePanel(); }
+      if((e.metaKey||e.ctrlKey) && (e.key==='n'||e.key==='N')){ e.preventDefault(); this.newSession(); }
+      if(e.key==='Escape'){ const d=this.d; if(d.mention.open||d.slash||d.modelOpen){ d.mention.open=false; d.slash=false; d.modelOpen=false; this.sync(); } }
+    };
+    window.addEventListener('keydown', this.keyH);
+    this.tick = setInterval(()=>this.pump(), 50);
+  }
+  componentWillUnmount(){ window.removeEventListener('keydown', this.keyH); clearInterval(this.tick); this.clearTimers(); }
+  hasLive(){ const d=this.d; if(d.hitl&&d.hitl.pending) return true; const ms=this.curMsgs(); return ms.some(m=>m.parts&&m.parts.some(p=>p.k==='tool'&&p.status==='running')); }
+  sp(){ return Math.max(0.25, Number(this.props.speed ?? 1)); }
+  clearTimers(){ this.runId++; this.jobs=[]; this.typing=null; }
+  after(ms, fn){ this.jobs.push({at:Date.now()+ms/this.sp(), fn, run:this.runId}); }
+  pump(){ const now=Date.now(); let changed=false;
+    const due=this.jobs.filter(j=>j.at<=now); if(due.length){ this.jobs=this.jobs.filter(j=>j.at>now); due.forEach(j=>{ if(j.run===this.runId){ j.fn(); changed=true; } }); }
+    const t=this.typing;
+    if(t){ if(t.run!==this.runId){ this.typing=null; }
+      else if(now>=t.nextAt){
+        if(!this.d.streaming){ t.part.cursor=false; this.typing=null; changed=true; }
+        else if(t.si>=t.segs.length){ t.part.cursor=false; this.layoutRail(t.m); this.typing=null; changed=true; if(t.cb){ this.after(150,t.cb); } }
+        else { const sg=t.segs[t.si];
+          if(sg.t==='c'){ t.part.segs.push(sg); this.tickEv(t.m,'var(--ok)','인용 ['+sg.n+']'); t.si++; t.ci=0; t.nextAt=now+120/this.sp(); }
+          else { let cur=t.part.segs[t.part.segs.length-1];
+            if(!cur||cur.t!==sg.t||cur.full!==sg.s){ cur={t:sg.t,s:'',full:sg.s}; t.part.segs.push(cur); }
+            t.ci+=2; cur.s=sg.s.slice(0,t.ci);
+            if(t.ci>=sg.s.length){ t.si++; t.ci=0; }
+            t.nextAt=now+26/this.sp(); }
+          changed=true; }
+      }
+    }
+    const d=this.d;
+    if(d.hitl&&d.hitl.pending&&now>=d.hitl.deadline){ this.hitlTimeoutFire(); changed=true; }
+    if(!changed && this.hasLive()){ if(!this._lv||now-this._lv>240){ this._lv=now; changed=true; } }
+    if(changed){ this._lv=now; this.sync(); }
+  }
+  sync(){ this.forceUpdate(); requestAnimationFrame(()=>{ const el=this.scrollEl; if(el && this.d.stick){ el.scrollTop=el.scrollHeight; } }); }
+  curMsgs(){ const d=this.d; if(!d.active) return []; if(!d.msgs[d.active]) d.msgs[d.active]=[]; return d.msgs[d.active]; }
+  fmtEl(p){ if(!p.start) return ''; const end=p.end||Date.now(); const s=(end-p.start)/1000; const mm=String(Math.floor(s/60)).padStart(2,'0'); return mm+':'+ (s%60<10?'0':'') + (s%60).toFixed(1); }
+  // ---------- session ----------
+  openSession(id, title){ const d=this.d; this.stopAll(); d.active=id; if(title) d.titles[id]=title; d.view='chat'; if(!d.msgs[id]) d.msgs[id]=[]; d.stick=true; d.showPill=false; this.sync(); }
+  newSession(){ const d=this.d; this.stopAll(); const id='n'+(++this.seq)+Date.now(); d.titles[id]='새 세션'; d.active=id; d.msgs[id]=[]; d.view='chat'; d.panelOpen=false; d.sources=[]; d.artifacts=[]; d.workers=[]; d.steps=[]; d.plan=''; this.sync(); }
+  stopAll(){ this.clearTimers(); const d=this.d; d.streaming=false; d.dr=false; if(d.hitl){ d.hitl=null; } }
+  // ---------- composer ----------
+  onType(e){ const v=e.target.value; const d=this.d; d.composer=v;
+    const at=v.lastIndexOf('@');
+    if(at>=0 && (at===0 || v[at-1]===' ' || v[at-1]==='\n')){ d.mention.open=true; d.mention.q=v.slice(at+1); } else { d.mention.open=false; }
+    d.slash = v.startsWith('/') && v.length<=8;
+    e.target.style.height='auto'; e.target.style.height=Math.min(e.target.scrollHeight,160)+'px';
+    this.sync();
+  }
+  onKey(e){ if(e.key==='Enter' && !e.shiftKey && !this.d.mention.open){ e.preventDefault(); this.send(); } }
+  insertToken(name){ const d=this.d; const at=d.composer.lastIndexOf('@'); if(at>=0) d.composer=d.composer.slice(0,at); d.tokens.push('@'+name); d.mention.open=false; d.mention.q=''; if(this.inputEl) this.inputEl.focus(); this.sync(); }
+  send(){ const d=this.d;
+    if(d.streaming) return;
+    if(d.hitl && d.hitl.pending){ this.toast('승인 대기 중 — 카드에서 승인/거부 후 전송할 수 있습니다','wn'); return; }
+    const text=(d.composer||'').trim(); const toks=d.tokens.slice();
+    if(!text && !toks.length) return;
+    if(d.view!=='chat'){ this.newFromHome(); }
+    const all=(toks.join(' ')+' '+text).toLowerCase();
+    d.composer=''; d.tokens=[]; d.mention.open=false; d.slash=false;
+    if(this.inputEl){ this.inputEl.style.height='auto'; }
+    let scen='A';
+    if(all.includes('딥리서치')) scen='C';
+    else if(all.includes('완료')||all.includes('mes')||all.includes('작업지시')) scen='B';
+    else if(all.includes('ppt')||all.includes('보고서 초안')) scen='D';
+    this.pushUser(text||toks.join(' '), toks, scen==='A' ? '불량이력_2026H1.xlsx' : null);
+    this.startScenario(scen);
+  }
+  newFromHome(){ const d=this.d; const id='n'+(++this.seq)+Date.now(); d.titles[id]='새 세션'; d.active=id; d.msgs[id]=[]; d.view='chat'; }
+  pushUser(text, tokens, attach){ const ms=this.curMsgs(); ms.push({role:'u', text, tokens:tokens||[], attach}); this.d.stick=true; this.sync(); }
+  // ---------- quicks ----------
+  quick(n){ const d=this.d;
+    if(d.streaming || (d.hitl&&d.hitl.pending)) return;
+    const map={
+      1:{id:'p1',t:'등속조인트 공정 불량 원인 분석',msg:'첨부한 불량 이력에서 상반기 등속조인트 불량 원인을 분석해줘. QMS 최신 데이터와 교차 확인해서 표로 정리해줘.',tok:[],att:'불량이력_2026H1.xlsx',s:'A'},
+      2:{id:'q2',t:'품질 리포트 PPT 초안',msg:'이번 분석 결과로 WIA 양식 PPT 초안 만들어줘.',tok:[],att:null,s:'D'},
+      3:{id:'q3',t:'작업지시 WO-24031 완료 처리',msg:'검사 끝났으니 MES에서 작업지시 WO-24031 완료 처리해줘.',tok:[],att:null,s:'B'},
+      4:{id:'q4',t:'전기차 열관리 시장 동향 조사',msg:'전기차 열관리 시스템 시장 동향을 조사해줘. 히트펌프 중심으로, 경쟁사 동향 포함.',tok:['@딥리서치'],att:null,s:'C'}
+    };
+    const q=map[n]; this.stopAll();
+    const id=q.id+'_'+(++this.seq); d.titles[id]=q.t; d.active=id; d.msgs[id]=[]; d.view='chat';
+    d.sources=[]; d.workers=[]; d.steps=[]; d.plan=''; d.artifacts=[]; d.panelOpen=false;
+    this.pushUser(q.msg, q.tok, q.att); this.startScenario(q.s);
+  }
+  // ---------- engine ----------
+  startA(){ this.startScenario('A'); }
+  startScenario(s){ const d=this.d; d.streaming=true; d.stick=true;
+    const ms=this.curMsgs(); const m={role:'a', parts:[], ticks:[], fill:'0%', done:false, fb:0}; ms.push(m); this.m=m; this.sync();
+    if(s==='A') this.scenA(m); else if(s==='B') this.scenB(m); else if(s==='C') this.scenC(m); else this.scenD(m);
+  }
+  addPart(m,p){ m.parts.push(p); this.layoutRail(m); this.sync(); return p; }
+  tickEv(m,color,label,dot){ m.ticks.push({color,label,dot:!!dot}); this.layoutRail(m); }
+  layoutRail(m){ const n=Math.max(m.parts.length,1);
+    m.ticks.forEach((tk,i)=>{ tk.top=(((i+0.55)/Math.max(m.ticks.length,1))*88+4)+'%'; });
+    const doneN=m.parts.filter(p=>!(p.k==='tool'&&p.status==='running')&&!(p.k==='txt'&&p.cursor)).length;
+    m.fill=(m.done?100:Math.min(92,Math.round(doneN/n*100)))+'%';
+  }
+  typeSegs(m, part, segs, cb){ this.typing={m, part, segs, si:0, ci:0, nextAt:Date.now(), cb, run:this.runId}; }
+  runTool(m, cfg, dur, result, cb){ const p=this.addPart(m,{k:'tool', name:cfg.name, src:cfg.src, mcp:cfg.mcp, status:'running', input:cfg.input, start:Date.now()});
+    this.tickEv(m,'var(--pri)','도구: '+cfg.name,true); this.sync();
+    this.after(dur, ()=>{ if(!this.d.streaming && !cfg.force) return;
+      p.status='done'; p.end=Date.now(); p.result=result;
+      const tk=m.ticks[m.ticks.length-1]; if(tk&&tk.dot){ tk.dot=false; tk.color='var(--ok)'; }
+      this.layoutRail(m); this.sync(); if(cb) this.after(200,cb);
+    });
+  }
+  finish(m){ const d=this.d; d.streaming=false; m.done=true; m.fill='100%'; m.ticks.forEach(t=>{ if(t.dot){t.dot=false;t.color='var(--ok)';} }); this.layoutRail(m); this.sync(); }
+  // ---------- Scenario A ----------
+  scenA(m){ const d=this.d;
+    const rsn=this.addPart(m,{k:'rsn', label:'생각 중…', body:'불량 유형 분포를 먼저 확인하고, 상위 유형의 공정 파라미터와 교차 분석이 필요하다. QMS 데이터가 최신인지 조회 후 표로 정리한다.', open:false, done:false});
+    this.after(1600,()=>{ rsn.label='2초 생각'; rsn.done=true; this.sync();
+      this.runTool(m,{name:'knowledge_search',src:'내장',mcp:false,input:'{"query":"등속조인트 열처리 불량 관리 기준"}'},2200,'3개 청크 검색됨 · 품질관리규정_v4 외 2',()=>{
+        d.sources=[
+          {n:1,f:'품질관리규정_v4.pdf',loc:'p.12',snippet:'…CVJ 열처리 공정의 경도 관리 기준은 HRC ±1.0이며, 초과 로트는 전수 재검사 대상으로 분류한다…'},
+          {n:2,f:'불량이력_2026H1.xlsx',loc:'시트 2026H1',snippet:'…로트 L-0612: 검사 1,240 / 불량 86(6.9%) — 열처리 경도 HRC 편차 +1.8, 설비: 열처리 2호기…'}
+        ];
+        const t1=this.addPart(m,{k:'txt',segs:[],cursor:true});
+        this.typeSegs(m,t1,[
+          {t:'t',s:'품질관리규정의 CVJ 관리 기준과 대조한 결과, 상반기 불량은 '},
+          {t:'b',s:'열처리 경도 편차'},
+          {t:'t',s:'에 집중되어 있습니다'},
+          {t:'c',n:1},
+          {t:'t',s:'. QMS 최신 집계로 교차 확인합니다.'}
+        ],()=>{
+          this.runTool(m,{name:'defect.query',src:'QMS › MCP',mcp:true,input:'{"part":"CVJ","period":"2026H1","group_by":"defect_type"}'},3000,'집계 4행 반환 · 최신화 5분 전',()=>{
+            this.addPart(m,{k:'tbl',rows:[
+              {t:'열처리 경도 편차',n:'142',p:'38.2%',proc:'열처리'},
+              {t:'외경 치수 초과',n:'96',p:'25.8%',proc:'연삭'},
+              {t:'표면 크랙',n:'71',p:'19.1%',proc:'단조'},
+              {t:'기타',n:'63',p:'16.9%',proc:'—'}
+            ]});
+            this.tickEv(m,'var(--ok)','표 생성');
+            const t2=this.addPart(m,{k:'txt',segs:[],cursor:true});
+            this.typeSegs(m,t2,[
+              {t:'t',s:'열처리 편차 로트는 6월 2주차에 집중되며, 해당 주 설비 점검 이력과 겹칩니다'},
+              {t:'c',n:2},
+              {t:'t',s:'. 파레토 차트를 아티팩트로 생성했습니다 — 우측 패널에서 확인하세요.'}
+            ],()=>{
+              d.artifacts=[{name:'불량유형_파레토.png',kind:'pareto',meta:'code_interpreter 생성 · 방금 — artifact_created 이벤트로 자동 오픈'}];
+              if(this.props.autoOpenPanel ?? true){ d.panelOpen=true; d.panelTab='artifact'; }
+              this.tickEv(m,'var(--ok)','아티팩트 생성');
+              this.toast('아티팩트가 생성되었습니다 — 불량유형_파레토.png','ok');
+              this.addPart(m,{k:'ref',refs:[
+                {n:1,f:'품질관리규정_v4.pdf',loc:'p.12',via:'knowledge_search'},
+                {n:2,f:'불량이력_2026H1.xlsx',loc:'시트 2026H1',via:'이 대화 첨부'}
+              ]});
+              this.finish(m);
+            });
+          });
+        });
+      });
+    });
+  }
+  // ---------- Scenario B (HITL) ----------
+  scenB(m){ const d=this.d;
+    this.runTool(m,{name:'work_order.query',src:'MES › MCP',mcp:true,input:'{"order_id":"WO-24031"}'},1800,"WO-24031 · 상태 '검사 대기' · 라인 CVJ-3",()=>{
+      const t1=this.addPart(m,{k:'txt',segs:[],cursor:true});
+      this.typeSegs(m,t1,[{t:'t',s:'현재 상태를 확인했습니다. 완료 처리는 '},{t:'b',s:'되돌릴 수 없는 변경'},{t:'t',s:'이라 승인이 필요합니다.'}],()=>{
+        const hp=this.addPart(m,{k:'hitl',status:'pending'});
+        this.tickEv(m,'var(--wn)','HITL 승인 대기',true);
+        const secs=Number(this.props.hitlTimeoutSec ?? 272);
+        d.hitl={pending:true, editing:false, args:'{\n  "order_id": "WO-24031",\n  "status": "완료",\n  "operator": "kim.minsu"\n}', deadline:Date.now()+secs*1000, total:secs, part:hp, msg:m, modified:false};
+        d.streaming=false; d.sendLock=true;
+        this.sync();
+      });
+    });
+  }
+  hitlResolve(ok){ const d=this.d; if(!d.hitl) return;
+    const {part,msg,modified}=d.hitl; const m=msg;
+    d.sendLock=false;
+    const tk=m.ticks[m.ticks.length-1]; if(tk&&tk.dot){ tk.dot=false; }
+    if(ok){ part.status='ok'; if(tk) tk.color='var(--ok)';
+      const args=d.hitl.args; d.hitl=null; d.streaming=true;
+      let inp='{"order_id":"WO-24031","status":"완료"}';
+      try{ const j=JSON.parse(args); inp=JSON.stringify(j); }catch(e){ inp=args.replace(/\s+/g,' ').slice(0,80); }
+      this.runTool(m,{name:'work_order.update',src:'MES › MCP',mcp:true,input:inp,force:true},2200,'변경 완료 · 트랜잭션 TX-88231'+(modified?' · 수정 인자 적용':''),()=>{
+        const t=this.addPart(m,{k:'txt',segs:[],cursor:true});
+        this.typeSegs(m,t,[{t:'t',s:modified?'수정하신 인자로 처리했습니다. 원본과의 차이는 활동 로그에 기록되었습니다.':'작업지시 WO-24031을 완료 처리했습니다. 실행 내역은 활동 로그에 기록되었습니다.'}],()=>this.finish(m));
+      });
+      this.toast(modified?'수정 후 승인되었습니다':'승인되었습니다 — 도구를 실행합니다','ok');
+    } else { part.status='deny'; if(tk) tk.color='var(--dg)';
+      d.hitl=null; d.streaming=true;
+      const t=this.addPart(m,{k:'txt',segs:[],cursor:true});
+      this.typeSegs(m,t,[{t:'t',s:'거부되어 실행하지 않았습니다. 상태 변경이 필요해지면 다시 요청해 주세요.'}],()=>this.finish(m));
+      this.toast('거부되었습니다 — 도구를 실행하지 않습니다','wn');
+    }
+    this.sync();
+  }
+  hitlTimeoutFire(){ const d=this.d; if(!d.hitl) return; const {part,msg}=d.hitl; d.hitl=null; d.sendLock=false;
+    part.status='timeout'; const tk=msg.ticks[msg.ticks.length-1]; if(tk){tk.dot=false; tk.color='var(--dg)';}
+    d.streaming=true; const t=this.addPart(msg,{k:'txt',segs:[],cursor:true});
+    this.typeSegs(msg,t,[{t:'t',s:'시간 초과로 자동 거부되었습니다. 필요 시 다시 요청해 주세요.'}],()=>this.finish(msg));
+    this.toast('시간 초과 — 자동 거부되었습니다','dg');
+  }
+  // ---------- Scenario C (Deep research) ----------
+  scenC(m){ const d=this.d;
+    d.plan='서브 질문 4개로 분해됨 · 워커별 독립 컨텍스트';
+    d.workers=[
+      {title:'① 글로벌 히트펌프 시장 규모·성장률', st:'queued', q:0, s:0},
+      {title:'② 주요 OEM 열관리 아키텍처 동향', st:'queued', q:0, s:0},
+      {title:'③ 국내외 부품사 경쟁 구도', st:'queued', q:0, s:0},
+      {title:'④ 규제·보조금 영향', st:'queued', q:0, s:0}
+    ];
+    d.steps=[{label:'계획 수립', st:'run'},{label:'병렬 검색', st:'wait'},{label:'압축 — 워커 결과 요약', st:'wait'},{label:'종합', st:'wait'}];
+    d.dr=true;
+    if(this.props.autoOpenPanel ?? true){ d.panelOpen=true; d.panelTab='activity'; }
+    const p=this.addPart(m,{k:'tool', name:'딥리서치', src:'에이전트 · 서브에이전트 4 병렬', mcp:false, status:'running', input:'{"query":"전기차 열관리 시장 동향","subagents":4}', start:Date.now()});
+    this.tickEv(m,'var(--pri)','딥리서치 실행',true);
+    this.after(1400,()=>{ d.steps[0].st='done'; d.steps[1].st='run'; d.workers.forEach((w,i)=>{ w.st = i<2 ? 'running':'queued'; }); this.sync();
+      this.after(2600,()=>{ d.workers[0].st='done'; d.workers[0].q=6; d.workers[0].s=9; d.workers[2].st='running'; this.sync();
+        this.after(2200,()=>{ d.workers[1].st='done'; d.workers[1].q=4; d.workers[1].s=7; d.workers[3].st='running'; this.sync();
+          this.after(2400,()=>{ d.workers[2].st='done'; d.workers[2].q=5; d.workers[2].s=6; this.sync();
+            this.after(1800,()=>{ d.workers[3].st='done'; d.workers[3].q=3; d.workers[3].s=4; d.steps[1].st='done'; d.steps[2].st='run'; this.sync();
+              this.after(1600,()=>{ d.steps[2].st='done'; d.steps[3].st='run'; this.sync();
+                p.status='done'; p.end=Date.now(); p.result='워커 4/4 완료 · 수집 출처 26건';
+                const tk=m.ticks[0]; if(tk){tk.dot=false; tk.color='var(--ok)';}
+                d.sources=[
+                  {n:1,f:'글로벌 히트펌프 시장 리포트 2026',loc:'웹',snippet:'…전기차 히트펌프 탑재율은 2026년 신차 기준 64%로, 3년 전 대비 2.1배 확대…'},
+                  {n:2,f:'OEM 열관리 아키텍처 비교 분석',loc:'웹',snippet:'…통합 열관리 모듈(ITMS)로의 전환이 가속화되며 부품 수 30% 절감 사례 보고…'},
+                  {n:3,f:'부품사 경쟁 구도 브리핑',loc:'웹',snippet:'…상위 5개 부품사가 글로벌 공급의 71%를 점유, 국내사는 모듈 통합 역량으로 차별화…'}
+                ];
+                const t=this.addPart(m,{k:'txt',segs:[],cursor:true});
+                this.typeSegs(m,t,[
+                  {t:'t',s:'조사를 종합하면, 전기차 열관리 시장은 히트펌프 중심으로 재편 중입니다'},{t:'c',n:1},
+                  {t:'t',s:'. OEM은 통합 열관리 모듈로 이행하고 있고'},{t:'c',n:2},
+                  {t:'t',s:', 부품사 경쟁은 모듈 통합 역량이 좌우합니다'},{t:'c',n:3},
+                  {t:'t',s:'. 상세 보고서를 아티팩트로 생성했습니다.'}
+                ],()=>{
+                  d.steps[3].st='done'; d.dr=false;
+                  d.artifacts=[{name:'열관리_시장동향_보고서.md',kind:'doc',docTitle:'전기차 열관리 시스템 시장 동향', docHint:'차트 3 · 표 2 · 출처 26', meta:'딥리서치 생성 · 방금 — 중간 툴콜은 워커 내부에 격리, 부모 대화에는 요약과 인용만 도착'}];
+                  this.tickEv(m,'var(--ok)','보고서 아티팩트');
+                  this.addPart(m,{k:'ref',refs:[
+                    {n:1,f:'글로벌 히트펌프 시장 리포트 2026',loc:'웹',via:'워커 ①'},
+                    {n:2,f:'OEM 열관리 아키텍처 비교 분석',loc:'웹',via:'워커 ②'},
+                    {n:3,f:'부품사 경쟁 구도 브리핑',loc:'웹',via:'워커 ③'}
+                  ]});
+                  this.finish(m);
+                  this.toast('딥리서치 완료 — 보고서가 생성되었습니다','ok');
+                });
+              });
+            });
+          });
+        });
+      });
+    });
+  }
+  // ---------- Scenario D (Skill/PPT) ----------
+  scenD(m){ const d=this.d;
+    const rsn=this.addPart(m,{k:'rsn', label:'생각 중…', body:'WIA 브랜드 PPT 스킬을 활성화하고, 최근 분석 결과를 슬라이드 구조로 변환한다.', open:false});
+    this.after(1200,()=>{ rsn.label='1초 생각'; this.sync();
+      this.runTool(m,{name:'WIA 브랜드 PPT',src:'스킬 v3',mcp:false,input:'{"template":"wia_quality_report","slides":8}'},1600,'스킬 활성 — 템플릿 로드됨',()=>{
+        this.runTool(m,{name:'code_interpreter',src:'내장 · E2B 샌드박스',mcp:false,input:'python build_pptx.py --template wia_v3'},3400,'품질리포트_초안.pptx 생성 (8슬라이드)',()=>{
+          d.artifacts=[{name:'품질리포트_초안.pptx',kind:'doc',docTitle:'CVJ 공정 품질 리포트 — 2026 상반기', docHint:'표지 + 간지 + 본문 6슬라이드 · WIA 양식', meta:'code_interpreter 생성 · 방금 — [공유]로 링크 발급'}];
+          if(this.props.autoOpenPanel ?? true){ d.panelOpen=true; d.panelTab='artifact'; }
+          this.tickEv(m,'var(--ok)','아티팩트 생성');
+          const t=this.addPart(m,{k:'txt',segs:[],cursor:true});
+          this.typeSegs(m,t,[{t:'t',s:'WIA 양식으로 초안 8장을 생성했습니다. 우측 패널에서 미리보기와 공유 링크 발급이 가능합니다. 표지 문구나 차트 구성을 말씀해 주시면 다음 버전(v2)으로 반영합니다.'}],()=>this.finish(m));
+          this.toast('아티팩트가 생성되었습니다 — 품질리포트_초안.pptx','ok');
+        });
+      });
+    });
+  }
+  // ---------- misc UI ----------
+  stop(){ const d=this.d; this.clearTimers();
+    const ms=this.curMsgs(); const m=ms[ms.length-1];
+    if(m&&m.parts){ m.parts.forEach(p=>{ if(p.k==='tool'&&p.status==='running'){ p.status='error'; p.end=Date.now(); p.result='사용자가 중단했습니다'; p.stopped=true; } if(p.k==='txt') p.cursor=false; }); m.ticks.forEach(t=>{if(t.dot){t.dot=false;t.color='var(--dg)';}}); }
+    d.streaming=false; d.dr=false; if(d.steps.length){ d.steps.forEach(s=>{if(s.st==='run')s.st='stop';}); } d.workers.forEach(w=>{ if(w.st==='running'||w.st==='queued') w.st='stop'; });
+    this.toast('중단했습니다 — 부분 결과는 유지됩니다','wn'); this.sync();
+  }
+  toast(msg,kind){ const d=this.d; d.toast={msg,kind}; this.sync(); if(this.toastT) clearTimeout(this.toastT); this.toastT=setTimeout(()=>{ d.toast=null; this.sync(); },3800); }
+  togglePanel(){ this.d.panelOpen=!this.d.panelOpen; this.sync(); }
+  openSrc(n){ const d=this.d; d.panelOpen=true; d.panelTab='sources'; d.hiSrc=n; this.sync(); if(this.hiT) clearTimeout(this.hiT); this.hiT=setTimeout(()=>{ d.hiSrc=0; this.sync(); },2000); }
+  // ---------- render ----------
+  renderVals(){ const d=this.d; const P=this.props;
+    const chip=(st)=>({
+      queued:{cBg:'var(--sf1)',cBd:'var(--bd)',cTx:'var(--tx2)',dot:'var(--tx3)',label:'대기',anim:'none'},
+      running:{cBg:'var(--priBg)',cBd:'var(--priBd)',cTx:'var(--pri)',dot:'var(--pri)',label:'실행 중',anim:'wpulse 1.2s ease-in-out infinite'},
+      done:{cBg:'var(--okBg)',cBd:'var(--okBg)',cTx:'var(--okTx)',dot:'var(--ok)',label:'완료',anim:'none'},
+      error:{cBg:'var(--dgBg)',cBd:'var(--dgBg)',cTx:'var(--dgTx)',dot:'var(--dg)',label:'오류',anim:'none'}
+    })[st];
+    const msgs=this.curMsgs();
+    const msgsV=msgs.map((m,mi)=>{
+      if(m.role==='u') return {isU:true,isA:false,text:m.text,utokens:m.tokens||[],attach:m.attach,bubBg:'var(--priBg)'};
+      const parts=m.parts.map((p,pi)=>{
+        if(p.k==='rsn') return {isRsn:true,label:p.label,body:p.body,open:!!p.open,toggle:()=>{p.open=!p.open;this.sync();}};
+        if(p.k==='tool'){ const c=chip(p.status); return {isTool:true,name:p.name,src:p.src,mcp:!!p.mcp,builtin:!p.mcp,
+          iconColor:p.status==='running'?'var(--pri)':(p.status==='error'?'var(--dg)':'var(--tx2)'),
+          cardBd:p.status==='error'?'var(--dg)':'var(--bd)',
+          cBg:c.cBg,cBd:c.cBd,cTx:c.cTx,dot:c.dot,dotAnim:c.anim,statusLabel:c.label,
+          input:p.input,result:p.result||'',resColor:p.status==='error'?'var(--dgTx)':'var(--tx2)',
+          showShimmer:p.status==='running', elapsed:this.fmtEl(p),
+          retry:p.status==='error'&&!p.stopped, doRetry:()=>this.toast('다시 시도합니다','ok')};
+        }
+        if(p.k==='txt') return {isTxt:true,cursor:!!p.cursor,segs:p.segs.map(sg=> sg.t==='c'
+          ? {isC:true,n:sg.n,openSrc:()=>this.openSrc(sg.n)}
+          : (sg.t==='b'?{isB:true,s:sg.s}:{isT:true,s:sg.s}))};
+        if(p.k==='tbl') return {isTbl:true,rows:p.rows};
+        if(p.k==='ref') return {isRef:true,refs:p.refs.map(r=>({...r,openSrc:()=>this.openSrc(r.n)}))};
+        if(p.k==='hitl'){ const map={pending:{hBd:'var(--wn)',hIcon:'var(--wnTx)',hLabel:'승인 대기 중'},ok:{hBd:'var(--bd)',hIcon:'var(--ok)',hLabel:'승인됨 · 김민수'},deny:{hBd:'var(--bd)',hIcon:'var(--dg)',hLabel:'거부됨 — 실행하지 않음'},timeout:{hBd:'var(--bd)',hIcon:'var(--tx3)',hLabel:'시간 초과 — 자동 거부됨'}}[p.status];
+          return {isHitl:true,...map}; }
+        return {};
+      });
+      return {isU:false,isA:true,parts,ticks:m.ticks.map(tk=>({isBar:!tk.dot,isDot:!!tk.dot,color:tk.color,dotBg:'var(--priBg)',top:tk.top||'4%',label:tk.label})),fill:m.fill,
+        actions:m.done, copy:()=>this.toast('마크다운 원문이 복사되었습니다','ok'), regen:()=>this.toast('재생성은 새 분기를 만듭니다 ‹ 2 / 2 ›','ok'),
+        up:()=>{m.fb=m.fb===1?0:1;this.sync();}, down:()=>{m.fb=m.fb===-1?0:-1;this.sync();},
+        upBg:m.fb===1?'var(--priBg)':'none', upTx:m.fb===1?'var(--pri)':'var(--tx2)',
+        downBg:m.fb===-1?'var(--priBg)':'none', downTx:m.fb===-1?'var(--pri)':'var(--tx2)'};
+    });
+    // sessions sidebar
+    const q=(d.sessionQuery||'').toLowerCase();
+    const dyn=Object.keys(d.titles).filter(id=>!d.sessions.some(s=>s.id===id)).map(id=>({id,title:d.titles[id],group:'오늘',time:'방금'})).reverse();
+    const all=[...dyn, ...d.sessions].filter(s=>!q||s.title.toLowerCase().includes(q));
+    const groups=['고정','오늘','어제','이전 7일'].map(g=>({label:g,items:all.filter(s=>s.group===g).map(s=>({title:s.title,
+      open:()=>this.openSession(s.id,s.title),
+      bg:d.active===s.id&&d.view==='chat'?'var(--priSel)':'transparent',
+      color:d.active===s.id&&d.view==='chat'?'var(--pri)':'var(--tx)',
+      weight:d.active===s.id&&d.view==='chat'?'600':'400'}))})).filter(g=>g.items.length);
+    // mention
+    const items=[
+      {name:'품질 리포트',sub:'에이전트 · 구동부품 품질팀',type:'에이전트',icon:'agent'},
+      {name:'딥리서치',sub:'에이전트 · 조직',type:'에이전트',icon:'agent'},
+      {name:'defect.query',sub:'MCP: QMS',type:'도구',icon:'plug',badge:'읽기 전용',b:'ro'},
+      {name:'work_order.update',sub:'MCP: MES',type:'도구',icon:'plug',badge:'승인 필요',b:'ap'},
+      {name:'knowledge_search',sub:'내장 도구',type:'도구',icon:'tool',badge:'읽기 전용',b:'ro'},
+      {name:'web_search',sub:'내장 도구',type:'도구',icon:'tool',badge:'읽기 전용',b:'ro'},
+      {name:'QMS',sub:'커넥터 · 도구 7개',type:'커넥터',icon:'plug'},
+      {name:'MES',sub:'커넥터 · 도구 12개',type:'커넥터',icon:'plug'},
+      {name:'품질관리규정_v4.pdf',sub:'프로젝트: 구동부품 품질',type:'지식',icon:'file'},
+      {name:'불량이력_2026H1.xlsx',sub:'이 대화',type:'파일',icon:'file'}
+    ];
+    const mtab=d.mention.tab; const mq=(d.mention.q||'').toLowerCase();
+    const filtered=items.filter(it=>(mtab==='전체'||it.type===mtab)&&(!mq||it.name.toLowerCase().includes(mq)||it.sub.toLowerCase().includes(mq)));
+    const mentionItems=filtered.map((it,i)=>({
+      name:it.name,sub:it.sub,badge:it.badge||'',nameWeight:i===0?'600':'400',
+      bg:i===0?'var(--priBg)':'transparent',iconColor:i===0?'var(--pri)':'var(--tx2)',
+      isAgent:it.icon==='agent',isTool:it.icon==='tool',isPlug:it.icon==='plug',isFile:it.icon==='file',
+      bTx:it.b==='ap'?'var(--wnTx)':'var(--tx2)',bBg:it.b==='ap'?'var(--wnBg)':'var(--sf1)',bBd:it.b==='ap'?'var(--wn)':'var(--bd)',
+      insert:()=>this.insertToken(it.name)
+    }));
+    const mentionTabs=['전체','에이전트','도구','커넥터','파일','지식'].map(t=>({label:t,pick:()=>{d.mention.tab=t;this.sync();},
+      color:mtab===t?'var(--pri)':'var(--tx2)',weight:mtab===t?'600':'400',line:mtab===t?'var(--pri)':'transparent'}));
+    const slashItems=[
+      {cmd:'/요약',desc:'대화·문서 요약',fill:'다음 내용을 요약해줘: '},
+      {cmd:'/표로 정리',desc:'표 형식 변환',fill:'다음을 표로 정리해줘: '},
+      {cmd:'/브랜드PPT',desc:'WIA 양식 PPT 생성',fill:'이번 분석 결과로 WIA 양식 PPT 초안 만들어줘.'},
+      {cmd:'/딥리서치',desc:'병렬 심층 조사',fill:'@딥리서치 '},
+      {cmd:'/번역',desc:'한↔영 번역',fill:'다음을 영어로 번역해줘: '}
+    ].map(s=>({cmd:s.cmd,desc:s.desc,pick:()=>{ d.composer=s.fill; d.slash=false; if(s.cmd==='/딥리서치'){ d.composer=''; d.tokens=['@딥리서치']; } if(this.inputEl) this.inputEl.focus(); this.sync(); }}));
+    const modelGroups=[
+      {label:'ANTHROPIC',models:[{name:'Claude Sonnet',ctx:'200K'},{name:'Claude Haiku',ctx:'200K'}]},
+      {label:'OPENAI',models:[{name:'GPT-5.2',ctx:'128K'}]},
+      {label:'GOOGLE',models:[{name:'Gemini 3 Pro',ctx:'1M'}]}
+    ].map(g=>({label:g.label,models:g.models.map(mo=>({name:mo.name,ctx:mo.ctx,sel:d.model===mo.name,weight:d.model===mo.name?'600':'400',
+      bg:d.model===mo.name?'var(--priBg)':'transparent',pick:()=>{d.model=mo.name;d.modelOpen=false;this.sync();}}))}));
+    const efforts=['낮음','보통','높음'].map(l=>({label:l,pick:()=>{d.effort=l;this.sync();},
+      bg:d.effort===l?'var(--sf0)':'transparent',color:d.effort===l?'var(--pri)':'var(--tx2)',weight:d.effort===l?'600':'400'}));
+    // panel
+    const pt=d.panelTab;
+    const panelTabs=[{k:'artifact',label:'아티팩트',count:d.artifacts.length?String(d.artifacts.length):''},{k:'sources',label:'출처',count:d.sources.length?String(d.sources.length):''},{k:'activity',label:'활동',count:''}]
+      .map(t=>({label:t.label,count:t.count,pick:()=>{d.panelTab=t.k;this.sync();},
+        color:pt===t.k?'var(--pri)':'var(--tx2)',weight:pt===t.k?'600':'400',line:pt===t.k?'var(--pri)':'transparent'}));
+    const art=d.artifacts[0];
+    const wch=(st)=>({queued:{cBg:'var(--sf1)',cBd:'var(--bd)',cTx:'var(--tx2)',dot:'var(--tx3)',label:'대기',anim:'none',bd:'var(--bd)',op:'.72'},
+      running:{cBg:'var(--priBg)',cBd:'var(--priBd)',cTx:'var(--pri)',dot:'var(--pri)',label:'실행 중',anim:'wpulse 1.2s ease-in-out infinite',bd:'var(--priBd)',op:'1'},
+      done:{cBg:'var(--okBg)',cBd:'var(--okBg)',cTx:'var(--okTx)',dot:'var(--ok)',label:'완료',anim:'none',bd:'var(--bd)',op:'1'},
+      stop:{cBg:'var(--sf1)',cBd:'var(--bd)',cTx:'var(--tx3)',dot:'var(--tx3)',label:'중단',anim:'none',bd:'var(--bd)',op:'.6'}})[st];
+    const workersV=d.workers.map(w=>{const c=wch(w.st);return {title:w.title,status:c.label,cBg:c.cBg,cBd:c.cBd,cTx:c.cTx,dot:c.dot,dotAnim:c.anim,bd:c.bd,op:c.op,
+      metrics:'검색 '+w.q+' · 출처 '+w.s+(w.st==='running'?' · 진행 중':'')};});
+    const stepsV=d.steps.map((s,i)=>({label:s.label,meta:s.st==='done'&&i===0?'00:06':'',line:i<d.steps.length-1,
+      dotBg:s.st==='done'?'var(--ok)':(s.st==='run'?'var(--priBg)':(s.st==='stop'?'var(--dgBg)':'var(--sf2)')),
+      dotBd:s.st==='done'?'var(--ok)':(s.st==='run'?'var(--pri)':(s.st==='stop'?'var(--dg)':'var(--bd)')),
+      anim:s.st==='run'?'wpulse 1.2s ease-in-out infinite':'none',
+      lineColor:s.st==='done'?'var(--ok)':'var(--bd)',
+      color:s.st==='run'?'var(--pri)':(s.st==='wait'?'var(--tx3)':'var(--tx)'),weight:s.st==='run'?'600':'400'}));
+    const sourcesV=d.sources.map(s=>({...s,
+      bg:d.hiSrc===s.n?'var(--priSel)':'var(--sf0)',bd:d.hiSrc===s.n?'var(--focus)':'var(--bd)',
+      nTx:d.hiSrc===s.n?'var(--onPri)':'var(--pri)',nBg:d.hiSrc===s.n?'var(--pri)':'var(--priBg)'}));
+    // hitl countdown
+    let hitlCountdown='', hitlPct='0%';
+    if(d.hitl&&d.hitl.pending){ const rem=Math.max(0,d.hitl.deadline-Date.now());
+      const s=Math.ceil(rem/1000); hitlCountdown=String(Math.floor(s/60)).padStart(2,'0')+':'+String(s%60).padStart(2,'0');
+      hitlPct=Math.round(rem/(d.hitl.total*1000)*100)+'%';
+    }
+    const canSend=!!((d.composer||'').trim()||d.tokens.length) && !d.sendLock;
+    const recent=[{id:'p1',t:'등속조인트 공정 불량 원인 분석',time:'10분 전'},{id:'t1',t:'열관리 모듈 시험성적서 요약',time:'2시간 전'},{id:'t2',t:'협력사 RFQ 회신 초안',time:'5시간 전'},{id:'y1',t:'공작기계 알람 코드 조회',time:'어제'},{id:'w1',t:'스마트팩토리 PoC 회의록 정리',time:'3일 전'}];
+    return {
+      dark:d.dark, light:!d.dark, toggleDark:()=>{d.dark=!d.dark;document.body.classList.toggle('dark',d.dark);try{localStorage.setItem('wchat-theme',d.dark?'dark':'light');}catch(e){};this.sync();},
+      togglePanel:()=>this.togglePanel(),
+      panelBtnBd:d.panelOpen?'var(--priBd)':'var(--bd)',panelBtnBg:d.panelOpen?'var(--priBg)':'none',panelBtnTx:d.panelOpen?'var(--pri)':'var(--tx2)',
+      goHome:()=>{d.view='home';this.sync();}, navStub:()=>this.toast('프로토타입 범위: 채팅 플로우 — 다른 화면은 프레임 문서(F09–F15) 참조','wn'),
+      navHomeBg:d.view==='home'?'var(--priBg)':'none', navHomeTx:d.view==='home'?'var(--pri)':'var(--tx2)',
+      newSession:()=>this.newSession(),
+      sessionQuery:d.sessionQuery, onSessionQuery:(e)=>{d.sessionQuery=e.target.value;this.sync();},
+      sessionGroups:groups,
+      isHome:d.view==='home', isChat:d.view==='chat',
+      recentList:recent.map(r=>({title:r.t,time:r.time,open:()=>this.openSession(r.id,r.t)})),
+      quick1:()=>this.quick(1),quick2:()=>this.quick(2),quick3:()=>this.quick(3),quick4:()=>this.quick(4),
+      chatTitle:d.titles[d.active]||'새 세션', projectLabel:(d.active||'').startsWith('p1')?'프로젝트: 구동부품 품질':'프로젝트 없음',
+      toastMemory:()=>this.toast('메모리 3건 적용 중 — 「구동부품 품질팀 소속」 외 2건 (설정에서 관리)','ok'),
+      toastShare:()=>this.toast('공유 링크가 복사되었습니다 — 2026-08-14까지 유효','ok'),
+      toastAttach:()=>this.toast('첨부: 파일을 컴포저에 끌어다 놓을 수 있습니다 (프로토타입에서는 시나리오에 포함)','wn'),
+      toastCmdK:()=>this.toast('⌘K 커맨드 팔레트 — 세션·액션 검색 (프로토타입 범위 밖)','wn'),
+      toastDownload:()=>this.toast('다운로드를 시작합니다','ok'),
+      chatEmpty:msgs.length===0, msgsV,
+      scrollRef:(el)=>{this.scrollEl=el;},
+      onScroll:(e)=>{const el=e.target;const nearBottom=el.scrollHeight-el.scrollTop-el.clientHeight<48;const was=d.stick;d.stick=nearBottom;const pill=!nearBottom&&(d.streaming||(d.hitl&&d.hitl.pending));if(pill!==d.showPill||was!==d.stick){d.showPill=pill;this.forceUpdate();}},
+      showPill:d.showPill, toLatest:()=>{d.stick=true;d.showPill=false;if(this.scrollEl)this.scrollEl.scrollTop=this.scrollEl.scrollHeight;this.forceUpdate();},
+      mentionOpen:d.mention.open, mentionQLabel:d.mention.q||'검색어를 입력하세요', mentionQColor:d.mention.q?'var(--tx)':'var(--tx3)',
+      mentionTabs, mentionItems, mentionEmpty:filtered.length===0,
+      slashOpen:d.slash, slashItems, modelOpen:d.modelOpen, modelGroups, efforts,
+      openMention:()=>{d.mention.open=!d.mention.open;d.slash=false;d.modelOpen=false;if(d.mention.open&&!d.composer.endsWith('@')){d.composer+= (d.composer&&!d.composer.endsWith(' ')?' ':'')+'@';d.mention.q='';}if(this.inputEl)this.inputEl.focus();this.sync();},
+      openSlash:()=>{d.slash=!d.slash;d.mention.open=false;d.modelOpen=false;this.sync();},
+      openModel:()=>{d.modelOpen=!d.modelOpen;d.mention.open=false;d.slash=false;this.sync();},
+      atBd:d.mention.open?'var(--priBd)':'var(--bd)', atBg:d.mention.open?'var(--priBg)':'none', atTx:d.mention.open?'var(--pri)':'var(--tx2)',
+      composer:d.composer, onType:(e)=>this.onType(e), onKey:(e)=>this.onKey(e),
+      inputRef:(el)=>{this.inputEl=el;},
+      composerPh:'메시지를 입력하세요 — @로 에이전트·도구 호출',
+      composerBd:(d.hitl&&d.hitl.pending)?'var(--wn)':'var(--bd)',
+      hasTokens:d.tokens.length>0, tokenChips:d.tokens.map((t,i)=>({label:t,remove:()=>{d.tokens.splice(i,1);this.sync();}})),
+      model:d.model,
+      modeAgent:()=>{d.mode='agent';this.sync();}, modeChat:()=>{d.mode='chat';this.sync();},
+      modeABg:d.mode==='agent'?'var(--sf0)':'transparent', modeATx:d.mode==='agent'?'var(--pri)':'var(--tx2)', modeAW:d.mode==='agent'?'600':'400',
+      modeCBg:d.mode==='chat'?'var(--sf0)':'transparent', modeCTx:d.mode==='chat'?'var(--pri)':'var(--tx2)', modeCW:d.mode==='chat'?'600':'400',
+      toggleWeb:()=>{d.web=!d.web;this.sync();},
+      webBd:d.web?'var(--priBd)':'var(--bd)', webBg:d.web?'var(--priBg)':'none', webTx:d.web?'var(--pri)':'var(--tx2)',
+      ctxGauge:msgs.length?Math.min(94,8+msgs.length*4)+'%':'',
+      streaming:d.streaming, notStreaming:!d.streaming, stop:()=>this.stop(), send:()=>this.send(),
+      sendBg:canSend?'var(--pri)':'var(--priBd)', sendCursor:canSend?'pointer':'default',
+      composerHint:(d.hitl&&d.hitl.pending)?'승인 대기 중 — 다른 메시지는 계속 입력할 수 있고, 전송만 잠깁니다':(d.streaming?'응답 생성 중 — 입력은 계속 가능, 전송은 완료 후. Stop으로 즉시 중단':''),
+      hintDot:(d.hitl&&d.hitl.pending)?'var(--wn)':'var(--pri)',
+      panelOpen:d.panelOpen, panelTabs,
+      tabArtifact:pt==='artifact', tabSources:pt==='sources', tabActivity:pt==='activity',
+      noArtifacts:!art, hasArtifact:!!art,
+      artName:art?art.name:'', artMeta:art?art.meta:'', artPager:'‹ v1 / 1 ›',
+      artPrev:()=>{d.artView='prev';this.sync();}, artCode:()=>{d.artView='code';this.sync();},
+      artPvBg:d.artView==='prev'?'var(--sf0)':'transparent', artPvTx:d.artView==='prev'?'var(--pri)':'var(--tx2)', artPvW:d.artView==='prev'?'600':'400',
+      artCdBg:d.artView==='code'?'var(--sf0)':'transparent', artCdTx:d.artView==='code'?'var(--pri)':'var(--tx2)', artCdW:d.artView==='code'?'600':'400',
+      artShowPareto:!!art&&art.kind==='pareto'&&d.artView==='prev',
+      artShowDoc:!!art&&art.kind==='doc'&&d.artView==='prev',
+      artShowCode:!!art&&d.artView==='code',
+      artDocTitle:art&&art.docTitle||'', artDocHint:art&&art.docHint||'',
+      noSources:d.sources.length===0, hasSources:d.sources.length>0, srcCount:String(d.sources.length), sourcesV,
+      noActivity:!d.plan&&!d.steps.length, hasPlan:!!d.plan, planLabel:d.plan, workersV,
+      hasSteps:d.steps.length>0, stepsV, drRunning:d.dr,
+      hitlOpen:!!(d.hitl&&d.hitl.pending), hitlArgs:d.hitl?d.hitl.args:'',
+      hitlViewing:!!(d.hitl&&!d.hitl.editing), hitlEditing:!!(d.hitl&&d.hitl.editing),
+      onHitlEdit:(e)=>{if(d.hitl){d.hitl.args=e.target.value;d.hitl.modified=true;this.sync();}},
+      hitlEditToggle:()=>{if(d.hitl){d.hitl.editing=!d.hitl.editing;this.sync();}},
+      hitlEditLabel:d.hitl&&d.hitl.editing?'편집 완료':'인자 수정',
+      hitlApproveLabel:d.hitl&&d.hitl.modified?'수정 후 승인':'승인',
+      hitlApprove:()=>this.hitlResolve(true), hitlDeny:()=>this.hitlResolve(false),
+      hitlCountdown, hitlPct,
+      toastMsg:d.toast?d.toast.msg:'', toastColor:d.toast?{ok:'var(--ok)',wn:'var(--wn)',dg:'var(--dg)'}[d.toast.kind]||'var(--pri)':'var(--pri)'
+    };
+  }
+}
+</script>
+</body>
+</html>
