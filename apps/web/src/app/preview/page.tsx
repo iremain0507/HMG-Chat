@@ -172,6 +172,17 @@ function ActivityPanelPreview() {
   );
 }
 
+// P13-T6-08 — F4/§6 CitationChip 핸드오프: 우패널 '출처' 탭 데모용 인용 1건.
+const PREVIEW_CITATIONS = [
+  {
+    index: 1,
+    source: "project" as const,
+    filename: "열관리모듈_시험성적서.pdf",
+    page: 7,
+    snippet: "시험 결과 열관리 모듈의 평균 방열 효율은 92.4% 로 측정되었다.",
+  },
+];
+
 function ArtifactCanvasPreview() {
   const [open, setOpen] = useState(true);
   const [activeIndex, setActiveIndex] = useState(1);
@@ -191,6 +202,9 @@ function ArtifactCanvasPreview() {
             activeIndex={activeIndex}
             onActiveIndexChange={setActiveIndex}
             onClose={() => setOpen(false)}
+            citations={PREVIEW_CITATIONS}
+            focusedCitationIndex={1}
+            activityProgress={ACTIVITY_PROGRESS}
           />
         </div>
       )}

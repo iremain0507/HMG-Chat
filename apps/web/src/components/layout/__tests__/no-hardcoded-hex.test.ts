@@ -26,6 +26,7 @@ const FILES = [
   "../../chat/HitlPrompt.tsx",
   "../../chat/ActivityPanel.tsx",
   "../../chat/ToolCallRenderer.tsx",
+  "../../artifacts/ArtifactCanvas.tsx",
 ];
 
 describe("P13 하드코딩 hex 제로 회귀 가드", () => {

@@ -13,6 +13,8 @@ import {
 } from "@testing-library/react";
 import "@testing-library/jest-dom/vitest";
 import { ChatView } from "../ChatView";
+import { ToastContainer } from "../../layout/ToastContainer";
+import { __resetToastsForTest } from "../../../lib/toast";
 
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: vi.fn(), replace: vi.fn() }),
@@ -26,6 +28,7 @@ describe("ChatView", () => {
   afterEach(() => {
     cleanup();
     vi.unstubAllGlobals();
+    __resetToastsForTest();
   });
 
   it("메시지를 보내면 SSE text_delta 가 화면에 표시되고 스트리밍 종료 시 Stop 버튼이 사라진다", async () => {
@@ -845,6 +848,15 @@ describe("ChatView", () => {
     fireEvent.click(screen.getByTestId("citation-chip-1"));
 
     expect(refItem).toHaveAttribute("data-focused", "true");
+
+    // design-reference §6 CitationChip: 클릭 시 우패널 '출처' 탭 활성 + 원문 하이라이트.
+    expect(screen.getByTestId("artifact-panel-tab-sources")).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    const sourceItem = screen.getByTestId("source-item-1");
+    expect(sourceItem).toHaveAttribute("data-focused", "true");
+    expect(sourceItem).toHaveTextContent("manual.pdf");
   });
 
   it("artifact_created 이벤트가 오면 아티팩트 패널이 자동으로 열리고 미리보기/코드 토글이 동작한다", async () => {
@@ -879,7 +891,12 @@ describe("ChatView", () => {
     });
     vi.stubGlobal("fetch", fetchMock);
 
-    render(<ChatView sessionId="session-1" />);
+    render(
+      <>
+        <ChatView sessionId="session-1" />
+        <ToastContainer />
+      </>,
+    );
     fireEvent.change(screen.getByLabelText("메시지 입력"), {
       target: { value: "보고서 만들어줘" },
     });
@@ -889,6 +906,13 @@ describe("ChatView", () => {
       expect(screen.getByTestId("artifact-panel")).toBeInTheDocument();
     });
     expect(screen.getAllByText("report.md").length).toBeGreaterThan(0);
+
+    // design-reference §4: artifact_created → 우패널 '아티팩트' 탭 자동 오픈 + 토스트.
+    expect(screen.getByTestId("artifact-panel-tab-artifacts")).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    expect(screen.getByTestId("toast-success")).toHaveTextContent("report.md");
 
     fireEvent.click(screen.getByRole("button", { name: "코드" }));
     await waitFor(() => {

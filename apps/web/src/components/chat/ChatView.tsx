@@ -3,7 +3,7 @@
 // components/chat/ChatView.tsx — LLM 채팅 UI (ChatGPT/Claude 스타일).
 //   헤더 + 메시지 버블(user 우측/assistant 아바타+마크다운) + 스트리밍 커서 + 하단 컴포저.
 //   데이터: useSessionStream({ messages, isStreaming, send, stop }). Hyundai WIA CI 토큰.
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   useSessionStream,
@@ -13,6 +13,7 @@ import {
 } from "../../hooks/useSessionStream";
 import { useCurrentUser } from "../../hooks/useCurrentUser";
 import { randomUUID } from "../../lib/uuid";
+import { showToast } from "../../lib/toast";
 import { useOnlineStatus } from "../../hooks/useOnlineStatus";
 import { useProjects } from "../../hooks/useProjects";
 import { useSessionProject } from "../../hooks/useSessionProject";
@@ -67,19 +68,66 @@ export function ChatView({ sessionId }: { sessionId: string }) {
   const [artifactPanelOpen, setArtifactPanelOpen] = useState(false);
   const [activeArtifactIndex, setActiveArtifactIndex] = useState(0);
   const [memoryPanelOpen, setMemoryPanelOpen] = useState(false);
+  const [sourcesFocusIndex, setSourcesFocusIndex] = useState<number | null>(
+    null,
+  );
+  const [rightPanelFocus, setRightPanelFocus] = useState<{
+    tab: "artifacts" | "sources" | "activity";
+    token: number;
+  } | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const chatInputRef = useRef<ChatInputHandle>(null);
   const wasStreamingRef = useRef(isStreaming);
   const prevArtifactCountRef = useRef(0);
+  const panelFocusTokenRef = useRef(0);
 
-  // artifact_created 자동 오픈 — 18-FRONTEND-WIREFRAMES § 18.5.1 "ArtifactContext.open()".
+  // 인용 [N] 칩 클릭 — design-reference §6 CitationChip: 우패널 '출처' 탭 활성 + 원문 하이라이트.
+  function handleCitationFocus(index: number) {
+    setSourcesFocusIndex(index);
+    setArtifactPanelOpen(true);
+    setRightPanelFocus({
+      tab: "sources",
+      token: ++panelFocusTokenRef.current,
+    });
+  }
+
+  // 우패널 '출처' 탭에 보여줄 인용 목록 — 세션 전체가 아니라 인용이 달린 가장 최근
+  // assistant 턴 기준(design-reference F4: 그 턴의 Reference 와 동일 집합).
+  const sourcesCitations = useMemo(() => {
+    for (let i = messages.length - 1; i >= 0; i--) {
+      const m = messages[i];
+      if (m?.citations && m.citations.length > 0) return m.citations;
+    }
+    return [];
+  }, [messages]);
+
+  // 우패널 '활동' 탭에 보여줄 진행 스냅샷 — 가장 최근 tool_progress 를 가진 tool part.
+  const activityProgress = useMemo(() => {
+    for (let i = messages.length - 1; i >= 0; i--) {
+      const parts = messages[i]?.parts ?? [];
+      for (let j = parts.length - 1; j >= 0; j--) {
+        const p = parts[j];
+        if (p && p.type === "tool" && p.progress) return p.progress;
+      }
+    }
+    return undefined;
+  }, [messages]);
+
+  // artifact_created 자동 오픈+토스트 — 18-FRONTEND-WIREFRAMES § 18.5.1 "ArtifactContext.open()",
+  // design-reference §4: artifact_created → 우패널 '아티팩트' 탭 자동 오픈 + 토스트.
   useEffect(() => {
     if (artifacts.length > prevArtifactCountRef.current) {
       setActiveArtifactIndex(artifacts.length - 1);
       setArtifactPanelOpen(true);
+      setRightPanelFocus({
+        tab: "artifacts",
+        token: ++panelFocusTokenRef.current,
+      });
+      const created = artifacts[artifacts.length - 1];
+      if (created) showToast("success", `새 아티팩트: ${created.filename}`);
     }
     prevArtifactCountRef.current = artifacts.length;
-  }, [artifacts.length]);
+  }, [artifacts]);
 
   // Cmd/Ctrl+\ 패널 토글 — 18-FRONTEND-WIREFRAMES § 18.5.1 키맵.
   useEffect(() => {
@@ -248,6 +296,7 @@ export function ChatView({ sessionId }: { sessionId: string }) {
                         i === messages.length - 1 &&
                         m.role === "assistant"
                       }
+                      onCitationFocus={handleCitationFocus}
                       {...(canRegenerate
                         ? {
                             onRegenerate: () => {
@@ -329,14 +378,25 @@ export function ChatView({ sessionId }: { sessionId: string }) {
         </div>
       </div>
 
-      {artifactPanelOpen && artifacts.length > 0 && (
-        <ArtifactCanvas
-          artifacts={artifacts}
-          activeIndex={Math.min(activeArtifactIndex, artifacts.length - 1)}
-          onActiveIndexChange={setActiveArtifactIndex}
-          onClose={() => setArtifactPanelOpen(false)}
-        />
-      )}
+      {artifactPanelOpen &&
+        (artifacts.length > 0 ||
+          sourcesCitations.length > 0 ||
+          !!activityProgress) && (
+          <ArtifactCanvas
+            artifacts={artifacts}
+            activeIndex={Math.min(
+              activeArtifactIndex,
+              Math.max(artifacts.length - 1, 0),
+            )}
+            onActiveIndexChange={setActiveArtifactIndex}
+            onClose={() => setArtifactPanelOpen(false)}
+            citations={sourcesCitations}
+            focusedCitationIndex={sourcesFocusIndex}
+            {...(activityProgress ? { activityProgress } : {})}
+            onActivityStop={() => void stop()}
+            {...(rightPanelFocus ? { focusTab: rightPanelFocus } : {})}
+          />
+        )}
     </div>
   );
 }
@@ -354,6 +414,7 @@ export function MessageItem({
   onRegenerate,
   onEditSubmit,
   onSwitchBranch,
+  onCitationFocus,
 }: {
   role: "user" | "assistant";
   content: string;
@@ -367,6 +428,7 @@ export function MessageItem({
   onRegenerate?: () => void;
   onEditSubmit?: (nextContent: string) => void;
   onSwitchBranch?: (direction: "prev" | "next") => void;
+  onCitationFocus?: (index: number) => void;
 }) {
   const [focusedCitation, setFocusedCitation] = useState<number | null>(null);
   const [isEditing, setIsEditing] = useState(false);
@@ -375,6 +437,7 @@ export function MessageItem({
     setFocusedCitation(index);
     const el = document.getElementById(`citation-ref-${index}`);
     el?.scrollIntoView?.({ block: "nearest" });
+    onCitationFocus?.(index);
   };
   if (error) {
     // P10-T6-17 — 재시도 가능(retryable:true) 오류만 재시도 버튼 노출(크레딧부족 등
