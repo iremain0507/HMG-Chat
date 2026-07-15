@@ -112,6 +112,39 @@ describe("ToolCallRenderer", () => {
     expect(screen.queryByText(/"artifactId"/)).not.toBeInTheDocument();
   });
 
+  it("deep_research 실행 중 progress 가 있으면 라벨(접힘)과 서브에이전트 작업목록(펼침 스윔레인)을 보여준다", () => {
+    render(
+      <ToolCallRenderer
+        toolCallId="call-1"
+        name="deep_research"
+        args={{ query: "다크팩토리" }}
+        status="running"
+        progress={{
+          stage: "researching",
+          label: "1/2 하위질문 조사 완료",
+          tasks: [
+            {
+              id: "sq-0",
+              title: "다크팩토리 정의는?",
+              status: "done",
+              sourceCount: 3,
+            },
+            {
+              id: "sq-1",
+              title: "국내 사례는?",
+              status: "running",
+              sourceCount: 1,
+            },
+          ],
+        }}
+      />,
+    );
+    expect(screen.getByText(/1\/2 하위질문 조사 완료/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /deep_research/ }));
+    expect(screen.getByText("다크팩토리 정의는?")).toBeInTheDocument();
+    expect(screen.getByText("국내 사례는?")).toBeInTheDocument();
+  });
+
   it("일반 툴(query 인자)은 '멀티에이전트' 배지를 보여주지 않는다", () => {
     render(
       <ToolCallRenderer

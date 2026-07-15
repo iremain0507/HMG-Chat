@@ -142,6 +142,37 @@ function toToolResultContent(result: AgentToolResult): string | unknown {
   }
 }
 
+// 실행 중 tool 이 ctx.emitProgress 로 밀어넣는 tool_progress 이벤트를, 부모 async generator
+//   가 invoke 완료(Promise.all)를 await 하는 동안 인터리브해 yield 하기 위한 단일-소비자
+//   async 큐. push→wake 로 drain 을 깨우고, close 시 drain 이 종료된다(진행 이벤트 없는
+//   대부분 툴은 즉시 close→drain 0회 iteration, 오버헤드 없음).
+function createProgressChannel() {
+  const buffer: ChatEvent[] = [];
+  let wake: (() => void) | null = null;
+  let closed = false;
+  return {
+    push(ev: ChatEvent) {
+      buffer.push(ev);
+      wake?.();
+      wake = null;
+    },
+    close() {
+      closed = true;
+      wake?.();
+      wake = null;
+    },
+    async *drain(): AsyncGenerator<ChatEvent> {
+      for (;;) {
+        while (buffer.length) yield buffer.shift() as ChatEvent;
+        if (closed) return;
+        await new Promise<void>((resolve) => {
+          wake = resolve;
+        });
+      }
+    },
+  };
+}
+
 type CitationPayload = Omit<Extract<ChatEvent, { type: "citation" }>, "type">;
 
 // knowledge_search 등 검색 툴이 json 결과에 { citations: [...] } 형태를 담아 반환하면
@@ -349,16 +380,28 @@ export async function* runTurn(input: RunTurnInput): AsyncIterable<ChatEvent> {
 
     async function invokeAllow(
       toolUse: ToolUseEvent,
+      channel: ReturnType<typeof createProgressChannel>,
     ): Promise<{ toolUse: ToolUseEvent; result: AgentToolResult }> {
       const tool = toolsByName.get(toolUse.name);
       const args = (toolUse.args ?? {}) as Record<string, unknown>;
+      // 툴 실행 중 진행 상태를 부모 toolCallId 로 태깅해 채널로 relay.
+      const ctx: ToolContext = {
+        ...input.toolContext!,
+        signal: input.signal,
+        emitProgress: (progress) =>
+          channel.push({
+            type: "tool_progress",
+            toolCallId: toolUse.toolCallId,
+            ...progress,
+          }),
+      };
       const result: AgentToolResult = tool
         ? (schemaInvalidResult(toolUse.toolCallId, tool, args) ??
           (await instrumentedInvoke(
             tool,
             toolUse.toolCallId,
             args,
-            { ...input.toolContext!, signal: input.signal },
+            ctx,
             "allow",
             input.toolMetrics,
           )))
@@ -380,7 +423,16 @@ export async function* runTurn(input: RunTurnInput): AsyncIterable<ChatEvent> {
     const toolResultParts: ContentPart[] = [];
     for (const segment of segments) {
       if (segment.kind === "allow") {
-        const invoked = await Promise.all(segment.items.map(invokeAllow));
+        const channel = createProgressChannel();
+        const runAll = Promise.all(
+          segment.items.map((item) => invokeAllow(item, channel)),
+        ).finally(() => channel.close());
+        // invoke 실행 중 emitProgress 로 들어온 tool_progress 를 라이브로 인터리브 방출.
+        //   close(=모든 invoke settle) 시 drain 종료 → tool_result 를 순서대로 방출.
+        for await (const progressEvent of channel.drain()) {
+          yield progressEvent;
+        }
+        const invoked = await runAll;
         for (const { toolUse, result } of invoked) {
           const content = toToolResultContent(result);
           yield {

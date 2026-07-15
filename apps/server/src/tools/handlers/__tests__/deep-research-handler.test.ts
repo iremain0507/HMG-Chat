@@ -4,6 +4,7 @@ import type {
   ArtifactRecord,
   LLMProvider,
   ToolContext,
+  ToolProgress,
 } from "@wchat/interfaces";
 import {
   createDeepResearchTool,
@@ -293,6 +294,35 @@ describe("createDeepResearchTool", () => {
     if (result.content.kind === "error") {
       expect(result.content.error.code).toBe("INVALID_INPUT");
     }
+  });
+
+  it("실행 중 emitProgress 로 planning→researching(하위질문 tasks)→synthesizing→done 진행을 방출한다", async () => {
+    const tool = createDeepResearchTool({
+      leadProvider: fakeLeadProvider({
+        plannerResponse: "- 질문 A\n- 질문 B",
+        synthesisResponse: () => "## 리포트 [1][2].",
+        gapCheckResponse: () => "COMPLETE",
+      }),
+      leadModel: "fake-lead-model",
+      workerProvider: fakeWorkerProvider(),
+      workerModel: "fake-worker-model",
+      workerTools: [fakeWorkerTool()],
+      maxTokens: 512,
+      da: fakeArtifactDa(),
+    });
+    const emitted: ToolProgress[] = [];
+    await tool.invoke({
+      toolCallId: "call-p",
+      args: { query: "리서치 목표" },
+      ctx: { ...fakeToolContext(), emitProgress: (p) => emitted.push(p) },
+    });
+    const stages = emitted.map((e) => e.stage);
+    expect(stages[0]).toBe("planning");
+    expect(stages).toContain("researching");
+    expect(stages).toContain("synthesizing");
+    expect(stages.at(-1)).toBe("done");
+    const research = emitted.find((e) => e.stage === "researching");
+    expect(research?.tasks?.map((t) => t.title)).toEqual(["질문 A", "질문 B"]);
   });
 
   it("plan→병렬 researcher→종합 후 인용이 포함된 markdown 아티팩트를 생성하고, 존재하지 않는 인용 마커[99]는 drop 한다(gapCheck COMPLETE 로 1회 종합에 종료)", async () => {

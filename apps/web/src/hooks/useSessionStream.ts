@@ -16,6 +16,19 @@ import { apiFetch } from "../lib/fetch-with-refresh";
 
 export type ToolCallStatus = "queued" | "running" | "done" | "error";
 
+// 14-INTERFACES § ToolProgress/ToolProgressTask 와 1:1 (실행 중 멀티에이전트 진행 스냅샷).
+export interface ToolTask {
+  id: string;
+  title: string;
+  status: "queued" | "running" | "done" | "error";
+  sourceCount?: number;
+}
+export interface ToolProgressState {
+  stage: "planning" | "researching" | "synthesizing" | "done";
+  label?: string;
+  tasks?: ToolTask[];
+}
+
 export type MessagePart =
   | { type: "text"; text: string }
   | {
@@ -25,6 +38,8 @@ export type MessagePart =
       args: unknown;
       status: ToolCallStatus;
       result?: string | unknown;
+      // 실행 중 tool_progress 스냅샷(최신으로 교체). deep_research 등 멀티에이전트 라이브 표시.
+      progress?: ToolProgressState;
     };
 
 export interface MessageBranch {
@@ -100,6 +115,7 @@ type ChatStreamEvent =
   | { type: "text_delta"; text: string }
   | { type: "tool_use"; toolCallId: string; name: string; args: unknown }
   | { type: "tool_result"; toolCallId: string; content: string | unknown }
+  | ({ type: "tool_progress"; toolCallId: string } & ToolProgressState)
   | {
       type: "hitl_request";
       toolCallId: string;
@@ -334,6 +350,27 @@ export function useSessionStream(sessionId: string) {
               },
             ],
           }));
+        } else if (event.type === "tool_progress" && assistantId) {
+          // 실행 중 진행 스냅샷을 해당 tool part 에 최신으로 교체(라이브 스윔레인).
+          updateNode(assistantId, (m) =>
+            m.parts
+              ? {
+                  ...m,
+                  parts: m.parts.map((p) =>
+                    p.type === "tool" && p.toolCallId === event.toolCallId
+                      ? {
+                          ...p,
+                          progress: {
+                            stage: event.stage,
+                            ...(event.label ? { label: event.label } : {}),
+                            ...(event.tasks ? { tasks: event.tasks } : {}),
+                          },
+                        }
+                      : p,
+                  ),
+                }
+              : m,
+          );
         } else if (event.type === "tool_result" && assistantId) {
           updateNode(assistantId, (m) =>
             m.parts

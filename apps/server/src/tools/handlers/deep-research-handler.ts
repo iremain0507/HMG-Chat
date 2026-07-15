@@ -19,6 +19,7 @@ import type {
   LLMProvider,
   PromptBlock,
   ToolContext,
+  ToolProgressTask,
 } from "@wchat/interfaces";
 import { runTurn } from "../../orchestrator/orchestrator.js";
 import { consumeUntilAbort } from "../../orchestrator/consume-until-abort.js";
@@ -289,6 +290,7 @@ export function createDeepResearchTool(deps: DeepResearchToolDeps): AgentTool {
         };
       }
 
+      ctx.emitProgress?.({ stage: "planning", label: "조사 계획 수립 중" });
       const plannerText = await runIsolatedText(
         query,
         deps.leadProvider,
@@ -303,12 +305,42 @@ export function createDeepResearchTool(deps: DeepResearchToolDeps): AgentTool {
         query,
       );
 
+      // 하위질문별 라이브 작업 상태(스윔레인). Promise.all 은 순서 보존이라 findings 순번은
+      //   안전하고, 각 researcher 가 끝나는 대로 해당 task 를 done + sourceCount 로 갱신해
+      //   snapshot(전체 tasks 복사본)을 방출한다.
+      const tasks: ToolProgressTask[] = subQuestions.map((q, i) => ({
+        id: `sq-${i}`,
+        title: q,
+        status: "running",
+        sourceCount: 0,
+      }));
+      const emitResearch = () => {
+        const done = tasks.filter((t) => t.status === "done").length;
+        ctx.emitProgress?.({
+          stage: "researching",
+          label: `${done}/${tasks.length} 하위질문 조사 완료`,
+          tasks: tasks.map((t) => ({ ...t })),
+        });
+      };
+      emitResearch();
       let findings = await Promise.all(
-        subQuestions.map((subQuestion) =>
-          runResearcher(subQuestion, deps, ctx),
-        ),
+        subQuestions.map(async (subQuestion, i) => {
+          const finding = await runResearcher(subQuestion, deps, ctx);
+          const task = tasks[i];
+          if (task) {
+            task.status = "done";
+            task.sourceCount = finding.citations.length;
+          }
+          emitResearch();
+          return finding;
+        }),
       );
 
+      ctx.emitProgress?.({
+        stage: "synthesizing",
+        label: "결과 종합 중",
+        tasks: tasks.map((t) => ({ ...t })),
+      });
       let reportText = "";
       let citations: Citation[] = [];
       for (let iteration = 1; iteration <= maxGapIterations; iteration += 1) {
@@ -340,6 +372,17 @@ export function createDeepResearchTool(deps: DeepResearchToolDeps): AgentTool {
 
         const extra = await runResearcher(gap.gapQuestion, deps, ctx);
         findings = [...findings, extra];
+        tasks.push({
+          id: `gap-${iteration}`,
+          title: gap.gapQuestion,
+          status: "done",
+          sourceCount: extra.citations.length,
+        });
+        ctx.emitProgress?.({
+          stage: "synthesizing",
+          label: "추가 조사 반영 중",
+          tasks: tasks.map((t) => ({ ...t })),
+        });
       }
 
       const { unmatchedIndexes } = matchCitations(reportText, citations);
@@ -358,6 +401,11 @@ export function createDeepResearchTool(deps: DeepResearchToolDeps): AgentTool {
         },
       );
 
+      ctx.emitProgress?.({
+        stage: "done",
+        label: "완료",
+        tasks: tasks.map((t) => ({ ...t })),
+      });
       return {
         toolCallId,
         content: {

@@ -509,6 +509,7 @@ export function MessageItem({
                   {...(part.result !== undefined
                     ? { result: part.result }
                     : {})}
+                  {...(part.progress ? { progress: part.progress } : {})}
                   {...(part.status === "error" && onRegenerate
                     ? { onRetry: onRegenerate }
                     : {})}

@@ -5,8 +5,20 @@
 //   deep_research(멀티에이전트)는 실행 중 진행 컨텍스트(주제·경과·병렬 안내)와 완료 시
 //   구조화 렌더(요약·References·리포트 카드)로 "깜깜이"를 해소한다(Track A, 계약 무변경).
 import React, { useEffect, useRef, useState } from "react";
-import type { ToolCallStatus, Citation } from "../../hooks/useSessionStream";
+import type {
+  ToolCallStatus,
+  Citation,
+  ToolProgressState,
+  ToolTask,
+} from "../../hooks/useSessionStream";
 import { StatusChip } from "./StatusChip";
+
+const TASK_STATUS_LABEL: Record<ToolTask["status"], string> = {
+  queued: "대기",
+  running: "조사 중",
+  done: "완료",
+  error: "오류",
+};
 
 const LARGE_PAYLOAD_CHARS = 400;
 
@@ -125,6 +137,7 @@ export function ToolCallRenderer({
   args,
   status,
   result,
+  progress,
   onRetry,
 }: {
   toolCallId: string;
@@ -132,6 +145,7 @@ export function ToolCallRenderer({
   args: unknown;
   status: ToolCallStatus;
   result?: string | unknown;
+  progress?: ToolProgressState;
   onRetry?: () => void;
 }) {
   const [expanded, setExpanded] = useState(false);
@@ -223,7 +237,10 @@ export function ToolCallRenderer({
                 주제: <b className="font-medium text-fg">{topic}</b>
               </div>
             )}
-            <div>여러 리서처가 하위질문을 병렬 조사 중 · 보통 30~90초 소요</div>
+            <div>
+              {progress?.label ??
+                "여러 리서처가 하위질문을 병렬 조사 중 · 보통 30~90초 소요"}
+            </div>
           </div>
         </>
       )}
@@ -247,6 +264,58 @@ export function ToolCallRenderer({
               {argsText}
             </pre>
           </div>
+
+          {progress?.tasks && progress.tasks.length > 0 && (
+            <div>
+              <div className="mb-1 text-xs font-medium text-fg-muted">
+                진행 상황{progress.label ? ` · ${progress.label}` : ""}
+              </div>
+              <ul className="space-y-1.5">
+                {progress.tasks.map((t) => (
+                  <li
+                    key={t.id}
+                    className="flex items-center gap-2 rounded-lg border border-border bg-bg px-2.5 py-1.5"
+                  >
+                    <span
+                      aria-hidden="true"
+                      className={`flex-none text-xs ${
+                        t.status === "running"
+                          ? "text-primary"
+                          : "text-fg-muted"
+                      }`}
+                    >
+                      {t.status === "done"
+                        ? "✓"
+                        : t.status === "running"
+                          ? "◐"
+                          : t.status === "error"
+                            ? "!"
+                            : "○"}
+                    </span>
+                    <span className="min-w-0 flex-1 truncate text-xs text-fg">
+                      {t.title}
+                    </span>
+                    {t.sourceCount ? (
+                      <span className="flex-none text-xs text-fg-muted">
+                        출처 {t.sourceCount}
+                      </span>
+                    ) : null}
+                    <span
+                      className={`flex-none rounded-full px-2 py-0.5 text-xs ${
+                        t.status === "running"
+                          ? "bg-primary/10 text-primary"
+                          : t.status === "error"
+                            ? "bg-accent/10 text-accent"
+                            : "bg-surface text-fg-muted"
+                      }`}
+                    >
+                      {TASK_STATUS_LABEL[t.status]}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
 
           {research ? (
             <div className="space-y-2">
