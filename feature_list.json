@@ -1076,8 +1076,8 @@
     "acceptance": "fake worker/검색으로 plan→병렬 researcher→종합→인용 리포트 artifact_created+citation, hard cap 종료, 미존재 인용 drop; RED→GREEN, verify-gates green",
     "phase": "P12",
     "team": "T2",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P12-T6-01",
