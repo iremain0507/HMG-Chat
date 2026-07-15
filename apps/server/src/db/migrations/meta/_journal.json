@@ -1,5 +1,118 @@
 {
   "version": "7",
   "dialect": "postgresql",
-  "entries": []
+  "entries": [
+    {
+      "idx": 0,
+      "version": "7",
+      "when": 1783888311605,
+      "tag": "0001_identity",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1783888400000,
+      "tag": "0012_password_or_magic",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1783888500000,
+      "tag": "0013_refresh_token_families",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1783888600000,
+      "tag": "0002_sessions_messages",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1783888700000,
+      "tag": "0003_sessions_active_runs",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1783888800000,
+      "tag": "0004_projects_members",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1783888900000,
+      "tag": "0015_project_team_scope_rls",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1783889000000,
+      "tag": "0005_project_documents_chunks",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1783889100000,
+      "tag": "0014_uploads",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1783889200000,
+      "tag": "0006_artifacts_revisions",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1783889300000,
+      "tag": "0007_artifact_shares",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1783889400000,
+      "tag": "0008_user_memories_locks",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1783889500000,
+      "tag": "0009_mcp_servers_skill_assets",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1783889600000,
+      "tag": "0010_quotas_usage",
+      "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1783889700000,
+      "tag": "0011_observability",
+      "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "7",
+      "when": 1783889800000,
+      "tag": "0016_indexes_vacuum",
+      "breakpoints": true
+    }
+  ]
 }

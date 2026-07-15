@@ -1,0 +1,586 @@
+"use client";
+
+// components/chat/ChatView.tsx — LLM 채팅 UI (ChatGPT/Claude 스타일).
+//   헤더 + 메시지 버블(user 우측/assistant 아바타+마크다운) + 스트리밍 커서 + 하단 컴포저.
+//   데이터: useSessionStream({ messages, isStreaming, send, stop }). Hyundai WIA CI 토큰.
+import React, { useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
+import {
+  useSessionStream,
+  type MessagePart,
+  type Citation,
+  type MessageBranch,
+} from "../../hooks/useSessionStream";
+import { useCurrentUser } from "../../hooks/useCurrentUser";
+import { useOnlineStatus } from "../../hooks/useOnlineStatus";
+import { useProjects } from "../../hooks/useProjects";
+import { useSessionProject } from "../../hooks/useSessionProject";
+import { ArtifactCanvas } from "../artifacts/ArtifactCanvas";
+import {
+  ChatInput,
+  type ChatInputHandle,
+  type SlashCommand,
+} from "./ChatInput";
+import { HitlPrompt } from "./HitlPrompt";
+import { Markdown } from "./Markdown";
+import { MemoryPanel } from "./MemoryPanel";
+import { MessageActions } from "./MessageActions";
+import { ProjectPicker } from "./ProjectPicker";
+import { ShareExportMenu } from "./ShareExportMenu";
+import { ToolCallRenderer } from "./ToolCallRenderer";
+
+const SLASH_COMMANDS: SlashCommand[] = [
+  { id: "memories", label: "memories", description: "저장된 메모리 보기" },
+];
+
+const BOTTOM_THRESHOLD_PX = 80;
+const ANNOUNCE_DEBOUNCE_MS = 500;
+
+const SUGGESTIONS = [
+  "프로젝트 요약해줘",
+  "회의록 초안 작성해줘",
+  "이 코드 리뷰해줘",
+];
+
+export function ChatView({ sessionId }: { sessionId: string }) {
+  const router = useRouter();
+  const {
+    messages,
+    isStreaming,
+    send,
+    stop,
+    hitlRequest,
+    respondHitl,
+    artifacts,
+    editMessage,
+    switchBranch,
+  } = useSessionStream(sessionId);
+  const { org } = useCurrentUser();
+  const online = useOnlineStatus();
+  const { projects } = useProjects();
+  const { projectId, setProject } = useSessionProject(sessionId);
+  const [autoFollow, setAutoFollow] = useState(true);
+  const [announceText, setAnnounceText] = useState("");
+  const [artifactPanelOpen, setArtifactPanelOpen] = useState(false);
+  const [activeArtifactIndex, setActiveArtifactIndex] = useState(0);
+  const [memoryPanelOpen, setMemoryPanelOpen] = useState(false);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const chatInputRef = useRef<ChatInputHandle>(null);
+  const wasStreamingRef = useRef(isStreaming);
+  const prevArtifactCountRef = useRef(0);
+
+  // artifact_created 자동 오픈 — 18-FRONTEND-WIREFRAMES § 18.5.1 "ArtifactContext.open()".
+  useEffect(() => {
+    if (artifacts.length > prevArtifactCountRef.current) {
+      setActiveArtifactIndex(artifacts.length - 1);
+      setArtifactPanelOpen(true);
+    }
+    prevArtifactCountRef.current = artifacts.length;
+  }, [artifacts.length]);
+
+  // Cmd/Ctrl+\ 패널 토글 — 18-FRONTEND-WIREFRAMES § 18.5.1 키맵.
+  useEffect(() => {
+    function onKeyDown(e: globalThis.KeyboardEvent) {
+      if ((e.metaKey || e.ctrlKey) && e.key === "\\") {
+        e.preventDefault();
+        setArtifactPanelOpen((prev) => !prev);
+      }
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
+
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (el && autoFollow) el.scrollTop = el.scrollHeight;
+  }, [messages, isStreaming, autoFollow]);
+
+  const lastMessage = messages[messages.length - 1];
+  const lastAssistantContent =
+    lastMessage?.role === "assistant" ? lastMessage.content : "";
+
+  // 빠른 델타마다 SR 안내가 갱신되면 스크린리더가 매 글자를 읽어 소음이 되므로,
+  // 델타가 잠잠해진 뒤(트레일링 디바운스)에만 announcer 텍스트를 갱신한다.
+  useEffect(() => {
+    if (!lastAssistantContent) return;
+    const timer = setTimeout(() => {
+      setAnnounceText(lastAssistantContent);
+    }, ANNOUNCE_DEBOUNCE_MS);
+    return () => clearTimeout(timer);
+  }, [lastAssistantContent]);
+
+  // Stop 버튼이 사라지며(또는 disabled 전송 버튼으로 대체되며) 포커스가 유실된
+  // 경우에만 입력창으로 복귀시킨다 — 사용자가 다른 요소에 의도적으로 포커스했다면
+  // 그대로 둔다 (그것이야말로 "새 turn 이 포커스를 탈취"하지 않는다는 뜻이다).
+  useEffect(() => {
+    if (wasStreamingRef.current && !isStreaming) {
+      const active = document.activeElement;
+      const lostFocus =
+        active === document.body ||
+        (active instanceof HTMLButtonElement && active.disabled);
+      if (lostFocus) chatInputRef.current?.focus();
+    }
+    wasStreamingRef.current = isStreaming;
+  }, [isStreaming]);
+
+  function onScroll() {
+    const el = scrollRef.current;
+    if (!el) return;
+    const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+    setAutoFollow(distanceFromBottom < BOTTOM_THRESHOLD_PX);
+  }
+
+  function scrollToBottom() {
+    const el = scrollRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
+    setAutoFollow(true);
+  }
+
+  const empty = messages.length === 0;
+
+  return (
+    <div className="flex h-full">
+      <div className="flex h-full min-w-0 flex-1 flex-col bg-bg text-fg">
+        <header className="flex items-center justify-between border-b border-border px-4 py-3">
+          <button
+            type="button"
+            onClick={() => router.push("/")}
+            className="rounded-lg px-2 py-1 text-sm text-fg-muted hover:text-fg"
+          >
+            ← 홈
+          </button>
+          <div className="flex items-center gap-2">
+            <span className="text-sm font-semibold text-primary">WChat</span>
+            <ProjectPicker
+              projects={projects}
+              projectId={projectId}
+              onSelect={(next) => void setProject(next)}
+            />
+          </div>
+          <div className="flex items-center gap-2">
+            <ShareExportMenu
+              title="WChat 대화"
+              messages={messages.map((m) => ({
+                role: m.role,
+                content: m.content,
+              }))}
+              artifacts={artifacts}
+            />
+            <button
+              type="button"
+              onClick={() => router.push(`/chat/${crypto.randomUUID()}`)}
+              className="rounded-lg border border-border px-3 py-1 text-sm text-fg-muted hover:border-primary hover:text-fg"
+            >
+              ＋ 새 채팅
+            </button>
+          </div>
+        </header>
+
+        <div className="relative flex-1 overflow-hidden">
+          <div
+            ref={scrollRef}
+            data-testid="chat-scroll"
+            onScroll={onScroll}
+            role="log"
+            aria-live="polite"
+            aria-atomic="false"
+            className="h-full overflow-y-auto"
+          >
+            <div className="sr-only" data-testid="stream-announcer">
+              {announceText}
+            </div>
+            {empty ? (
+              <div className="grid h-full place-items-center px-6">
+                <div className="text-center">
+                  <div className="mx-auto grid h-14 w-14 place-items-center rounded-2xl bg-primary text-2xl font-bold text-primary-fg">
+                    W
+                  </div>
+                  <h1 className="mt-5 text-2xl font-semibold">
+                    무엇을 도와드릴까요?
+                  </h1>
+                  <p className="mt-2 text-fg-muted">
+                    메시지를 입력해 대화를 시작하세요.
+                  </p>
+                  <div className="mt-6 flex flex-wrap justify-center gap-2">
+                    {SUGGESTIONS.map((s) => (
+                      <button
+                        key={s}
+                        type="button"
+                        onClick={() => {
+                          chatInputRef.current?.setValue(s);
+                          chatInputRef.current?.focus();
+                        }}
+                        className="rounded-full border border-border bg-surface px-3.5 py-2 text-sm text-fg-muted hover:border-primary hover:text-fg"
+                      >
+                        {s}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <ul
+                aria-label="메시지 목록"
+                className="mx-auto max-w-3xl space-y-6 px-4 py-6"
+              >
+                {messages.map((m, i) => {
+                  const canRegenerate = m.role === "assistant" && !isStreaming;
+                  return (
+                    <MessageItem
+                      key={m.id}
+                      role={m.role}
+                      content={m.content}
+                      {...(m.parts ? { parts: m.parts } : {})}
+                      {...(m.citations ? { citations: m.citations } : {})}
+                      {...(m.branch ? { branch: m.branch } : {})}
+                      error={m.error ?? false}
+                      {...(m.retryable !== undefined
+                        ? { retryable: m.retryable }
+                        : {})}
+                      {...(m.errorCategory
+                        ? { errorCategory: m.errorCategory }
+                        : {})}
+                      streaming={
+                        isStreaming &&
+                        i === messages.length - 1 &&
+                        m.role === "assistant"
+                      }
+                      {...(canRegenerate
+                        ? {
+                            onRegenerate: () => {
+                              const priorUser = messages
+                                .slice(0, i)
+                                .reverse()
+                                .find((prev) => prev.role === "user");
+                              if (priorUser) void send(priorUser.content);
+                            },
+                          }
+                        : {})}
+                      {...(m.role === "user"
+                        ? {
+                            onEditSubmit: (nextContent: string) =>
+                              void editMessage(m.id, nextContent),
+                            onSwitchBranch: (direction: "prev" | "next") =>
+                              switchBranch(m.id, direction),
+                          }
+                        : {})}
+                    />
+                  );
+                })}
+              </ul>
+            )}
+          </div>
+          {!autoFollow && (
+            <button
+              type="button"
+              onClick={scrollToBottom}
+              className="absolute bottom-3 left-1/2 -translate-x-1/2 rounded-full border border-border bg-surface px-3 py-1.5 text-xs text-fg-muted shadow-md hover:border-primary hover:text-fg"
+            >
+              최신으로↓
+            </button>
+          )}
+        </div>
+
+        {hitlRequest && (
+          <div className="border-t border-border px-4 pt-3">
+            <HitlPrompt request={hitlRequest} onRespond={respondHitl} />
+          </div>
+        )}
+
+        {memoryPanelOpen && (
+          <div className="border-t border-border px-4 pt-3">
+            <MemoryPanel onClose={() => setMemoryPanelOpen(false)} />
+          </div>
+        )}
+
+        {!online && (
+          <div
+            data-testid="offline-banner"
+            role="status"
+            className="border-t border-accent/30 bg-accent/10 px-4 py-2 text-center text-xs text-accent"
+          >
+            오프라인 상태입니다 — 연결이 복구되면 다시 전송할 수 있어요.
+          </div>
+        )}
+
+        <div className="border-t border-border px-4 py-3">
+          <ChatInput
+            ref={chatInputRef}
+            sessionId={sessionId}
+            isStreaming={isStreaming}
+            disabled={!online}
+            onStop={() => void stop()}
+            onSend={(content, attachments, options) =>
+              send(content, attachments, options)
+            }
+            slashCommands={SLASH_COMMANDS}
+            onSlashCommand={(command) => {
+              if (command.id === "memories") setMemoryPanelOpen(true);
+            }}
+            availableModels={org?.allowedModels ?? []}
+            availableTools={org?.allowedTools ?? []}
+          />
+          <p className="mx-auto mt-2 max-w-3xl text-center text-xs text-fg-muted">
+            WChat은 dev-stub 응답을 표시할 수 있습니다.
+          </p>
+        </div>
+      </div>
+
+      {artifactPanelOpen && artifacts.length > 0 && (
+        <ArtifactCanvas
+          artifacts={artifacts}
+          activeIndex={Math.min(activeArtifactIndex, artifacts.length - 1)}
+          onActiveIndexChange={setActiveArtifactIndex}
+          onClose={() => setArtifactPanelOpen(false)}
+        />
+      )}
+    </div>
+  );
+}
+
+export function MessageItem({
+  role,
+  content,
+  parts,
+  citations,
+  branch,
+  streaming,
+  error,
+  retryable,
+  errorCategory,
+  onRegenerate,
+  onEditSubmit,
+  onSwitchBranch,
+}: {
+  role: "user" | "assistant";
+  content: string;
+  parts?: MessagePart[];
+  citations?: Citation[];
+  branch?: MessageBranch;
+  streaming: boolean;
+  error?: boolean;
+  retryable?: boolean;
+  errorCategory?: string;
+  onRegenerate?: () => void;
+  onEditSubmit?: (nextContent: string) => void;
+  onSwitchBranch?: (direction: "prev" | "next") => void;
+}) {
+  const [focusedCitation, setFocusedCitation] = useState<number | null>(null);
+  const [isEditing, setIsEditing] = useState(false);
+  const [draft, setDraft] = useState(content);
+  const onCitationClick = (index: number) => {
+    setFocusedCitation(index);
+    const el = document.getElementById(`citation-ref-${index}`);
+    el?.scrollIntoView?.({ block: "nearest" });
+  };
+  if (error) {
+    // P10-T6-17 — 재시도 가능(retryable:true) 오류만 재시도 버튼 노출(크레딧부족 등
+    // 비재시도 오류는 노출 안 함). rate-limit 카테고리는 429 백오프 안내를 덧붙인다.
+    return (
+      <li data-role="error" className="flex gap-3">
+        <div className="mt-0.5 grid h-8 w-8 flex-none place-items-center rounded-lg bg-accent text-sm font-bold text-white">
+          !
+        </div>
+        <div className="flex min-w-0 flex-1 items-start justify-between gap-3 rounded-xl border border-accent/40 bg-accent/10 px-3 py-2 text-sm text-accent">
+          <span>
+            <span className="font-semibold">오류</span> · {content}
+            {errorCategory === "rate-limit" && (
+              <span className="ml-1 text-accent/80">
+                잠시 후 다시 시도해주세요.
+              </span>
+            )}
+          </span>
+          {retryable && onRegenerate && (
+            <button
+              type="button"
+              onClick={onRegenerate}
+              className="flex-none rounded-full border border-accent/40 px-2 py-0.5 text-xs text-accent hover:bg-accent/10"
+            >
+              재시도
+            </button>
+          )}
+        </div>
+      </li>
+    );
+  }
+  if (role === "user") {
+    if (isEditing) {
+      return (
+        <li data-role="user" className="flex justify-end">
+          <div className="w-full max-w-[80%]">
+            <div className="flex flex-col gap-2 rounded-2xl border border-primary bg-surface p-2">
+              <textarea
+                aria-label="메시지 편집"
+                value={draft}
+                onChange={(e) => setDraft(e.target.value)}
+                className="min-h-[60px] w-full resize-none bg-transparent px-1 py-1 text-sm text-fg outline-none"
+              />
+              <div className="flex justify-end gap-2 text-xs">
+                <button
+                  type="button"
+                  onClick={() => setIsEditing(false)}
+                  className="rounded-md px-2 py-1 text-fg-muted hover:text-fg"
+                >
+                  취소
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsEditing(false);
+                    if (draft.trim() && draft !== content) {
+                      onEditSubmit?.(draft);
+                    }
+                  }}
+                  className="rounded-md bg-primary px-2 py-1 text-primary-fg"
+                >
+                  저장
+                </button>
+              </div>
+            </div>
+          </div>
+        </li>
+      );
+    }
+    return (
+      <li data-role="user" className="group flex justify-end">
+        <div className="max-w-[80%]">
+          <div className="whitespace-pre-wrap rounded-2xl bg-primary px-4 py-2.5 text-primary-fg">
+            {content}
+          </div>
+          <div className="mt-1 flex items-center justify-end gap-2">
+            {branch && branch.count > 1 && (
+              <div className="flex items-center gap-1 text-fg-muted">
+                <button
+                  type="button"
+                  aria-label="이전 분기"
+                  disabled={branch.index === 1}
+                  onClick={() => onSwitchBranch?.("prev")}
+                  className="rounded-md px-1 py-0.5 text-xs hover:text-fg disabled:opacity-30"
+                >
+                  ‹
+                </button>
+                <span data-testid="message-branch-pager" className="text-xs">
+                  {branch.index} / {branch.count}
+                </span>
+                <button
+                  type="button"
+                  aria-label="다음 분기"
+                  disabled={branch.index === branch.count}
+                  onClick={() => onSwitchBranch?.("next")}
+                  className="rounded-md px-1 py-0.5 text-xs hover:text-fg disabled:opacity-30"
+                >
+                  ›
+                </button>
+              </div>
+            )}
+            <div className="opacity-0 transition-opacity group-hover:opacity-100">
+              <MessageActions
+                role="user"
+                content={content}
+                onEdit={() => {
+                  setDraft(content);
+                  setIsEditing(true);
+                }}
+              />
+            </div>
+          </div>
+        </div>
+      </li>
+    );
+  }
+  const hasToolParts = (parts ?? []).some((p) => p.type === "tool");
+  return (
+    <li data-role="assistant" className="group flex gap-3">
+      <div className="mt-0.5 grid h-8 w-8 flex-none place-items-center rounded-lg bg-primary text-sm font-bold text-primary-fg">
+        W
+      </div>
+      <div className="min-w-0 flex-1 pt-1">
+        {hasToolParts ? (
+          <div className="space-y-3">
+            {(parts ?? []).map((part, idx) =>
+              part.type === "tool" ? (
+                <ToolCallRenderer
+                  key={part.toolCallId}
+                  toolCallId={part.toolCallId}
+                  name={part.name}
+                  args={part.args}
+                  status={part.status}
+                  {...(part.result !== undefined
+                    ? { result: part.result }
+                    : {})}
+                  {...(part.status === "error" && onRegenerate
+                    ? { onRetry: onRegenerate }
+                    : {})}
+                />
+              ) : part.text ? (
+                <Markdown
+                  key={`text-${idx}`}
+                  streaming={streaming}
+                  {...(citations ? { citations } : {})}
+                  onCitationClick={onCitationClick}
+                >
+                  {part.text}
+                </Markdown>
+              ) : null,
+            )}
+          </div>
+        ) : content ? (
+          <Markdown
+            streaming={streaming}
+            {...(citations ? { citations } : {})}
+            onCitationClick={onCitationClick}
+          >
+            {content}
+          </Markdown>
+        ) : null}
+        {citations && citations.length > 0 && (
+          <div
+            data-testid="citation-reference-footer"
+            className="mt-3 border-t border-border pt-2 text-xs text-fg-muted"
+          >
+            <div className="font-semibold text-fg">Reference</div>
+            <ul className="mt-1 space-y-1">
+              {citations.map((c) => (
+                <li
+                  key={c.index}
+                  id={`citation-ref-${c.index}`}
+                  data-testid={`citation-ref-${c.index}`}
+                  data-focused={focusedCitation === c.index}
+                  className="rounded px-1 py-0.5 data-[focused=true]:bg-primary/10 data-[focused=true]:text-fg"
+                >
+                  [{c.index}] {c.filename}
+                  {c.page ? ` p.${c.page}` : ""}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+        {streaming && !content && !hasToolParts && (
+          <div
+            data-testid="shimmer"
+            aria-label="응답 생성 중"
+            className="space-y-2"
+          >
+            <div className="h-3.5 w-3/4 animate-pulse rounded bg-surface" />
+            <div className="h-3.5 w-1/2 animate-pulse rounded bg-surface" />
+          </div>
+        )}
+        {streaming && content && (
+          <span
+            className="ml-0.5 inline-block h-4 w-[3px] animate-pulse bg-fg align-middle"
+            aria-label="응답 생성 중"
+          />
+        )}
+        {!streaming && (
+          <div className="mt-1 opacity-0 transition-opacity group-hover:opacity-100">
+            <MessageActions
+              role="assistant"
+              content={content}
+              {...(onRegenerate ? { onRegenerate } : {})}
+            />
+          </div>
+        )}
+      </div>
+    </li>
+  );
+}

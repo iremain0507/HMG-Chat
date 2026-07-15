@@ -11,5 +11,91 @@
   },
   "enabledPlugins": {
     "superpowers@superpowers-marketplace": true
+  },
+  "permissions": {
+    "allow": [
+      "Bash(bash scripts/verify-browser.sh*)",
+      "Bash(bash scripts/verify-gates.sh*)",
+      "Bash(git add*)",
+      "Bash(git commit*)",
+      "Bash(git diff*)",
+      "Bash(git log*)",
+      "Bash(git status*)",
+      "Bash(git worktree*)",
+      "Bash(npx playwright*)",
+      "Bash(pip3 *)",
+      "Bash(pnpm *)",
+      "Bash(pnpm install)",
+      "Bash(poetry *)",
+      "Bash(pytest*)",
+      "Bash(python3 *)",
+      "Bash(python3 -m pytest*)",
+      "Edit(**)",
+      "Glob(**)",
+      "Grep(**)",
+      "Read(**)",
+      "Write(**)"
+    ],
+    "deny": [
+      "Read(./**/.env*)",
+      "Read(./**/secrets/**)",
+      "Read(~/.ssh/**)",
+      "Read(~/.aws/**)",
+      "Edit(./packages/shared/**)",
+      "Edit(./packages/interfaces/**)",
+      "Bash(rm -rf*)",
+      "Bash(git push*)",
+      "Bash(git merge*)",
+      "Bash(git rebase*)",
+      "Bash(git reset --hard*)",
+      "Bash(git clean*)",
+      "Bash(curl * | bash)",
+      "Bash(wget * | sh)",
+      "Bash(aws *)",
+      "Bash(gcloud *)",
+      "Bash(az *)",
+      "Bash(kubectl *)",
+      "Bash(helm *)",
+      "Bash(terraform *)",
+      "Bash(pulumi *)",
+      "Bash(npm *)",
+      "Bash(yarn *)"
+    ],
+    "ask": [],
+    "defaultMode": "acceptEdits"
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "jq -r '.tool_input.command' | grep -qE 'rm -rf|DROP TABLE|TRUNCATE|git push|git merge|git rebase|--no-verify|docker\\.sock' && { echo 'Blocked by loop guard' >&2; exit 2; } || exit 0"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "FILE=$(jq -r '.tool_input.file_path // empty'); [ -n \"$FILE\" ] && case \"$FILE\" in *.ts|*.tsx|*.js|*.jsx) npx prettier --write \"$FILE\" >/dev/null 2>&1 || true;; esac; exit 0"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "INPUT=$(cat); [ \"$(echo \"$INPUT\" | jq -r '.stop_hook_active')\" = 'true' ] && exit 0; [ -f .ralph/BLOCKED ] && exit 0; [ -f .ralph/PHASE_DONE ] && exit 0; bash scripts/verify-gates.sh >/tmp/gates.out 2>&1 && exit 0 || { echo \"{\\\"decision\\\":\\\"block\\\",\\\"reason\\\":\\\"Quality gates failing. Fix before stopping:\\\\n$(tail -c 800 /tmp/gates.out | sed 's/\"/\\\\\"/g')\\\"}\"; exit 0; }"
+          }
+        ]
+      }
+    ]
   }
 }

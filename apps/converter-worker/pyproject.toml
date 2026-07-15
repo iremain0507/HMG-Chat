@@ -1,0 +1,26 @@
+[tool.poetry]
+name = "wchat-converter-worker"
+version = "0.0.0"
+description = "WChat converter worker — PPTX/DOCX → PDF (LibreOffice)"
+authors = []
+
+[tool.poetry.dependencies]
+python = "^3.12"
+fastapi = "^0.115.0"
+uvicorn = {extras = ["standard"], version = "^0.32.0"}
+boto3 = "^1.35.0"
+python-multipart = "^0.0.12"
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^8.3.0"
+httpx = "^0.27.0"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+
+# pytest 를 어느 CWD 에서 실행하든 src 패키지가 import 되도록 rootdir 를 pythonpath 에 추가.
+# 로컬 dev 는 python3.9 + `python3 -m pytest apps/converter-worker` 로 실행(prod 는 3.12/poetry).
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["src/tests"]

@@ -23,20 +23,24 @@
     "db:migrate": "pnpm --filter @wchat/server db:migrate",
     "db:seed": "pnpm --filter @wchat/server db:seed",
     "gen:api-docs": "pnpm --filter @wchat/server openapi:generate",
+    "check:git-hooks": "bash scripts/check-git-hooks.sh",
+    "check:onboarding": "bash scripts/check-onboarding.sh",
+    "load:100": "node scripts/load-test.mjs --users 100",
+    "load:1000": "node scripts/load-test.mjs --users 1000",
     "prepare": "bash scripts/setup-hooks.sh"
   },
   "devDependencies": {
+    "@eslint/js": "^9.10.0",
+    "@types/node": "^22.5.0",
+    "concurrently": "^9.0.0",
+    "eslint": "^9.10.0",
+    "globals": "^15.0.0",
+    "lint-staged": "^15.2.0",
+    "prettier": "^3.3.0",
     "turbo": "^2.5.0",
     "typescript": "5.6.3",
-    "vitest": "2.1.0",
-    "eslint": "^9.10.0",
-    "@eslint/js": "^9.10.0",
     "typescript-eslint": "^8.0.0",
-    "globals": "^15.0.0",
-    "prettier": "^3.3.0",
-    "lint-staged": "^15.2.0",
-    "concurrently": "^9.0.0",
-    "@types/node": "^22.5.0"
+    "vitest": "2.1.0"
   },
   "pnpm": {
     "onlyBuiltDependencies": [

@@ -10,24 +10,39 @@
     "test:unit": "vitest run --dir src --coverage --coverage.reporter=cobertura",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",
-    "lint": "eslint src next.config.ts tailwind.config.ts"
+    "lint": "eslint src next.config.ts tailwind.config.ts",
+    "api-types:generate": "openapi-typescript ../server/openapi.json -o src/lib/api-types.generated.ts"
   },
   "dependencies": {
     "@wchat/shared": "workspace:*",
+    "katex": "^0.17.0",
+    "mermaid": "^11.16.0",
     "next": "15.0.0",
+    "pdfjs-dist": "4.5.136",
     "react": "19.0.0",
-    "react-dom": "19.0.0"
+    "react-dom": "19.0.0",
+    "react-markdown": "^9.1.0",
+    "react-pdf": "^9.0.0",
+    "rehype-highlight": "^7.0.0",
+    "rehype-katex": "^7.0.1",
+    "remark-gfm": "^4.0.1",
+    "remark-math": "^6.0.0"
   },
   "devDependencies": {
+    "@playwright/test": "^1.61.1",
+    "@tailwindcss/postcss": "4.3.2",
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.2",
     "@types/node": "^22.5.0",
     "@types/react": "19.0.0",
     "@types/react-dom": "19.0.0",
-    "@tailwindcss/postcss": "4.0.0",
-    "tailwindcss": "4.0.0",
-    "postcss": "^8.4.0",
-    "autoprefixer": "^10.4.0",
-    "vitest": "2.1.0",
     "@vitest/coverage-v8": "2.1.0",
-    "eslint-config-next": "15.0.0"
+    "autoprefixer": "^10.4.0",
+    "eslint-config-next": "15.0.0",
+    "jsdom": "^25.0.1",
+    "openapi-typescript": "^7.0.0",
+    "postcss": "^8.4.0",
+    "tailwindcss": "4.3.2",
+    "vitest": "2.1.0"
   }
 }

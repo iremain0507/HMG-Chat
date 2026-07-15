@@ -11,5 +11,6 @@ const opts = {
 };
 const spec = buildOpenApi(opts);
 const outPath = resolve(import.meta.dirname, "..", "openapi.json");
-writeFileSync(outPath, JSON.stringify(spec, null, 2));
+// 끝에 개행 추가 — prettier 포맷과 일치시켜 재생성 시 무의미한 diff(=CI drift) 방지.
+writeFileSync(outPath, JSON.stringify(spec, null, 2) + "\n");
 console.warn(`[gen-openapi] wrote ${outPath}`);

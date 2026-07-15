@@ -1,13 +1,17 @@
 name: CI
 
 # 계획(15-CI-PIPELINE.md)의 GitLab CI 의도를 GitHub Actions 로 적응.
-# Phase 0 범위: validate(typecheck/lint) + test + build + secret-scan.
+# validate(typecheck/lint/test/build) + secret-scan(gitleaks) + sast(semgrep) + container-scan(trivy).
 # 로컬 개발은 맥 미니, CI 는 ubuntu — CI 는 커밋하지 않으므로 dev/deploy 훅의 macOS 규칙과 무관.
 
 on:
-  push:
-    branches: [main, "integration/**"]
   pull_request:
+  push:
+    branches:
+      - main
+      - "integration/**"
+    tags:
+      - "v*.*.*"
 
 concurrency:
   group: ci-${{ github.ref }}
@@ -58,3 +62,30 @@ jobs:
       - uses: gitleaks/gitleaks-action@v2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  sast:
+    name: semgrep (SAST)
+    runs-on: ubuntu-latest
+    container:
+      image: semgrep/semgrep
+    steps:
+      - uses: actions/checkout@v4
+      - name: semgrep scan (OWASP top-ten + TypeScript rulesets)
+        run: semgrep --config p/owasp-top-ten --config p/typescript --error
+
+  # 계획(15-CI-PIPELINE.md)의 container-scan 은 docker-build → ECR push 이미지를 trivy image
+  # 로 스캔하지만, AWS 계정이 아직 LOCAL_ONLY(P0-T1-01 blocked_tasks 참고)라 이미지 빌드/ECR
+  # 가 없다. 대신 저장소 filesystem + 의존성 CVE 를 trivy fs 로 스캔 — AWS 프로비저닝 후
+  # deploy.yml 에 docker-build 단계가 추가되면 이미지 스캔으로 교체한다.
+  container-scan:
+    name: trivy (filesystem CVE scan)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: trivy fs scan
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: fs
+          scan-ref: .
+          severity: HIGH,CRITICAL
+          exit-code: "1"

@@ -1,0 +1,6 @@
+{
+  "name": "skill-name",
+  "version": "0.1.0",
+  "private": true,
+  "description": "SKILL.md frontmatter 의 name/version 과 반드시 일치시킬 것 (L09)."
+}

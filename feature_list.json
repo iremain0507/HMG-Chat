@@ -1,0 +1,1091 @@
+[
+  {
+    "id": "P0-T1-01",
+    "desc": "AWS 환경(dev/staging/prod) 셋업 — VPC/RDS/Redis/ECR/ECS cluster (infra/aws/setup-infra.sh)",
+    "acceptance": "pnpm install && pnpm test && pnpm lint && pnpm typecheck 통과",
+    "phase": "P0",
+    "team": "T1",
+    "passes": false,
+    "attempts": 1
+  },
+  {
+    "id": "P0-T1-02",
+    "desc": ".gitlab-ci.yml 3-tier pipeline 첫 버전 (build / test / lint)",
+    "acceptance": "CI 가 PR / main / release pipeline 으로 분기",
+    "phase": "P0",
+    "team": "T1",
+    "passes": true,
+    "attempts": 1
+  },
+  {
+    "id": "P0-T1-03",
+    "desc": ".husky/{pre-commit, commit-msg, pre-push} 훅 설치",
+    "acceptance": "pnpm install && pnpm test && pnpm lint && pnpm typecheck 통과",
+    "phase": "P0",
+    "team": "T1",
+    "passes": true,
+    "attempts": 2
+  },
+  {
+    "id": "P0-T1-04",
+    "desc": "scripts/{setup-git,tunnel}.sh + README 30분 onboarding 절차",
+    "acceptance": "새 개발자가 README 보고 30분 안에 pnpm dev 실행 가능",
+    "phase": "P0",
+    "team": "T1",
+    "passes": true,
+    "attempts": 1
+  },
+  {
+    "id": "P0-T2-01",
+    "desc": "orchestrator 도메인 hello-world 진입점 + 첫 vitest 1건 (RED → GREEN)",
+    "acceptance": "pnpm test 통과 (첫 vitest RED → GREEN)",
+    "phase": "P0",
+    "team": "T2",
+    "passes": true,
+    "attempts": 1
+  },
+  {
+    "id": "P0-T3-01",
+    "desc": "knowledge 도메인 hello-world 진입점 + 첫 vitest 1건 (RED → GREEN)",
+    "acceptance": "pnpm test 통과 (첫 vitest RED → GREEN)",
+    "phase": "P0",
+    "team": "T3",
+    "passes": true,
+    "attempts": 1
+  },
+  {
+    "id": "P0-T4-01",
+    "desc": "artifact routes 도메인 hello-world 진입점 + 첫 vitest 1건 (RED → GREEN)",
+    "acceptance": "pnpm test 통과 (첫 vitest RED → GREEN)",
+    "phase": "P0",
+    "team": "T4",
+    "passes": true,
+    "attempts": 1
+  },
+  {
+    "id": "P0-T5-01",
+    "desc": "skills 도메인 hello-world 진입점 + 첫 vitest 1건 (RED → GREEN)",
+    "acceptance": "pnpm test 통과 (첫 vitest RED → GREEN)",
+    "phase": "P0",
+    "team": "T5",
+    "passes": true,
+    "attempts": 1
+  },
+  {
+    "id": "P0-T6-01",
+    "desc": "apps/web 도메인 hello-world 진입점 + 첫 vitest 1건 (RED → GREEN)",
+    "acceptance": "http://localhost:3000 접속 → 홈 페이지 표시; pnpm test 통과",
+    "phase": "P0",
+    "team": "T6",
+    "passes": true,
+    "attempts": 1
+  },
+  {
+    "id": "P0.5-RC-01",
+    "desc": "[HUMAN GATE] integration owner 단일 PR — 12 interface 파일 + index.ts/types.ts/errors.ts (총 15 파일) + Zod shared types + openapi stub + api-client + error registry + envelope middleware + CODEOWNERS + ChatEvent/storageKind freeze",
+    "acceptance": "pnpm install/typecheck/lint + openapi:generate + api-types:generate + lint-plan.sh 모두 0 exit",
+    "phase": "P0.5",
+    "team": "RC",
+    "passes": true,
+    "attempts": 1
+  },
+  {
+    "id": "P1-T1-01",
+    "desc": "마이그레이션 0001_identity.sql — organizations / org_units / users / user_org_units (RLS 임베디드)",
+    "acceptance": "한 org 사용자가 다른 org 데이터를 query 할 수 없음 (RLS 통합 테스트)",
+    "phase": "P1",
+    "team": "T1",
+    "passes": true,
+    "attempts": 2
+  },
+  {
+    "id": "P1-T1-02",
+    "desc": "마이그레이션 0012_password_or_magic.sql — users.password_hash + magic_link_tokens",
+    "acceptance": "빈 DB 에서 pnpm db:migrate 0 exit; magic-link 흐름 의존 테이블 생성",
+    "phase": "P1",
+    "team": "T1",
+    "passes": true,
+    "attempts": 2
+  },
+  {
+    "id": "P1-T1-03",
+    "desc": "마이그레이션 0013_refresh_token_families.sql — JWT refresh rotation family (도난 감지)",
+    "acceptance": "refresh family rotation 으로 도난 감지 동작 (jwt/refresh 테스트)",
+    "phase": "P1",
+    "team": "T1",
+    "passes": true,
+    "attempts": 1
+  },
+  {
+    "id": "P1-T1-04",
+    "desc": "middleware/{auth,jwt,rls-context}.ts + JWT 발급/검증 (HttpOnly cookie + refresh family rotation)",
+    "acceptance": "jwt.test.ts — 토큰 발급/검증/만료 통과",
+    "phase": "P1",
+    "team": "T1",
+    "passes": true,
+    "attempts": 1
+  },
+  {
+    "id": "P1-T1-05",
+    "desc": "routes/auth.ts — /api/v1/auth/{signup,login,magic-link,magic-link/verify,logout,me,refresh}",
+    "acceptance": "도메인 외(gmail.com) 가입 시도 → 403; routes/auth.test.ts login flow integration 통과",
+    "phase": "P1",
+    "team": "T1",
+    "passes": true,
+    "attempts": 1
+  },
+  {
+    "id": "P1-T1-06",
+    "desc": "lib/email-sender.ts — EmailSender (Console/Ses/Smtp, EMAIL_SENDER_KIND=console 로 dev 시작 가능)",
+    "acceptance": "EMAIL_SENDER_KIND=console 로 magic-link URL 이 stdout 에 출력",
+    "phase": "P1",
+    "team": "T1",
+    "passes": true,
+    "attempts": 1
+  },
+  {
+    "id": "P1-T6-01",
+    "desc": "web/(auth)/{login,signup} pages (verify 페이지 없음 — server 302 단일 흐름)",
+    "acceptance": "dev 서버에서 magic-link 가입 흐름 표시 (server 302 → / , 홈에서 새 세션 생성)",
+    "phase": "P1",
+    "team": "T6",
+    "passes": true,
+    "attempts": 1
+  },
+  {
+    "id": "P2-T1-01",
+    "desc": "마이그레이션 0002_sessions_messages.sql — sessions + messages",
+    "acceptance": "빈 DB 에서 pnpm db:migrate 0 exit; sessions/messages RLS 통과",
+    "phase": "P2",
+    "team": "T1",
+    "passes": true,
+    "attempts": 1
+  },
+  {
+    "id": "P2-T1-02",
+    "desc": "마이그레이션 0003_sessions_active_runs.sql + db/active-runs-service.ts (DB layer)",
+    "acceptance": "active_runs status enum 전이 테스트 통과",
+    "phase": "P2",
+    "team": "T1",
+    "passes": true,
+    "attempts": 1
+  },
+  {
+    "id": "P2-T2-01",
+    "desc": "orchestrator/orchestrator.ts skeleton — 메시지 → LLM → SSE 루프",
+    "acceptance": "orchestrator.test.ts — 메시지 → LLM → SSE 흐름 통과",
+    "phase": "P2",
+    "team": "T2",
+    "passes": true,
+    "attempts": 1
+  },
+  {
+    "id": "P2-T2-02",
+    "desc": "orchestrator/prompt-builder.ts — 4계층 권한 enum (System > Project > User > Tool, L05)",
+    "acceptance": "prompt-builder.test.ts — 4계층 prompt 의 우선순위 (System > Project > User > Tool)",
+    "phase": "P2",
+    "team": "T2",
+    "passes": true,
+    "attempts": 1
+  },
+  {
+    "id": "P2-T2-03",
+    "desc": "LLMProvider interface + Anthropic impl",
+    "acceptance": "LLMProvider Anthropic 구현이 14-INTERFACES 계약을 만족 (테스트 통과)",
+    "phase": "P2",
+    "team": "T2",
+    "passes": true,
+    "attempts": 1
+  },
+  {
+    "id": "P2-T2-04",
+    "desc": "routes/{sessions,messages}.ts + SSE streaming",
+    "acceptance": "사용자가 채팅에 메시지 보내면 SSE 로 응답 받음 ('hello' → text_delta + stop)",
+    "phase": "P2",
+    "team": "T2",
+    "passes": true,
+    "attempts": 1
+  },
+  {
+    "id": "P2-T2-05",
+    "desc": "abort flow (L06) — 모든 LLM 호출에 signal 전파",
+    "acceptance": "abort.test.ts — abort signal 전파 시 LLM 호출 cancel; Stop 클릭 시 active_runs.status=cancelled",
+    "phase": "P2",
+    "team": "T2",
+    "passes": true,
+    "attempts": 1
+  },
+  {
+    "id": "P2-T6-01",
+    "desc": "apps/web/src/hooks/useSessionStream.ts + (chat) UI + Stop 버튼",
+    "acceptance": "dev 에서 SSE 흐름 표시 + Stop 클릭 시 즉시 중단",
+    "phase": "P2",
+    "team": "T6",
+    "passes": true,
+    "attempts": 1
+  },
+  {
+    "id": "P2-T2-06",
+    "desc": "[INTEGRATION] app.ts composition root — concrete AuthDataAccess(DB pg/drizzle) + auth(/api/v1/auth)·sessions·messages(/api/v1/sessions) 라우트 mount + authMiddleware 체인 + LLMProvider(dev stub 키 fail-soft). app.ts 명시적 소유. P1-T1-05/P2-T2-04/T2-05 가 스코프아웃한 실앱 배선 gap 해소.",
+    "acceptance": "createApp(env) 부팅 후 실앱 통합테스트: POST /api/v1/sessions/:id/messages → SSE(text_delta+message_stop), DELETE /api/v1/sessions/:id/active-run → 200+active_runs.status=cancelled, 미인증 401. verify-gates GREEN.",
+    "phase": "P2",
+    "team": "T2",
+    "passes": true,
+    "attempts": 1
+  },
+  {
+    "id": "P3-T1-01",
+    "desc": "마이그레이션 0004_projects_members.sql — projects + project_members + sessions.project_id FK",
+    "acceptance": "빈 DB 에서 pnpm db:migrate 0 exit; project_members RLS 통과",
+    "phase": "P3",
+    "team": "T1",
+    "passes": true,
+    "attempts": 2
+  },
+  {
+    "id": "P3-T1-02",
+    "desc": "마이그레이션 0015_project_team_scope_rls.sql — projects.org_unit_id + RLS read/write 4-policy 분리",
+    "acceptance": "visibility 매트릭스 9 케이스 통과 (§ Phase 3 visibility 매트릭스 단일 출처)",
+    "phase": "P3",
+    "team": "T1",
+    "passes": true,
+    "attempts": 1
+  },
+  {
+    "id": "P3-T1-03",
+    "desc": "routes/projects.ts + app.ts 마운트(/api/v1/projects) + db/project-service.ts — CRUD/멤버관리, orgUnitId, owner row 자동생성. **실앱 통합테스트(createApp 기반, P2-T2-06 패턴)로 다른 org private 프로젝트 조회→404 existence-leak 방지 HTTP 레벨 검증** (project-service 단위테스트만으론 불충분).",
+    "acceptance": "project-service.test.ts 권한 매트릭스 (viewer 가 settings 변경 불가 등) 통과",
+    "phase": "P3",
+    "team": "T1",
+    "passes": true,
+    "attempts": 3
+  },
+  {
+    "id": "P3-T6-01",
+    "desc": "web/projects + projects/[projectId] page + project context → session.project_id 연동",
+    "acceptance": "다른 org 의 private 프로젝트 조회 시도 → 404 (existence leak 방지); visibility=team 가 다른 org 에서 404",
+    "phase": "P3",
+    "team": "T6",
+    "passes": true,
+    "attempts": 1
+  },
+  {
+    "id": "P4-T1-01",
+    "desc": "마이그레이션 0005_project_documents_chunks.sql — project_documents + document_chunks (DDL)",
+    "acceptance": "document_chunks RLS 통과",
+    "phase": "P4",
+    "team": "T1",
+    "passes": true,
+    "attempts": 1
+  },
+  {
+    "id": "P4-T1-02",
+    "desc": "마이그레이션 0014_uploads.sql — uploads (세션 첨부, routes/uploads.ts 의존)",
+    "acceptance": "빈 DB 에서 pnpm db:migrate 0 exit; uploads RLS 통과",
+    "phase": "P4",
+    "team": "T1",
+    "passes": true,
+    "attempts": 1
+  },
+  {
+    "id": "P4-T3-01",
+    "desc": "routes/uploads.ts — 파일 업로드(멀티파트) → lib/object-store.ts ObjectStore 주입(dev=createLocalObjectStore, 테스트=createInMemoryObjectStore; 실 S3 미사용) 로 원본 저장 + uploads.s3_key 기록. **app.ts /api/v1/uploads 마운트 + routes-mounted.test.ts EXPECTED_ROUTES 등록 + createApp 실HTTP 통합테스트**.",
+    "acceptance": "upload + document CRUD API 통과",
+    "phase": "P4",
+    "team": "T3",
+    "passes": true,
+    "attempts": 1
+  },
+  {
+    "id": "P4-T3-07",
+    "desc": "routes/documents.ts — project_documents CRUD(목록/조회/삭제, dedup content_hash), ObjectStore 주입. **app.ts /api/v1/documents 마운트 + routes-mounted 가드 등록 + createApp 실HTTP 통합테스트(cross-org 404)**.",
+    "acceptance": "document CRUD API + 다른 org 문서 조회 404, 실HTTP 통합테스트 통과",
+    "phase": "P4",
+    "team": "T3",
+    "passes": true,
+    "attempts": 1
+  },
+  {
+    "id": "P4-T3-02",
+    "desc": "knowledge/{parser-pipeline,pdf-parser,docx-parser,xlsx-parser,pptx-parser}.ts — parser-types.ts 계약 구현. pdf=pdf-parse, docx=mammoth, xlsx=sheetjs(→markdown 표), pptx=jszip 로 slide XML <a:t> 텍스트 추출(dev-stub). parser-pipeline 이 detectFormat 로 위임, 미지원 415. 각 파서 단위테스트(작은 인라인/픽스처 샘플).",
+    "acceptance": "parser-pipeline + 4 파서 단위테스트 GREEN(각 포맷 → markdown), 미지원 mime → 에러",
+    "phase": "P4",
+    "team": "T3",
+    "passes": true,
+    "attempts": 1
+  },
+  {
+    "id": "P4-T3-08",
+    "desc": "routes/documents.ts 에 POST /projects/:id/documents(multipart) 추가 — 업로드→ObjectStore 저장→parser-pipeline→chunker→embedding dev-stub→document_chunks insert(project_documents dedup content_hash). routes-mounted 가드에 POST /documents 등록. createApp 실HTTP 통합테스트: 작은 docx 업로드→201→document_chunks 생성 확인.",
+    "acceptance": "POST /documents multipart 업로드→파싱→청킹→임베딩→document_chunks 저장, 실HTTP 통합테스트 통과",
+    "phase": "P4",
+    "team": "T3",
+    "passes": true,
+    "attempts": 1
+  },
+  {
+    "id": "P4-T3-03",
+    "desc": "knowledge/chunker.ts — 청킹 + 오버랩",
+    "acceptance": "chunker.test.ts — 오버랩 + 토큰 카운트",
+    "phase": "P4",
+    "team": "T3",
+    "passes": true,
+    "attempts": 1
+  },
+  {
+    "id": "P4-T3-04",
+    "desc": "knowledge/embedding-provider.ts — EmbeddingProvider 사용처. 로컬/테스트는 knowledge/embedding-provider-dev-stub.ts(createDevStubEmbeddingProvider) 주입(실 Voyage 미사용, 배포 시 교체). 비용측정=embed 호출수/입력토큰 카운트.",
+    "acceptance": "dev-stub EmbeddingProvider 로 embed 호출수/비용 카운트 노출, 테스트 통과(외부 API 미호출)",
+    "phase": "P4",
+    "team": "T3",
+    "passes": true,
+    "attempts": 1
+  },
+  {
+    "id": "P4-T3-05",
+    "desc": "knowledge/search-service.ts — hybrid score (vector + bm25 + RRF)",
+    "acceptance": "search-service.test.ts — hybrid score 조합 (vector + bm25 + RRF)",
+    "phase": "P4",
+    "team": "T3",
+    "passes": true,
+    "attempts": 1
+  },
+  {
+    "id": "P4-T3-06",
+    "desc": "knowledge_search 도구 + citation-helper",
+    "acceptance": "citation-helper.test.ts — [1],[2] 번호 매칭; knowledge_search 결과 citation 100% 매칭; 모르는 도메인이면 빈 결과 + '관련 문서 없음'",
+    "phase": "P4",
+    "team": "T3",
+    "passes": true,
+    "attempts": 1
+  },
+  {
+    "id": "P4-T6-01",
+    "desc": "web/projects/[id]/documents 업로드 UI + 인덱싱 상태 표시. POST /projects/:id/documents(P4-T3-08) 호출. CI(Hyundai WIA) 토큰 사용. (T3-08 완료 후 진행)",
+    "acceptance": "dev 에서 파일 업로드 → indexed; 30 페이지 PDF 가 < 60초 안에 indexing 완료",
+    "phase": "P4",
+    "team": "T6",
+    "passes": true,
+    "attempts": 2
+  },
+  {
+    "id": "P5-T1-01",
+    "desc": "마이그레이션 0006_artifacts_revisions.sql (storageKind inline/s3 분기, CHECK 제약) + db/artifact-service.ts",
+    "acceptance": "artifact-service.test.ts — db/s3 라우팅 (size threshold); RLS test (session_id NULL OK, cross-user 404)",
+    "phase": "P5",
+    "team": "T1",
+    "passes": true,
+    "attempts": 1
+  },
+  {
+    "id": "P5-T1-02",
+    "desc": "마이그레이션 0007_artifact_shares.sql (Phase 6 에서 활성화)",
+    "acceptance": "빈 DB 에서 pnpm db:migrate 0 exit; artifact_shares 테이블 생성",
+    "phase": "P5",
+    "team": "T1",
+    "passes": true,
+    "attempts": 1
+  },
+  {
+    "id": "P5-T4-01",
+    "desc": "routes/artifacts.ts + lib/artifact-store.{inline,s3}.ts (256KB 임계치 자동 분기, presigned URL 60s)",
+    "acceptance": "10MB pptx upload → s3, 100KB md → inline; 다운로드 URL 이 S3 presigned (token 만료 시 차단)",
+    "phase": "P5",
+    "team": "T4",
+    "passes": true,
+    "attempts": 1
+  },
+  {
+    "id": "P5-T4-02",
+    "desc": "converter-worker(Python 3.9, apps/converter-worker) — FastAPI PPTX→PDF 엔드포인트 skeleton + apps/server/src/lib/office-pdf-converter.ts(converter HTTP client). 단위테스트는 LibreOffice(subprocess) mock + `python3 -m pytest apps/converter-worker` 로 실행/검증(poetry 불필요, 3.10+ 문법 회피). 실 LibreOffice 변환은 배포 시.",
+    "acceptance": "converter-worker 단위 테스트 (mock LibreOffice) 통과",
+    "phase": "P5",
+    "team": "T4",
+    "passes": true,
+    "attempts": 2
+  },
+  {
+    "id": "P5-T6-01",
+    "desc": "web components/artifacts/{PdfRenderer,PptxRenderer,ArtifactPanel}. PDF=pdfjs-dist 실렌더. PPTX 미리보기=office-pdf-converter 호출(dev는 mock 변환결과, 실 LibreOffice는 배포 시). Hyundai WIA CI 토큰.",
+    "acceptance": "10MB PPTX artifact 가 web preview 에서 5초 이내 표시; ArtifactPanel.test.tsx preview 렌더",
+    "phase": "P5",
+    "team": "T6",
+    "passes": true,
+    "attempts": 2
+  },
+  {
+    "id": "P6-T1-01",
+    "desc": "ArtifactShareRepo (0007 기반) — 토큰 발급/만료/revoke, view_count",
+    "acceptance": "artifact-share-service.test.ts — 토큰 발급/만료/revoke; 만료/revoke RLS test 통과",
+    "phase": "P6",
+    "team": "T1",
+    "passes": true,
+    "attempts": 1
+  },
+  {
+    "id": "P6-T4-01",
+    "desc": "routes/{artifact-shares,public-share}.ts (인증 전 mount, inline stream relay ADR-22)",
+    "acceptance": "routes/public-share.test.ts — 인증 없이 접근 + expired → 410; revoke 후 즉시 차단; share.security.test.ts 122-bit 안전",
+    "phase": "P6",
+    "team": "T4",
+    "passes": true,
+    "attempts": 1
+  },
+  {
+    "id": "P6-T6-01",
+    "desc": "web/share/[token] page — 익명 접근, 만료/revoked 상태 화면",
+    "acceptance": "만료된 토큰 url 클릭 → 410 페이지",
+    "phase": "P6",
+    "team": "T6",
+    "passes": true,
+    "attempts": 1
+  },
+  {
+    "id": "P7-T1-01",
+    "desc": "마이그레이션 0008_user_memories_locks.sql + UserMemoryRepo + extraction lock 메커니즘",
+    "acceptance": "Redis distributed lock test (concurrent extraction 안전)",
+    "phase": "P7",
+    "team": "T1",
+    "passes": true,
+    "attempts": 1
+  },
+  {
+    "id": "P7-T2-01",
+    "desc": "orchestrator/memory-extractor.ts — 4 카테고리 추출",
+    "acceptance": "memory-extractor.test.ts — 다양한 메시지에서 카테고리 분류; '사용자가 ___ 좋아한다' 패턴 추출",
+    "phase": "P7",
+    "team": "T2",
+    "passes": true,
+    "attempts": 1
+  },
+  {
+    "id": "P7-T2-02",
+    "desc": "orchestrator/memory-retriever.ts (pin 우선 + recency) + prompt-builder 통합 (User-level, L05)",
+    "acceptance": "memory-retriever.test.ts pin 우선 + recency; 메모리가 prompt 의 별도 섹션(## 영구 사용자 지시사항)으로 주입; 삭제 시 다음 세션 prompt 에서 제외",
+    "phase": "P7",
+    "team": "T2",
+    "passes": true,
+    "attempts": 1
+  },
+  {
+    "id": "P7-T2-03",
+    "desc": "routes/memories.ts — UserMemory CRUD + pin",
+    "acceptance": "memories CRUD + pin API 통과",
+    "phase": "P7",
+    "team": "T2",
+    "passes": true,
+    "attempts": 1
+  },
+  {
+    "id": "P7-T6-01",
+    "desc": "web/settings/memories UI (4 카테고리 별 관리)",
+    "acceptance": "dev 에서 memory 추가/수정/pin/삭제 동작",
+    "phase": "P7",
+    "team": "T6",
+    "passes": true,
+    "attempts": 1
+  },
+  {
+    "id": "P8-T1-01",
+    "desc": "마이그레이션 0009_mcp_servers_skill_assets.sql + routes/mcp-servers.ts + url-validator (SSRF, RFC-1918 차단 + VPC CIDR 화이트리스트)",
+    "acceptance": "url-validator.test.ts RFC-1918 차단 + VPC CIDR 화이트리스트; SSRF 시도(http://10.0.0.1/...) → 차단",
+    "phase": "P8",
+    "team": "T1",
+    "passes": true,
+    "attempts": 1
+  },
+  {
+    "id": "P8-T1-02",
+    "desc": "mcp/{mcp-bridge,mcp-client-pool,mcp-tool-adapter} — MCP 통합",
+    "acceptance": "mcp-bridge.test.ts 도구 발견 + 등록; 새 MCP server 등록 후 30초 안에 도구 자동 발견; mcp.rate-limit.test.ts quota 적용",
+    "phase": "P8",
+    "team": "T1",
+    "passes": true,
+    "attempts": 1
+  },
+  {
+    "id": "P8-T5-01",
+    "desc": "tools/skills-engine.ts (skill-registry) + skills/_template + SKILL.md 자동 로딩 (4 scope org/project/user/global)",
+    "acceptance": "skills-engine.test.ts — SKILL.md 파싱 + 활성화; 잘못된 frontmatter → reject + 명확한 에러; lint-skills semver 검증 (L09)",
+    "phase": "P8",
+    "team": "T5",
+    "passes": true,
+    "attempts": 1
+  },
+  {
+    "id": "P8-T5-02",
+    "desc": "routes/{skills,skill-assets}.ts",
+    "acceptance": "skills / skill-assets CRUD API 통과",
+    "phase": "P8",
+    "team": "T5",
+    "passes": true,
+    "attempts": 1
+  },
+  {
+    "id": "P8-T5-03",
+    "desc": "{{BRAND_PPTX_SKILL_NAME}} 첫 스킬 작성 (skills/)",
+    "acceptance": "SKILL.md semver·manifest 일관성 통과 (lint-skills)",
+    "phase": "P8",
+    "team": "T5",
+    "passes": true,
+    "attempts": 1
+  },
+  {
+    "id": "P8-T6-01",
+    "desc": "web/settings/{skills,mcp} UI — 카드 목록 + MCP 추가 modal",
+    "acceptance": "skills list 표시 + MCP 등록 시 discovery 성공 표시",
+    "phase": "P8",
+    "team": "T6",
+    "passes": true,
+    "attempts": 1
+  },
+  {
+    "id": "P9-T1-01",
+    "desc": "마이그레이션 0010,0011,0016 + quota-service + usage-logger + tool-metrics",
+    "acceptance": "quota 90% 경고 + 100% 차단 동작",
+    "phase": "P9",
+    "team": "T1",
+    "passes": true,
+    "attempts": 1
+  },
+  {
+    "id": "P9-T1-02",
+    "desc": "routes/{quota,usage,errors}.ts + admin/health",
+    "acceptance": "quota/usage/errors + health 엔드포인트 응답",
+    "phase": "P9",
+    "team": "T1",
+    "passes": true,
+    "attempts": 1
+  },
+  {
+    "id": "P9-T1-03",
+    "desc": "lib/{alert-engine,health-checker,data-retention}.ts + CloudWatch alarm + SNS → Slack + data retention cron",
+    "acceptance": "alarm slack 발송; data retention cron 동작",
+    "phase": "P9",
+    "team": "T1",
+    "passes": true,
+    "attempts": 1
+  },
+  {
+    "id": "P9-T1-04",
+    "desc": "구조화 로그 + 카테고리/레벨 (L07)",
+    "acceptance": "로그가 카테고리/레벨 구조로 출력",
+    "phase": "P9",
+    "team": "T1",
+    "passes": true,
+    "attempts": 1
+  },
+  {
+    "id": "P9-T1-05",
+    "desc": "Performance test (pnpm load:100 ~ load:1000)",
+    "acceptance": "p95 응답 시간 < 500ms (LLM 제외)",
+    "phase": "P9",
+    "team": "T1",
+    "passes": true,
+    "attempts": 1
+  },
+  {
+    "id": "P9-T1-06",
+    "desc": "보안 audit (semgrep + trivy)",
+    "acceptance": "보안 audit 통과 (semgrep + trivy)",
+    "phase": "P9",
+    "team": "T1",
+    "passes": true,
+    "attempts": 1
+  },
+  {
+    "id": "P9-T1-07",
+    "desc": "routes/admin.ts 확장 — GET /admin/dashboard, GET /admin/users, PATCH /admin/users/:id(role), POST /admin/users/:id/{suspend,unsuspend}, GET /admin/tool-metrics (admin role만, 16 §14). app.ts 마운트 + routes-mounted 가드 등록 + createApp 실HTTP 통합테스트(비admin 403).",
+    "acceptance": "admin 라우트 5개 구현+마운트, admin role만 접근(비admin 403), 실HTTP 통합테스트 통과",
+    "phase": "P9",
+    "team": "T1",
+    "passes": true,
+    "attempts": 1
+  },
+  {
+    "id": "P9-T6-01",
+    "desc": "web/admin/* — dashboard, users 관리, tool-metrics (3 화면)",
+    "acceptance": "admin role 만 접근 + role 변경 / suspend 동작",
+    "phase": "P9",
+    "team": "T6",
+    "passes": true,
+    "attempts": 2
+  },
+  {
+    "id": "P9-T6-02",
+    "desc": "A11y audit (a11y-reviewer agent) + 통합 e2e 테스트 (Playwright)",
+    "acceptance": "e2e Playwright 통과 + A11y audit 통과",
+    "phase": "P9",
+    "team": "T6",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P9-ALL-01",
+    "desc": "v1.0 GA gate checklist 전체 통과 — 모든 phase acceptance test, coverage server ≥ 80%/web ≥ 60%, 24시간 staging soak(오류 0), CHANGELOG + release note, docs/decisions/INDEX.md 모든 ADR 포함",
+    "acceptance": "모든 phase 의 acceptance test 통과; Coverage server ≥ 80%, web ≥ 60%; 24시간 staging soak 오류 0; docs/decisions/INDEX.md 가 모든 ADR 포함",
+    "phase": "P9",
+    "team": "ALL",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P9-ALL-02",
+    "desc": "v1.0 GA release — v1.0-rc1 staging 배포 + 사내 베타(5명) → v1.0-rc2 → production GA 배포 + 회고 → docs/decisions/ ADR 자동 생성",
+    "acceptance": "v1.0 GA 배포(production) 완료 + 회고 lessons → docs/decisions/ ADR 생성",
+    "phase": "P9",
+    "team": "ALL",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P10-T6-01",
+    "desc": "AppShell 3분할 레이아웃 + 사이드바 접기 + z-index 토큰(--z-modal/toast/hitl) + Pretendard self-host + 라이트/다크 테마 토글(data-theme override)",
+    "acceptance": "AppShell 이 3 region 렌더 + 테마 토글이 data-theme 스탬프 + 모바일에서 사이드바 슬라이드오버; vitest RED→GREEN, verify-gates green",
+    "phase": "P10",
+    "team": "T6",
+    "passes": true,
+    "attempts": 1
+  },
+  {
+    "id": "P10-T6-02",
+    "desc": "세션 히스토리 사이드바(SessionList/SessionCard/NewSessionButton) 날짜그룹+핀+검색+이름변경, /sessions GET/POST/PATCH/DELETE 연동",
+    "acceptance": "세션 목록 날짜그룹 렌더 + 새세션이 POST /sessions 호출 + 이름변경 PATCH; RED→GREEN, verify-gates green",
+    "phase": "P10",
+    "team": "T6",
+    "passes": true,
+    "attempts": 1
+  },
+  {
+    "id": "P10-T6-03",
+    "desc": "메시지 렌더링 고도화 — assistant 풀폭 문서형 + hover MessageActions(복사/재생성/피드백) + 코드블록 문법하이라이트+복사+wrap + 표 overflow-x",
+    "acceptance": "코드블록 하이라이트+복사, user 우측/assistant 풀폭, thumbs 상태; RED→GREEN, verify-gates green",
+    "phase": "P10",
+    "team": "T6",
+    "passes": true,
+    "attempts": 1
+  },
+  {
+    "id": "P10-T6-04",
+    "desc": "메시지 수식(KaTeX: remark-math/rehype-katex) + Mermaid 다이어그램(코드/다이어그램 토글) 렌더",
+    "acceptance": "$...$ 수식 렌더 + mermaid 코드→SVG; 미지정 의존성이면 격리; RED→GREEN, verify-gates green",
+    "phase": "P10",
+    "team": "T6",
+    "passes": true,
+    "attempts": 1
+  },
+  {
+    "id": "P10-T6-05",
+    "desc": "스트리밍/추론 UX — Reasoning 접이식(기본 접힘+생각시간 칩) + 강제 오토스크롤 제거(하단 추종+최신으로↓ pill) + shimmer/skeleton",
+    "acceptance": "스크롤 이탈 시 자동추종 해제+pill, reasoning 접힘/펼침; RED→GREEN, verify-gates green",
+    "phase": "P10",
+    "team": "T6",
+    "passes": true,
+    "attempts": 1
+  },
+  {
+    "id": "P10-T6-06",
+    "desc": "접근성 — 스트리밍 컨테이너 aria-live=polite + aria-atomic=false + role=log + announce 디바운스 + 포커스 관리 + 아이콘버튼 접근가능 이름",
+    "acceptance": "live region 속성 존재 + 빠른 델타에서 announce 디바운스; RED→GREEN, verify-gates green",
+    "phase": "P10",
+    "team": "T6",
+    "passes": true,
+    "attempts": 1
+  },
+  {
+    "id": "P10-T2-01",
+    "desc": "orchestrator 실 tool-execution 루프 — ChatInput.tools 배선, tool_use→핸들러 실행→tool_result emit→재호출 반복(stop.reason=tool_use 비종결), AbortSignal 관통",
+    "acceptance": "툴 1개 등록 시 tool_use→tool_result→최종 text 시퀀스 + abort 즉시 중단; RED→GREEN, server ≥ 80%, verify-gates green",
+    "phase": "P10",
+    "team": "T2",
+    "passes": true,
+    "attempts": 1
+  },
+  {
+    "id": "P10-T6-07",
+    "desc": "ToolCallRenderer + StatusChip — 툴명+상태칩(queued/running/done/error)+MCP 라벨+args/result 펼침, 스트림 위치 인터리브",
+    "acceptance": "tool_use→running, tool_result→done+요약, error→재시도 칩; SSE-stub RED→GREEN, verify-gates green",
+    "phase": "P10",
+    "team": "T6",
+    "passes": true,
+    "attempts": 1
+  },
+  {
+    "id": "P10-T2-02",
+    "desc": "HITL 브리지 — 부수효과 툴 게이팅: hitl_request emit 후 turn pause, POST /sessions/:id/messages/hitl 대기→hitl_resolved(수정인자 반영)/hitl_timeout; GET hitl/pending",
+    "acceptance": "게이트 툴이 hitl_request 후 pause; approved→실행, denied→스킵, 만료→timeout; RED→GREEN, verify-gates green",
+    "phase": "P10",
+    "team": "T2",
+    "passes": true,
+    "attempts": 1
+  },
+  {
+    "id": "P10-T6-08",
+    "desc": "HitlPrompt 승인 카드(z-300, aria-live=assertive) — 평문 액션 설명 + 거부/수정/승인 + 인자 인라인 편집 → POST hitl",
+    "acceptance": "카드가 승인/거부 전송 + 인자수정→modifiedArgs 반영; SSE-stub RED→GREEN, verify-gates green",
+    "phase": "P10",
+    "team": "T6",
+    "passes": true,
+    "attempts": 1
+  },
+  {
+    "id": "P10-T2-03",
+    "desc": "knowledge_search 툴 핸들러 → 기존 retrieval 호출, citation 이벤트 emit + Message.citations[] 채움(기존 knowledge/** 편집 필요 시 격리)",
+    "acceptance": "검색 툴 turn 이 index/filename/snippet 갖춘 citation emit; RED→GREEN, verify-gates green",
+    "phase": "P10",
+    "team": "T2",
+    "passes": true,
+    "attempts": 1
+  },
+  {
+    "id": "P10-T6-09",
+    "desc": "인용 UI — lib/citation-plugin.ts(remark) 로 [N] 칩 + ## Reference 푸터 + hover 스니펫 팝오버 + 클릭→우패널 소스 하이라이트",
+    "acceptance": "citation 이벤트→[N] 칩 렌더 + 클릭 시 소스 포커스; SSE-stub RED→GREEN, verify-gates green",
+    "phase": "P10",
+    "team": "T6",
+    "passes": true,
+    "attempts": 1
+  },
+  {
+    "id": "P10-T2-04",
+    "desc": "artifact-create 툴 핸들러 → store 등록 후 artifact_created(artifactId/artifactKind/filename/downloadUrl) emit(기존 artifact-store lib 호출; 편집 필요 시 격리)",
+    "acceptance": "생성 툴 turn 이 artifact_created emit + GET /sessions/:id/artifacts 반영; RED→GREEN, verify-gates green",
+    "phase": "P10",
+    "team": "T2",
+    "passes": true,
+    "attempts": 1
+  },
+  {
+    "id": "P10-T2-05",
+    "desc": "resume-stream 엔드포인트 GET /sessions/:id/messages/:messageId/stream — 첫 이벤트 message_replace 후 계속(stop.reason=tool_use 재연결 대상); 404/410/409 경로",
+    "acceptance": "재연결 시 message_replace 선행 + 이어받기; 신규 prefix 아님(기존 sessions 하위); RED→GREEN, verify-gates green",
+    "phase": "P10",
+    "team": "T2",
+    "passes": true,
+    "attempts": 1
+  },
+  {
+    "id": "P10-T6-10",
+    "desc": "아티팩트/캔버스 패널(components/artifacts/**, T4 공동) — 우측 리사이즈 분할 + 미리보기/코드 토글 + 버전 페이저 + 다운로드/공유(ShareDialog) + artifact_created 자동오픈 + Cmd+백슬래시 토글",
+    "acceptance": "artifact_created→패널 오픈 + 미리보기/코드 토글 + 버전 네비; SSE-stub RED→GREEN, verify-gates green",
+    "phase": "P10",
+    "team": "T6",
+    "passes": true,
+    "attempts": 1
+  },
+  {
+    "id": "P10-T2-06",
+    "desc": "routes/messages.ts 첨부 수용 — attachments:[{uploadId}] 수용(현 400 ATTACHMENTS_NOT_SUPPORTED 제거), turn 에 ephemeral RAG 컨텍스트로 전달",
+    "acceptance": "uploadId 포함 메시지가 400 아님 + ephemeral 소스 반영; RED→GREEN, verify-gates green",
+    "phase": "P10",
+    "team": "T2",
+    "passes": true,
+    "attempts": 1
+  },
+  {
+    "id": "P10-T6-11",
+    "desc": "컴포저 첨부 — ChatInput 에 파일첨부 + 드래그드롭(드롭존 하이라이트) + 이미지 붙여넣기 → POST /uploads→uploadId → 제거가능 칩; 타입/크기 검증",
+    "acceptance": "드롭/붙여넣기→업로드→칩 + 전송 시 attachments 포함; RED→GREEN, verify-gates green",
+    "phase": "P10",
+    "team": "T6",
+    "passes": true,
+    "attempts": 1
+  },
+  {
+    "id": "P10-T6-12",
+    "desc": "슬래시 커맨드(/) 액션 팝오버 + @멘션 엔티티 픽커(파일/툴/지식 → 참조 토큰)",
+    "acceptance": "/→필터 팝오버 선택 시 액션 실행, @→참조 토큰 삽입; RED→GREEN, verify-gates green",
+    "phase": "P10",
+    "team": "T6",
+    "passes": true,
+    "attempts": 1
+  },
+  {
+    "id": "P10-T6-13",
+    "desc": "모델/모드 피커 — 컴포저 내 모델(추론 effort 포함)+모드(Agent/Chat·웹검색) 선택, GET /config availableModels; 미가용 옵션 숨김",
+    "acceptance": "config fetch→피커 렌더 + 선택이 전송 payload 반영; RED→GREEN, verify-gates green",
+    "phase": "P10",
+    "team": "T6",
+    "passes": true,
+    "attempts": 1
+  },
+  {
+    "id": "P10-T6-14",
+    "desc": "프로젝트/스페이스 스코핑(헤더 Project 드롭다운, GET /projects) + 메모리 채팅 내 노출/토글(/memories)",
+    "acceptance": "프로젝트 전환이 세션 스코프 반영 + 메모리 표시; RED→GREEN, verify-gates green",
+    "phase": "P10",
+    "team": "T6",
+    "passes": true,
+    "attempts": 1
+  },
+  {
+    "id": "P10-T6-15",
+    "desc": "메시지 편집/분기(트리 데이터모델) + 버전 페이저 — user 메시지 편집→분기 생성, 형제 페이저 2/3 네비, 활성경로 렌더",
+    "acceptance": "user 편집→새 분기 + 페이저로 형제 전환 + 활성경로 렌더; RED→GREEN, verify-gates green",
+    "phase": "P10",
+    "team": "T6",
+    "passes": true,
+    "attempts": 1
+  },
+  {
+    "id": "P10-T6-16",
+    "desc": "공유/내보내기 — 대화 공개링크(명시 opt-in+리뷰) + 마크다운/JSON export(기존 share 계약 활용)",
+    "acceptance": "export 가 md/JSON 생성 + 공유는 opt-in 확인 후에만; RED→GREEN, verify-gates green",
+    "phase": "P10",
+    "team": "T6",
+    "passes": true,
+    "attempts": 1
+  },
+  {
+    "id": "P10-T6-17",
+    "desc": "에러/신뢰 — turn 내 원인별 에러배너+재시도(재시도 가능 코드만; 429 백오프) + 토스트 시스템 + SSE 드롭 재연결/resume + 오프라인 상태; 입력 draft 보존",
+    "acceptance": "재시도가능 에러만 Retry 노출(크레딧부족 등 제외) + 토스트 동작; RED→GREEN, verify-gates green",
+    "phase": "P10",
+    "team": "T6",
+    "passes": true,
+    "attempts": 1
+  },
+  {
+    "id": "P10-T6-18",
+    "desc": "phase-end 풀스택 e2e (Playwright Layer 2) — 로컬 스택 로그인→채팅→전송→툴/인용/아티팩트 실화면 스크린샷",
+    "acceptance": "로그인→채팅→전송 e2e green + P10 화면 스크린샷 .ralph/screenshots/e2e/; 스택 기동/시드 세션 불가 시 격리",
+    "phase": "P10",
+    "team": "T6",
+    "passes": true,
+    "attempts": 1
+  },
+  {
+    "id": "P11-T2-01",
+    "desc": "Anthropic provider tool 배선 — llm-provider-anthropic chat()가 input.tools→tools(inputSchema→input_schema)·toolChoice→tool_choice·parallelToolCalls===false→disable_parallel_tool_use forward + partial_json JSON.parse try/catch 견고화",
+    "acceptance": "tools 주입 시 body.tools/tool_choice 세팅 + 잘린 partial_json이 turn 안 죽임; RED→GREEN, verify-gates green",
+    "phase": "P11",
+    "team": "T2",
+    "passes": true,
+    "attempts": 1
+  },
+  {
+    "id": "P11-T2-02",
+    "desc": "라우트 tool/model 주입 — routes/messages.ts가 내장핸들러+MCP툴을 AgentTool[]로 조립해 runTurn에 tools+toolContext(hitl/budget/logger) 주입 + body.model 파싱→org.allowedModels 화이트리스트→turn model; MessageRouteDeps에 tools/toolContext 필드",
+    "acceptance": "실HTTP(createApp) tool_use↔tool_result 왕복 + HITL 툴 승인 전 미실행 + 모델 선택 실반영; RED→GREEN, verify-gates green",
+    "phase": "P11",
+    "team": "T2",
+    "passes": true,
+    "attempts": 1
+  },
+  {
+    "id": "P11-T2-03",
+    "desc": "llm-provider-registry.ts — LLMProvider 구현(name=registry, models=하위 union), input.model로 concrete provider 위임, 미등록 model→WChatError. app.ts가 레지스트리를 provider로 주입",
+    "acceptance": "unknown model→WChatError, 등록 model→해당 provider 위임; RED→GREEN, verify-gates green",
+    "phase": "P11",
+    "team": "T2",
+    "passes": true,
+    "attempts": 1
+  },
+  {
+    "id": "P11-T2-04",
+    "desc": "tool-schema-codec.ts — AgentToolSpec→{anthropic input_schema / openai function.parameters / gemini functionDeclarations} 순수변환 + toolChoice(any↔required↔ANY) 매핑, 골든테스트",
+    "acceptance": "3 프로바이더 포맷 골든테스트 통과 + toolChoice 매핑; RED→GREEN, verify-gates green",
+    "phase": "P11",
+    "team": "T2",
+    "passes": true,
+    "attempts": 1
+  },
+  {
+    "id": "P11-T2-05",
+    "desc": "llm-provider-openai.ts — OpenAI 어댑터(tool-schema-codec 사용 + args JSON-string parse→tool_use ChatEvent + 스트림→ChatEvent 정규화), fake client RED. dep: openai",
+    "acceptance": "fake client로 tool_use/text_delta/stop 정규화 + args parse; RED→GREEN, verify-gates green",
+    "phase": "P11",
+    "team": "T2",
+    "passes": true,
+    "attempts": 1
+  },
+  {
+    "id": "P11-T2-06",
+    "desc": "llm-provider-google.ts — Gemini 어댑터(functionDeclarations, mode ANY, 스트림→ChatEvent), fake client RED. dep: @google/generative-ai",
+    "acceptance": "fake client로 functionCall→tool_use 정규화; RED→GREEN, verify-gates green",
+    "phase": "P11",
+    "team": "T2",
+    "passes": true,
+    "attempts": 1
+  },
+  {
+    "id": "P11-T2-07",
+    "desc": "model-router.ts — 정적 role→model 맵(오케스트레이터=상위, memory/titling=경량) + org/plan 상한, selectModel이 ChatInput.model 설정, message_start.meta 관측",
+    "acceptance": "역할별 model 선택 + org 상한 초과 model 차단; RED→GREEN, verify-gates green",
+    "phase": "P11",
+    "team": "T2",
+    "passes": true,
+    "attempts": 1
+  },
+  {
+    "id": "P11-T2-08",
+    "desc": "llm-failover.ts — first-token 이전에만 failover + context-window fallback + backoff + cooldown, AbortSignal-safe(첫 토큰 후 오류=error 이벤트, 무음전환 금지)",
+    "acceptance": "primary throw(첫토큰前)→secondary + 첫토큰 후 오류→무음전환 안 함; RED→GREEN, verify-gates green",
+    "phase": "P11",
+    "team": "T2",
+    "passes": true,
+    "attempts": 1
+  },
+  {
+    "id": "P11-T1-01",
+    "desc": "GET /config 라우트 — availableModels(레지스트리 models ∩ org.allowedModels)+features 반환, app.ts 마운트 + routes-mounted.test.ts EXPECTED_ROUTES 추가 + org.allowedModels 시드",
+    "acceptance": "GET /config가 org별 availableModels 반환 + route-mount 가드 통과; RED→GREEN, verify-gates green",
+    "phase": "P11",
+    "team": "T1",
+    "passes": true,
+    "attempts": 1
+  },
+  {
+    "id": "P11-T2-09",
+    "desc": "runTurn 병렬 tool 실행 — allow 정책 툴 Promise.all 병렬 + hitl 툴 직렬(승인 순서 보존) + tool_result 원래 tool_use 순서·id 정합. provider.chat에 parallelToolCalls 전달",
+    "acceptance": "독립 allow 툴 2개 동시 invoke + 결과 순서보존 + hitl 직렬승인; RED→GREEN, verify-gates green",
+    "phase": "P11",
+    "team": "T2",
+    "passes": true,
+    "attempts": 1
+  },
+  {
+    "id": "P11-T2-10",
+    "desc": "arg-validator — tools/arg-validator.ts 순수함수 validateArgs(args, spec.inputSchema), runTurn이 invoke 직전 호출, 실패=tool_result(kind error, WChatError SCHEMA_INVALID), invoke 미트리거",
+    "acceptance": "필수 필드 누락/타입 불일치 args가 invoke 안 함 + tool_result error emit; RED→GREEN, verify-gates green",
+    "phase": "P11",
+    "team": "T2",
+    "passes": true,
+    "attempts": 1
+  },
+  {
+    "id": "P11-T2-11",
+    "desc": "web_search 툴(Tavily) — 서버-로컬 WebSearchPort + Tavily 어댑터 + in-memory dev-stub + createWebSearchTool. defaultPolicy allow, tags read-only/idempotent/web. dep: tavily(또는 REST)",
+    "acceptance": "dev-stub 주입으로 검색 tool_result json 반환 + tags/policy; RED→GREEN, verify-gates green",
+    "phase": "P11",
+    "team": "T2",
+    "passes": true,
+    "attempts": 1
+  },
+  {
+    "id": "P11-T1-02",
+    "desc": "SandboxTransport E2B 구현 — tools/sandbox/**에 frozen SandboxTransport(start/runCommand:AsyncIterable/writeFile/readFile/uploadToS3/stop) E2B 구현 + in-memory fake(runCommand chunk 시뮬), egress 기본 차단. dep: @e2b/*",
+    "acceptance": "fake로 runCommand chunk 스트림 + writeFile/readFile + egress 차단 검증; RED→GREEN, verify-gates green",
+    "phase": "P11",
+    "team": "T1",
+    "passes": true,
+    "attempts": 1
+  },
+  {
+    "id": "P11-T2-12",
+    "desc": "code_interpreter 툴 — SandboxTransport DI, stdout 버퍼→text, 생성파일→artifact-store→kind:file→artifact_created emit, ctx.signal 취소 관통. defaultPolicy allow(순수)/hitl(부작용)",
+    "acceptance": "fake transport로 코드실행→stdout text + 파일→artifact_created + signal 취소 중단; RED→GREEN, verify-gates green",
+    "phase": "P11",
+    "team": "T2",
+    "passes": true,
+    "attempts": 1
+  },
+  {
+    "id": "P11-T3-01",
+    "desc": "web-result citation 확정 — web_search/knowledge tool_result json을 search_result 호환 citation 페이로드(source ephemeral+sourceUri+title+snippet)로 확정, orchestrator 기존 unpack이 citation ChatEvent fan-out",
+    "acceptance": "web tool_result가 citation ChatEvent(ephemeral+sourceUri)로 fan-out; RED→GREEN, verify-gates green",
+    "phase": "P11",
+    "team": "T2",
+    "passes": true,
+    "attempts": 1
+  },
+  {
+    "id": "P11-T1-03",
+    "desc": "MCP 보안 하드닝 — url-validator(SSRF)를 discover뿐 아니라 매 invoke에도 적용 + supportedTools description 변경감지/재승인(HITL), 첫-등장 MCP툴 defaultPolicy hitl",
+    "acceptance": "invoke마다 SSRF 재검증 + 변조 description이 재승인 트리거; RED→GREEN, verify-gates green",
+    "phase": "P11",
+    "team": "T1",
+    "passes": true,
+    "attempts": 1
+  },
+  {
+    "id": "P11-T2-13",
+    "desc": "툴 관측 — 각 tool invoke를 lib/tool-metrics.ts + OTel gen_ai.* child span(툴명·durationMs·정책결정)으로 계측, 결과 본문은 span event",
+    "acceptance": "invoke가 tool-metrics 기록 + span 생성; RED→GREEN, verify-gates green",
+    "phase": "P11",
+    "team": "T2",
+    "passes": true,
+    "attempts": 1
+  },
+  {
+    "id": "P12-T2-01",
+    "desc": "Orchestrator-Worker 조합 — worker=격리 컨텍스트+스코프 AgentToolSpec[]로 호출되는 runTurn 인스턴스, 중간 tool_use/result는 내부에 머물고 압축 최종텍스트만 부모 tool_result로 반환. 부모 스트림은 기존 ChatEvent만",
+    "acceptance": "worker fan-out + 최종메시지만 반환 + 부모 스트림 기존 ChatEvent만; RED→GREEN, verify-gates green",
+    "phase": "P12",
+    "team": "T2",
+    "passes": true,
+    "attempts": 1
+  },
+  {
+    "id": "P12-T2-02",
+    "desc": "의존성 DAG 플래너 + 병렬 실행 — 목표→서브태스크+의존그래프(placeholder 변수), 독립노드 Promise.all(다수 runTurn 동시소비), 의존노드 순차. read-heavy·독립만 병렬, shared-state 단일 (LLMCompiler/ReWOO)",
+    "acceptance": "독립노드 병렬(시작 겹침)+의존노드 순차+placeholder 해소; RED→GREEN, verify-gates green",
+    "phase": "P12",
+    "team": "T2",
+    "passes": true,
+    "attempts": 1
+  },
+  {
+    "id": "P12-T2-03",
+    "desc": "AbortSignal fan-out 취소 전파 — 오케스트레이터가 signal을 모든 worker runTurn에 전파, 부모 취소 시 진행중 병렬 worker 전부 즉시 중단",
+    "acceptance": "부모 취소→전 worker 중단; RED→GREEN, verify-gates green",
+    "phase": "P12",
+    "team": "T2",
+    "passes": true,
+    "attempts": 1
+  },
+  {
+    "id": "P12-T2-04",
+    "desc": "Routing/Handoff 노드 — 분류→specialist worker(knowledge/artifact/일반) 위임, handoff payload는 orchestrator 내부 타입(ChatEvent 승격 금지). A2A는 격리",
+    "acceptance": "요청 분류→해당 worker 위임+handoff payload 내부타입; RED→GREEN, verify-gates green",
+    "phase": "P12",
+    "team": "T2",
+    "passes": true,
+    "attempts": 1
+  },
+  {
+    "id": "P12-T2-05",
+    "desc": "Evaluator-Optimizer 래퍼 — artifact worker를 생성기+평가기 닫힌 루프로(평가=무툴 runTurn), 명확 기준일 때만 반복 개선",
+    "acceptance": "생성→평가→기준 미달 시 재생성 루프; RED→GREEN, verify-gates green",
+    "phase": "P12",
+    "team": "T2",
+    "passes": true,
+    "attempts": 1
+  },
+  {
+    "id": "P12-T2-06",
+    "desc": "MAST 신뢰성 가드 4종 — 스텝반복 감지·차단(동일 tool_use 반복) + 명시적 종료조건(최대스텝) + 추론-행동 일치 체크 + 검증 worker(종합 전). 각 실패재현 RED",
+    "acceptance": "스텝반복 차단·종료조건·추론행동·검증 각 실패재현→가드 동작; RED→GREEN, verify-gates green",
+    "phase": "P12",
+    "team": "T2",
+    "passes": true,
+    "attempts": 1
+  },
+  {
+    "id": "P12-T2-07",
+    "desc": "tool-router.ts 대규모 카탈로그 — MCP툴 다수 시 AgentToolSpec.description 임베딩(dev-stub)+pgvector top-k 선택 후 subset만 runTurn 주입",
+    "acceptance": "N개 중 관련 top-k tool subset 반환 주입; RED→GREEN, verify-gates green",
+    "phase": "P12",
+    "team": "T2",
+    "passes": true,
+    "attempts": 1
+  },
+  {
+    "id": "P12-T2-08",
+    "desc": "deep_research 툴 — tools/handlers/deep-research-handler.ts, P12 orchestrator-worker 위 파사드(plan→서브질문 DAG→격리 병렬 researcher[web_search/knowledge_search read-only]→압축→gap 반성(max_iter/max_tool_calls/budget hard cap)→종합→별도 citation 패스(source_id 미존재 인용 drop)). 반환 kind:json+{artifact markdown, citations ephemeral+sourceUri, message}→기존 duck-typing이 artifact_created+citation fan-out. 동기 buffered invoke(수분)+streamSSE keep-alive 코멘트. 수십분 백그라운드/tool_progress/citation source web은 격리",
+    "acceptance": "fake worker/검색으로 plan→병렬 researcher→종합→인용 리포트 artifact_created+citation, hard cap 종료, 미존재 인용 drop; RED→GREEN, verify-gates green",
+    "phase": "P12",
+    "team": "T2",
+    "passes": true,
+    "attempts": 1
+  },
+  {
+    "id": "P12-T6-01",
+    "desc": "멀티에이전트 활동 UI — 서브에이전트/플랜 진행을 우패널에 표시(기존 tool_use 카드 범위). 새 ChatEvent 변형 필요 시 격리",
+    "acceptance": "worker 진행이 기존 tool_use/tool_result 카드로 표시; SSE-stub RED→GREEN, verify-gates green",
+    "phase": "P12",
+    "team": "T6",
+    "passes": true,
+    "attempts": 1
+  }
+]

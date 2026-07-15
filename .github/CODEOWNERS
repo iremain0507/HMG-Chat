@@ -1,0 +1,58 @@
+# CODEOWNERS — 도메인별 owner 팀 (07-AGENT-TEAMS 의 T1~T6 과 1:1)
+# GitHub 경로 규칙: 마지막에 매칭되는 패턴이 우선. team slug 는 org(GitHub) 팀에 매핑.
+#   @team-platform     = T1 Platform   (infra/CI/CD/sandbox/MCP/db migrations/auth)
+#   @team-orchestrator = T2 Orchestrator
+#   @team-knowledge    = T3 Knowledge  (knowledge/RAG)
+#   @team-artifact     = T4 Artifact   (artifact routes/server side)
+#   @team-skills       = T5 Skills
+#   @team-frontend     = T6 Frontend   (apps/web/, 단 artifact 컴포넌트는 T4 와 공동)
+#   @team-leads        = 팀장/통합(RC) — Phase 0.5 계약 파일 공동 owner
+
+# ── 서버 도메인 ──────────────────────────────────────────────
+/apps/server/src/orchestrator/            @team-orchestrator
+/apps/server/src/knowledge/               @team-knowledge
+/apps/server/src/tools/sandbox/           @team-platform
+/apps/server/src/tools/handlers/          @team-orchestrator
+/apps/server/src/tools/skills-engine.ts   @team-skills
+/apps/server/src/mcp/                      @team-platform
+/apps/server/src/db/migrations/            @team-platform
+/apps/server/src/db/schema.ts              @team-platform
+/apps/server/src/middleware/               @team-platform
+/apps/server/src/mappers/                  @team-platform @team-leads
+/apps/server/src/lib/email-sender.ts       @team-platform
+
+# ── Phase 0.5 산출물 (Tier B — 후속 변경도 integration RC + Tier B 승인) ──
+/apps/server/src/lib/errors.ts             @team-platform @team-leads
+/apps/server/src/middleware/envelope.ts    @team-platform @team-leads
+/apps/server/src/openapi.ts                @team-platform @team-leads
+/apps/server/scripts/generate-openapi.ts   @team-platform @team-leads
+
+# ── 서버 라우트 (08 § owned_paths 와 1:1) ──
+/apps/server/src/routes/auth.ts            @team-platform
+/apps/server/src/routes/sessions.ts        @team-orchestrator
+/apps/server/src/routes/messages.ts        @team-orchestrator
+/apps/server/src/routes/projects.ts        @team-platform
+/apps/server/src/routes/uploads.ts         @team-knowledge
+/apps/server/src/routes/documents.ts       @team-knowledge
+/apps/server/src/routes/artifact*.ts       @team-artifact
+/apps/server/src/routes/public-share.ts    @team-artifact
+/apps/server/src/routes/mcp-servers.ts     @team-platform
+/apps/server/src/routes/memories.ts        @team-orchestrator
+/apps/server/src/routes/admin*.ts          @team-leads @team-platform
+
+# ── 프론트엔드 ──────────────────────────────────────────────
+/apps/web/src/                             @team-frontend
+/apps/web/src/components/artifacts/        @team-artifact @team-frontend
+/apps/web/src/lib/api-client.ts            @team-platform @team-leads
+/apps/web/src/lib/api-types.generated.ts   @team-platform @team-leads
+
+# ── 기타 ────────────────────────────────────────────────────
+/apps/converter-worker/                    @team-platform
+/skills/                                   @team-skills
+/infra/                                    @team-platform
+/docs/decisions/                           @team-leads
+/scripts/                                  @team-platform
+
+# packages/shared, packages/interfaces 변경은 모든 팀 + leads 승인 (계약 freeze).
+/packages/shared/                          @team-leads
+/packages/interfaces/                      @team-leads

@@ -1,3 +1,93 @@
 @import "tailwindcss";
-@theme { --color-bg: #ffffff; --color-fg: #111111; }
+
+/* Pretendard self-host — 실 폰트 바이너리는 로고 자산과 동일하게 배포 시 제공(현재 fallback 스택으로 동작). */
+@font-face {
+  font-family: "Pretendard";
+  src: url("/fonts/Pretendard-Regular.woff2") format("woff2");
+  font-weight: 400;
+  font-display: swap;
+}
+
+@theme {
+  --color-primary: #00287a;
+  --color-primary-fg: #ffffff;
+  --color-accent: #c8102e;
+  --color-bg: #ffffff;
+  --color-surface: #f5f7fa;
+  --color-border: #d9d9d9;
+  --color-fg: #1a1d21;
+  --color-fg-muted: #666666;
+  --font-sans: "Pretendard", -apple-system, "Apple SD Gothic Neo", system-ui, sans-serif;
+  --radius: 0.5rem;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme]) {
+    --color-primary: #3d6fd4;
+    --color-primary-fg: #0b1220;
+    --color-accent: #f0576e;
+    --color-bg: #0f141a;
+    --color-surface: #161c24;
+    --color-border: #2a3340;
+    --color-fg: #e6e9ed;
+    --color-fg-muted: #b3b3b3;
+  }
+}
+/* data-theme 수동 토글 — prefers-color-scheme 를 양방향 override */
+:root[data-theme="dark"] {
+  --color-primary: #3d6fd4;
+  --color-primary-fg: #0b1220;
+  --color-accent: #f0576e;
+  --color-bg: #0f141a;
+  --color-surface: #161c24;
+  --color-border: #2a3340;
+  --color-fg: #e6e9ed;
+  --color-fg-muted: #b3b3b3;
+}
+:root[data-theme="light"] {
+  --color-primary: #00287a;
+  --color-primary-fg: #ffffff;
+  --color-accent: #c8102e;
+  --color-bg: #ffffff;
+  --color-surface: #f5f7fa;
+  --color-border: #d9d9d9;
+  --color-fg: #1a1d21;
+  --color-fg-muted: #666666;
+}
+
+:root {
+  /* z-index 토큰 — 19-UIUX-UPGRADE.md § P10-T6-01 */
+  --z-modal: 100;
+  --z-toast: 200;
+  --z-hitl: 300;
+
+  /* 코드블록 문법하이라이트 토큰(rehype-highlight, P10-T6-03) — light */
+  --code-keyword: #0057b8;
+  --code-string: #1a7f37;
+  --code-number: #ab5000;
+  --code-comment: #6b7280;
+  --code-function: #7c3aed;
+}
+:root[data-theme="dark"] {
+  --code-keyword: #7aa2f7;
+  --code-string: #7ec699;
+  --code-number: #e0af68;
+  --code-comment: #7a8496;
+  --code-function: #c792ea;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme]) {
+    --code-keyword: #7aa2f7;
+    --code-string: #7ec699;
+    --code-number: #e0af68;
+    --code-comment: #7a8496;
+    --code-function: #c792ea;
+  }
+}
+
+.hljs-keyword, .hljs-built_in, .hljs-tag, .hljs-selector-tag { color: var(--code-keyword); }
+.hljs-string, .hljs-attr, .hljs-symbol { color: var(--code-string); }
+.hljs-number, .hljs-literal { color: var(--code-number); }
+.hljs-comment, .hljs-quote { color: var(--code-comment); font-style: italic; }
+.hljs-title, .hljs-title.function_, .hljs-section { color: var(--code-function); }
+
 body { background: var(--color-bg); color: var(--color-fg); }
