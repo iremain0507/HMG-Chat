@@ -9,16 +9,8 @@ import type {
   ToolCallStatus,
   Citation,
   ToolProgressState,
-  ToolTask,
 } from "../../hooks/useSessionStream";
 import { StatusChip } from "./StatusChip";
-
-const TASK_STATUS_LABEL: Record<ToolTask["status"], string> = {
-  queued: "대기",
-  running: "조사 중",
-  done: "완료",
-  error: "오류",
-};
 
 const LARGE_PAYLOAD_CHARS = 400;
 
@@ -300,17 +292,7 @@ export function ToolCallRenderer({
                         출처 {t.sourceCount}
                       </span>
                     ) : null}
-                    <span
-                      className={`flex-none rounded-full px-2 py-0.5 text-xs ${
-                        t.status === "running"
-                          ? "bg-primary/10 text-primary"
-                          : t.status === "error"
-                            ? "bg-accent/10 text-accent"
-                            : "bg-surface text-fg-muted"
-                      }`}
-                    >
-                      {TASK_STATUS_LABEL[t.status]}
-                    </span>
+                    <StatusChip status={t.status} />
                   </li>
                 ))}
               </ul>

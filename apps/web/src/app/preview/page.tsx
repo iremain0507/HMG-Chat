@@ -11,6 +11,7 @@ import { Markdown } from "../../components/chat/Markdown";
 import { Reasoning } from "../../components/chat/Reasoning";
 import { MessageActions } from "../../components/chat/MessageActions";
 import { ToolCallRenderer } from "../../components/chat/ToolCallRenderer";
+import { StatusChip } from "../../components/chat/StatusChip";
 import { HitlPrompt } from "../../components/chat/HitlPrompt";
 import { ChatInput } from "../../components/chat/ChatInput";
 import { MessageItem } from "../../components/chat/ChatView";
@@ -549,6 +550,16 @@ export default function PreviewGallery() {
 
       <Section name="message-actions">
         <MessageActions role="assistant" content="복사 대상 텍스트" />
+      </Section>
+
+      <Section name="status-chip">
+        <div className="flex flex-wrap gap-2">
+          <StatusChip status="queued" />
+          <StatusChip status="running" />
+          <StatusChip status="done" />
+          <StatusChip status="error" />
+          <StatusChip status="pending-approval" />
+        </div>
       </Section>
 
       <Section name="tool-call-renderer">
