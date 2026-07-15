@@ -1022,8 +1022,8 @@
     "acceptance": "독립노드 병렬(시작 겹침)+의존노드 순차+placeholder 해소; RED→GREEN, verify-gates green",
     "phase": "P12",
     "team": "T2",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P12-T2-03",
