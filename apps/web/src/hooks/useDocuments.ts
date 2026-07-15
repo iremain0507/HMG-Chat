@@ -4,6 +4,7 @@
 // P4-T3-08 라우트가 업로드→파싱→청킹→임베딩을 동기(dev-stub)로 처리해 POST 응답에
 // 이미 최종 indexStatus 가 담겨 있으므로, 별도 폴링/SSE 없이 업로드 후 목록만 재조회한다.
 import { useCallback, useEffect, useState } from "react";
+import { apiFetch } from "../lib/fetch-with-refresh";
 
 export interface ProjectDocumentDto {
   id: string;
@@ -39,7 +40,7 @@ export function useDocuments(projectId: string): UseDocumentsResult {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch(`/api/v1/documents?projectId=${projectId}`, {
+      const res = await apiFetch(`/api/v1/documents?projectId=${projectId}`, {
         credentials: "include",
       });
       if (!res.ok) {
@@ -65,7 +66,7 @@ export function useDocuments(projectId: string): UseDocumentsResult {
         const form = new FormData();
         form.append("projectId", projectId);
         form.append("file", file);
-        const res = await fetch("/api/v1/documents", {
+        const res = await apiFetch("/api/v1/documents", {
           method: "POST",
           credentials: "include",
           body: form,

@@ -5,6 +5,7 @@
 // 공유(ShareDialog)·다운로드·닫기를 더한다. 데스크톱=사이드 패널(드래그 리사이즈),
 // 모바일=풀스크린 시트(--z-modal). artifact_created 자동오픈/Cmd+\ 토글은 ChatView 소관.
 import React, { useEffect, useState } from "react";
+import { apiFetch } from "../../lib/fetch-with-refresh";
 import { ArtifactPanel, type ArtifactDto } from "./ArtifactPanel";
 import { ShareDialog } from "./ShareDialog";
 
@@ -73,7 +74,7 @@ export function ArtifactCanvas({
   useEffect(() => {
     if (tab !== "code" || !active || codeContent !== null) return;
     let cancelled = false;
-    fetch(`/api/v1/artifacts/${active.artifactId}/content`)
+    apiFetch(`/api/v1/artifacts/${active.artifactId}/content`)
       .then((res) => res.text())
       .then((text) => {
         if (!cancelled) setCodeContent(text);

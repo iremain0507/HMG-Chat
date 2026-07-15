@@ -3,6 +3,7 @@
 // hooks/useAdminUsers.ts — 16-API-CONTRACT § 14 GET/PATCH /admin/users,
 // POST /admin/users/:id/suspend|unsuspend 소비.
 import { useCallback, useEffect, useState } from "react";
+import { apiFetch } from "../lib/fetch-with-refresh";
 
 export interface AdminUserDto {
   id: string;
@@ -32,7 +33,7 @@ export function useAdminUsers(): UseAdminUsersResult {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch("/api/v1/admin/users", {
+      const res = await apiFetch("/api/v1/admin/users", {
         credentials: "include",
       });
       if (!res.ok) {
@@ -53,7 +54,7 @@ export function useAdminUsers(): UseAdminUsersResult {
   const changeRole = useCallback(
     async (id: string, role: AdminUserDto["role"]) => {
       setError(null);
-      const res = await fetch(`/api/v1/admin/users/${id}`, {
+      const res = await apiFetch(`/api/v1/admin/users/${id}`, {
         method: "PATCH",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
@@ -71,7 +72,7 @@ export function useAdminUsers(): UseAdminUsersResult {
   const suspend = useCallback(
     async (id: string, reason: string) => {
       setError(null);
-      const res = await fetch(`/api/v1/admin/users/${id}/suspend`, {
+      const res = await apiFetch(`/api/v1/admin/users/${id}/suspend`, {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
@@ -89,7 +90,7 @@ export function useAdminUsers(): UseAdminUsersResult {
   const unsuspend = useCallback(
     async (id: string) => {
       setError(null);
-      const res = await fetch(`/api/v1/admin/users/${id}/unsuspend`, {
+      const res = await apiFetch(`/api/v1/admin/users/${id}/unsuspend`, {
         method: "POST",
         credentials: "include",
       });

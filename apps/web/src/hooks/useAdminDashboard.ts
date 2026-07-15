@@ -2,6 +2,7 @@
 
 // hooks/useAdminDashboard.ts — 16-API-CONTRACT § 14 GET /admin/dashboard 소비.
 import { useCallback, useEffect, useState } from "react";
+import { apiFetch } from "../lib/fetch-with-refresh";
 
 export interface AdminDashboardSummary {
   users: { total: number; activeLast24h: number; newLast7d: number };
@@ -25,7 +26,7 @@ export function useAdminDashboard(): UseAdminDashboardResult {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch("/api/v1/admin/dashboard", {
+      const res = await apiFetch("/api/v1/admin/dashboard", {
         credentials: "include",
       });
       if (!res.ok) {

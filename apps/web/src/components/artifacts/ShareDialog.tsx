@@ -3,6 +3,7 @@
 // components/artifacts/ShareDialog.tsx — 19-UIUX-UPGRADE.md § P10-T6-10,
 // 16-API-CONTRACT § 8 Artifact Shares(POST/DELETE /artifacts/:id/share) 단일 출처.
 import React, { useState } from "react";
+import { apiFetch } from "../../lib/fetch-with-refresh";
 
 interface ShareLink {
   token: string;
@@ -24,7 +25,7 @@ export function ShareDialog({
   async function generate() {
     setPending(true);
     try {
-      const res = await fetch(`/api/v1/artifacts/${artifactId}/share`, {
+      const res = await apiFetch(`/api/v1/artifacts/${artifactId}/share`, {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
@@ -41,7 +42,7 @@ export function ShareDialog({
     if (!link) return;
     setPending(true);
     try {
-      await fetch(`/api/v1/artifacts/${artifactId}/share/${link.token}`, {
+      await apiFetch(`/api/v1/artifacts/${artifactId}/share/${link.token}`, {
         method: "DELETE",
         credentials: "include",
       });

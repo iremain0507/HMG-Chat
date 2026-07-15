@@ -101,7 +101,10 @@ describe("ArtifactCanvas", () => {
         "# report v2",
       );
     });
-    expect(fetch).toHaveBeenCalledWith("/api/v1/artifacts/artifact-2/content");
+    // apiFetch(만료 시 자동 refresh 래퍼)로 감싸며 항상 credentials:"include" 를 부여한다.
+    expect(fetch).toHaveBeenCalledWith("/api/v1/artifacts/artifact-2/content", {
+      credentials: "include",
+    });
   });
 
   it("버전 페이저로 이전/다음 artifact 를 탐색하고 경계에서 버튼이 비활성화된다", () => {

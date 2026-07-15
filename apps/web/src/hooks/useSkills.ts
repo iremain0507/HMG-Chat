@@ -2,6 +2,7 @@
 
 // hooks/useSkills.ts — 16-API-CONTRACT § 11 Skills 소비 (GET /skills 목록).
 import { useCallback, useEffect, useState } from "react";
+import { apiFetch } from "../lib/fetch-with-refresh";
 
 export interface SkillSpecDto {
   id: string;
@@ -29,7 +30,7 @@ export function useSkills(): UseSkillsResult {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch("/api/v1/skills", { credentials: "include" });
+      const res = await apiFetch("/api/v1/skills", { credentials: "include" });
       if (!res.ok) {
         setError("스킬 목록을 불러오지 못했습니다.");
         return;

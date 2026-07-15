@@ -2,6 +2,7 @@
 
 // hooks/useMemories.ts — 16-API-CONTRACT § 9 Memories 소비 (CRUD + pin).
 import { useCallback, useEffect, useState } from "react";
+import { apiFetch } from "../lib/fetch-with-refresh";
 
 export interface UserMemoryDto {
   id: string;
@@ -47,7 +48,7 @@ export function useMemories(
     setError(null);
     try {
       const query = category ? `?category=${category}` : "";
-      const res = await fetch(`/api/v1/memories${query}`, {
+      const res = await apiFetch(`/api/v1/memories${query}`, {
         credentials: "include",
       });
       if (!res.ok) {
@@ -68,7 +69,7 @@ export function useMemories(
   const create = useCallback(
     async (input: { category: UserMemoryDto["category"]; content: string }) => {
       setError(null);
-      const res = await fetch("/api/v1/memories", {
+      const res = await apiFetch("/api/v1/memories", {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
@@ -94,7 +95,7 @@ export function useMemories(
       },
     ) => {
       setError(null);
-      const res = await fetch(`/api/v1/memories/${id}`, {
+      const res = await apiFetch(`/api/v1/memories/${id}`, {
         method: "PATCH",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
@@ -113,7 +114,7 @@ export function useMemories(
   const remove = useCallback(
     async (id: string) => {
       setError(null);
-      const res = await fetch(`/api/v1/memories/${id}`, {
+      const res = await apiFetch(`/api/v1/memories/${id}`, {
         method: "DELETE",
         credentials: "include",
       });
