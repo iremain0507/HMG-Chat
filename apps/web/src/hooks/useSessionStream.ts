@@ -12,6 +12,7 @@
 // switchBranch 는 활성 자식 포인터만 바꿔 이전에 스트리밍된 형제 분기를 그대로 복원한다.
 import { useCallback, useMemo, useRef, useState } from "react";
 import { showToast } from "../lib/toast";
+import { apiFetch } from "../lib/fetch-with-refresh";
 
 export type ToolCallStatus = "queued" | "running" | "done" | "error";
 
@@ -455,7 +456,7 @@ export function useSessionStream(sessionId: string) {
       async function attemptReconnect(): Promise<void> {
         if (!lastServerMessageId) return;
         try {
-          const res = await fetch(
+          const res = await apiFetch(
             `/api/v1/sessions/${sessionId}/messages/${lastServerMessageId}/stream`,
             {
               credentials: "include",
@@ -479,7 +480,7 @@ export function useSessionStream(sessionId: string) {
       }
 
       try {
-        const res = await fetch(`/api/v1/sessions/${sessionId}/messages`, {
+        const res = await apiFetch(`/api/v1/sessions/${sessionId}/messages`, {
           method: "POST",
           credentials: "include",
           signal: controller.signal,
@@ -587,7 +588,7 @@ export function useSessionStream(sessionId: string) {
         }));
       }
     }
-    await fetch(`/api/v1/sessions/${sessionId}/active-run`, {
+    await apiFetch(`/api/v1/sessions/${sessionId}/active-run`, {
       method: "DELETE",
       credentials: "include",
     }).catch(() => {});
@@ -600,7 +601,7 @@ export function useSessionStream(sessionId: string) {
       reason?: string,
     ) => {
       if (!hitlRequest) return;
-      await fetch(`/api/v1/sessions/${sessionId}/messages/hitl`, {
+      await apiFetch(`/api/v1/sessions/${sessionId}/messages/hitl`, {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
