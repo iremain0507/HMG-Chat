@@ -1031,8 +1031,8 @@
     "acceptance": "부모 취소→전 worker 중단; RED→GREEN, verify-gates green",
     "phase": "P12",
     "team": "T2",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P12-T2-04",

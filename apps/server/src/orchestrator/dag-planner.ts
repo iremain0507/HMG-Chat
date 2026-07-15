@@ -13,6 +13,7 @@ import type {
   ToolContext,
 } from "@wchat/interfaces";
 import { runTurn } from "./orchestrator.js";
+import { consumeUntilAbort } from "./consume-until-abort.js";
 
 export interface DagNode {
   id: string;
@@ -93,7 +94,7 @@ async function runNode(
   const messages: LLMMessage[] = [{ role: "user", content: resolvedTask }];
   let finalText = "";
 
-  for await (const event of runTurn({
+  const events = runTurn({
     provider: options.provider,
     model: options.model,
     systemBlocks: options.systemBlocks,
@@ -113,11 +114,12 @@ async function runNode(
       hitl: options.ctx.hitl,
       budget: options.ctx.budget,
     },
-  })) {
+  });
+  await consumeUntilAbort(events, options.ctx.signal, (event) => {
     if (event.type === "text_delta") {
       finalText += event.text;
     }
-  }
+  });
   return finalText;
 }
 

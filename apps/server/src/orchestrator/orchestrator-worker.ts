@@ -14,6 +14,7 @@ import type {
   ToolPolicy,
 } from "@wchat/interfaces";
 import { runTurn } from "./orchestrator.js";
+import { consumeUntilAbort } from "./consume-until-abort.js";
 
 export interface WorkerToolOptions {
   name: string;
@@ -65,7 +66,7 @@ export function createWorkerTool(options: WorkerToolOptions): AgentTool {
       const messages: LLMMessage[] = [{ role: "user", content: task }];
       let finalText = "";
 
-      for await (const event of runTurn({
+      const events = runTurn({
         provider: options.provider,
         model: options.model,
         systemBlocks: options.systemBlocks,
@@ -83,13 +84,16 @@ export function createWorkerTool(options: WorkerToolOptions): AgentTool {
           hitl: ctx.hitl,
           budget: ctx.budget,
         },
-      })) {
+      });
+      // tool_use/tool_result/citation/artifact_created/stop/error 등 중간 이벤트는
+      // 이 콜백 밖으로 나가지 않는다 — worker 격리의 핵심 불변식. consumeUntilAbort 는
+      // 부모 취소 시 provider 의 signal 협조 여부와 무관하게 이 소비를 즉시 중단한다
+      // (P12-T2-03 — AbortSignal fan-out).
+      await consumeUntilAbort(events, ctx.signal, (event) => {
         if (event.type === "text_delta") {
           finalText += event.text;
         }
-        // tool_use/tool_result/citation/artifact_created/stop/error 등 중간 이벤트는
-        // 이 for-await 루프 밖으로 나가지 않는다 — worker 격리의 핵심 불변식.
-      }
+      });
 
       return {
         toolCallId,
