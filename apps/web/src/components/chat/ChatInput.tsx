@@ -81,7 +81,7 @@ function detectTrigger(value: string, cursor: number): TriggerState | null {
 
 // P10-T6-17 — 입력 draft 보존: 세션별로 sessionStorage 에 임시 저장해 새로고침/재마운트에도
 // 작성 중이던 내용을 잃지 않게 한다.
-function draftKey(sessionId: string): string {
+export function draftKey(sessionId: string): string {
   return `wchat:draft:${sessionId}`;
 }
 

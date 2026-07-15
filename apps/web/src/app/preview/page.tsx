@@ -17,6 +17,7 @@ import { MessageItem } from "../../components/chat/ChatView";
 import { ProjectPicker } from "../../components/chat/ProjectPicker";
 import { MemoryPanel } from "../../components/chat/MemoryPanel";
 import { ShareExportMenu } from "../../components/chat/ShareExportMenu";
+import { HomeContent } from "../../components/home/HomeContent";
 import { ToastContainer } from "../../components/layout/ToastContainer";
 import {
   ArtifactCanvas,
@@ -352,6 +353,57 @@ function AppShellPreview() {
   );
 }
 
+const HOME_PREVIEW_SESSIONS = [
+  {
+    id: "hs1",
+    title: "등속조인트 공정 불량 원인 분석",
+    lastMessageAt: new Date("2026-07-15T11:50:00Z").toISOString(),
+    projectId: null,
+    archived: false,
+  },
+  {
+    id: "hs2",
+    title: "열관리 모듈 시험성적서 요약",
+    lastMessageAt: new Date("2026-07-15T10:00:00Z").toISOString(),
+    projectId: null,
+    archived: false,
+  },
+  {
+    id: "hs3",
+    title: "협력사 RFQ 회신 초안",
+    lastMessageAt: new Date("2026-07-15T07:00:00Z").toISOString(),
+    projectId: null,
+    archived: false,
+  },
+];
+
+// P13-T6-02 — HomeContent 는 순수 프레젠테이션 컴포넌트라 실 라우터/fetch 없이 로컬 state 로
+//   onNewChat/onQuickStart/onOpenSession 결과를 화면에 재현(e2e/home.pw.ts).
+function HomeContentPreview() {
+  const [lastAction, setLastAction] = useState("");
+  return (
+    <div>
+      <div
+        data-testid="home-last-action"
+        className="mb-2 text-xs text-fg-muted"
+      >
+        마지막 동작: {lastAction || "(없음)"}
+      </div>
+      <HomeContent
+        userName="김민수"
+        onNewChat={() => setLastAction("새 채팅 시작")}
+        onQuickStart={(prompt) => setLastAction(`빠른 시작: ${prompt}`)}
+        onOpenSession={(id) => setLastAction(`세션 열기: ${id}`)}
+        connectorsCount={6}
+        skillsCount={13}
+        agentsCount={4}
+        recentSessions={HOME_PREVIEW_SESSIONS}
+        now={new Date("2026-07-15T12:00:00Z").getTime()}
+      />
+    </div>
+  );
+}
+
 function Section({
   name,
   children,
@@ -393,6 +445,10 @@ export default function PreviewGallery() {
           <AppShellPreview />
         </div>
       </section>
+
+      <Section name="home">
+        <HomeContentPreview />
+      </Section>
 
       <Section name="markdown">
         <Markdown>{MD}</Markdown>

@@ -1103,8 +1103,8 @@
     "acceptance": "시맨틱 토큰만으로(하드코딩 hex 0) 프레임 사양(레이아웃·상태·상호작용) 재현 + 기존 동작 보존; 라이트·다크 모두 preview 갤러리 등록 + Playwright 스크린샷(.ralph/screenshots/) 브라우저 검증; 신규 상호작용은 vitest RED→GREEN; verify-gates green",
     "phase": "P13",
     "team": "T6",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P13-T6-03",
