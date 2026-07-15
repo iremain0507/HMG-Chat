@@ -25,6 +25,9 @@ import { McpServersManager } from "../../components/settings/McpServersManager";
 import { SkillsManager } from "../../components/settings/SkillsManager";
 import { MemoryManager } from "../../components/settings/MemoryManager";
 import { QuotaPanel } from "../../components/settings/QuotaPanel";
+import { AdminDashboard } from "../../components/admin/AdminDashboard";
+import { ToolMetricsTable } from "../../components/admin/ToolMetricsTable";
+import { AdminUsersManager } from "../../components/admin/AdminUsersManager";
 import { ToastContainer } from "../../components/layout/ToastContainer";
 import {
   ArtifactCanvas,
@@ -202,6 +205,56 @@ function QuotaPanelPreview() {
       className="rounded-md border border-border px-3 py-1.5 text-sm text-fg-muted hover:border-primary hover:text-fg"
     >
       사용량 열기
+    </button>
+  );
+}
+
+// P13-T6-13 — AdminDashboard/ToolMetricsTable/AdminUsersManager 도 마운트 시 내부 fetch
+//   하므로 QuotaPanelPreview 와 동일하게 토글 오픈으로 격리한다.
+function AdminDashboardPreview() {
+  const [open, setOpen] = useState(false);
+  return open ? (
+    <AdminDashboard />
+  ) : (
+    <button
+      type="button"
+      data-testid="admin-dashboard-preview-trigger"
+      onClick={() => setOpen(true)}
+      className="rounded-md border border-border px-3 py-1.5 text-sm text-fg-muted hover:border-primary hover:text-fg"
+    >
+      관리 대시보드 열기
+    </button>
+  );
+}
+
+function ToolMetricsTablePreview() {
+  const [open, setOpen] = useState(false);
+  return open ? (
+    <ToolMetricsTable />
+  ) : (
+    <button
+      type="button"
+      data-testid="tool-metrics-table-preview-trigger"
+      onClick={() => setOpen(true)}
+      className="rounded-md border border-border px-3 py-1.5 text-sm text-fg-muted hover:border-primary hover:text-fg"
+    >
+      도구 지표 열기
+    </button>
+  );
+}
+
+function AdminUsersManagerPreview() {
+  const [open, setOpen] = useState(false);
+  return open ? (
+    <AdminUsersManager />
+  ) : (
+    <button
+      type="button"
+      data-testid="admin-users-manager-preview-trigger"
+      onClick={() => setOpen(true)}
+      className="rounded-md border border-border px-3 py-1.5 text-sm text-fg-muted hover:border-primary hover:text-fg"
+    >
+      사용자 관리 열기
     </button>
   );
 }
@@ -807,6 +860,18 @@ export default function PreviewGallery() {
 
       <Section name="quota-panel">
         <QuotaPanelPreview />
+      </Section>
+
+      <Section name="admin-dashboard">
+        <AdminDashboardPreview />
+      </Section>
+
+      <Section name="tool-metrics-table">
+        <ToolMetricsTablePreview />
+      </Section>
+
+      <Section name="admin-users-manager">
+        <AdminUsersManagerPreview />
       </Section>
 
       <Section name="chat-input">

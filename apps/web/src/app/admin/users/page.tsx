@@ -4,8 +4,7 @@ import { AdminUsersManager } from "../../../components/admin/AdminUsersManager";
 
 export default function AdminUsersPage() {
   return (
-    <main className="p-8">
-      <h1 className="text-2xl font-semibold text-fg">사용자 관리</h1>
+    <main className="mx-auto max-w-5xl p-8">
       <AdminGuard>
         <AdminUsersManager />
       </AdminGuard>

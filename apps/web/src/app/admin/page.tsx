@@ -4,8 +4,7 @@ import { AdminDashboard } from "../../components/admin/AdminDashboard";
 
 export default function AdminDashboardPage() {
   return (
-    <main className="p-8">
-      <h1 className="text-2xl font-semibold text-fg">운영 대시보드</h1>
+    <main className="mx-auto max-w-5xl p-8">
       <AdminGuard>
         <AdminDashboard />
       </AdminGuard>

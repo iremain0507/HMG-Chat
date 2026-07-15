@@ -35,6 +35,9 @@ const FILES = [
   "../../settings/MemoryManager.tsx",
   "../../chat/MemoryPanel.tsx",
   "../../settings/QuotaPanel.tsx",
+  "../../admin/AdminDashboard.tsx",
+  "../../admin/ToolMetricsTable.tsx",
+  "../../admin/AdminUsersManager.tsx",
 ];
 
 describe("P13 하드코딩 hex 제로 회귀 가드", () => {
