@@ -237,6 +237,9 @@ export function createMessageRoutes(
       });
     }
 
+    // nginx 등 리버스 프록시가 SSE 를 버퍼링하지 않게(토큰 순차 전달 보장). Next origin
+    //   압축은 next.config compress:false 로 이미 끔.
+    c.header("X-Accel-Buffering", "no");
     return streamSSE(c, async (stream) => {
       // GET resume 엔드포인트(message-run-registry.ts)가 캐치업할 수 있도록, 현재 leg 의
       // messageId(message_start 로 파악) 기준으로 매 event 를 기록한다. tool_use 로 인한
@@ -297,6 +300,7 @@ export function createMessageRoutes(
       );
     }
 
+    c.header("X-Accel-Buffering", "no");
     return streamSSE(c, async (stream) => {
       const requestSignal = c.req.raw.signal;
       const onAbort = () => subscription.unsubscribe();

@@ -54,6 +54,8 @@ describe("POST /:id/messages (SSE) — 16-API-CONTRACT § /sessions/:id/messages
 
     expect(res.status).toBe(200);
     expect(res.headers.get("content-type")).toContain("text/event-stream");
+    // 프록시 버퍼링 방지 — SSE 토큰을 순차 전달(gzip/버퍼링으로 한 번에 뿌리는 회귀 가드).
+    expect(res.headers.get("x-accel-buffering")).toBe("no");
 
     const text = await res.text();
     expect(text).toContain("event: message_start");
