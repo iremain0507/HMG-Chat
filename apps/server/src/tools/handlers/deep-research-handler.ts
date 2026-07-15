@@ -34,6 +34,8 @@ import {
 
 export const DEFAULT_MAX_SUB_QUESTIONS = 4;
 export const DEFAULT_MAX_GAP_ITERATIONS = 2;
+// 외부 호출(researcher)이 응답 없이 멈추는 경우를 대비한 전체 상한 시간(hang 방지).
+const DEEP_RESEARCH_TIMEOUT_MS = 120_000;
 
 export interface DeepResearchToolDeps {
   leadProvider: LLMProvider;
@@ -273,7 +275,7 @@ export function createDeepResearchTool(deps: DeepResearchToolDeps): AgentTool {
 
   return {
     spec: deepResearchToolSpec,
-    async invoke({ toolCallId, args, ctx }) {
+    async invoke({ toolCallId, args, ctx: baseCtx }) {
       const query = typeof args.query === "string" ? args.query.trim() : "";
       if (!query) {
         return {
@@ -289,6 +291,18 @@ export function createDeepResearchTool(deps: DeepResearchToolDeps): AgentTool {
           },
         };
       }
+
+      // researcher 등 외부 호출이 응답 없이 멈춰도 무한 대기하지 않도록 전체 상한 시간.
+      //   초과 시 linked signal 을 abort → consumeUntilAbort 가 매 .next() 를 abort 와 race
+      //   하므로 hang 이 즉시 풀리고, 예외가 상위(messages route catch)로 전파돼 client 는
+      //   무한 "조사 중" 대신 재시도 가능한 error 로 종단된다. 아래 본문 전체가 이 ctx(=linked
+      //   signal) 를 쓰므로 sub-call(runResearcher/runIsolatedText)에 그대로 전파된다.
+      const timeoutController = new AbortController();
+      setTimeout(() => timeoutController.abort(), DEEP_RESEARCH_TIMEOUT_MS);
+      const ctx: ToolContext = {
+        ...baseCtx,
+        signal: AbortSignal.any([baseCtx.signal, timeoutController.signal]),
+      };
 
       ctx.emitProgress?.({ stage: "planning", label: "조사 계획 수립 중" });
       const plannerText = await runIsolatedText(

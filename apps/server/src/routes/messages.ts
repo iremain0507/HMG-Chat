@@ -241,6 +241,12 @@ export function createMessageRoutes(
     //   압축은 next.config compress:false 로 이미 끔.
     c.header("X-Accel-Buffering", "no");
     return streamSSE(c, async (stream) => {
+      // 장시간 툴(deep_research: researcher 병렬 ~30s + synthesis ~30s idle 갭)에
+      //   프록시/undici 가 연결을 끊지 않도록 keep-alive comment 를 주기 방출한다.
+      //   ": ..." 는 SSE 주석 — client parser(\n\n frame → parseSseFrame)는 무시한다.
+      const heartbeat = setInterval(() => {
+        void stream.write(": ping\n\n").catch(() => {});
+      }, 10_000);
       // GET resume 엔드포인트(message-run-registry.ts)가 캐치업할 수 있도록, 현재 leg 의
       // messageId(message_start 로 파악) 기준으로 매 event 를 기록한다. tool_use 로 인한
       // 재호출로 leg 가 여러 개 생기면 그때마다 message_start 가 새 messageId 를 발급하므로
@@ -273,7 +279,33 @@ export function createMessageRoutes(
           jobId,
           handle.controller.signal.aborted ? "cancelled" : "completed",
         );
+      } catch (err) {
+        // 예외로 stop 없이 스트림이 닫히면 client 가 "연결 끊김"으로 오인 → 명시적 error
+        //   event 를 방출해 종단 처리(재시도 안내) 되게 한다.
+        const message =
+          err instanceof Error
+            ? err.message
+            : "턴 처리 중 오류가 발생했습니다.";
+        await stream
+          .writeSSE({
+            event: "error",
+            data: JSON.stringify({
+              error: {
+                code: "TURN_FAILED",
+                category: "orchestrator",
+                message,
+                retryable: true,
+              },
+            }),
+          })
+          .catch(() => {});
+        try {
+          await activeRuns.setActiveRun(sessionId, jobId, "cancelled");
+        } catch {
+          /* best-effort */
+        }
       } finally {
+        clearInterval(heartbeat);
         unregisterRun(sessionId, jobId);
       }
     });
