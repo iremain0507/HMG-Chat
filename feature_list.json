@@ -1040,8 +1040,8 @@
     "acceptance": "요청 분류→해당 worker 위임+handoff payload 내부타입; RED→GREEN, verify-gates green",
     "phase": "P12",
     "team": "T2",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P12-T2-05",
