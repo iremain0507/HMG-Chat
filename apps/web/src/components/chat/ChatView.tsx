@@ -541,9 +541,11 @@ export function MessageItem({
           >
             <div className="font-semibold text-fg">Reference</div>
             <ul className="mt-1 space-y-1">
-              {citations.map((c) => (
+              {citations.map((c, i) => (
                 <li
-                  key={c.index}
+                  // deep_research 는 하위 질문별 인용을 합쳐 index 가 중복될 수 있어(예: 1,1)
+                  //   React key 는 위치 기반으로 유니크하게 준다. (전역 재번호는 서버 후속.)
+                  key={`cit-${i}-${c.index}`}
                   id={`citation-ref-${c.index}`}
                   data-testid={`citation-ref-${c.index}`}
                   data-focused={focusedCitation === c.index}

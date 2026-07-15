@@ -404,8 +404,13 @@ export function useSessionStream(sessionId: string) {
             prev && prev.toolCallId === event.toolCallId ? null : prev,
           );
         } else if (event.type === "stop") {
-          receivedTerminal = true;
-          setIsStreaming(false);
+          // reason "tool_use" 는 중간 종료(툴 실행 후 다음 leg 로 이어짐, orchestrator 가 leg
+          //   마다 stop 을 yield) — 종단으로 처리하면 최종 leg 답변 전에 스트림이 끝난 것으로
+          //   오인해 답변이 안 뜨고 도구 칩이 멈춘다. 진짜 종단(end_turn/max_tokens/aborted)만 처리.
+          if (event.reason !== "tool_use") {
+            receivedTerminal = true;
+            setIsStreaming(false);
+          }
         } else if (event.type === "error") {
           receivedTerminal = true;
           const message = event.error?.message ?? "알 수 없는 오류";
