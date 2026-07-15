@@ -4,6 +4,7 @@
 // 16-API-CONTRACT § 8 Artifact Shares(POST/DELETE /artifacts/:id/share) 단일 출처.
 import React, { useState } from "react";
 import { apiFetch } from "../../lib/fetch-with-refresh";
+import { copyText } from "../../lib/clipboard";
 
 interface ShareLink {
   token: string;
@@ -55,12 +56,8 @@ export function ShareDialog({
 
   async function copy() {
     if (!link) return;
-    try {
-      await navigator.clipboard.writeText(link.url);
-      setCopied(true);
-    } catch {
-      // clipboard 미지원 환경 — 조용히 무시(수동 선택-복사로 대체 가능)
-    }
+    // copyText: 비보안 컨텍스트(http Tailscale 등)에선 execCommand 폴백으로 복사.
+    if (await copyText(link.url)) setCopied(true);
   }
 
   return (

@@ -6,6 +6,7 @@
 import React, { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useCurrentUser } from "../hooks/useCurrentUser";
+import { randomUUID } from "../lib/uuid";
 
 export default function Home() {
   const router = useRouter();
@@ -32,7 +33,7 @@ export default function Home() {
   }
 
   function startNewChat() {
-    router.push(`/chat/${crypto.randomUUID()}`);
+    router.push(`/chat/${randomUUID()}`);
   }
 
   async function logout() {

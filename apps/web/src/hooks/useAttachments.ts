@@ -5,6 +5,7 @@
 // 라우트가 기대하는 attachments:[{uploadId}] (P10-T2-06) 형태를 readyUploadIds 로 제공한다.
 import { useCallback, useState } from "react";
 import { apiFetch } from "../lib/fetch-with-refresh";
+import { randomUUID } from "../lib/uuid";
 
 const MAX_FILE_BYTES = 20 * 1024 * 1024; // 20MB
 const ACCEPTED_MIME_PREFIXES = ["image/"];
@@ -96,7 +97,7 @@ export function useAttachments(sessionId: string) {
   const addFiles = useCallback(
     (files: File[]) => {
       for (const file of files) {
-        const localId = crypto.randomUUID();
+        const localId = randomUUID();
         if (file.size > MAX_FILE_BYTES) {
           setItems((prev) => [
             ...prev,

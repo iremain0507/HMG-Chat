@@ -12,6 +12,7 @@ import {
   type MessageBranch,
 } from "../../hooks/useSessionStream";
 import { useCurrentUser } from "../../hooks/useCurrentUser";
+import { randomUUID } from "../../lib/uuid";
 import { useOnlineStatus } from "../../hooks/useOnlineStatus";
 import { useProjects } from "../../hooks/useProjects";
 import { useSessionProject } from "../../hooks/useSessionProject";
@@ -168,7 +169,7 @@ export function ChatView({ sessionId }: { sessionId: string }) {
             />
             <button
               type="button"
-              onClick={() => router.push(`/chat/${crypto.randomUUID()}`)}
+              onClick={() => router.push(`/chat/${randomUUID()}`)}
               className="rounded-lg border border-border px-3 py-1 text-sm text-fg-muted hover:border-primary hover:text-fg"
             >
               ＋ 새 채팅
