@@ -1087,5 +1087,140 @@
     "team": "T6",
     "passes": true,
     "attempts": 1
+  },
+  {
+    "id": "P13-T6-01",
+    "desc": "AppShell 골격을 핸드오프 사양으로 — 헤더 48px(시그니처 플레이스홀더+디바이더+WChat·⌘K·테마/패널 토글) / 나비 레일 64px(홈·프로젝트·에이전트·커넥터·설정·관리, 하단 테마+아바타) / 세션 사이드바 280px(새 세션 ⌘N·검색·고정→오늘→어제→이전7일 그룹·hover 이름변경/고정/삭제) / 우패널 400px(⌘\\ 토글·드래그 리사이즈). files: components/layout/{AppShell,ThemeToggle,ToastContainer}, components/sessions/{SessionList,SessionCard}",
+    "acceptance": "시맨틱 토큰만으로(하드코딩 hex 0) 프레임 사양(레이아웃·상태·상호작용) 재현 + 기존 동작 보존; 라이트·다크 모두 preview 갤러리 등록 + Playwright 스크린샷(.ralph/screenshots/) 브라우저 검증; 신규 상호작용은 vitest RED→GREEN; verify-gates green",
+    "phase": "P13",
+    "team": "T6",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P13-T6-02",
+    "desc": "홈(F03) — 중앙 720px: 인사 30/700 → 대형 컴포저 → 빠른 시작 2×2 → 능력 스트립(커넥터·에이전트·스킬 링크) → 최근 세션 5. files: app/page.tsx",
+    "acceptance": "시맨틱 토큰만으로(하드코딩 hex 0) 프레임 사양(레이아웃·상태·상호작용) 재현 + 기존 동작 보존; 라이트·다크 모두 preview 갤러리 등록 + Playwright 스크린샷(.ralph/screenshots/) 브라우저 검증; 신규 상호작용은 vitest RED→GREEN; verify-gates green",
+    "phase": "P13",
+    "team": "T6",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P13-T6-03",
+    "desc": "채팅(F04 히어로) — user 우측 primary-50 버블(radius 10)/assistant 풀폭 문서형(버블 없음) + 좌측 Run Rail(2px 레일+이벤트 눈금; 진행=primary 펄스·완료=success·오류=danger·승인대기=warning; hover 툴팁·클릭→활동 탭). 툴카드 발화위치 인터리브(하단 몰아배치 금지). 강제 오토스크롤 금지('최신으로↓' pill). files: components/chat/{ChatView,Markdown}",
+    "acceptance": "시맨틱 토큰만으로(하드코딩 hex 0) 프레임 사양(레이아웃·상태·상호작용) 재현 + 기존 동작 보존; 라이트·다크 모두 preview 갤러리 등록 + Playwright 스크린샷(.ralph/screenshots/) 브라우저 검증; 신규 상호작용은 vitest RED→GREEN; verify-gates green",
+    "phase": "P13",
+    "team": "T6",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P13-T6-04",
+    "desc": "컴포저(F05) — 첨부칩 행 → textarea auto-grow(≤10줄) → 액션바 [＋][@][/]·모델칩·에이전트|채팅 토글·웹검색 토글·컨텍스트 게이지(mono)·전송(스트리밍 중 Stop 교체). @멘션 팝오버 360px(검색+탭 전체/에이전트/도구/커넥터/파일/지식+정책 배지 읽기전용/승인필요, ↑↓/↵/Esc). files: components/chat/{ChatInput,ComposerPopover,ModelModePicker,ProjectPicker}",
+    "acceptance": "시맨틱 토큰만으로(하드코딩 hex 0) 프레임 사양(레이아웃·상태·상호작용) 재현 + 기존 동작 보존; 라이트·다크 모두 preview 갤러리 등록 + Playwright 스크린샷(.ralph/screenshots/) 브라우저 검증; 신규 상호작용은 vitest RED→GREEN; verify-gates green",
+    "phase": "P13",
+    "team": "T6",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P13-T6-05",
+    "desc": "HITL(F06) — z-hitl(300) 딤 모달: 경고 아이콘+제목+평문 요약(도구명·대상·비가역 고지)+JSON 인라인 편집+카운트다운 mono(자동 거부)+[거부/수정 후 승인/승인]. 읽기전용 도구=무프롬프트. 대기 중 입력가능·전송만 잠금. files: components/chat/HitlPrompt",
+    "acceptance": "시맨틱 토큰만으로(하드코딩 hex 0) 프레임 사양(레이아웃·상태·상호작용) 재현 + 기존 동작 보존; 라이트·다크 모두 preview 갤러리 등록 + Playwright 스크린샷(.ralph/screenshots/) 브라우저 검증; 신규 상호작용은 vitest RED→GREEN; verify-gates green",
+    "phase": "P13",
+    "team": "T6",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P13-T6-06",
+    "desc": "StatusChip 5상태 공용 어휘(대기/실행 중/완료/오류/승인 필요)를 전 화면 단일화 + running 도트만 펄스(1.2s, prefers-reduced-motion 시 정지). files: components/chat/StatusChip (+ 사용처 정합)",
+    "acceptance": "시맨틱 토큰만으로(하드코딩 hex 0) 프레임 사양(레이아웃·상태·상호작용) 재현 + 기존 동작 보존; 라이트·다크 모두 preview 갤러리 등록 + Playwright 스크린샷(.ralph/screenshots/) 브라우저 검증; 신규 상호작용은 vitest RED→GREEN; verify-gates green",
+    "phase": "P13",
+    "team": "T6",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P13-T6-07",
+    "desc": "활동 탭(F07) — 계획 요약 + 워커 카드(StatusChip + '검색 N·출처 N' mono) + 스텝 트레이스(계획→병렬 검색→압축→종합) + 하단 고정 [실행 중지]. deep_research 스윔레인/우패널 활동 탭 정합. files: components/chat/ToolCallRenderer, 우패널 활동뷰",
+    "acceptance": "시맨틱 토큰만으로(하드코딩 hex 0) 프레임 사양(레이아웃·상태·상호작용) 재현 + 기존 동작 보존; 라이트·다크 모두 preview 갤러리 등록 + Playwright 스크린샷(.ralph/screenshots/) 브라우저 검증; 신규 상호작용은 vitest RED→GREEN; verify-gates green",
+    "phase": "P13",
+    "team": "T6",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P13-T6-08",
+    "desc": "우패널 3탭(아티팩트·출처·활동) — artifact_created→'아티팩트' 자동 오픈+토스트, 미리보기/코드 토글·버전 페이저 ‹v3/5›·다운로드/공유, 드래그 리사이즈. files: components/artifacts/{ArtifactPanel,ArtifactCanvas,ShareDialog}",
+    "acceptance": "시맨틱 토큰만으로(하드코딩 hex 0) 프레임 사양(레이아웃·상태·상호작용) 재현 + 기존 동작 보존; 라이트·다크 모두 preview 갤러리 등록 + Playwright 스크린샷(.ralph/screenshots/) 브라우저 검증; 신규 상호작용은 vitest RED→GREEN; verify-gates green",
+    "phase": "P13",
+    "team": "T6",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P13-T6-09",
+    "desc": "인용/분기 상호작용 — 문장끝 [N] 칩 hover 스니펫 팝오버, 클릭→우패널 '출처' 탭 자동활성+원문 primary-100 하이라이트 2초 페이드; 편집→분기 ‹2/3› 페이저(트리 스토어). files: components/chat/{Markdown,MessageActions,Reasoning,ChatView}",
+    "acceptance": "시맨틱 토큰만으로(하드코딩 hex 0) 프레임 사양(레이아웃·상태·상호작용) 재현 + 기존 동작 보존; 라이트·다크 모두 preview 갤러리 등록 + Playwright 스크린샷(.ralph/screenshots/) 브라우저 검증; 신규 상호작용은 vitest RED→GREEN; verify-gates green",
+    "phase": "P13",
+    "team": "T6",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P13-T6-10",
+    "desc": "프로젝트(F09) — 문서 인덱싱 상태 테이블(indexed·indexing 64%·failed+재시도) + 프로젝트 카드/상세. files: components/projects/{ProjectDetail,DocumentsPanel}, app/projects/**",
+    "acceptance": "시맨틱 토큰만으로(하드코딩 hex 0) 프레임 사양(레이아웃·상태·상호작용) 재현 + 기존 동작 보존; 라이트·다크 모두 preview 갤러리 등록 + Playwright 스크린샷(.ralph/screenshots/) 브라우저 검증; 신규 상호작용은 vitest RED→GREEN; verify-gates green",
+    "phase": "P13",
+    "team": "T6",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P13-T6-11",
+    "desc": "커넥터(F10)+에이전트·스킬(F11) — MCP 카드(상태 도트·스코프·도구 N 팝오버·보안 배지 2종, 등록 3단계 모달); 스킬/에이전트 카드+슬라이드오버(허용 도구+정책·@이름 호출 힌트·[새 세션에서 사용]). files: components/settings/{McpServersManager,SkillsManager}, app/settings/**",
+    "acceptance": "시맨틱 토큰만으로(하드코딩 hex 0) 프레임 사양(레이아웃·상태·상호작용) 재현 + 기존 동작 보존; 라이트·다크 모두 preview 갤러리 등록 + Playwright 스크린샷(.ralph/screenshots/) 브라우저 검증; 신규 상호작용은 vitest RED→GREEN; verify-gates green",
+    "phase": "P13",
+    "team": "T6",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P13-T6-12",
+    "desc": "메모리(F13)+쿼터(F14) — 메모리 카드(출처·날짜 메타) + 쿼터 80% 임계선. files: components/settings/MemoryManager, components/chat/MemoryPanel, app/settings/memories",
+    "acceptance": "시맨틱 토큰만으로(하드코딩 hex 0) 프레임 사양(레이아웃·상태·상호작용) 재현 + 기존 동작 보존; 라이트·다크 모두 preview 갤러리 등록 + Playwright 스크린샷(.ralph/screenshots/) 브라우저 검증; 신규 상호작용은 vitest RED→GREEN; verify-gates green",
+    "phase": "P13",
+    "team": "T6",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P13-T6-13",
+    "desc": "관리자(F15) — 밀도 높은 지표 테이블(tabular-nums·상태 배지). files: components/admin/{AdminDashboard,AdminUsersManager,ToolMetricsTable}, app/admin/**",
+    "acceptance": "시맨틱 토큰만으로(하드코딩 hex 0) 프레임 사양(레이아웃·상태·상호작용) 재현 + 기존 동작 보존; 라이트·다크 모두 preview 갤러리 등록 + Playwright 스크린샷(.ralph/screenshots/) 브라우저 검증; 신규 상호작용은 vitest RED→GREEN; verify-gates green",
+    "phase": "P13",
+    "team": "T6",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P13-T6-14",
+    "desc": "공유(F16)+인증 — 공유·만료(410) 공개 뷰 + 로그인/가입 폼(브랜드 정렬). files: components/chat/ShareExportMenu, components/share/SharePublicView, components/auth/{LoginForm,SignupForm}, app/(auth)/**",
+    "acceptance": "시맨틱 토큰만으로(하드코딩 hex 0) 프레임 사양(레이아웃·상태·상호작용) 재현 + 기존 동작 보존; 라이트·다크 모두 preview 갤러리 등록 + Playwright 스크린샷(.ralph/screenshots/) 브라우저 검증; 신규 상호작용은 vitest RED→GREEN; verify-gates green",
+    "phase": "P13",
+    "team": "T6",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P13-T6-15",
+    "desc": "모바일(F17)+전역 감사 — 레일→1px 인디케이터·픽커→바텀시트·아티팩트→풀시트; 전역 모션(150–200ms)·포커스 링(2px --focus-ring)·reduced-motion·radius/shadow 규율·**하드코딩 hex 제로** 감사 + 잔여 컴포넌트(CodeBlock·Mermaid·PdfRenderer·PptxRenderer 등) 토큰 정렬. files: apps/web/src 전역",
+    "acceptance": "시맨틱 토큰만으로(하드코딩 hex 0) 프레임 사양(레이아웃·상태·상호작용) 재현 + 기존 동작 보존; 라이트·다크 모두 preview 갤러리 등록 + Playwright 스크린샷(.ralph/screenshots/) 브라우저 검증; 신규 상호작용은 vitest RED→GREEN; verify-gates green",
+    "phase": "P13",
+    "team": "T6",
+    "passes": false,
+    "attempts": 0
   }
 ]
