@@ -226,7 +226,7 @@ describe("MemoryManager", () => {
       );
     });
 
-    fireEvent.click(screen.getByRole("button", { name: "💬 feedback" }));
+    fireEvent.click(screen.getByRole("button", { name: "피드백" }));
 
     await waitFor(() => {
       expect(fetchMock).toHaveBeenCalledWith(

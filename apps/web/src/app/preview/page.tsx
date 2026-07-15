@@ -23,6 +23,8 @@ import { HomeContent } from "../../components/home/HomeContent";
 import { ProjectDetail } from "../../components/projects/ProjectDetail";
 import { McpServersManager } from "../../components/settings/McpServersManager";
 import { SkillsManager } from "../../components/settings/SkillsManager";
+import { MemoryManager } from "../../components/settings/MemoryManager";
+import { QuotaPanel } from "../../components/settings/QuotaPanel";
 import { ToastContainer } from "../../components/layout/ToastContainer";
 import {
   ArtifactCanvas,
@@ -164,6 +166,42 @@ function SkillsManagerPreview() {
       className="rounded-md border border-border px-3 py-1.5 text-sm text-fg-muted hover:border-primary hover:text-fg"
     >
       스킬 관리 열기
+    </button>
+  );
+}
+
+// P13-T6-12 — MemoryManager/QuotaPanel 은 각각 useMemories/useQuota 로 마운트 시 내부
+//   fetch 한다. McpServersManagerPreview 와 동일하게 토글 오픈으로 격리해 dev 서버에 백엔드가
+//   없어도 갤러리 전체가 깨지지 않게 한다. 전용 e2e(memory-manager.pw.ts, quota-panel.pw.ts)만
+//   page.route() 로 API 를 목킹한 뒤 트리거를 클릭한다.
+function MemoryManagerPreview() {
+  const [open, setOpen] = useState(false);
+  return open ? (
+    <MemoryManager />
+  ) : (
+    <button
+      type="button"
+      data-testid="memory-manager-preview-trigger"
+      onClick={() => setOpen(true)}
+      className="rounded-md border border-border px-3 py-1.5 text-sm text-fg-muted hover:border-primary hover:text-fg"
+    >
+      메모리 설정 열기
+    </button>
+  );
+}
+
+function QuotaPanelPreview() {
+  const [open, setOpen] = useState(false);
+  return open ? (
+    <QuotaPanel />
+  ) : (
+    <button
+      type="button"
+      data-testid="quota-panel-preview-trigger"
+      onClick={() => setOpen(true)}
+      className="rounded-md border border-border px-3 py-1.5 text-sm text-fg-muted hover:border-primary hover:text-fg"
+    >
+      사용량 열기
     </button>
   );
 }
@@ -761,6 +799,14 @@ export default function PreviewGallery() {
 
       <Section name="skills-manager">
         <SkillsManagerPreview />
+      </Section>
+
+      <Section name="memory-manager">
+        <MemoryManagerPreview />
+      </Section>
+
+      <Section name="quota-panel">
+        <QuotaPanelPreview />
       </Section>
 
       <Section name="chat-input">
