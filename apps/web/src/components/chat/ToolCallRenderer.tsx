@@ -17,6 +17,23 @@ function parseMcpLabel(name: string): string | null {
   return `${serverId} › ${toolName}`;
 }
 
+// P12-T2-01/04/05(orchestrator-worker/routing-handoff/evaluator-optimizer) 는 전부
+// {task:string} 단일 필드 inputSchema 를 공유하는 격리 runTurn 파사드 — 다른 내장 툴
+// (web_search/knowledge_search/code_interpreter/artifact_create)은 이 모양을 쓰지 않으므로
+// args 모양으로 판별한다. deep_research(P12-T2-08)는 고정된 이름 자체로 판별한다.
+function isMultiAgentTool(name: string, args: unknown): boolean {
+  if (name === "deep_research") return true;
+  if (typeof args !== "object" || args === null || Array.isArray(args)) {
+    return false;
+  }
+  const keys = Object.keys(args as Record<string, unknown>);
+  return (
+    keys.length === 1 &&
+    keys[0] === "task" &&
+    typeof (args as Record<string, unknown>).task === "string"
+  );
+}
+
 function stringify(value: unknown): string {
   if (typeof value === "string") return value;
   try {
@@ -47,6 +64,7 @@ export function ToolCallRenderer({
 }) {
   const [expanded, setExpanded] = useState(false);
   const mcpLabel = parseMcpLabel(name);
+  const isMultiAgent = isMultiAgentTool(name, args);
   const argsText = stringify(args);
   const resultText = result !== undefined ? stringify(result) : "";
   const isLargePayload =
@@ -78,6 +96,14 @@ export function ToolCallRenderer({
           <span className="truncate font-medium text-fg">{name}</span>
           {mcpLabel && (
             <span className="truncate text-xs text-fg-muted">{mcpLabel}</span>
+          )}
+          {isMultiAgent && (
+            <span
+              data-testid="multi-agent-badge"
+              className="flex-none rounded-full bg-primary/10 px-2 py-0.5 text-xs text-primary"
+            >
+              멀티에이전트
+            </span>
           )}
         </span>
         <span className="flex flex-none items-center gap-2">

@@ -1085,7 +1085,7 @@
     "acceptance": "worker 진행이 기존 tool_use/tool_result 카드로 표시; SSE-stub RED→GREEN, verify-gates green",
     "phase": "P12",
     "team": "T6",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   }
 ]

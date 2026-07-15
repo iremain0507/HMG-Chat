@@ -25,6 +25,44 @@ describe("ToolCallRenderer", () => {
     );
   });
 
+  it("P12 orchestrator-worker 계열({task} 단일 인자)은 '멀티에이전트' 배지를 보여준다", () => {
+    render(
+      <ToolCallRenderer
+        toolCallId="call-1"
+        name="research_specialist"
+        args={{ task: "wchat 아키텍처를 조사해줘" }}
+        status="running"
+      />,
+    );
+    expect(screen.getByTestId("multi-agent-badge")).toHaveTextContent(
+      "멀티에이전트",
+    );
+  });
+
+  it("deep_research 툴은 '멀티에이전트' 배지를 보여준다", () => {
+    render(
+      <ToolCallRenderer
+        toolCallId="call-1"
+        name="deep_research"
+        args={{ query: "wchat 아키텍처" }}
+        status="running"
+      />,
+    );
+    expect(screen.getByTestId("multi-agent-badge")).toBeInTheDocument();
+  });
+
+  it("일반 툴(query 인자)은 '멀티에이전트' 배지를 보여주지 않는다", () => {
+    render(
+      <ToolCallRenderer
+        toolCallId="call-1"
+        name="knowledge_search"
+        args={{ query: "wchat" }}
+        status="running"
+      />,
+    );
+    expect(screen.queryByTestId("multi-agent-badge")).not.toBeInTheDocument();
+  });
+
   it("MCP namespaced 툴명(mcp:{serverId}:{tool})은 'server › tool' 라벨을 보여준다", () => {
     render(
       <ToolCallRenderer
