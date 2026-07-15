@@ -3,6 +3,7 @@
 // hooks/useMcpServers.ts — 16-API-CONTRACT § 10 MCP Servers 소비. POST 는 서버가 등록과
 // 동시에 discovery(mcp-bridge)를 수행하고 그 결과(supportedTools)를 응답에 담는다.
 import { useCallback, useEffect, useState } from "react";
+import { apiFetch } from "../lib/fetch-with-refresh";
 
 export interface McpServerDto {
   id: string;
@@ -44,7 +45,7 @@ export function useMcpServers(): UseMcpServersResult {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch("/api/v1/mcp-servers", {
+      const res = await apiFetch("/api/v1/mcp-servers", {
         credentials: "include",
       });
       if (!res.ok) {
@@ -70,7 +71,7 @@ export function useMcpServers(): UseMcpServersResult {
       scope?: { projectId?: string; userId?: string };
     }) => {
       setError(null);
-      const res = await fetch("/api/v1/mcp-servers", {
+      const res = await apiFetch("/api/v1/mcp-servers", {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
@@ -89,7 +90,7 @@ export function useMcpServers(): UseMcpServersResult {
   const remove = useCallback(
     async (id: string) => {
       setError(null);
-      const res = await fetch(`/api/v1/mcp-servers/${id}`, {
+      const res = await apiFetch(`/api/v1/mcp-servers/${id}`, {
         method: "DELETE",
         credentials: "include",
       });

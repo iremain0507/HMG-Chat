@@ -1,22 +1,27 @@
 "use client";
 
-// components/sessions/SessionCard.tsx — 19-UIUX-UPGRADE.md § P10-T6-02
-// 세션 1건: 클릭 시 이동, 이름변경(인라인 편집 → PATCH), 삭제.
+// components/sessions/SessionCard.tsx — design-reference README §Screens/AppShell.
+// 세션 1건: 클릭 시 이동, hover 시 이름변경(인라인 편집 → PATCH)·고정(로컬)·삭제.
 import React, { useState } from "react";
+import { Pencil, Pin, PinOff, Trash2 } from "lucide-react";
 import type { SessionListItemDto } from "../../hooks/useSessions";
 
 export interface SessionCardProps {
   session: SessionListItemDto;
+  pinned: boolean;
   onOpen: (id: string) => void;
   onRename: (id: string, title: string) => void;
   onDelete: (id: string) => void;
+  onTogglePin: (id: string) => void;
 }
 
 export function SessionCard({
   session,
+  pinned,
   onOpen,
   onRename,
   onDelete,
+  onTogglePin,
 }: SessionCardProps) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(session.title ?? "");
@@ -52,7 +57,10 @@ export function SessionCard({
   }
 
   return (
-    <div className="group flex items-center gap-1 rounded-md px-2 py-1.5 hover:bg-bg">
+    <div
+      data-testid={`session-card-${session.id}`}
+      className="group flex items-center gap-1 rounded-md px-2 py-1.5 hover:bg-bg"
+    >
       <button
         type="button"
         onClick={() => onOpen(session.id)}
@@ -62,11 +70,26 @@ export function SessionCard({
       </button>
       <button
         type="button"
+        aria-label={pinned ? `고정 해제: ${label}` : `고정: ${label}`}
+        aria-pressed={pinned}
+        onClick={() => onTogglePin(session.id)}
+        className={`shrink-0 rounded p-1 text-xs group-hover:block ${
+          pinned ? "block text-primary" : "hidden text-fg-muted hover:text-fg"
+        }`}
+      >
+        {pinned ? (
+          <PinOff size={12} strokeWidth={1.8} />
+        ) : (
+          <Pin size={12} strokeWidth={1.8} />
+        )}
+      </button>
+      <button
+        type="button"
         aria-label={`이름변경: ${label}`}
         onClick={startEdit}
         className="hidden shrink-0 rounded p-1 text-xs text-fg-muted hover:text-fg group-hover:block"
       >
-        ✎
+        <Pencil size={12} strokeWidth={1.8} />
       </button>
       <button
         type="button"
@@ -74,7 +97,7 @@ export function SessionCard({
         onClick={() => onDelete(session.id)}
         className="hidden shrink-0 rounded p-1 text-xs text-fg-muted hover:text-accent group-hover:block"
       >
-        🗑
+        <Trash2 size={12} strokeWidth={1.8} />
       </button>
     </div>
   );

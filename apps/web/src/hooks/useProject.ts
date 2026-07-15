@@ -4,6 +4,7 @@
 // RLS 가 non-member 에게 row 를 숨기므로 서버는 private/team-다른org 모두 404 로 응답
 // (existence leak 방지) — 훅은 이 두 케이스를 구분하지 않고 동일한 notFound 상태로 노출한다.
 import { useCallback, useEffect, useState } from "react";
+import { apiFetch } from "../lib/fetch-with-refresh";
 
 export interface ProjectDto {
   id: string;
@@ -33,7 +34,7 @@ export function useProject(projectId: string): UseProjectResult {
     setNotFound(false);
     setError(null);
     try {
-      const res = await fetch(`/api/v1/projects/${projectId}`, {
+      const res = await apiFetch(`/api/v1/projects/${projectId}`, {
         credentials: "include",
       });
       if (res.status === 404) {

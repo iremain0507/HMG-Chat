@@ -14,7 +14,7 @@ export function MemoryPanel({ onClose }: { onClose: () => void }) {
       role="region"
       aria-label="메모리"
       data-testid="memory-panel"
-      className="mx-auto mb-2 max-w-3xl rounded-xl border border-border bg-surface p-3"
+      className="mx-auto mb-2 max-w-3xl rounded-[10px] border border-border bg-surface p-3"
     >
       <div className="flex items-center justify-between">
         <span className="text-sm font-semibold text-fg">메모리</span>

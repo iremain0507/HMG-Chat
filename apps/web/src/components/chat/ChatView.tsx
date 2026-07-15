@@ -3,7 +3,7 @@
 // components/chat/ChatView.tsx — LLM 채팅 UI (ChatGPT/Claude 스타일).
 //   헤더 + 메시지 버블(user 우측/assistant 아바타+마크다운) + 스트리밍 커서 + 하단 컴포저.
 //   데이터: useSessionStream({ messages, isStreaming, send, stop }). Hyundai WIA CI 토큰.
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   useSessionStream,
@@ -12,6 +12,8 @@ import {
   type MessageBranch,
 } from "../../hooks/useSessionStream";
 import { useCurrentUser } from "../../hooks/useCurrentUser";
+import { randomUUID } from "../../lib/uuid";
+import { showToast } from "../../lib/toast";
 import { useOnlineStatus } from "../../hooks/useOnlineStatus";
 import { useProjects } from "../../hooks/useProjects";
 import { useSessionProject } from "../../hooks/useSessionProject";
@@ -26,8 +28,10 @@ import { Markdown } from "./Markdown";
 import { MemoryPanel } from "./MemoryPanel";
 import { MessageActions } from "./MessageActions";
 import { ProjectPicker } from "./ProjectPicker";
+import { RunRail, type RunRailStep } from "./RunRail";
 import { ShareExportMenu } from "./ShareExportMenu";
 import { ToolCallRenderer } from "./ToolCallRenderer";
+import { ArrowDown } from "lucide-react";
 
 const SLASH_COMMANDS: SlashCommand[] = [
   { id: "memories", label: "memories", description: "저장된 메모리 보기" },
@@ -64,19 +68,74 @@ export function ChatView({ sessionId }: { sessionId: string }) {
   const [artifactPanelOpen, setArtifactPanelOpen] = useState(false);
   const [activeArtifactIndex, setActiveArtifactIndex] = useState(0);
   const [memoryPanelOpen, setMemoryPanelOpen] = useState(false);
+  const [sourcesFocusIndex, setSourcesFocusIndex] = useState<number | null>(
+    null,
+  );
+  const [rightPanelFocus, setRightPanelFocus] = useState<{
+    tab: "artifacts" | "sources" | "activity";
+    token: number;
+  } | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const chatInputRef = useRef<ChatInputHandle>(null);
   const wasStreamingRef = useRef(isStreaming);
   const prevArtifactCountRef = useRef(0);
+  const panelFocusTokenRef = useRef(0);
 
-  // artifact_created 자동 오픈 — 18-FRONTEND-WIREFRAMES § 18.5.1 "ArtifactContext.open()".
+  // 인용 [N] 칩 클릭 — design-reference §6 CitationChip: 우패널 '출처' 탭 활성 + 원문 하이라이트.
+  function handleCitationFocus(index: number) {
+    setSourcesFocusIndex(index);
+    setArtifactPanelOpen(true);
+    setRightPanelFocus({
+      tab: "sources",
+      token: ++panelFocusTokenRef.current,
+    });
+  }
+
+  // 원문 하이라이트(primary-100)는 2초 후 페이드아웃 — design-reference §6:
+  // "클릭: 우패널 '출처' 탭 활성 + 해당 원문 블록 하이라이트(primary-100 배경 2초 페이드)".
+  useEffect(() => {
+    if (sourcesFocusIndex === null) return;
+    const timer = setTimeout(() => setSourcesFocusIndex(null), 2000);
+    return () => clearTimeout(timer);
+  }, [sourcesFocusIndex]);
+
+  // 우패널 '출처' 탭에 보여줄 인용 목록 — 세션 전체가 아니라 인용이 달린 가장 최근
+  // assistant 턴 기준(design-reference F4: 그 턴의 Reference 와 동일 집합).
+  const sourcesCitations = useMemo(() => {
+    for (let i = messages.length - 1; i >= 0; i--) {
+      const m = messages[i];
+      if (m?.citations && m.citations.length > 0) return m.citations;
+    }
+    return [];
+  }, [messages]);
+
+  // 우패널 '활동' 탭에 보여줄 진행 스냅샷 — 가장 최근 tool_progress 를 가진 tool part.
+  const activityProgress = useMemo(() => {
+    for (let i = messages.length - 1; i >= 0; i--) {
+      const parts = messages[i]?.parts ?? [];
+      for (let j = parts.length - 1; j >= 0; j--) {
+        const p = parts[j];
+        if (p && p.type === "tool" && p.progress) return p.progress;
+      }
+    }
+    return undefined;
+  }, [messages]);
+
+  // artifact_created 자동 오픈+토스트 — 18-FRONTEND-WIREFRAMES § 18.5.1 "ArtifactContext.open()",
+  // design-reference §4: artifact_created → 우패널 '아티팩트' 탭 자동 오픈 + 토스트.
   useEffect(() => {
     if (artifacts.length > prevArtifactCountRef.current) {
       setActiveArtifactIndex(artifacts.length - 1);
       setArtifactPanelOpen(true);
+      setRightPanelFocus({
+        tab: "artifacts",
+        token: ++panelFocusTokenRef.current,
+      });
+      const created = artifacts[artifacts.length - 1];
+      if (created) showToast("success", `새 아티팩트: ${created.filename}`);
     }
     prevArtifactCountRef.current = artifacts.length;
-  }, [artifacts.length]);
+  }, [artifacts]);
 
   // Cmd/Ctrl+\ 패널 토글 — 18-FRONTEND-WIREFRAMES § 18.5.1 키맵.
   useEffect(() => {
@@ -168,7 +227,7 @@ export function ChatView({ sessionId }: { sessionId: string }) {
             />
             <button
               type="button"
-              onClick={() => router.push(`/chat/${crypto.randomUUID()}`)}
+              onClick={() => router.push(`/chat/${randomUUID()}`)}
               className="rounded-lg border border-border px-3 py-1 text-sm text-fg-muted hover:border-primary hover:text-fg"
             >
               ＋ 새 채팅
@@ -245,6 +304,7 @@ export function ChatView({ sessionId }: { sessionId: string }) {
                         i === messages.length - 1 &&
                         m.role === "assistant"
                       }
+                      onCitationFocus={handleCitationFocus}
                       {...(canRegenerate
                         ? {
                             onRegenerate: () => {
@@ -274,17 +334,17 @@ export function ChatView({ sessionId }: { sessionId: string }) {
             <button
               type="button"
               onClick={scrollToBottom}
-              className="absolute bottom-3 left-1/2 -translate-x-1/2 rounded-full border border-border bg-surface px-3 py-1.5 text-xs text-fg-muted shadow-md hover:border-primary hover:text-fg"
+              aria-label="최신으로↓"
+              className="absolute bottom-3 left-1/2 flex -translate-x-1/2 items-center gap-1.5 rounded-full border border-border bg-bg px-3.5 py-2 text-xs font-medium text-primary shadow-md hover:bg-surface"
             >
-              최신으로↓
+              최신으로
+              <ArrowDown size={13} strokeWidth={2} aria-hidden="true" />
             </button>
           )}
         </div>
 
         {hitlRequest && (
-          <div className="border-t border-border px-4 pt-3">
-            <HitlPrompt request={hitlRequest} onRespond={respondHitl} />
-          </div>
+          <HitlPrompt request={hitlRequest} onRespond={respondHitl} />
         )}
 
         {memoryPanelOpen && (
@@ -326,14 +386,25 @@ export function ChatView({ sessionId }: { sessionId: string }) {
         </div>
       </div>
 
-      {artifactPanelOpen && artifacts.length > 0 && (
-        <ArtifactCanvas
-          artifacts={artifacts}
-          activeIndex={Math.min(activeArtifactIndex, artifacts.length - 1)}
-          onActiveIndexChange={setActiveArtifactIndex}
-          onClose={() => setArtifactPanelOpen(false)}
-        />
-      )}
+      {artifactPanelOpen &&
+        (artifacts.length > 0 ||
+          sourcesCitations.length > 0 ||
+          !!activityProgress) && (
+          <ArtifactCanvas
+            artifacts={artifacts}
+            activeIndex={Math.min(
+              activeArtifactIndex,
+              Math.max(artifacts.length - 1, 0),
+            )}
+            onActiveIndexChange={setActiveArtifactIndex}
+            onClose={() => setArtifactPanelOpen(false)}
+            citations={sourcesCitations}
+            focusedCitationIndex={sourcesFocusIndex}
+            {...(activityProgress ? { activityProgress } : {})}
+            onActivityStop={() => void stop()}
+            {...(rightPanelFocus ? { focusTab: rightPanelFocus } : {})}
+          />
+        )}
     </div>
   );
 }
@@ -351,6 +422,7 @@ export function MessageItem({
   onRegenerate,
   onEditSubmit,
   onSwitchBranch,
+  onCitationFocus,
 }: {
   role: "user" | "assistant";
   content: string;
@@ -364,6 +436,7 @@ export function MessageItem({
   onRegenerate?: () => void;
   onEditSubmit?: (nextContent: string) => void;
   onSwitchBranch?: (direction: "prev" | "next") => void;
+  onCitationFocus?: (index: number) => void;
 }) {
   const [focusedCitation, setFocusedCitation] = useState<number | null>(null);
   const [isEditing, setIsEditing] = useState(false);
@@ -372,6 +445,7 @@ export function MessageItem({
     setFocusedCitation(index);
     const el = document.getElementById(`citation-ref-${index}`);
     el?.scrollIntoView?.({ block: "nearest" });
+    onCitationFocus?.(index);
   };
   if (error) {
     // P10-T6-17 — 재시도 가능(retryable:true) 오류만 재시도 버튼 노출(크레딧부족 등
@@ -444,7 +518,7 @@ export function MessageItem({
     return (
       <li data-role="user" className="group flex justify-end">
         <div className="max-w-[80%]">
-          <div className="whitespace-pre-wrap rounded-2xl bg-primary px-4 py-2.5 text-primary-fg">
+          <div className="whitespace-pre-wrap rounded-[10px] bg-primary-50 px-4 py-2.5 text-fg">
             {content}
           </div>
           <div className="mt-1 flex items-center justify-end gap-2">
@@ -489,12 +563,13 @@ export function MessageItem({
     );
   }
   const hasToolParts = (parts ?? []).some((p) => p.type === "tool");
+  const runRailSteps: RunRailStep[] = (parts ?? [])
+    .filter((p) => p.type === "tool")
+    .map((p) => ({ id: p.toolCallId, label: p.name, status: p.status }));
   return (
     <li data-role="assistant" className="group flex gap-3">
-      <div className="mt-0.5 grid h-8 w-8 flex-none place-items-center rounded-lg bg-primary text-sm font-bold text-primary-fg">
-        W
-      </div>
-      <div className="min-w-0 flex-1 pt-1">
+      {hasToolParts && <RunRail steps={runRailSteps} />}
+      <div className="min-w-0 flex-1">
         {hasToolParts ? (
           <div className="space-y-3">
             {(parts ?? []).map((part, idx) =>
@@ -508,6 +583,7 @@ export function MessageItem({
                   {...(part.result !== undefined
                     ? { result: part.result }
                     : {})}
+                  {...(part.progress ? { progress: part.progress } : {})}
                   {...(part.status === "error" && onRegenerate
                     ? { onRetry: onRegenerate }
                     : {})}
@@ -540,9 +616,11 @@ export function MessageItem({
           >
             <div className="font-semibold text-fg">Reference</div>
             <ul className="mt-1 space-y-1">
-              {citations.map((c) => (
+              {citations.map((c, i) => (
                 <li
-                  key={c.index}
+                  // deep_research 는 하위 질문별 인용을 합쳐 index 가 중복될 수 있어(예: 1,1)
+                  //   React key 는 위치 기반으로 유니크하게 준다. (전역 재번호는 서버 후속.)
+                  key={`cit-${i}-${c.index}`}
                   id={`citation-ref-${c.index}`}
                   data-testid={`citation-ref-${c.index}`}
                   data-focused={focusedCitation === c.index}

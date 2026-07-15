@@ -29,7 +29,26 @@ vi.mock("../ShareDialog", () => ({
   ),
 }));
 
+vi.mock("../../chat/ActivityPanel", () => ({
+  ActivityPanel: ({ progress }: { progress: { stage: string } }) => (
+    <div data-testid="activity-panel">stage:{progress.stage}</div>
+  ),
+}));
+
 import { ArtifactCanvas, type ArtifactCanvasArtifact } from "../ArtifactCanvas";
+import type { Citation } from "../../../hooks/useSessionStream";
+
+function makeCitations(): Citation[] {
+  return [
+    {
+      index: 1,
+      source: "project",
+      filename: "manual.pdf",
+      page: 3,
+      snippet: "42 는 만물의 답이다.",
+    },
+  ];
+}
 
 function makeArtifacts(): ArtifactCanvasArtifact[] {
   return [
@@ -101,7 +120,10 @@ describe("ArtifactCanvas", () => {
         "# report v2",
       );
     });
-    expect(fetch).toHaveBeenCalledWith("/api/v1/artifacts/artifact-2/content");
+    // apiFetch(만료 시 자동 refresh 래퍼)로 감싸며 항상 credentials:"include" 를 부여한다.
+    expect(fetch).toHaveBeenCalledWith("/api/v1/artifacts/artifact-2/content", {
+      credentials: "include",
+    });
   });
 
   it("버전 페이저로 이전/다음 artifact 를 탐색하고 경계에서 버튼이 비활성화된다", () => {
@@ -116,7 +138,7 @@ describe("ArtifactCanvas", () => {
     );
 
     expect(screen.getByTestId("artifact-version-pager")).toHaveTextContent(
-      "2 / 2",
+      "v2 / 2",
     );
     expect(screen.getByRole("button", { name: "다음 버전" })).toBeDisabled();
 
@@ -132,7 +154,7 @@ describe("ArtifactCanvas", () => {
       />,
     );
     expect(screen.getByTestId("artifact-version-pager")).toHaveTextContent(
-      "1 / 2",
+      "v1 / 2",
     );
     expect(screen.getByRole("button", { name: "이전 버전" })).toBeDisabled();
   });
@@ -164,5 +186,128 @@ describe("ArtifactCanvas", () => {
       />,
     );
     expect(container).toBeEmptyDOMElement();
+  });
+
+  it("상위 탭 3개(아티팩트·출처·활동)가 렌더되고 기본은 아티팩트 탭이 활성 상태다", () => {
+    render(
+      <ArtifactCanvas
+        artifacts={makeArtifacts()}
+        activeIndex={0}
+        onActiveIndexChange={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByTestId("artifact-panel-tab-artifacts")).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    expect(screen.getByTestId("artifact-panel-tab-sources")).toHaveAttribute(
+      "aria-pressed",
+      "false",
+    );
+    expect(screen.getByTestId("artifact-panel-tab-activity")).toHaveAttribute(
+      "aria-pressed",
+      "false",
+    );
+  });
+
+  it("출처 탭을 클릭하면 인용 목록이 렌더되고 focusedCitationIndex 가 가리키는 항목만 하이라이트된다", () => {
+    render(
+      <ArtifactCanvas
+        artifacts={makeArtifacts()}
+        activeIndex={0}
+        onActiveIndexChange={vi.fn()}
+        onClose={vi.fn()}
+        citations={makeCitations()}
+        focusedCitationIndex={1}
+      />,
+    );
+
+    expect(screen.queryByTestId("source-item-1")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByTestId("artifact-panel-tab-sources"));
+
+    const item = screen.getByTestId("source-item-1");
+    expect(item).toHaveAttribute("data-focused", "true");
+    expect(item).toHaveTextContent("manual.pdf");
+    expect(item).toHaveTextContent("42 는 만물의 답이다.");
+  });
+
+  it("활동 탭을 클릭하면 ActivityPanel 이 진행 상황을 렌더한다", () => {
+    render(
+      <ArtifactCanvas
+        artifacts={makeArtifacts()}
+        activeIndex={0}
+        onActiveIndexChange={vi.fn()}
+        onClose={vi.fn()}
+        activityProgress={{ stage: "researching" }}
+      />,
+    );
+
+    expect(screen.queryByTestId("activity-panel")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByTestId("artifact-panel-tab-activity"));
+    expect(screen.getByTestId("activity-panel")).toHaveTextContent(
+      "stage:researching",
+    );
+  });
+
+  it("focusTab prop 의 token 이 바뀌면 지정된 탭으로 강제 전환된다", () => {
+    const { rerender } = render(
+      <ArtifactCanvas
+        artifacts={makeArtifacts()}
+        activeIndex={0}
+        onActiveIndexChange={vi.fn()}
+        onClose={vi.fn()}
+        citations={makeCitations()}
+        focusTab={{ tab: "artifacts", token: 1 }}
+      />,
+    );
+    expect(screen.getByTestId("artifact-panel-tab-artifacts")).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+
+    rerender(
+      <ArtifactCanvas
+        artifacts={makeArtifacts()}
+        activeIndex={0}
+        onActiveIndexChange={vi.fn()}
+        onClose={vi.fn()}
+        citations={makeCitations()}
+        focusTab={{ tab: "sources", token: 2 }}
+      />,
+    );
+    expect(screen.getByTestId("artifact-panel-tab-sources")).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    expect(screen.getByTestId("source-item-1")).toBeInTheDocument();
+  });
+
+  it("모바일(F17) 풀시트 상단 그래버가 렌더된다", () => {
+    render(
+      <ArtifactCanvas
+        artifacts={makeArtifacts()}
+        activeIndex={0}
+        onActiveIndexChange={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+    expect(screen.getByTestId("artifact-panel-grabber")).toBeInTheDocument();
+  });
+
+  it("artifacts 가 비어있어도 citations 가 있으면 렌더되고, 아티팩트 탭은 빈 상태 안내를 보여준다", () => {
+    render(
+      <ArtifactCanvas
+        artifacts={[]}
+        activeIndex={0}
+        onActiveIndexChange={vi.fn()}
+        onClose={vi.fn()}
+        citations={makeCitations()}
+      />,
+    );
+
+    expect(screen.getByTestId("artifact-panel")).toBeInTheDocument();
+    expect(screen.getByText("표시할 아티팩트가 없습니다")).toBeInTheDocument();
   });
 });

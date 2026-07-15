@@ -52,7 +52,103 @@ describe("DocumentsPanel", () => {
     await waitFor(() => {
       expect(screen.getByText("ABC社_RFP_v2.pdf")).toBeInTheDocument();
     });
-    expect(screen.getByText("indexed")).toBeInTheDocument();
+    expect(screen.getByText("인덱스 완료")).toBeInTheDocument();
+  });
+
+  it("failed 문서는 실패 사유와 [다시 시도] 버튼을 표시하고, 클릭 시 재시도 API를 호출한다", async () => {
+    const fetchMock = vi.fn(
+      async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        if (init?.method === "POST" && url.endsWith("/retry")) {
+          return {
+            ok: true,
+            status: 202,
+            json: async () => ({
+              data: { documentId: "doc-9", indexStatus: "pending" },
+            }),
+          };
+        }
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            data: [
+              {
+                id: "doc-9",
+                projectId: "proj-1",
+                filename: "구형매뉴얼.pdf",
+                contentHash: "hash9",
+                mimeType: "application/pdf",
+                sizeBytes: 12_000_000,
+                indexStatus: "failed",
+                chunkCount: 0,
+                indexedAt: null,
+                failureReason: "암호화된 PDF",
+                createdBy: "user-1",
+                createdAt: "2026-04-01T00:00:00Z",
+                updatedAt: "2026-04-01T00:00:00Z",
+              },
+            ],
+          }),
+        };
+      },
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<DocumentsPanel projectId="proj-1" />);
+
+    await waitFor(() => {
+      expect(screen.getByText("암호화된 PDF")).toBeInTheDocument();
+    });
+    expect(screen.getByText("실패")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "다시 시도" }));
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/v1/documents/doc-9/retry",
+        expect.objectContaining({ method: "POST" }),
+      );
+    });
+  });
+
+  it("인덱싱 진행 중(embedding) 문서는 실행 중 상태 어휘로 렌더된다", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          data: [
+            {
+              id: "doc-5",
+              projectId: "proj-1",
+              filename: "e-COMP_사양서.docx",
+              contentHash: "hash5",
+              mimeType:
+                "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+              sizeBytes: 3_400_000,
+              indexStatus: "embedding",
+              chunkCount: 0,
+              indexedAt: null,
+              failureReason: null,
+              createdBy: "user-1",
+              createdAt: "2026-04-01T00:00:00Z",
+              updatedAt: "2026-04-01T00:00:00Z",
+            },
+          ],
+        }),
+      })),
+    );
+
+    render(<DocumentsPanel projectId="proj-1" />);
+
+    await waitFor(() => {
+      expect(screen.getByText("e-COMP_사양서.docx")).toBeInTheDocument();
+    });
+    const chip = screen.getByTestId("status-chip");
+    expect(chip).toHaveAttribute("data-status", "running");
+    expect(chip).toHaveTextContent("임베딩중");
   });
 
   it("파일을 선택하면 업로드 후 목록에 반영한다", async () => {
@@ -127,6 +223,6 @@ describe("DocumentsPanel", () => {
     await waitFor(() => {
       expect(screen.getByText("proposal_draft.docx")).toBeInTheDocument();
     });
-    expect(screen.getByText("indexed")).toBeInTheDocument();
+    expect(screen.getByText("인덱스 완료")).toBeInTheDocument();
   });
 });

@@ -4,6 +4,7 @@ import type {
   ArtifactRecord,
   LLMProvider,
   ToolContext,
+  ToolProgress,
 } from "@wchat/interfaces";
 import {
   createDeepResearchTool,
@@ -293,6 +294,64 @@ describe("createDeepResearchTool", () => {
     if (result.content.kind === "error") {
       expect(result.content.error.code).toBe("INVALID_INPUT");
     }
+  });
+
+  it("실행 중 emitProgress 로 planning→researching(하위질문 tasks)→synthesizing→done 진행을 방출한다", async () => {
+    const tool = createDeepResearchTool({
+      leadProvider: fakeLeadProvider({
+        plannerResponse: "- 질문 A\n- 질문 B",
+        synthesisResponse: () => "## 리포트 [1][2].",
+        gapCheckResponse: () => "COMPLETE",
+      }),
+      leadModel: "fake-lead-model",
+      workerProvider: fakeWorkerProvider(),
+      workerModel: "fake-worker-model",
+      workerTools: [fakeWorkerTool()],
+      maxTokens: 512,
+      da: fakeArtifactDa(),
+    });
+    const emitted: ToolProgress[] = [];
+    await tool.invoke({
+      toolCallId: "call-p",
+      args: { query: "리서치 목표" },
+      ctx: { ...fakeToolContext(), emitProgress: (p) => emitted.push(p) },
+    });
+    const stages = emitted.map((e) => e.stage);
+    expect(stages[0]).toBe("planning");
+    expect(stages).toContain("researching");
+    expect(stages).toContain("synthesizing");
+    expect(stages.at(-1)).toBe("done");
+    const research = emitted.find((e) => e.stage === "researching");
+    expect(research?.tasks?.map((t) => t.title)).toEqual(["질문 A", "질문 B"]);
+  });
+
+  it("상위 취소/타임아웃 시 응답 없이 멈춘 sub-call 도 hang 하지 않고 예외로 종단한다", async () => {
+    const controller = new AbortController();
+    const hangingProvider: LLMProvider = {
+      name: "hang",
+      models: ["m"],
+      // eslint-disable-next-line require-yield
+      async *chat() {
+        await new Promise(() => {}); // 응답 없이 영원히 대기(실 네트워크 hang 모사)
+      },
+    };
+    const tool = createDeepResearchTool({
+      leadProvider: hangingProvider,
+      leadModel: "m",
+      workerProvider: hangingProvider,
+      workerModel: "m",
+      workerTools: [],
+      maxTokens: 128,
+      da: fakeArtifactDa(),
+    });
+    const invokePromise = tool.invoke({
+      toolCallId: "c-hang",
+      args: { query: "x" },
+      ctx: { ...fakeToolContext(), signal: controller.signal },
+    });
+    // 타임아웃과 동일 경로(linked signal abort) — hang 이 즉시 풀려 예외로 종단되어야 한다.
+    controller.abort();
+    await expect(invokePromise).rejects.toThrow();
   });
 
   it("plan→병렬 researcher→종합 후 인용이 포함된 markdown 아티팩트를 생성하고, 존재하지 않는 인용 마커[99]는 drop 한다(gapCheck COMPLETE 로 1회 종합에 종료)", async () => {

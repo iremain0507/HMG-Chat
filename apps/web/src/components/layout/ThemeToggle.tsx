@@ -41,7 +41,11 @@ function writeStoredTheme(theme: Theme): void {
   }
 }
 
-export function ThemeToggle() {
+export function ThemeToggle({
+  testId = "theme-toggle",
+}: {
+  testId?: string;
+} = {}) {
   const [theme, setTheme] = useState<Theme>("light");
 
   useEffect(() => {
@@ -63,7 +67,7 @@ export function ThemeToggle() {
       onClick={toggle}
       aria-label="테마 전환"
       aria-pressed={theme === "dark"}
-      data-testid="theme-toggle"
+      data-testid={testId}
       className="rounded-md border border-border px-2 py-1 text-sm text-fg-muted hover:border-primary hover:text-fg"
     >
       {theme === "dark" ? "🌙" : "☀️"}

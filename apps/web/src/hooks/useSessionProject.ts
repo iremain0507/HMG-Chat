@@ -3,6 +3,7 @@
 // hooks/useSessionProject.ts — 16-API-CONTRACT § GET/PATCH /sessions/:id 소비(projectId 스코핑).
 //   P10-T6-14 채팅 헤더 [Project ▾] 가 현재 세션의 projectId 를 읽고 전환한다.
 import { useCallback, useEffect, useState } from "react";
+import { apiFetch } from "../lib/fetch-with-refresh";
 
 interface UseSessionProjectResult {
   projectId: string | null;
@@ -17,7 +18,7 @@ export function useSessionProject(sessionId: string): UseSessionProjectResult {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch(`/api/v1/sessions/${sessionId}`, {
+      const res = await apiFetch(`/api/v1/sessions/${sessionId}`, {
         credentials: "include",
       });
       if (!res.ok) return;
@@ -37,7 +38,7 @@ export function useSessionProject(sessionId: string): UseSessionProjectResult {
   const setProject = useCallback(
     async (nextProjectId: string | null) => {
       try {
-        const res = await fetch(`/api/v1/sessions/${sessionId}`, {
+        const res = await apiFetch(`/api/v1/sessions/${sessionId}`, {
           method: "PATCH",
           credentials: "include",
           headers: { "Content-Type": "application/json" },

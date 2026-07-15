@@ -15,6 +15,7 @@ import { createDocumentRoutes } from "./routes/documents.js";
 import { createPgDocumentDataAccess } from "./db/project-document-data-access.js";
 import { createArtifactRoutes } from "./routes/artifacts.js";
 import { createPgArtifactDataAccess } from "./db/artifact-data-access.js";
+import { pgPool } from "./db/client.js";
 import { createArtifactShareRoutes } from "./routes/artifact-shares.js";
 import { createPgArtifactShareDataAccess } from "./db/artifact-share-data-access.js";
 import { createPublicShareRoutes } from "./routes/public-share.js";
@@ -38,7 +39,7 @@ import { createConfigRoutes } from "./routes/config.js";
 import { createPgHealthHistoryDataAccess } from "./db/health-history-data-access.js";
 import { createPgAdminDataAccess } from "./db/admin-data-access.js";
 import { createSkillRegistry } from "./tools/skills-engine.js";
-import { createArtifactCreateTool } from "./tools/handlers/artifact-create-handler.js";
+import { assembleBuiltinTools } from "./tools/assemble-builtin-tools.js";
 import { hitlBridge } from "./tools/hitl-manager.js";
 import { createInlineArtifactStore } from "./lib/artifact-store.inline.js";
 import { createS3ArtifactStore } from "./lib/artifact-store.s3.js";
@@ -165,7 +166,30 @@ export function createApp(env: Env) {
       model: env.LLM_MODEL,
       activeRuns: { setActiveRun },
       organizations: authDa.organizations,
-      tools: [createArtifactCreateTool({ da: artifactDa })],
+      // 클라이언트 생성 세션 UUID(/chat/<uuid>)를 첫 메시지 시 upsert — 아티팩트/업로드/
+      //   active-run 의 sessions FK 충족(deep_research 리포트 저장 FK 위반 해소). best-effort:
+      //   잘못된 id 형식 등은 무시(RLS 는 pgPool 롤이 bypass, FK 만 필요).
+      ensureSession: async (id, userId) => {
+        try {
+          await pgPool.query(
+            `INSERT INTO sessions (id, user_id) VALUES ($1, $2) ON CONFLICT (id) DO NOTHING`,
+            [id, userId],
+          );
+        } catch {
+          /* best-effort — 세션 보장 실패해도 메시지 흐름은 계속 */
+        }
+      },
+      // 내장 도구 전체 배선: artifact_create + web_search + code_interpreter + deep_research.
+      //   키(TAVILY/E2B) 없으면 dev-stub 폴백(assemble-builtin-tools.ts).
+      tools: assembleBuiltinTools({
+        provider,
+        model: env.LLM_MODEL,
+        maxTokens: 4096,
+        artifactDa,
+        objectStore: createLocalObjectStore(),
+        ...(env.TAVILY_API_KEY ? { tavilyApiKey: env.TAVILY_API_KEY } : {}),
+        ...(env.E2B_API_KEY ? { e2bApiKey: env.E2B_API_KEY } : {}),
+      }),
       mcpTools: assembleOrgMcpTools(mcpServerDa, mcpBridge, mcpClientPool),
       hitl: hitlBridge,
       logger: createLogger(),

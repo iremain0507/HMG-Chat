@@ -5,16 +5,32 @@
 //   각 FE 태스크는 자기 컴포넌트를 data-testid="preview-<name>" 섹션으로 여기에 추가한다.
 import React, { useState } from "react";
 import { ThemeToggle } from "../../components/layout/ThemeToggle";
+import { AppShell } from "../../components/layout/AppShell";
+import { SessionList } from "../../components/sessions/SessionList";
 import { Markdown } from "../../components/chat/Markdown";
 import { Reasoning } from "../../components/chat/Reasoning";
 import { MessageActions } from "../../components/chat/MessageActions";
 import { ToolCallRenderer } from "../../components/chat/ToolCallRenderer";
+import { StatusChip } from "../../components/chat/StatusChip";
+import { ActivityPanel } from "../../components/chat/ActivityPanel";
 import { HitlPrompt } from "../../components/chat/HitlPrompt";
 import { ChatInput } from "../../components/chat/ChatInput";
 import { MessageItem } from "../../components/chat/ChatView";
 import { ProjectPicker } from "../../components/chat/ProjectPicker";
 import { MemoryPanel } from "../../components/chat/MemoryPanel";
 import { ShareExportMenu } from "../../components/chat/ShareExportMenu";
+import { SharePublicView } from "../../components/share/SharePublicView";
+import { LoginForm } from "../../components/auth/LoginForm";
+import { SignupForm } from "../../components/auth/SignupForm";
+import { HomeContent } from "../../components/home/HomeContent";
+import { ProjectDetail } from "../../components/projects/ProjectDetail";
+import { McpServersManager } from "../../components/settings/McpServersManager";
+import { SkillsManager } from "../../components/settings/SkillsManager";
+import { MemoryManager } from "../../components/settings/MemoryManager";
+import { QuotaPanel } from "../../components/settings/QuotaPanel";
+import { AdminDashboard } from "../../components/admin/AdminDashboard";
+import { ToolMetricsTable } from "../../components/admin/ToolMetricsTable";
+import { AdminUsersManager } from "../../components/admin/AdminUsersManager";
 import { ToastContainer } from "../../components/layout/ToastContainer";
 import {
   ArtifactCanvas,
@@ -74,6 +90,178 @@ function CitationPreview() {
   );
 }
 
+// P13-T6-05 — HitlPrompt(F06)는 z-hitl 딤 모달(fixed inset-0)로 재구현되어 항상 마운트하면
+// 갤러리의 다른 섹션을 가려버린다. ArtifactCanvasPreview/MemoryPanelPreview 와 동일하게
+// 기본 닫힘 + 토글 버튼으로 감싸 다른 프리뷰/e2e 스펙과 충돌하지 않게 한다.
+function HitlPromptPreview() {
+  const [open, setOpen] = useState(false);
+  return open ? (
+    <HitlPrompt
+      request={{
+        toolCallId: "preview-hitl-1",
+        toolName: "send_email",
+        args: { to: "a@b.com", subject: "안녕하세요" },
+        rationale: "외부로 이메일을 발송합니다.",
+        expiresAt: new Date(Date.now() + 5 * 60 * 1000).toISOString(),
+      }}
+      onRespond={() => setOpen(false)}
+    />
+  ) : (
+    <button
+      type="button"
+      data-testid="hitl-prompt-preview-trigger"
+      onClick={() => setOpen(true)}
+      className="rounded-md border border-border px-3 py-1.5 text-sm text-fg-muted hover:border-primary hover:text-fg"
+    >
+      HITL 카드 열기
+    </button>
+  );
+}
+
+// P13-T6-10 — ProjectDetail(F09)은 useProject/useDocuments 로 내부 fetch 하며 404 시
+//   next/navigation.notFound() 를 throw 한다. 갤러리에 무조건 마운트하면 dev 서버에
+//   백엔드가 없을 때(다른 e2e 스펙이 이 경로를 목킹하지 않고 /preview 를 여는 경우) 전체
+//   갤러리가 깨지므로 HitlPromptPreview 와 동일하게 토글 오픈으로 격리한다.
+//   전용 e2e(project-documents.pw.ts)만 page.route() 로 /api/v1/projects,
+//   /api/v1/documents 를 목킹한 뒤 이 버튼을 클릭한다.
+function ProjectDetailPreview() {
+  const [open, setOpen] = useState(false);
+  return open ? (
+    <ProjectDetail projectId="preview-project-1" />
+  ) : (
+    <button
+      type="button"
+      data-testid="project-detail-preview-trigger"
+      onClick={() => setOpen(true)}
+      className="rounded-md border border-border px-3 py-1.5 text-sm text-fg-muted hover:border-primary hover:text-fg"
+    >
+      프로젝트 상세 열기
+    </button>
+  );
+}
+
+// P13-T6-11 — McpServersManager/SkillsManager 는 각각 useMcpServers/useSkills 로 마운트 시
+//   내부 fetch 한다. ProjectDetailPreview 와 동일하게 토글 오픈으로 격리해 dev 서버에 백엔드가
+//   없어도 갤러리 전체가 깨지지 않게 한다. 전용 e2e(mcp-servers-manager.pw.ts,
+//   skills-manager.pw.ts)만 page.route() 로 API 를 목킹한 뒤 트리거를 클릭한다.
+function McpServersManagerPreview() {
+  const [open, setOpen] = useState(false);
+  return open ? (
+    <McpServersManager />
+  ) : (
+    <button
+      type="button"
+      data-testid="mcp-servers-manager-preview-trigger"
+      onClick={() => setOpen(true)}
+      className="rounded-md border border-border px-3 py-1.5 text-sm text-fg-muted hover:border-primary hover:text-fg"
+    >
+      커넥터 관리 열기
+    </button>
+  );
+}
+
+function SkillsManagerPreview() {
+  const [open, setOpen] = useState(false);
+  return open ? (
+    <SkillsManager />
+  ) : (
+    <button
+      type="button"
+      data-testid="skills-manager-preview-trigger"
+      onClick={() => setOpen(true)}
+      className="rounded-md border border-border px-3 py-1.5 text-sm text-fg-muted hover:border-primary hover:text-fg"
+    >
+      스킬 관리 열기
+    </button>
+  );
+}
+
+// P13-T6-12 — MemoryManager/QuotaPanel 은 각각 useMemories/useQuota 로 마운트 시 내부
+//   fetch 한다. McpServersManagerPreview 와 동일하게 토글 오픈으로 격리해 dev 서버에 백엔드가
+//   없어도 갤러리 전체가 깨지지 않게 한다. 전용 e2e(memory-manager.pw.ts, quota-panel.pw.ts)만
+//   page.route() 로 API 를 목킹한 뒤 트리거를 클릭한다.
+function MemoryManagerPreview() {
+  const [open, setOpen] = useState(false);
+  return open ? (
+    <MemoryManager />
+  ) : (
+    <button
+      type="button"
+      data-testid="memory-manager-preview-trigger"
+      onClick={() => setOpen(true)}
+      className="rounded-md border border-border px-3 py-1.5 text-sm text-fg-muted hover:border-primary hover:text-fg"
+    >
+      메모리 설정 열기
+    </button>
+  );
+}
+
+function QuotaPanelPreview() {
+  const [open, setOpen] = useState(false);
+  return open ? (
+    <QuotaPanel />
+  ) : (
+    <button
+      type="button"
+      data-testid="quota-panel-preview-trigger"
+      onClick={() => setOpen(true)}
+      className="rounded-md border border-border px-3 py-1.5 text-sm text-fg-muted hover:border-primary hover:text-fg"
+    >
+      사용량 열기
+    </button>
+  );
+}
+
+// P13-T6-13 — AdminDashboard/ToolMetricsTable/AdminUsersManager 도 마운트 시 내부 fetch
+//   하므로 QuotaPanelPreview 와 동일하게 토글 오픈으로 격리한다.
+function AdminDashboardPreview() {
+  const [open, setOpen] = useState(false);
+  return open ? (
+    <AdminDashboard />
+  ) : (
+    <button
+      type="button"
+      data-testid="admin-dashboard-preview-trigger"
+      onClick={() => setOpen(true)}
+      className="rounded-md border border-border px-3 py-1.5 text-sm text-fg-muted hover:border-primary hover:text-fg"
+    >
+      관리 대시보드 열기
+    </button>
+  );
+}
+
+function ToolMetricsTablePreview() {
+  const [open, setOpen] = useState(false);
+  return open ? (
+    <ToolMetricsTable />
+  ) : (
+    <button
+      type="button"
+      data-testid="tool-metrics-table-preview-trigger"
+      onClick={() => setOpen(true)}
+      className="rounded-md border border-border px-3 py-1.5 text-sm text-fg-muted hover:border-primary hover:text-fg"
+    >
+      도구 지표 열기
+    </button>
+  );
+}
+
+function AdminUsersManagerPreview() {
+  const [open, setOpen] = useState(false);
+  return open ? (
+    <AdminUsersManager />
+  ) : (
+    <button
+      type="button"
+      data-testid="admin-users-manager-preview-trigger"
+      onClick={() => setOpen(true)}
+      className="rounded-md border border-border px-3 py-1.5 text-sm text-fg-muted hover:border-primary hover:text-fg"
+    >
+      사용자 관리 열기
+    </button>
+  );
+}
+
 const ARTIFACTS: ArtifactCanvasArtifact[] = [
   {
     artifactId: "preview-artifact-1",
@@ -89,9 +277,83 @@ const ARTIFACTS: ArtifactCanvasArtifact[] = [
   },
 ];
 
+// P13-T6-07 — F07(우패널 '활동' 탭) 프리뷰 데이터: 완료 2·실행 중 1·대기 1 워커로
+//   프레임의 병렬 진행 예시(2 done/1 running/1 queued)를 재현.
+const ACTIVITY_PROGRESS = {
+  stage: "researching" as const,
+  label: "2/4 하위질문 조사 완료",
+  tasks: [
+    {
+      id: "sq-0",
+      title: "글로벌 히트펌프 시장 규모·성장률",
+      status: "done" as const,
+      sourceCount: 9,
+    },
+    {
+      id: "sq-1",
+      title: "주요 OEM 열관리 아키텍처 동향",
+      status: "done" as const,
+      sourceCount: 7,
+    },
+    {
+      id: "sq-2",
+      title: "국내외 부품사 경쟁 구도",
+      status: "running" as const,
+      sourceCount: 2,
+    },
+    {
+      id: "sq-3",
+      title: "규제·보조금 영향",
+      status: "queued" as const,
+    },
+  ],
+};
+
+function ActivityPanelPreview() {
+  const [stopped, setStopped] = useState(false);
+  return (
+    <div className="flex h-[640px] overflow-hidden rounded-lg border border-border">
+      <ActivityPanel
+        progress={ACTIVITY_PROGRESS}
+        onStop={() => setStopped(true)}
+      />
+      <p
+        data-testid="activity-panel-stopped"
+        className={stopped ? "px-3 py-2 text-xs text-fg-muted" : "sr-only"}
+      >
+        {stopped ? "중지 요청됨" : "중지 미요청"}
+      </p>
+    </div>
+  );
+}
+
+// P13-T6-08 — F4/§6 CitationChip 핸드오프: 우패널 '출처' 탭 데모용 인용 1건.
+const PREVIEW_CITATIONS = [
+  {
+    index: 1,
+    source: "project" as const,
+    filename: "열관리모듈_시험성적서.pdf",
+    page: 7,
+    snippet: "시험 결과 열관리 모듈의 평균 방열 효율은 92.4% 로 측정되었다.",
+  },
+];
+
+// P13-T6-09 — design-reference §6 CitationChip: 클릭 시 우패널 '출처' 탭 원문 하이라이트가
+// primary-100 배경으로 2초간 유지되다 페이드아웃된다(ChatView 의 실제 auto-clear 와 동일 패턴).
+function useFadingCitationFocus() {
+  const [focusedIndex, setFocusedIndex] = useState<number | null>(null);
+  React.useEffect(() => {
+    if (focusedIndex === null) return;
+    const timer = setTimeout(() => setFocusedIndex(null), 2000);
+    return () => clearTimeout(timer);
+  }, [focusedIndex]);
+  return { focusedIndex, setFocusedIndex };
+}
+
 function ArtifactCanvasPreview() {
   const [open, setOpen] = useState(true);
   const [activeIndex, setActiveIndex] = useState(1);
+  const { focusedIndex, setFocusedIndex } = useFadingCitationFocus();
   return (
     <div>
       <button
@@ -101,6 +363,14 @@ function ArtifactCanvasPreview() {
       >
         패널 다시 열기
       </button>
+      <button
+        type="button"
+        data-testid="citation-focus-trigger"
+        onClick={() => setFocusedIndex(1)}
+        className="mb-3 ml-2 rounded-md border border-border px-3 py-1.5 text-sm text-fg-muted hover:border-primary hover:text-fg"
+      >
+        출처 하이라이트 트리거
+      </button>
       {open && (
         <div className="relative h-[420px] overflow-hidden rounded-lg border border-border">
           <ArtifactCanvas
@@ -108,6 +378,9 @@ function ArtifactCanvasPreview() {
             activeIndex={activeIndex}
             onActiveIndexChange={setActiveIndex}
             onClose={() => setOpen(false)}
+            citations={PREVIEW_CITATIONS}
+            focusedCitationIndex={focusedIndex}
+            activityProgress={ACTIVITY_PROGRESS}
           />
         </div>
       )}
@@ -217,11 +490,21 @@ function MemoryPanelPreview() {
 const AVAILABLE_MODELS = ["claude-opus-4-7", "claude-sonnet-4-6"];
 const AVAILABLE_TOOLS = ["knowledge_search", "web_search"];
 
+// P13-T6-04 — F05 핸드오프: 카테고리 탭(전체/에이전트/도구/커넥터/파일/지식) + 정책 배지
+//   (읽기 전용/승인 필요) 데모용으로 5개 kind 를 모두 포함하고 policy 예시를 채운다.
 const MENTION_ENTITIES = [
+  { id: "agent-quality", kind: "agent" as const, label: "품질 리포트" },
   {
     id: "tool-knowledge-search",
     kind: "tool" as const,
     label: "knowledge_search",
+    policy: "readonly" as const,
+  },
+  {
+    id: "connector-work-order",
+    kind: "connector" as const,
+    label: "work_order.update",
+    policy: "approval" as const,
   },
   { id: "kb-product-spec", kind: "knowledge" as const, label: "product-spec" },
 ];
@@ -334,6 +617,148 @@ function OfflineBannerPreview() {
   );
 }
 
+// P13-T6-01 — AppShell(헤더·나비레일·세션사이드바·우패널) 핸드오프 정렬 프리뷰.
+//   실 API 대신 useSessions/useCurrentUser 의 fetch 를 Playwright page.route() 로 목킹해
+//   빈 상태가 아닌 실제 프레임 값으로 렌더 검증한다(e2e/app-shell.pw.ts).
+function AppShellPreview() {
+  return (
+    <AppShell
+      sidebar={<SessionList now={new Date("2026-07-15T09:00:00Z")} />}
+      rightPanel={
+        <div className="p-4 text-sm text-fg-muted">우패널 콘텐츠 예시</div>
+      }
+    >
+      <div className="p-6 text-sm text-fg-muted">본문 예시 영역</div>
+    </AppShell>
+  );
+}
+
+const HOME_PREVIEW_SESSIONS = [
+  {
+    id: "hs1",
+    title: "등속조인트 공정 불량 원인 분석",
+    lastMessageAt: new Date("2026-07-15T11:50:00Z").toISOString(),
+    projectId: null,
+    archived: false,
+  },
+  {
+    id: "hs2",
+    title: "열관리 모듈 시험성적서 요약",
+    lastMessageAt: new Date("2026-07-15T10:00:00Z").toISOString(),
+    projectId: null,
+    archived: false,
+  },
+  {
+    id: "hs3",
+    title: "협력사 RFQ 회신 초안",
+    lastMessageAt: new Date("2026-07-15T07:00:00Z").toISOString(),
+    projectId: null,
+    archived: false,
+  },
+];
+
+// P13-T6-02 — HomeContent 는 순수 프레젠테이션 컴포넌트라 실 라우터/fetch 없이 로컬 state 로
+//   onNewChat/onQuickStart/onOpenSession 결과를 화면에 재현(e2e/home.pw.ts).
+function HomeContentPreview() {
+  const [lastAction, setLastAction] = useState("");
+  return (
+    <div>
+      <div
+        data-testid="home-last-action"
+        className="mb-2 text-xs text-fg-muted"
+      >
+        마지막 동작: {lastAction || "(없음)"}
+      </div>
+      <HomeContent
+        userName="김민수"
+        onNewChat={() => setLastAction("새 채팅 시작")}
+        onQuickStart={(prompt) => setLastAction(`빠른 시작: ${prompt}`)}
+        onOpenSession={(id) => setLastAction(`세션 열기: ${id}`)}
+        connectorsCount={6}
+        skillsCount={13}
+        agentsCount={4}
+        recentSessions={HOME_PREVIEW_SESSIONS}
+        now={new Date("2026-07-15T12:00:00Z").getTime()}
+      />
+    </div>
+  );
+}
+
+// P13-T6-03 — 채팅(F04 히어로) 핸드오프 정렬 프리뷰: user primary-50 버블(radius 10) +
+//   assistant 풀폭 문서형(버블 없음) + 좌측 Run Rail(발화 위치 인터리브된 툴카드에 눈금).
+function ChatAgenticPreview() {
+  return (
+    <ul className="space-y-6">
+      <MessageItem
+        role="user"
+        content="상반기 등속조인트 불량 원인을 QMS 최신 데이터와 교차 확인해서 표로 정리해줘."
+        streaming={false}
+        error={false}
+      />
+      <MessageItem
+        role="assistant"
+        content=""
+        streaming={false}
+        error={false}
+        parts={[
+          {
+            type: "text",
+            text: "품질관리규정 기준과 대조한 결과, 상반기 불량은 열처리 경도 편차에 집중되어 있습니다.",
+          },
+          {
+            type: "tool",
+            toolCallId: "preview-rail-1",
+            name: "knowledge_search",
+            args: { query: "CVJ 열처리 경도" },
+            status: "done",
+            result: "3개 청크 검색됨",
+          },
+          {
+            type: "tool",
+            toolCallId: "preview-rail-2",
+            name: "defect.query",
+            args: { part: "CVJ", period: "2026H1" },
+            status: "running",
+          },
+          { type: "text", text: "QMS 최신 집계로 교차 확인 중입니다." },
+        ]}
+      />
+    </ul>
+  );
+}
+
+// P13-T6-14 — 공유(F16)+인증 핸드오프 정렬 프리뷰. SharePublicView 는 useShare 훅이
+//   실 fetch 를 수행하므로, Playwright(e2e/share-auth.pw.ts)가 page.route 로
+//   /api/v1/share/:token 응답을 가로채 정상/410 두 상태를 결정론적으로 재현한다.
+function SharePublicViewPreview() {
+  return (
+    <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+      <div className="flex justify-center rounded-md bg-bg p-4">
+        <SharePublicView token="preview-share-ok" />
+      </div>
+      <div className="flex justify-center rounded-md bg-bg p-4">
+        <SharePublicView token="preview-share-expired" />
+      </div>
+    </div>
+  );
+}
+
+function LoginFormPreview() {
+  return (
+    <div className="flex justify-center">
+      <LoginForm />
+    </div>
+  );
+}
+
+function SignupFormPreview() {
+  return (
+    <div className="flex justify-center">
+      <SignupForm />
+    </div>
+  );
+}
+
 function Section({
   name,
   children,
@@ -364,6 +789,26 @@ export default function PreviewGallery() {
         <ThemeToggle />
       </div>
 
+      <section
+        data-testid="preview-app-shell"
+        className="relative left-1/2 w-screen -translate-x-1/2 border-y border-border"
+      >
+        <h2 className="px-6 py-3 text-xs font-semibold uppercase tracking-wide text-fg-muted">
+          app-shell
+        </h2>
+        <div className="h-[640px]">
+          <AppShellPreview />
+        </div>
+      </section>
+
+      <Section name="home">
+        <HomeContentPreview />
+      </Section>
+
+      <Section name="chat-agentic">
+        <ChatAgenticPreview />
+      </Section>
+
       <Section name="markdown">
         <Markdown>{MD}</Markdown>
       </Section>
@@ -378,6 +823,16 @@ export default function PreviewGallery() {
 
       <Section name="message-actions">
         <MessageActions role="assistant" content="복사 대상 텍스트" />
+      </Section>
+
+      <Section name="status-chip">
+        <div className="flex flex-wrap gap-2">
+          <StatusChip status="queued" />
+          <StatusChip status="running" />
+          <StatusChip status="done" />
+          <StatusChip status="error" />
+          <StatusChip status="pending-approval" />
+        </div>
       </Section>
 
       <Section name="tool-call-renderer">
@@ -406,25 +861,52 @@ export default function PreviewGallery() {
         </div>
       </Section>
 
+      <Section name="activity-panel">
+        <ActivityPanelPreview />
+      </Section>
+
       <Section name="citation">
         <CitationPreview />
       </Section>
 
       <Section name="hitl-prompt">
-        <HitlPrompt
-          request={{
-            toolCallId: "preview-hitl-1",
-            toolName: "send_email",
-            args: { to: "a@b.com", subject: "안녕하세요" },
-            rationale: "외부로 이메일을 발송합니다.",
-            expiresAt: "2026-07-14T00:05:00.000Z",
-          }}
-          onRespond={() => {}}
-        />
+        <HitlPromptPreview />
+      </Section>
+
+      <Section name="project-documents">
+        <ProjectDetailPreview />
       </Section>
 
       <Section name="artifact-canvas">
         <ArtifactCanvasPreview />
+      </Section>
+
+      <Section name="mcp-servers-manager">
+        <McpServersManagerPreview />
+      </Section>
+
+      <Section name="skills-manager">
+        <SkillsManagerPreview />
+      </Section>
+
+      <Section name="memory-manager">
+        <MemoryManagerPreview />
+      </Section>
+
+      <Section name="quota-panel">
+        <QuotaPanelPreview />
+      </Section>
+
+      <Section name="admin-dashboard">
+        <AdminDashboardPreview />
+      </Section>
+
+      <Section name="tool-metrics-table">
+        <ToolMetricsTablePreview />
+      </Section>
+
+      <Section name="admin-users-manager">
+        <AdminUsersManagerPreview />
       </Section>
 
       <Section name="chat-input">
@@ -438,6 +920,7 @@ export default function PreviewGallery() {
           mentionEntities={MENTION_ENTITIES}
           availableModels={AVAILABLE_MODELS}
           availableTools={AVAILABLE_TOOLS}
+          contextUsagePercent={8}
         />
       </Section>
 
@@ -479,6 +962,18 @@ export default function PreviewGallery() {
             artifacts={ARTIFACTS}
           />
         </div>
+      </Section>
+
+      <Section name="share-public-view">
+        <SharePublicViewPreview />
+      </Section>
+
+      <Section name="login-form">
+        <LoginFormPreview />
+      </Section>
+
+      <Section name="signup-form">
+        <SignupFormPreview />
       </Section>
     </div>
   );

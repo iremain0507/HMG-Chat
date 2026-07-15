@@ -3,8 +3,7 @@ import { SkillsManager } from "../../../components/settings/SkillsManager";
 
 export default function SkillsSettingsPage() {
   return (
-    <main className="p-8">
-      <h1 className="text-2xl font-semibold text-fg">Skills</h1>
+    <main className="mx-auto max-w-5xl p-8">
       <SkillsManager />
     </main>
   );

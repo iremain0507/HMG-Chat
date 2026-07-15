@@ -2,6 +2,7 @@
 
 // hooks/useProjects.ts — 16-API-CONTRACT § GET /projects?cursor&limit&visibility 소비.
 import { useEffect, useState } from "react";
+import { apiFetch } from "../lib/fetch-with-refresh";
 import type { ProjectDto } from "./useProject";
 
 interface UseProjectsResult {
@@ -21,7 +22,7 @@ export function useProjects(): UseProjectsResult {
       setLoading(true);
       setError(null);
       try {
-        const res = await fetch("/api/v1/projects", { credentials: "include" });
+        const res = await apiFetch("/api/v1/projects", { credentials: "include" });
         if (!res.ok) {
           if (!cancelled) setError("프로젝트 목록을 불러오지 못했습니다.");
           return;

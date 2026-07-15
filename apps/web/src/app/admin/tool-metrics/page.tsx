@@ -4,8 +4,7 @@ import { ToolMetricsTable } from "../../../components/admin/ToolMetricsTable";
 
 export default function AdminToolMetricsPage() {
   return (
-    <main className="p-8">
-      <h1 className="text-2xl font-semibold text-fg">도구 사용 통계</h1>
+    <main className="mx-auto max-w-5xl p-8">
       <AdminGuard>
         <ToolMetricsTable />
       </AdminGuard>

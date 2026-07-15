@@ -8,18 +8,5 @@ export default function ChatLayout({
 }: {
   children: React.ReactNode;
 }) {
-  return (
-    <AppShell
-      sidebar={
-        <div className="flex h-full flex-col">
-          <div className="px-3 py-4 text-sm font-semibold text-primary">
-            WChat
-          </div>
-          <SessionList />
-        </div>
-      }
-    >
-      {children}
-    </AppShell>
-  );
+  return <AppShell sidebar={<SessionList />}>{children}</AppShell>;
 }

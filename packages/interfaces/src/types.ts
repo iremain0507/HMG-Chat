@@ -22,13 +22,7 @@ import type { ErrorCategory, SerializedError, WChatError } from "./errors.js";
 // ─────────────────────────────────────────────────────────────────────────────
 
 export type JsonSchemaType =
-  | "string"
-  | "number"
-  | "integer"
-  | "boolean"
-  | "object"
-  | "array"
-  | "null";
+  "string" | "number" | "integer" | "boolean" | "object" | "array" | "null";
 
 export interface JsonSchema {
   type?: JsonSchemaType | JsonSchemaType[];
@@ -208,12 +202,7 @@ export interface ProjectDocumentRecord {
   mimeType: string;
   sizeBytes: number;
   indexStatus:
-    | "pending"
-    | "parsing"
-    | "chunking"
-    | "embedding"
-    | "indexed"
-    | "failed";
+    "pending" | "parsing" | "chunking" | "embedding" | "indexed" | "failed";
   chunkCount: number;
   s3Key: string; // raw upload location
   indexedAt: Date | null;
@@ -228,14 +217,7 @@ export interface ArtifactRecord {
   sessionId: string | null;
   createdBy: string;
   type:
-    | "pptx"
-    | "pdf"
-    | "docx"
-    | "xlsx"
-    | "markdown"
-    | "html"
-    | "image"
-    | "other";
+    "pptx" | "pdf" | "docx" | "xlsx" | "markdown" | "html" | "image" | "other";
   filename: string;
   mimeType: string | null;
   sizeBytes: number;
@@ -410,8 +392,10 @@ export interface ChunkFilter {
 //  코어 entity Repo + auth Repo + 보조 Repo 를 보유 — § 파일 분할 주석 참조.)
 // ─────────────────────────────────────────────────────────────────────────────
 
-export interface SessionRepo
-  extends Repo<Session, { userId?: string; projectId?: string | null }> {
+export interface SessionRepo extends Repo<
+  Session,
+  { userId?: string; projectId?: string | null }
+> {
   lock(
     sessionId: string,
     ttlMs: number,
@@ -426,8 +410,10 @@ export interface SessionRepo
   clearActiveRun(sessionId: string): Promise<void>;
 }
 
-export interface MessageRepo
-  extends Repo<Message, { sessionId: string; role?: Message["role"] }> {
+export interface MessageRepo extends Repo<
+  Message,
+  { sessionId: string; role?: Message["role"] }
+> {
   appendStream(
     sessionId: string,
     role: Message["role"],
@@ -435,8 +421,10 @@ export interface MessageRepo
   ): Promise<Message>;
 }
 
-export interface ProjectRepo
-  extends Repo<Project, { orgId?: string; visibility?: Project["visibility"] }> {
+export interface ProjectRepo extends Repo<
+  Project,
+  { orgId?: string; visibility?: Project["visibility"] }
+> {
   byOwner(userId: string): Promise<Project[]>;
 }
 
@@ -458,11 +446,10 @@ export interface ProjectMemberRepo {
   ): Promise<Page<ProjectMember>>;
 }
 
-export interface ProjectDocumentRepo
-  extends Repo<
-    ProjectDocumentRecord,
-    { projectId?: string; indexStatus?: ProjectDocumentRecord["indexStatus"] }
-  > {
+export interface ProjectDocumentRepo extends Repo<
+  ProjectDocumentRecord,
+  { projectId?: string; indexStatus?: ProjectDocumentRecord["indexStatus"] }
+> {
   byContentHash(
     projectId: string,
     hash: string,
@@ -489,9 +476,7 @@ export interface ArtifactRevisionRepo {
     s3Key: string;
     diffSummary?: string;
   }): Promise<void>;
-  list(
-    artifactId: string,
-  ): Promise<
+  list(artifactId: string): Promise<
     Array<{
       version: number;
       s3Key: string;
@@ -505,35 +490,34 @@ export interface ArtifactRevisionRepo {
   ): Promise<{ s3Key: string } | null>;
 }
 
-export interface ArtifactShareRepo
-  extends Repo<ArtifactShareRecord, { artifactId?: string; tokenEq?: string }> {
+export interface ArtifactShareRepo extends Repo<
+  ArtifactShareRecord,
+  { artifactId?: string; tokenEq?: string }
+> {
   byToken(token: string): Promise<ArtifactShareRecord | null>;
   incrementViewCount(token: string): Promise<void>;
   revoke(id: string): Promise<void>;
 }
 
-export interface UploadRepo
-  extends Repo<
-    UploadRecord,
-    { userId?: string; sessionId?: string | null; expiresBeforeNow?: boolean }
-  > {
+export interface UploadRepo extends Repo<
+  UploadRecord,
+  { userId?: string; sessionId?: string | null; expiresBeforeNow?: boolean }
+> {
   bySha256(userId: string, sha256: string): Promise<UploadRecord | null>;
   expiredOlderThan(cutoff: Date): Promise<UploadRecord[]>; // data-retention cron
 }
 
-export interface UserMemoryRepo
-  extends Repo<
-    UserMemory,
-    { userId?: string; category?: UserMemory["category"]; pinned?: boolean }
-  > {
+export interface UserMemoryRepo extends Repo<
+  UserMemory,
+  { userId?: string; category?: UserMemory["category"]; pinned?: boolean }
+> {
   pin(id: string, pinned: boolean): Promise<void>;
 }
 
-export interface McpServerRepo
-  extends Repo<
-    McpServerRecord,
-    { orgId?: string; projectId?: string | null; userId?: string | null }
-  > {
+export interface McpServerRepo extends Repo<
+  McpServerRecord,
+  { orgId?: string; projectId?: string | null; userId?: string | null }
+> {
   updateDiscovery(
     id: string,
     supportedTools: McpServerRecord["supportedTools"],
@@ -583,7 +567,11 @@ export interface UsageLogRepo {
 export interface ErrorLogRepo {
   append(entry: ErrorLogEntry): Promise<void>;
   list(
-    filter: { category?: ErrorCategory; level?: ErrorLogEntry["level"]; from?: Date },
+    filter: {
+      category?: ErrorCategory;
+      level?: ErrorLogEntry["level"];
+      from?: Date;
+    },
     p: Pagination,
   ): Promise<Page<ErrorLogEntry>>;
 }
@@ -602,33 +590,30 @@ export interface HealthHistoryRepo {
   recent(target: string, limit: number): Promise<HealthCheckResult[]>;
 }
 
-export interface AlertEventRepo
-  extends Repo<
-    AlertEvent,
-    { severity?: AlertEvent["severity"]; unresolved?: boolean }
-  > {
+export interface AlertEventRepo extends Repo<
+  AlertEvent,
+  { severity?: AlertEvent["severity"]; unresolved?: boolean }
+> {
   resolve(id: string): Promise<void>;
 }
 
-export interface MagicLinkTokenRepo
-  extends Repo<
-    MagicLinkTokenRecord,
-    {
-      email?: string;
-      intent?: MagicLinkTokenRecord["intent"];
-      unusedOnly?: boolean;
-    }
-  > {
+export interface MagicLinkTokenRepo extends Repo<
+  MagicLinkTokenRecord,
+  {
+    email?: string;
+    intent?: MagicLinkTokenRecord["intent"];
+    unusedOnly?: boolean;
+  }
+> {
   byTokenHash(hash: string): Promise<MagicLinkTokenRecord | null>; // = byId alias
   markUsed(tokenHash: string, usedAt: Date): Promise<void>;
   expireOlderThan(cutoff: Date): Promise<number>; // GC, 반환값 = 삭제 row 수
 }
 
-export interface RefreshTokenFamilyRepo
-  extends Repo<
-    RefreshTokenFamilyRecord,
-    { userId?: string; activeOnly?: boolean }
-  > {
+export interface RefreshTokenFamilyRepo extends Repo<
+  RefreshTokenFamilyRecord,
+  { userId?: string; activeOnly?: boolean }
+> {
   byCurrentJti(jti: string): Promise<RefreshTokenFamilyRecord | null>;
   rotate(familyId: string, newJti: string): Promise<{ generation: number }>;
   revoke(
@@ -686,6 +671,21 @@ export interface TokenUsage {
   cacheCreationTokens?: number;
 }
 
+// 장시간 멀티스텝 툴(deep_research 등 orchestrator-worker 파사드)이 실행 중 내부 진행을
+//   부모 스트림으로 relay 하기 위한 진행 상태. snapshot 시맨틱 — 매 이벤트가 현재 전체
+//   상태를 담아 소비측은 최신 것으로 교체하면 된다(delta 재구성 불필요).
+export interface ToolProgressTask {
+  id: string;
+  title: string; // 서브에이전트가 조사하는 하위질문 등
+  status: "queued" | "running" | "done" | "error";
+  sourceCount?: number; // 지금까지 수집한 출처 수
+}
+export interface ToolProgress {
+  stage: "planning" | "researching" | "synthesizing" | "done";
+  label?: string; // 사람이 읽는 현재 단계 한 줄(예: "3/4 하위질문 조사 중")
+  tasks?: ToolProgressTask[];
+}
+
 export type ChatEvent =
   | {
       type: "message_start";
@@ -696,6 +696,9 @@ export type ChatEvent =
   | { type: "text_delta"; text: string }
   | { type: "tool_use"; toolCallId: string; name: string; args: unknown }
   | { type: "tool_result"; toolCallId: string; content: string | unknown }
+  // 특정 toolCallId 의 실행 중 진행 상태(비종단, 여러 번). ToolContext.emitProgress →
+  //   orchestrator 가 부모 toolCallId 로 방출. 소비측(웹)은 해당 tool part 의 라이브 표시.
+  | ({ type: "tool_progress"; toolCallId: string } & ToolProgress)
   | {
       type: "hitl_request";
       toolCallId: string;

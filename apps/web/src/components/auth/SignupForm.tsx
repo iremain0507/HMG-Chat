@@ -2,6 +2,9 @@
 
 import React, { useState, type FormEvent } from "react";
 
+const FOCUS_RING =
+  "outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--focus-ring)] focus-visible:outline-offset-2";
+
 export function SignupForm() {
   const [email, setEmail] = useState("");
   const [name, setName] = useState("");
@@ -32,30 +35,65 @@ export function SignupForm() {
 
   if (sent) {
     return (
-      <p role="status">이메일을 확인하세요 — 가입 확인 링크를 보냈습니다.</p>
+      <p
+        role="status"
+        className="w-full max-w-sm rounded-[14px] border border-border bg-surface p-6 text-sm text-fg"
+      >
+        이메일을 확인하세요 — 가입 확인 링크를 보냈습니다.
+      </p>
     );
   }
 
   return (
-    <form onSubmit={handleSubmit}>
-      {error && <p role="alert">{error}</p>}
-      <label htmlFor="signup-email">이메일</label>
-      <input
-        id="signup-email"
-        type="email"
-        value={email}
-        onChange={(e) => setEmail(e.target.value)}
-        required
-      />
-      <label htmlFor="signup-name">이름</label>
-      <input
-        id="signup-name"
-        type="text"
-        value={name}
-        onChange={(e) => setName(e.target.value)}
-        required
-      />
-      <button type="submit" disabled={submitting}>
+    <form
+      onSubmit={handleSubmit}
+      className="w-full max-w-sm space-y-4 rounded-[14px] border border-border bg-surface p-6"
+    >
+      {error && (
+        <p
+          role="alert"
+          className="rounded-md border border-accent/40 bg-accent/10 px-3 py-2 text-sm text-accent"
+        >
+          {error}
+        </p>
+      )}
+      <div className="space-y-1.5">
+        <label
+          htmlFor="signup-email"
+          className="block text-sm font-medium text-fg"
+        >
+          이메일
+        </label>
+        <input
+          id="signup-email"
+          type="email"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          required
+          className={`w-full rounded-md border border-border bg-bg px-3 py-2 text-sm text-fg placeholder:text-fg-subtle ${FOCUS_RING}`}
+        />
+      </div>
+      <div className="space-y-1.5">
+        <label
+          htmlFor="signup-name"
+          className="block text-sm font-medium text-fg"
+        >
+          이름
+        </label>
+        <input
+          id="signup-name"
+          type="text"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          required
+          className={`w-full rounded-md border border-border bg-bg px-3 py-2 text-sm text-fg placeholder:text-fg-subtle ${FOCUS_RING}`}
+        />
+      </div>
+      <button
+        type="submit"
+        disabled={submitting}
+        className={`w-full rounded-md bg-primary px-3 py-2 text-sm font-semibold text-primary-fg transition hover:opacity-90 disabled:opacity-40 ${FOCUS_RING}`}
+      >
         가입하기
       </button>
     </form>

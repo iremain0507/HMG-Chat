@@ -12,8 +12,22 @@
 // switchBranch 는 활성 자식 포인터만 바꿔 이전에 스트리밍된 형제 분기를 그대로 복원한다.
 import { useCallback, useMemo, useRef, useState } from "react";
 import { showToast } from "../lib/toast";
+import { apiFetch } from "../lib/fetch-with-refresh";
 
 export type ToolCallStatus = "queued" | "running" | "done" | "error";
+
+// 14-INTERFACES § ToolProgress/ToolProgressTask 와 1:1 (실행 중 멀티에이전트 진행 스냅샷).
+export interface ToolTask {
+  id: string;
+  title: string;
+  status: "queued" | "running" | "done" | "error";
+  sourceCount?: number;
+}
+export interface ToolProgressState {
+  stage: "planning" | "researching" | "synthesizing" | "done";
+  label?: string;
+  tasks?: ToolTask[];
+}
 
 export type MessagePart =
   | { type: "text"; text: string }
@@ -24,6 +38,8 @@ export type MessagePart =
       args: unknown;
       status: ToolCallStatus;
       result?: string | unknown;
+      // 실행 중 tool_progress 스냅샷(최신으로 교체). deep_research 등 멀티에이전트 라이브 표시.
+      progress?: ToolProgressState;
     };
 
 export interface MessageBranch {
@@ -99,6 +115,7 @@ type ChatStreamEvent =
   | { type: "text_delta"; text: string }
   | { type: "tool_use"; toolCallId: string; name: string; args: unknown }
   | { type: "tool_result"; toolCallId: string; content: string | unknown }
+  | ({ type: "tool_progress"; toolCallId: string } & ToolProgressState)
   | {
       type: "hitl_request";
       toolCallId: string;
@@ -333,6 +350,27 @@ export function useSessionStream(sessionId: string) {
               },
             ],
           }));
+        } else if (event.type === "tool_progress" && assistantId) {
+          // 실행 중 진행 스냅샷을 해당 tool part 에 최신으로 교체(라이브 스윔레인).
+          updateNode(assistantId, (m) =>
+            m.parts
+              ? {
+                  ...m,
+                  parts: m.parts.map((p) =>
+                    p.type === "tool" && p.toolCallId === event.toolCallId
+                      ? {
+                          ...p,
+                          progress: {
+                            stage: event.stage,
+                            ...(event.label ? { label: event.label } : {}),
+                            ...(event.tasks ? { tasks: event.tasks } : {}),
+                          },
+                        }
+                      : p,
+                  ),
+                }
+              : m,
+          );
         } else if (event.type === "tool_result" && assistantId) {
           updateNode(assistantId, (m) =>
             m.parts
@@ -403,8 +441,13 @@ export function useSessionStream(sessionId: string) {
             prev && prev.toolCallId === event.toolCallId ? null : prev,
           );
         } else if (event.type === "stop") {
-          receivedTerminal = true;
-          setIsStreaming(false);
+          // reason "tool_use" 는 중간 종료(툴 실행 후 다음 leg 로 이어짐, orchestrator 가 leg
+          //   마다 stop 을 yield) — 종단으로 처리하면 최종 leg 답변 전에 스트림이 끝난 것으로
+          //   오인해 답변이 안 뜨고 도구 칩이 멈춘다. 진짜 종단(end_turn/max_tokens/aborted)만 처리.
+          if (event.reason !== "tool_use") {
+            receivedTerminal = true;
+            setIsStreaming(false);
+          }
         } else if (event.type === "error") {
           receivedTerminal = true;
           const message = event.error?.message ?? "알 수 없는 오류";
@@ -455,7 +498,7 @@ export function useSessionStream(sessionId: string) {
       async function attemptReconnect(): Promise<void> {
         if (!lastServerMessageId) return;
         try {
-          const res = await fetch(
+          const res = await apiFetch(
             `/api/v1/sessions/${sessionId}/messages/${lastServerMessageId}/stream`,
             {
               credentials: "include",
@@ -479,7 +522,7 @@ export function useSessionStream(sessionId: string) {
       }
 
       try {
-        const res = await fetch(`/api/v1/sessions/${sessionId}/messages`, {
+        const res = await apiFetch(`/api/v1/sessions/${sessionId}/messages`, {
           method: "POST",
           credentials: "include",
           signal: controller.signal,
@@ -587,7 +630,7 @@ export function useSessionStream(sessionId: string) {
         }));
       }
     }
-    await fetch(`/api/v1/sessions/${sessionId}/active-run`, {
+    await apiFetch(`/api/v1/sessions/${sessionId}/active-run`, {
       method: "DELETE",
       credentials: "include",
     }).catch(() => {});
@@ -600,7 +643,7 @@ export function useSessionStream(sessionId: string) {
       reason?: string,
     ) => {
       if (!hitlRequest) return;
-      await fetch(`/api/v1/sessions/${sessionId}/messages/hitl`, {
+      await apiFetch(`/api/v1/sessions/${sessionId}/messages/hitl`, {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },

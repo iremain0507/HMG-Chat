@@ -37,6 +37,39 @@ function fakeHelloProvider(): LLMProvider {
 }
 
 describe("POST /:id/messages (SSE) — 16-API-CONTRACT § /sessions/:id/messages", () => {
+  it("첫 메시지 시 ensureSession(sessionId, userId) 으로 세션을 보장한다(아티팩트 FK 대비)", async () => {
+    const ensured: Array<{ id: string; userId: string }> = [];
+    const app = new Hono<{ Variables: AuthedVariables }>();
+    app.use("*", async (c, next) => {
+      c.set("auth", {
+        sub: "user-1",
+        org: "org-1",
+        role: "member",
+      } as AuthedVariables["auth"]);
+      await next();
+    });
+    app.route(
+      "/",
+      createMessageRoutes({
+        provider: fakeHelloProvider(),
+        model: "fake-model",
+        ensureSession: async (id, userId) => {
+          ensured.push({ id, userId });
+        },
+      }),
+    );
+    const res = await app.request("/sess-abc/messages", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "text/event-stream",
+      },
+      body: JSON.stringify({ content: "hi" }),
+    });
+    expect(res.status).toBe(200);
+    expect(ensured).toEqual([{ id: "sess-abc", userId: "user-1" }]);
+  });
+
   it("'hello' 메시지를 보내면 SSE 로 text_delta + stop 이 순서대로 온다", async () => {
     const app = createMessageRoutes({
       provider: fakeHelloProvider(),
@@ -54,6 +87,8 @@ describe("POST /:id/messages (SSE) — 16-API-CONTRACT § /sessions/:id/messages
 
     expect(res.status).toBe(200);
     expect(res.headers.get("content-type")).toContain("text/event-stream");
+    // 프록시 버퍼링 방지 — SSE 토큰을 순차 전달(gzip/버퍼링으로 한 번에 뿌리는 회귀 가드).
+    expect(res.headers.get("x-accel-buffering")).toBe("no");
 
     const text = await res.text();
     expect(text).toContain("event: message_start");

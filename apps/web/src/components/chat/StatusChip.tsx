@@ -1,38 +1,60 @@
 "use client";
 
-// components/chat/StatusChip.tsx — queued/running/done/error 공용 상태 어휘 칩.
-// ToolCallRenderer 및 후속 HITL 카드(P10-T6-08)가 공유하는 표준 상태 표기.
+// components/chat/StatusChip.tsx — design-reference §6 StatusChip 5종(대기/실행 중/완료/
+// 오류/승인 필요) 공용 상태 어휘 칩. 전 화면(ToolCallCard/워커 카드/HITL 카드)이 이 컴포넌트로
+// 통일 표기한다(P13-T6-06). 색 매핑: running=primary 펄스, done=success, error=danger,
+// pending-approval=warning, queued=neutral. 높이 22px·radius full·좌측 6px 도트,
+// running 도트만 펄스(1.2s, prefers-reduced-motion 시 정지 — motion-safe 변형).
 import React from "react";
 import type { ToolCallStatus } from "../../hooks/useSessionStream";
 
-const LABELS: Record<ToolCallStatus, string> = {
+export type StatusChipStatus = ToolCallStatus | "pending-approval";
+
+const LABELS: Record<StatusChipStatus, string> = {
   queued: "대기",
   running: "실행 중",
   done: "완료",
   error: "오류",
+  "pending-approval": "승인 필요",
 };
 
-const STYLES: Record<ToolCallStatus, string> = {
+const STYLES: Record<StatusChipStatus, string> = {
   queued: "border-border bg-surface text-fg-muted",
   running: "border-primary/30 bg-primary/10 text-primary",
-  done: "border-primary/20 bg-primary/10 text-primary",
+  done: "border-success/30 bg-success-soft text-success",
   error: "border-accent/30 bg-accent/10 text-accent",
+  "pending-approval": "border-warning bg-warning-soft text-warning-fg",
 };
 
-export function StatusChip({ status }: { status: ToolCallStatus }) {
+const DOT_STYLES: Record<StatusChipStatus, string> = {
+  queued: "bg-fg-subtle",
+  running: "bg-primary motion-safe:animate-[pulse_1.2s_ease-in-out_infinite]",
+  done: "bg-success",
+  error: "bg-accent",
+  "pending-approval": "bg-warning",
+};
+
+export function StatusChip({
+  status,
+  label,
+}: {
+  status: StatusChipStatus;
+  // 다른 화면(예: 문서 인덱싱 상태)이 5종 색·도트 어휘는 그대로 쓰되 문맥에 맞는 문구가
+  // 필요할 때만 오버라이드(P13-T6-10). 생략 시 기본 5종 라벨.
+  label?: string;
+}) {
   return (
     <span
       data-testid="status-chip"
       data-status={status}
-      className={`inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-xs font-medium ${STYLES[status]}`}
+      className={`inline-flex h-[22px] items-center gap-1.5 rounded-full border px-2 text-xs font-medium ${STYLES[status]}`}
     >
-      {status === "running" && (
-        <span
-          aria-hidden="true"
-          className="h-1.5 w-1.5 animate-pulse rounded-full bg-current"
-        />
-      )}
-      {LABELS[status]}
+      <span
+        data-testid="status-chip-dot"
+        aria-hidden="true"
+        className={`h-1.5 w-1.5 flex-none rounded-full ${DOT_STYLES[status]}`}
+      />
+      {label ?? LABELS[status]}
     </span>
   );
 }

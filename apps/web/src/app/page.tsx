@@ -1,15 +1,29 @@
 "use client";
 
-// app/page.tsx — 인증 랜딩 홈.
-//   미인증 → /login 리다이렉트. 인증 → 환영 + 새 채팅/프로젝트/설정 진입.
-//   (magic-link verify 가 / 로 302 하므로 이 페이지가 로그인 직후 착지점.)
+// app/page.tsx — 인증 랜딩 홈. design-reference/README.md §Screens "홈(F03)" 재현.
+//   미인증 → /login 리다이렉트. 인증 → HomeContent(중앙 컬럼: 인사/컴포저/빠른 시작/능력
+//   스트립/최근 세션) + 기존 프로젝트·설정·관리자 바로가기(HomeLink, 프레임 밖 실 내비게이션
+//   보존). (magic-link verify 가 / 로 302 하므로 이 페이지가 로그인 직후 착지점.)
 import React, { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useCurrentUser } from "../hooks/useCurrentUser";
+import { useSessions } from "../hooks/useSessions";
+import { useMcpServers } from "../hooks/useMcpServers";
+import { useSkills } from "../hooks/useSkills";
+import { randomUUID } from "../lib/uuid";
+import { HomeContent } from "../components/home/HomeContent";
+import { draftKey } from "../components/chat/ChatInput";
+
+// 내장 에이전틱 도구(tools/assemble-builtin-tools.ts) 개수 — artifact_create/web_search/
+// code_interpreter/deep_research. 전용 "에이전트" API 가 아직 없어 정적 상수로 반영.
+const BUILTIN_AGENT_COUNT = 4;
 
 export default function Home() {
   const router = useRouter();
   const { user, loading } = useCurrentUser();
+  const { sessions } = useSessions();
+  const { servers } = useMcpServers();
+  const { skills } = useSkills();
 
   useEffect(() => {
     if (!loading && !user) router.replace("/login");
@@ -32,7 +46,21 @@ export default function Home() {
   }
 
   function startNewChat() {
-    router.push(`/chat/${crypto.randomUUID()}`);
+    router.push(`/chat/${randomUUID()}`);
+  }
+
+  function startWithPrompt(prompt: string) {
+    const id = randomUUID();
+    try {
+      window.sessionStorage.setItem(draftKey(id), prompt);
+    } catch {
+      // sessionStorage 접근 불가(프라이빗 모드 등) — prefill 은 best-effort.
+    }
+    router.push(`/chat/${id}`);
+  }
+
+  function openSession(id: string) {
+    router.push(`/chat/${id}`);
   }
 
   async function logout() {
@@ -45,52 +73,39 @@ export default function Home() {
 
   return (
     <main className="min-h-screen bg-bg text-fg">
-      <div className="mx-auto max-w-2xl px-6 py-16">
-        <header className="flex items-center justify-between">
-          <span className="text-xl font-bold text-primary">WChat</span>
-          <button
-            onClick={logout}
-            className="rounded-lg border border-border px-3 py-1.5 text-sm text-fg-muted hover:text-fg"
-          >
-            로그아웃
-          </button>
-        </header>
-
-        <h1 className="mt-10 text-2xl font-semibold">
-          안녕하세요, {user.name}님
-        </h1>
-        <p className="mt-1 text-fg-muted">무엇을 시작할까요?</p>
-
+      <header className="mx-auto flex max-w-[720px] items-center justify-between px-6 pt-6">
+        <span className="text-xl font-bold text-primary">WChat</span>
         <button
-          onClick={startNewChat}
-          className="mt-8 w-full rounded-xl bg-primary px-5 py-4 text-left text-primary-fg transition hover:opacity-90"
+          onClick={logout}
+          className="rounded-lg border border-border px-3 py-1.5 text-sm text-fg-muted hover:text-fg"
         >
-          <span className="text-lg font-semibold">＋ 새 채팅 시작</span>
-          <span className="mt-0.5 block text-sm opacity-80">
-            AI 어시스턴트와 대화를 시작합니다
-          </span>
+          로그아웃
         </button>
+      </header>
 
-        <nav className="mt-4 grid gap-3 sm:grid-cols-2">
-          <HomeLink
-            href="/projects"
-            title="프로젝트"
-            desc="프로젝트·문서·지식"
-          />
-          <HomeLink
-            href="/settings/memories"
-            title="설정"
-            desc="메모리·스킬·MCP"
-          />
-          {(user.role === "admin" || user.role === "owner") && (
-            <HomeLink
-              href="/admin"
-              title="관리자"
-              desc="대시보드·사용자·지표"
-            />
-          )}
-        </nav>
-      </div>
+      <HomeContent
+        userName={user.name}
+        onNewChat={startNewChat}
+        onQuickStart={startWithPrompt}
+        onOpenSession={openSession}
+        connectorsCount={servers.length}
+        skillsCount={skills.length}
+        agentsCount={BUILTIN_AGENT_COUNT}
+        recentSessions={sessions}
+        now={Date.now()}
+      />
+
+      <nav className="mx-auto grid max-w-[720px] gap-3 px-6 pb-16 sm:grid-cols-2">
+        <HomeLink href="/projects" title="프로젝트" desc="프로젝트·문서·지식" />
+        <HomeLink
+          href="/settings/memories"
+          title="설정"
+          desc="메모리·스킬·MCP"
+        />
+        {(user.role === "admin" || user.role === "owner") && (
+          <HomeLink href="/admin" title="관리자" desc="대시보드·사용자·지표" />
+        )}
+      </nav>
     </main>
   );
 }

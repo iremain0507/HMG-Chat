@@ -19,6 +19,7 @@ import type {
   LLMProvider,
   PromptBlock,
   ToolContext,
+  ToolProgressTask,
 } from "@wchat/interfaces";
 import { runTurn } from "../../orchestrator/orchestrator.js";
 import { consumeUntilAbort } from "../../orchestrator/consume-until-abort.js";
@@ -33,6 +34,11 @@ import {
 
 export const DEFAULT_MAX_SUB_QUESTIONS = 4;
 export const DEFAULT_MAX_GAP_ITERATIONS = 2;
+// 외부 호출(researcher)이 응답 없이 멈추는 경우를 대비한 전체 상한 시간(hang 방지).
+//   딥리서치는 planner+병렬 researcher+긴 리포트 synthesis(gap 반성 최대 2회)로 정상적으로
+//   수 분 걸리므로, 정당한 느린 run 을 죽이지 않게 넉넉히 잡는다(진짜 hang 만 차단).
+//   keep-alive(messages.ts) 가 그 사이 연결을 유지한다.
+const DEEP_RESEARCH_TIMEOUT_MS = 300_000;
 
 export interface DeepResearchToolDeps {
   leadProvider: LLMProvider;
@@ -272,7 +278,7 @@ export function createDeepResearchTool(deps: DeepResearchToolDeps): AgentTool {
 
   return {
     spec: deepResearchToolSpec,
-    async invoke({ toolCallId, args, ctx }) {
+    async invoke({ toolCallId, args, ctx: baseCtx }) {
       const query = typeof args.query === "string" ? args.query.trim() : "";
       if (!query) {
         return {
@@ -289,6 +295,19 @@ export function createDeepResearchTool(deps: DeepResearchToolDeps): AgentTool {
         };
       }
 
+      // researcher 등 외부 호출이 응답 없이 멈춰도 무한 대기하지 않도록 전체 상한 시간.
+      //   초과 시 linked signal 을 abort → consumeUntilAbort 가 매 .next() 를 abort 와 race
+      //   하므로 hang 이 즉시 풀리고, 예외가 상위(messages route catch)로 전파돼 client 는
+      //   무한 "조사 중" 대신 재시도 가능한 error 로 종단된다. 아래 본문 전체가 이 ctx(=linked
+      //   signal) 를 쓰므로 sub-call(runResearcher/runIsolatedText)에 그대로 전파된다.
+      const timeoutController = new AbortController();
+      setTimeout(() => timeoutController.abort(), DEEP_RESEARCH_TIMEOUT_MS);
+      const ctx: ToolContext = {
+        ...baseCtx,
+        signal: AbortSignal.any([baseCtx.signal, timeoutController.signal]),
+      };
+
+      ctx.emitProgress?.({ stage: "planning", label: "조사 계획 수립 중" });
       const plannerText = await runIsolatedText(
         query,
         deps.leadProvider,
@@ -303,12 +322,42 @@ export function createDeepResearchTool(deps: DeepResearchToolDeps): AgentTool {
         query,
       );
 
+      // 하위질문별 라이브 작업 상태(스윔레인). Promise.all 은 순서 보존이라 findings 순번은
+      //   안전하고, 각 researcher 가 끝나는 대로 해당 task 를 done + sourceCount 로 갱신해
+      //   snapshot(전체 tasks 복사본)을 방출한다.
+      const tasks: ToolProgressTask[] = subQuestions.map((q, i) => ({
+        id: `sq-${i}`,
+        title: q,
+        status: "running",
+        sourceCount: 0,
+      }));
+      const emitResearch = () => {
+        const done = tasks.filter((t) => t.status === "done").length;
+        ctx.emitProgress?.({
+          stage: "researching",
+          label: `${done}/${tasks.length} 하위질문 조사 완료`,
+          tasks: tasks.map((t) => ({ ...t })),
+        });
+      };
+      emitResearch();
       let findings = await Promise.all(
-        subQuestions.map((subQuestion) =>
-          runResearcher(subQuestion, deps, ctx),
-        ),
+        subQuestions.map(async (subQuestion, i) => {
+          const finding = await runResearcher(subQuestion, deps, ctx);
+          const task = tasks[i];
+          if (task) {
+            task.status = "done";
+            task.sourceCount = finding.citations.length;
+          }
+          emitResearch();
+          return finding;
+        }),
       );
 
+      ctx.emitProgress?.({
+        stage: "synthesizing",
+        label: "결과 종합 중",
+        tasks: tasks.map((t) => ({ ...t })),
+      });
       let reportText = "";
       let citations: Citation[] = [];
       for (let iteration = 1; iteration <= maxGapIterations; iteration += 1) {
@@ -340,6 +389,17 @@ export function createDeepResearchTool(deps: DeepResearchToolDeps): AgentTool {
 
         const extra = await runResearcher(gap.gapQuestion, deps, ctx);
         findings = [...findings, extra];
+        tasks.push({
+          id: `gap-${iteration}`,
+          title: gap.gapQuestion,
+          status: "done",
+          sourceCount: extra.citations.length,
+        });
+        ctx.emitProgress?.({
+          stage: "synthesizing",
+          label: "추가 조사 반영 중",
+          tasks: tasks.map((t) => ({ ...t })),
+        });
       }
 
       const { unmatchedIndexes } = matchCitations(reportText, citations);
@@ -358,6 +418,11 @@ export function createDeepResearchTool(deps: DeepResearchToolDeps): AgentTool {
         },
       );
 
+      ctx.emitProgress?.({
+        stage: "done",
+        label: "완료",
+        tasks: tasks.map((t) => ({ ...t })),
+      });
       return {
         toolCallId,
         content: {

@@ -141,6 +141,88 @@ describe("orchestrator.runTurn — 메시지 → LLM → SSE 흐름", () => {
 });
 
 describe("orchestrator.runTurn — tool-execution 루프", () => {
+  it("툴이 ctx.emitProgress 로 방출한 진행상태를 부모 toolCallId 의 tool_progress 로 tool_result 이전에 relay 한다", async () => {
+    const calls: ChatInput[] = [];
+    const fakeProvider: LLMProvider = {
+      name: "fake",
+      models: ["fake-model"],
+      async *chat(input) {
+        calls.push(input);
+        if (calls.length === 1) {
+          yield {
+            type: "message_start",
+            messageId: "m1",
+            meta: { provider: "fake", model: "fake-model" },
+          };
+          yield {
+            type: "tool_use",
+            toolCallId: "call-1",
+            name: "prog_tool",
+            args: {},
+          };
+          yield {
+            type: "stop",
+            reason: "tool_use",
+            usage: { inputTokens: 1, outputTokens: 1 },
+          };
+          return;
+        }
+        yield { type: "text_delta", text: "done" };
+        yield {
+          type: "stop",
+          reason: "end_turn",
+          usage: { inputTokens: 1, outputTokens: 1 },
+        };
+      },
+    };
+    const progTool: AgentTool = {
+      spec: {
+        name: "prog_tool",
+        description: "진행 방출 툴",
+        inputSchema: { type: "object" },
+        permissionTier: "user",
+        defaultPolicy: "allow",
+      },
+      async invoke(input) {
+        input.ctx.emitProgress?.({
+          stage: "researching",
+          label: "1/2 완료",
+          tasks: [{ id: "t0", title: "질문A", status: "done" }],
+        });
+        return {
+          toolCallId: input.toolCallId,
+          content: { kind: "text", text: "ok" },
+        };
+      },
+    };
+
+    const result: ChatEvent[] = [];
+    for await (const event of runTurn({
+      provider: fakeProvider,
+      model: "fake-model",
+      systemBlocks: [],
+      messages: [{ role: "user", content: "hi" }],
+      maxTokens: 512,
+      signal: new AbortController().signal,
+      tools: [progTool],
+      toolContext: fakeToolContext(),
+    })) {
+      result.push(event);
+    }
+
+    const progress = result.find((e) => e.type === "tool_progress");
+    expect(progress).toMatchObject({
+      type: "tool_progress",
+      toolCallId: "call-1",
+      stage: "researching",
+      label: "1/2 완료",
+    });
+    const progressIdx = result.findIndex((e) => e.type === "tool_progress");
+    const resultIdx = result.findIndex((e) => e.type === "tool_result");
+    expect(progressIdx).toBeGreaterThanOrEqual(0);
+    expect(progressIdx).toBeLessThan(resultIdx);
+  });
+
   it("tool_use 이후 등록된 툴을 실행하고 tool_result emit 후 모델을 재호출해 최종 text 로 마무리한다", async () => {
     const calls: ChatInput[] = [];
     const fakeProvider: LLMProvider = {

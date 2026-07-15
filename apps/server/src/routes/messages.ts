@@ -107,6 +107,10 @@ export interface MessageRouteDeps {
   // per-request 로 호출 — bridge.listRegisteredTools() 는 org 필터가 없는 전역 registry).
   mcpTools?: (orgId: string) => Promise<AgentTool[]>;
   organizations?: { byId(id: string): Promise<Organization | null> };
+  // 클라이언트 생성 세션 UUID(/chat/<uuid>)로 바로 메시지를 보내는 흐름에서, 아티팩트
+  //   /업로드/active-run 이 참조하는 sessions 행이 없으면 FK 위반이 난다(deep_research 리포트
+  //   저장 실패 등). 첫 메시지 시 세션을 보장(upsert)한다. 미주입 시 no-op(기존 동작).
+  ensureSession?: (sessionId: string, userId: string) => Promise<void>;
   hitl?: HitlBridge;
   logger?: Logger;
   // P11-T2-13 — 각 tool invoke 계측(tool-metrics 기록 + gen_ai.* span). 미주입 시 계측 생략.
@@ -139,6 +143,13 @@ export function createMessageRoutes(
             model?: string;
           },
       );
+    // 클라이언트 생성 세션 UUID 를 첫 메시지 시 DB 에 보장(upsert) — 이후 아티팩트/업로드/
+    //   active-run 의 sessions FK 를 충족(없으면 deep_research 리포트 저장 등이 FK 위반).
+    const authForSession = c.get("auth");
+    if (authForSession) {
+      await deps.ensureSession?.(c.req.param("id"), authForSession.sub);
+    }
+
     const content = body.content?.trim();
     if (!content) {
       return c.json(errorJson("INVALID_INPUT", "content 가 필요합니다."), 400);
@@ -237,7 +248,16 @@ export function createMessageRoutes(
       });
     }
 
+    // nginx 등 리버스 프록시가 SSE 를 버퍼링하지 않게(토큰 순차 전달 보장). Next origin
+    //   압축은 next.config compress:false 로 이미 끔.
+    c.header("X-Accel-Buffering", "no");
     return streamSSE(c, async (stream) => {
+      // 장시간 툴(deep_research: researcher 병렬 ~30s + synthesis ~30s idle 갭)에
+      //   프록시/undici 가 연결을 끊지 않도록 keep-alive comment 를 주기 방출한다.
+      //   ": ..." 는 SSE 주석 — client parser(\n\n frame → parseSseFrame)는 무시한다.
+      const heartbeat = setInterval(() => {
+        void stream.write(": ping\n\n").catch(() => {});
+      }, 10_000);
       // GET resume 엔드포인트(message-run-registry.ts)가 캐치업할 수 있도록, 현재 leg 의
       // messageId(message_start 로 파악) 기준으로 매 event 를 기록한다. tool_use 로 인한
       // 재호출로 leg 가 여러 개 생기면 그때마다 message_start 가 새 messageId 를 발급하므로
@@ -270,7 +290,33 @@ export function createMessageRoutes(
           jobId,
           handle.controller.signal.aborted ? "cancelled" : "completed",
         );
+      } catch (err) {
+        // 예외로 stop 없이 스트림이 닫히면 client 가 "연결 끊김"으로 오인 → 명시적 error
+        //   event 를 방출해 종단 처리(재시도 안내) 되게 한다.
+        const message =
+          err instanceof Error
+            ? err.message
+            : "턴 처리 중 오류가 발생했습니다.";
+        await stream
+          .writeSSE({
+            event: "error",
+            data: JSON.stringify({
+              error: {
+                code: "TURN_FAILED",
+                category: "orchestrator",
+                message,
+                retryable: true,
+              },
+            }),
+          })
+          .catch(() => {});
+        try {
+          await activeRuns.setActiveRun(sessionId, jobId, "cancelled");
+        } catch {
+          /* best-effort */
+        }
       } finally {
+        clearInterval(heartbeat);
         unregisterRun(sessionId, jobId);
       }
     });
@@ -297,6 +343,7 @@ export function createMessageRoutes(
       );
     }
 
+    c.header("X-Accel-Buffering", "no");
     return streamSSE(c, async (stream) => {
       const requestSignal = c.req.raw.signal;
       const onAbort = () => subscription.unsubscribe();

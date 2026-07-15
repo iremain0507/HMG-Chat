@@ -51,6 +51,128 @@ describe("ToolCallRenderer", () => {
     expect(screen.getByTestId("multi-agent-badge")).toBeInTheDocument();
   });
 
+  it("deep_research 실행 중에는 조사 주제(query)와 병렬 조사 안내를 보여준다", () => {
+    render(
+      <ToolCallRenderer
+        toolCallId="call-1"
+        name="deep_research"
+        args={{ query: "다크팩토리 현황과 전망" }}
+        status="running"
+      />,
+    );
+    expect(screen.getByText(/다크팩토리 현황과 전망/)).toBeInTheDocument();
+    expect(screen.getByText(/병렬/)).toBeInTheDocument();
+  });
+
+  it("deep_research 완료 결과는 raw JSON 대신 References·리포트 카드로 구조화한다", () => {
+    const result = {
+      message: "4개 하위 질문을 조사해 리포트로 종합했습니다.",
+      citations: [
+        {
+          index: 1,
+          source: "ephemeral",
+          filename: "hyundai.com",
+          title: "HMGMA 자동화 라인",
+          snippet: "…",
+          sourceUri: "https://hyundai.com/x",
+        },
+        {
+          index: 2,
+          source: "ephemeral",
+          filename: "reuters.com",
+          title: "테슬라 기가팩토리",
+          snippet: "…",
+          sourceUri: "https://reuters.com/y",
+        },
+      ],
+      artifact: {
+        artifactId: "a1",
+        artifactKind: "markdown",
+        filename: "deep-research-call-1.md",
+        sizeBytes: 4096,
+        downloadUrl: "/api/v1/artifacts/a1/content",
+      },
+    };
+    render(
+      <ToolCallRenderer
+        toolCallId="call-1"
+        name="deep_research"
+        args={{ query: "다크팩토리" }}
+        status="done"
+        result={result}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: /deep_research/ }));
+    expect(screen.getByText("HMGMA 자동화 라인")).toBeInTheDocument();
+    expect(screen.getByText("deep-research-call-1.md")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /열기/ })).toHaveAttribute(
+      "href",
+      "/api/v1/artifacts/a1/content",
+    );
+    expect(screen.queryByText(/"artifactId"/)).not.toBeInTheDocument();
+  });
+
+  it("deep_research 실행 중 progress 가 있으면 라벨(접힘)과 서브에이전트 작업목록(펼침 스윔레인)을 보여준다", () => {
+    render(
+      <ToolCallRenderer
+        toolCallId="call-1"
+        name="deep_research"
+        args={{ query: "다크팩토리" }}
+        status="running"
+        progress={{
+          stage: "researching",
+          label: "1/2 하위질문 조사 완료",
+          tasks: [
+            {
+              id: "sq-0",
+              title: "다크팩토리 정의는?",
+              status: "done",
+              sourceCount: 3,
+            },
+            {
+              id: "sq-1",
+              title: "국내 사례는?",
+              status: "running",
+              sourceCount: 1,
+            },
+          ],
+        }}
+      />,
+    );
+    expect(screen.getByText(/1\/2 하위질문 조사 완료/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /deep_research/ }));
+    expect(screen.getByText("다크팩토리 정의는?")).toBeInTheDocument();
+    expect(screen.getByText("국내 사례는?")).toBeInTheDocument();
+  });
+
+  it("펼침 진행목록은 F07 워커 카드(StatusChip+mono 출처 N)로 렌더된다", () => {
+    render(
+      <ToolCallRenderer
+        toolCallId="call-1"
+        name="deep_research"
+        args={{ query: "다크팩토리" }}
+        status="running"
+        progress={{
+          stage: "researching",
+          label: "1/2 하위질문 조사 완료",
+          tasks: [
+            {
+              id: "sq-0",
+              title: "다크팩토리 정의는?",
+              status: "done",
+              sourceCount: 3,
+            },
+          ],
+        }}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: /deep_research/ }));
+    const card = screen.getByTestId("activity-worker-sq-0");
+    expect(card).toHaveTextContent("다크팩토리 정의는?");
+    expect(card).toHaveTextContent("출처 3");
+    expect(card).toHaveTextContent("완료");
+  });
+
   it("일반 툴(query 인자)은 '멀티에이전트' 배지를 보여주지 않는다", () => {
     render(
       <ToolCallRenderer

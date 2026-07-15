@@ -2,6 +2,7 @@
 
 // hooks/useToolMetrics.ts — 16-API-CONTRACT § 14 GET /admin/tool-metrics 소비.
 import { useCallback, useEffect, useState } from "react";
+import { apiFetch } from "../lib/fetch-with-refresh";
 
 export interface ToolMetricDto {
   toolName: string;
@@ -29,7 +30,7 @@ export function useToolMetrics(): UseToolMetricsResult {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch("/api/v1/admin/tool-metrics", {
+      const res = await apiFetch("/api/v1/admin/tool-metrics", {
         credentials: "include",
       });
       if (!res.ok) {

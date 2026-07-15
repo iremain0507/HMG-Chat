@@ -47,7 +47,14 @@ function CitationChip({
           className="pointer-events-none absolute bottom-full left-1/2 z-10 mb-1 w-56 -translate-x-1/2 rounded-lg border border-border bg-surface p-2 text-left text-xs normal-case text-fg opacity-0 shadow-md transition-opacity group-hover:opacity-100"
         >
           <span className="block font-semibold">{citation.filename}</span>
-          <span className="mt-0.5 block text-fg-muted">{citation.snippet}</span>
+          {citation.page && (
+            <span className="mt-0.5 block font-mono text-fg-subtle">
+              p.{citation.page}
+            </span>
+          )}
+          <span className="mt-0.5 line-clamp-3 block text-fg-muted">
+            {citation.snippet}
+          </span>
         </span>
       )}
     </sup>

@@ -28,12 +28,16 @@ export function ProjectDetail({ projectId }: { projectId: string }) {
   if (!project) return null;
 
   return (
-    <article>
-      <h1 className="text-2xl font-semibold text-fg">{project.name}</h1>
-      <p className="text-fg-muted">
-        {VISIBILITY_LABEL[project.visibility] ?? project.visibility}
-      </p>
-      {project.description && <p className="text-fg">{project.description}</p>}
+    <article className="rounded-[10px] border border-border bg-bg px-10 py-7">
+      <div className="flex items-center gap-3">
+        <h1 className="text-xl font-bold text-fg">{project.name}</h1>
+        <span className="rounded-full border border-primary-200 bg-primary-50 px-2.5 py-0.5 text-[11px] font-semibold text-primary">
+          {VISIBILITY_LABEL[project.visibility] ?? project.visibility}
+        </span>
+      </div>
+      {project.description && (
+        <p className="mt-2 text-sm text-fg-muted">{project.description}</p>
+      )}
       <DocumentsPanel projectId={projectId} />
     </article>
   );

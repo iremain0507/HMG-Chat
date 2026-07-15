@@ -482,3 +482,136 @@ describe("ChatInput 모델/모드 피커 (P10-T6-13)", () => {
     expect(screen.getByLabelText("메시지 입력")).toHaveValue("");
   });
 });
+
+describe("ChatInput 액션바 F05 핸드오프 (P13-T6-04)", () => {
+  afterEach(() => {
+    cleanup();
+    vi.unstubAllGlobals();
+  });
+
+  const SLASH_COMMANDS = [
+    { id: "clear", label: "대화 지우기" },
+    { id: "search", label: "웹 검색" },
+  ];
+
+  const MENTION_ENTITIES = [
+    {
+      id: "agent-1",
+      kind: "agent" as const,
+      label: "품질 리포트",
+    },
+    {
+      id: "tool-readonly",
+      kind: "tool" as const,
+      label: "defect.query",
+      policy: "readonly" as const,
+    },
+    {
+      id: "tool-approval",
+      kind: "connector" as const,
+      label: "work_order.update",
+      policy: "approval" as const,
+    },
+  ];
+
+  it("@ 액션바 버튼을 클릭하면 입력에 @ 가 삽입되고 멘션 팝오버가 뜬다", () => {
+    render(
+      <ChatInput
+        sessionId="actionbar-mention-1"
+        isStreaming={false}
+        onSend={vi.fn()}
+        onStop={vi.fn()}
+        mentionEntities={MENTION_ENTITIES}
+      />,
+    );
+    const textarea = screen.getByLabelText(
+      "메시지 입력",
+    ) as HTMLTextAreaElement;
+
+    fireEvent.click(screen.getByTestId("composer-trigger-mention"));
+
+    expect(textarea.value).toBe("@");
+    expect(screen.getByText("품질 리포트")).toBeInTheDocument();
+    expect(screen.getByText("defect.query")).toBeInTheDocument();
+  });
+
+  it("/ 액션바 버튼을 클릭하면(입력 비어있을 때) 슬래시 팝오버가 뜬다", () => {
+    render(
+      <ChatInput
+        sessionId="actionbar-slash-1"
+        isStreaming={false}
+        onSend={vi.fn()}
+        onStop={vi.fn()}
+        slashCommands={SLASH_COMMANDS}
+      />,
+    );
+    fireEvent.click(screen.getByTestId("composer-trigger-slash"));
+    expect(screen.getByText("대화 지우기")).toBeInTheDocument();
+  });
+
+  it("입력에 텍스트가 있으면 / 액션바 버튼은 비활성화된다", () => {
+    render(
+      <ChatInput
+        sessionId="actionbar-slash-2"
+        isStreaming={false}
+        onSend={vi.fn()}
+        onStop={vi.fn()}
+        slashCommands={SLASH_COMMANDS}
+      />,
+    );
+    fireEvent.change(screen.getByLabelText("메시지 입력"), {
+      target: { value: "이미 작성 중" },
+    });
+    expect(screen.getByTestId("composer-trigger-slash")).toBeDisabled();
+  });
+
+  it("@ 팝오버에 카테고리 탭과 정책 배지(읽기 전용/승인 필요)가 표시된다", () => {
+    render(
+      <ChatInput
+        sessionId="actionbar-mention-2"
+        isStreaming={false}
+        onSend={vi.fn()}
+        onStop={vi.fn()}
+        mentionEntities={MENTION_ENTITIES}
+      />,
+    );
+    fireEvent.click(screen.getByTestId("composer-trigger-mention"));
+
+    expect(screen.getByTestId("composer-popover-tab-agent")).toBeVisible();
+    expect(screen.getByText("읽기 전용")).toBeInTheDocument();
+    expect(screen.getByText("승인 필요")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByTestId("composer-popover-tab-connector"));
+    expect(screen.getByText("work_order.update")).toBeInTheDocument();
+    expect(screen.queryByText("품질 리포트")).not.toBeInTheDocument();
+  });
+
+  it("contextUsagePercent 를 전달하면 mono 컨텍스트 게이지가 렌더된다", () => {
+    render(
+      <ChatInput
+        sessionId="session-1"
+        isStreaming={false}
+        onSend={vi.fn()}
+        onStop={vi.fn()}
+        contextUsagePercent={42}
+      />,
+    );
+    expect(screen.getByTestId("composer-context-gauge")).toHaveTextContent(
+      "42%",
+    );
+  });
+
+  it("contextUsagePercent 가 없으면 게이지를 렌더하지 않는다", () => {
+    render(
+      <ChatInput
+        sessionId="session-1"
+        isStreaming={false}
+        onSend={vi.fn()}
+        onStop={vi.fn()}
+      />,
+    );
+    expect(
+      screen.queryByTestId("composer-context-gauge"),
+    ).not.toBeInTheDocument();
+  });
+});

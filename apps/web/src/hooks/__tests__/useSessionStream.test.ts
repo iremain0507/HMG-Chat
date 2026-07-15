@@ -236,6 +236,92 @@ describe("useSessionStream", () => {
     ]);
   });
 
+  it("멀티-leg: 중간 stop(reason=tool_use) 은 종단이 아니며 최종 stop(end_turn) 까지 isStreaming 을 유지하고 leg2 답변을 렌더한다", async () => {
+    const enc = new TextEncoder();
+    let ctl!: ReadableStreamDefaultController<Uint8Array>;
+    const stream = new ReadableStream<Uint8Array>({
+      start(c) {
+        ctl = c;
+      },
+    });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({ body: stream })),
+    );
+
+    const { result } = renderHook(() => useSessionStream("session-1"));
+
+    let sendDone!: Promise<void>;
+    await act(async () => {
+      sendDone = result.current.send("조사해줘");
+      // leg1: 도구 호출 후 중간 stop(reason=tool_use) — 이후 tool_result/leg2 가 이어진다.
+      ctl.enqueue(
+        enc.encode(
+          sseFrame("message_start", {
+            messageId: "m1",
+            meta: { provider: "f", model: "f" },
+          }),
+        ),
+      );
+      ctl.enqueue(
+        enc.encode(
+          sseFrame("tool_use", {
+            toolCallId: "c1",
+            name: "deep_research",
+            args: {},
+          }),
+        ),
+      );
+      ctl.enqueue(
+        enc.encode(
+          sseFrame("stop", {
+            reason: "tool_use",
+            usage: { inputTokens: 1, outputTokens: 1 },
+          }),
+        ),
+      );
+      await new Promise((r) => setTimeout(r, 0));
+    });
+
+    // 중간 stop 이후에도 스트리밍은 계속되어야 한다(종단 오인 금지).
+    expect(result.current.isStreaming).toBe(true);
+
+    await act(async () => {
+      ctl.enqueue(
+        enc.encode(
+          sseFrame("tool_result", { toolCallId: "c1", content: "리서치 결과" }),
+        ),
+      );
+      ctl.enqueue(
+        enc.encode(
+          sseFrame("message_start", {
+            messageId: "m2",
+            meta: { provider: "f", model: "f" },
+          }),
+        ),
+      );
+      ctl.enqueue(
+        enc.encode(sseFrame("text_delta", { text: "디크팩토리는 …" })),
+      );
+      ctl.enqueue(
+        enc.encode(
+          sseFrame("stop", {
+            reason: "end_turn",
+            usage: { inputTokens: 1, outputTokens: 1 },
+          }),
+        ),
+      );
+      ctl.close();
+      await sendDone;
+    });
+
+    expect(result.current.isStreaming).toBe(false);
+    const finalAssistant = result.current.messages
+      .filter((m) => m.role === "assistant")
+      .pop();
+    expect(finalAssistant?.content).toContain("디크팩토리는");
+  });
+
   it("tool_result 의 content 가 error 를 담으면 해당 tool part 의 상태가 error 가 된다", async () => {
     vi.stubGlobal(
       "fetch",

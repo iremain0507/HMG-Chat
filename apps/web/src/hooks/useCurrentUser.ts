@@ -2,6 +2,7 @@
 
 // hooks/useCurrentUser.ts — 16-API-CONTRACT § AuthMeResponse 소비. admin 화면 role 게이트용.
 import { useEffect, useState } from "react";
+import { apiFetch } from "../lib/fetch-with-refresh";
 
 export interface CurrentUserDto {
   id: string;
@@ -41,7 +42,7 @@ export function useCurrentUser(): UseCurrentUserResult {
     let cancelled = false;
     async function load() {
       try {
-        const res = await fetch("/api/v1/auth/me", { credentials: "include" });
+        const res = await apiFetch("/api/v1/auth/me");
         if (!res.ok) return;
         const body = (await res.json()) as {
           data: { user: CurrentUserDto; org: CurrentOrgDto | null };

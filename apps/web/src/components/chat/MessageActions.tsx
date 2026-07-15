@@ -3,6 +3,7 @@
 // components/chat/MessageActions.tsx — P10-T6-03 hover 액션바.
 // 복사(마크다운 원문) / 재생성(assistant 전용) / 👍👎 피드백(로컬 상태, 백엔드 계약 없음).
 import React, { useState } from "react";
+import { copyText } from "../../lib/clipboard";
 
 export function MessageActions({
   role,
@@ -19,7 +20,7 @@ export function MessageActions({
   const [feedback, setFeedback] = useState<"up" | "down" | null>(null);
 
   async function copy() {
-    await navigator.clipboard.writeText(content);
+    if (!(await copyText(content))) return;
     setCopied(true);
     setTimeout(() => setCopied(false), 1500);
   }

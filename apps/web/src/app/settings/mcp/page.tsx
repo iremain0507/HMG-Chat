@@ -3,8 +3,7 @@ import { McpServersManager } from "../../../components/settings/McpServersManage
 
 export default function McpSettingsPage() {
   return (
-    <main className="p-8">
-      <h1 className="text-2xl font-semibold text-fg">MCP Servers</h1>
+    <main className="mx-auto max-w-5xl p-8">
       <McpServersManager />
     </main>
   );

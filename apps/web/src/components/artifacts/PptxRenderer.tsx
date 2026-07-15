@@ -4,6 +4,7 @@
 // PPTX 는 브라우저가 직접 렌더 불가 — contentUrl(server 가 office-pdf-converter 로 이미
 // PDF 로 변환해 서빙, L17)에서 blob 을 fetch 해 PdfRenderer 에 위임한다.
 import React, { useEffect, useState } from "react";
+import { apiFetch } from "../../lib/fetch-with-refresh";
 import { PdfRenderer } from "./PdfRenderer";
 
 export function PptxRenderer({ contentUrl }: { contentUrl: string }) {
@@ -14,7 +15,7 @@ export function PptxRenderer({ contentUrl }: { contentUrl: string }) {
     let objectUrl: string | null = null;
     let cancelled = false;
 
-    fetch(contentUrl)
+    apiFetch(contentUrl)
       .then((res) => {
         if (!res.ok) throw new Error("변환 실패");
         return res.blob();

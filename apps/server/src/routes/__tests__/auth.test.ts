@@ -289,7 +289,8 @@ describe("routes/auth", () => {
     });
     const res = await devApp.request("/dev-login", { redirect: "manual" });
     expect(res.status).toBe(302);
-    expect(res.headers.get("location")).toBe("http://localhost:3000/");
+    // host-보존 상대경로: 브라우저가 접속한 origin(localhost/Tailscale/역프록시)에 상대 해석.
+    expect(res.headers.get("location")).toBe("/");
     expect(res.headers.get("set-cookie") ?? "").toContain("wchat_at=");
     // dev 유저가 org 안에 생성됨(기존 유저 없을 때).
     const users = await da.users.list({ orgId: org.id });
@@ -329,7 +330,7 @@ describe("routes/auth", () => {
       { redirect: "manual" },
     );
     expect(verifyRes.status).toBe(302);
-    expect(verifyRes.headers.get("location")).toBe("http://localhost:3000/");
+    expect(verifyRes.headers.get("location")).toBe("/");
     const setCookies = verifyRes.headers.getSetCookie
       ? verifyRes.headers.getSetCookie()
       : [verifyRes.headers.get("set-cookie") ?? ""];

@@ -2,6 +2,7 @@
 
 // hooks/useSessions.ts — 16-API-CONTRACT § GET/POST/PATCH/DELETE /sessions 소비.
 import { useCallback, useEffect, useState } from "react";
+import { apiFetch } from "../lib/fetch-with-refresh";
 
 export interface SessionListItemDto {
   id: string;
@@ -30,7 +31,7 @@ export function useSessions(): UseSessionsResult {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch("/api/v1/sessions", { credentials: "include" });
+      const res = await apiFetch("/api/v1/sessions", { credentials: "include" });
       if (!res.ok) {
         setError("세션 목록을 불러오지 못했습니다.");
         return;
@@ -47,7 +48,7 @@ export function useSessions(): UseSessionsResult {
   }, [load]);
 
   const createSession = useCallback(async () => {
-    const res = await fetch("/api/v1/sessions", {
+    const res = await apiFetch("/api/v1/sessions", {
       method: "POST",
       credentials: "include",
       headers: { "Content-Type": "application/json" },
@@ -74,7 +75,7 @@ export function useSessions(): UseSessionsResult {
   }, []);
 
   const renameSession = useCallback(async (id: string, title: string) => {
-    const res = await fetch(`/api/v1/sessions/${id}`, {
+    const res = await apiFetch(`/api/v1/sessions/${id}`, {
       method: "PATCH",
       credentials: "include",
       headers: { "Content-Type": "application/json" },
@@ -85,7 +86,7 @@ export function useSessions(): UseSessionsResult {
   }, []);
 
   const deleteSession = useCallback(async (id: string) => {
-    const res = await fetch(`/api/v1/sessions/${id}`, {
+    const res = await apiFetch(`/api/v1/sessions/${id}`, {
       method: "DELETE",
       credentials: "include",
     });
