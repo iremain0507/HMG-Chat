@@ -9,8 +9,11 @@ import type {
   LLMProvider,
   PromptBlock,
   ToolContext,
+  ToolMetricEntry,
+  ToolMetricRepo,
 } from "@wchat/interfaces";
 import { validateArgs } from "../tools/arg-validator.js";
+import { recordToolMetric } from "../lib/tool-metrics.js";
 
 export function hello(): string {
   return "orchestrator: hello-world";
@@ -32,6 +35,8 @@ export interface RunTurnInput {
   // Promise.all 로 동시 invoke 한다(20-MULTI-AGENT-TOOL.md §20.4-4) — 이 필드는
   // provider 가 모델에게 병렬 tool_use 생성을 허용할지 여부만 제어.
   parallelToolCalls?: boolean;
+  // invoke 계측 대상 — 미주입 시 계측을 건너뛴다(20-MULTI-AGENT-TOOL.md § P11-T2-13).
+  toolMetrics?: Pick<ToolMetricRepo, "append">;
 }
 
 // invoke 직전 args 를 spec.inputSchema 로 검증 — 스키마 불일치(필수 필드 누락/타입 불일치)
@@ -56,6 +61,60 @@ function schemaInvalidResult(
       ),
     },
   };
+}
+
+// tool.invoke 를 tool-metrics(ToolMetricRepo) 기록 + gen_ai.* 구조화 span(기존 Logger 재사용)
+// 계측으로 감싼다 (20-MULTI-AGENT-TOOL.md § P11-T2-13). 실 OpenTelemetry SDK(@opentelemetry/api)
+// 는 P11 계획-명시 의존성 목록(§20.4)에 없어 미도입 — 04-TECH-STACK.md 가 예정한 OTel 전환 시
+// exporter 만 교체 가능하도록 gen_ai.* 속성명(OTel GenAI semantic convention)만 맞춰 둔다.
+async function instrumentedInvoke(
+  tool: AgentTool,
+  toolCallId: string,
+  args: Record<string, unknown>,
+  ctx: ToolContext,
+  policyDecision: "allow" | "hitl",
+  toolMetrics: Pick<ToolMetricRepo, "append"> | undefined,
+): Promise<AgentToolResult> {
+  const spanAttrs = {
+    "gen_ai.tool.name": tool.spec.name,
+    "gen_ai.tool.call.id": toolCallId,
+    "gen_ai.tool.call.policy": policyDecision,
+  };
+  ctx.logger.debug({
+    category: "tool",
+    msg: `tool span start: ${tool.spec.name}`,
+    userId: ctx.userId,
+    orgId: ctx.orgId,
+    context: spanAttrs,
+  });
+
+  const startedAt = Date.now();
+  const result = await tool.invoke({ toolCallId, args, ctx });
+  const durationMs = Date.now() - startedAt;
+  const status: ToolMetricEntry["status"] =
+    result.content.kind === "error" ? "error" : "ok";
+
+  ctx.logger.info({
+    category: "tool",
+    msg: `tool span end: ${tool.spec.name}`,
+    userId: ctx.userId,
+    orgId: ctx.orgId,
+    durationMs,
+    // 결과 본문은 span event(context) 로 기록 — 신규 로그 채널 없이 기존 Logger 사용.
+    context: { ...spanAttrs, "gen_ai.tool.call.result": result.content },
+  });
+
+  if (toolMetrics) {
+    await recordToolMetric(toolMetrics, {
+      toolName: tool.spec.name,
+      status,
+      durationMs,
+      userId: ctx.userId,
+      orgId: ctx.orgId,
+    });
+  }
+
+  return result;
 }
 
 function toToolResultContent(result: AgentToolResult): string | unknown {
@@ -225,11 +284,14 @@ export async function* runTurn(input: RunTurnInput): AsyncIterable<ChatEvent> {
       const args = (toolUse.args ?? {}) as Record<string, unknown>;
       const result: AgentToolResult = tool
         ? (schemaInvalidResult(toolUse.toolCallId, tool, args) ??
-          (await tool.invoke({
-            toolCallId: toolUse.toolCallId,
+          (await instrumentedInvoke(
+            tool,
+            toolUse.toolCallId,
             args,
-            ctx: { ...input.toolContext!, signal: input.signal },
-          })))
+            { ...input.toolContext!, signal: input.signal },
+            "allow",
+            input.toolMetrics,
+          )))
         : {
             toolCallId: toolUse.toolCallId,
             content: {
@@ -345,11 +407,14 @@ export async function* runTurn(input: RunTurnInput): AsyncIterable<ChatEvent> {
 
       const result: AgentToolResult =
         schemaInvalidResult(toolUse.toolCallId, tool, args) ??
-        (await tool.invoke({
-          toolCallId: toolUse.toolCallId,
+        (await instrumentedInvoke(
+          tool,
+          toolUse.toolCallId,
           args,
-          ctx: { ...input.toolContext!, signal: input.signal },
-        }));
+          { ...input.toolContext!, signal: input.signal },
+          "hitl",
+          input.toolMetrics,
+        ));
       const content = toToolResultContent(result);
       yield { type: "tool_result", toolCallId: toolUse.toolCallId, content };
       toolResultParts.push({

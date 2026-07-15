@@ -1004,8 +1004,8 @@
     "acceptance": "invoke가 tool-metrics 기록 + span 생성; RED→GREEN, verify-gates green",
     "phase": "P11",
     "team": "T2",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P12-T2-01",

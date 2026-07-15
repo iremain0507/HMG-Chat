@@ -15,6 +15,7 @@ import {
   type Organization,
   type PromptBlock,
   type ToolContext,
+  type ToolMetricRepo,
 } from "@wchat/interfaces";
 import { runTurn } from "../orchestrator/orchestrator.js";
 import { registerRun, unregisterRun } from "../orchestrator/run-registry.js";
@@ -108,6 +109,8 @@ export interface MessageRouteDeps {
   organizations?: { byId(id: string): Promise<Organization | null> };
   hitl?: HitlBridge;
   logger?: Logger;
+  // P11-T2-13 — 각 tool invoke 계측(tool-metrics 기록 + gen_ai.* span). 미주입 시 계측 생략.
+  toolMetrics?: Pick<ToolMetricRepo, "append">;
 }
 
 function errorJson(code: string, message: string) {
@@ -250,6 +253,7 @@ export function createMessageRoutes(
           signal: handle.controller.signal,
           ...(tools.length > 0 ? { tools, parallelToolCalls: true } : {}),
           ...(toolContext ? { toolContext } : {}),
+          ...(deps.toolMetrics ? { toolMetrics: deps.toolMetrics } : {}),
         });
         for await (const event of events) {
           if (event.type === "message_start") {

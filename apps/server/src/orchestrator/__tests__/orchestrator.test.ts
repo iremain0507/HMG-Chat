@@ -5,7 +5,10 @@ import type {
   ChatInput,
   HitlBridge,
   LLMProvider,
+  Logger,
+  LogPayload,
   ToolContext,
+  ToolMetricEntry,
 } from "@wchat/interfaces";
 import { hello, runTurn } from "../orchestrator.js";
 
@@ -1267,5 +1270,299 @@ describe("orchestrator.runTurn — arg-validator invoke 직전 검증 (P11-T2-10
         error: expect.objectContaining({ code: "SCHEMA_INVALID" }),
       },
     });
+  });
+});
+
+function fakeToolContextWithLoggerSpy(): {
+  toolContext: ToolContext;
+  logCalls: Array<{ level: string; payload: LogPayload }>;
+} {
+  const logCalls: Array<{ level: string; payload: LogPayload }> = [];
+  const logger: Logger = {
+    debug(p) {
+      logCalls.push({ level: "debug", payload: p });
+    },
+    info(p) {
+      logCalls.push({ level: "info", payload: p });
+    },
+    warn(p) {
+      logCalls.push({ level: "warn", payload: p });
+    },
+    error(p) {
+      logCalls.push({ level: "error", payload: p });
+    },
+    fatal(p) {
+      logCalls.push({ level: "fatal", payload: p });
+    },
+    child() {
+      return logger;
+    },
+  };
+  return {
+    toolContext: {
+      requestId: "req-1",
+      userId: "user-1",
+      orgId: "org-1",
+      sessionId: "session-1",
+      signal: new AbortController().signal,
+      logger,
+      hitl: {
+        async askApproval() {
+          return { kind: "approved" };
+        },
+      },
+      budget: {
+        async claim() {},
+        async settle() {},
+        async refund() {},
+        remaining: Infinity,
+      },
+    },
+    logCalls,
+  };
+}
+
+function fakeToolMetricRepo(): {
+  appended: ToolMetricEntry[];
+  append(entry: ToolMetricEntry): Promise<void>;
+} {
+  const appended: ToolMetricEntry[] = [];
+  return {
+    appended,
+    async append(entry) {
+      appended.push(entry);
+    },
+  };
+}
+
+describe("orchestrator.runTurn — 툴 관측: tool-metrics + gen_ai.* span (P11-T2-13)", () => {
+  it("allow 정책 툴 invoke 성공 시 tool-metrics 에 status=ok 로 기록되고 gen_ai.* span 로그(결과 본문 포함)가 생성된다", async () => {
+    let calls = 0;
+    const fakeProvider: LLMProvider = {
+      name: "fake",
+      models: ["fake-model"],
+      async *chat() {
+        calls += 1;
+        if (calls === 1) {
+          yield {
+            type: "tool_use",
+            toolCallId: "call-1",
+            name: "metered_tool",
+            args: {},
+          };
+          yield {
+            type: "stop",
+            reason: "tool_use",
+            usage: { inputTokens: 1, outputTokens: 1 },
+          };
+          return;
+        }
+        yield { type: "text_delta", text: "done" };
+        yield {
+          type: "stop",
+          reason: "end_turn",
+          usage: { inputTokens: 1, outputTokens: 1 },
+        };
+      },
+    };
+    const meteredTool: AgentTool = {
+      spec: {
+        name: "metered_tool",
+        description: "계측 대상 allow 툴",
+        inputSchema: { type: "object" },
+        permissionTier: "tool",
+        defaultPolicy: "allow",
+      },
+      async invoke(input) {
+        return {
+          toolCallId: input.toolCallId,
+          content: { kind: "text", text: "ok-result" },
+        };
+      },
+    };
+
+    const { toolContext, logCalls } = fakeToolContextWithLoggerSpy();
+    const toolMetrics = fakeToolMetricRepo();
+
+    const result: ChatEvent[] = [];
+    for await (const event of runTurn({
+      provider: fakeProvider,
+      model: "fake-model",
+      systemBlocks: [],
+      messages: [{ role: "user", content: "hi" }],
+      maxTokens: 512,
+      signal: new AbortController().signal,
+      tools: [meteredTool],
+      toolContext,
+      toolMetrics,
+    })) {
+      result.push(event);
+    }
+
+    expect(result.some((e) => e.type === "tool_result")).toBe(true);
+    expect(toolMetrics.appended).toHaveLength(1);
+    expect(toolMetrics.appended[0]).toMatchObject({
+      toolName: "metered_tool",
+      status: "ok",
+      userId: "user-1",
+      orgId: "org-1",
+    });
+    expect(toolMetrics.appended[0]?.durationMs).toBeGreaterThanOrEqual(0);
+
+    const spanEnd = logCalls.find((c) => {
+      const context = c.payload.context as Record<string, unknown> | undefined;
+      return (
+        c.level === "info" && context?.["gen_ai.tool.name"] === "metered_tool"
+      );
+    });
+    expect(spanEnd).toBeDefined();
+    expect(spanEnd?.payload.context).toMatchObject({
+      "gen_ai.tool.name": "metered_tool",
+      "gen_ai.tool.call.id": "call-1",
+      "gen_ai.tool.call.policy": "allow",
+      "gen_ai.tool.call.result": { kind: "text", text: "ok-result" },
+    });
+  });
+
+  it("invoke 결과가 error content 이면 tool-metrics 에 status=error 로 기록한다", async () => {
+    let calls = 0;
+    const fakeProvider: LLMProvider = {
+      name: "fake",
+      models: ["fake-model"],
+      async *chat() {
+        calls += 1;
+        if (calls === 1) {
+          yield {
+            type: "tool_use",
+            toolCallId: "call-1",
+            name: "failing_tool",
+            args: {},
+          };
+          yield {
+            type: "stop",
+            reason: "tool_use",
+            usage: { inputTokens: 1, outputTokens: 1 },
+          };
+          return;
+        }
+        yield { type: "text_delta", text: "done" };
+        yield {
+          type: "stop",
+          reason: "end_turn",
+          usage: { inputTokens: 1, outputTokens: 1 },
+        };
+      },
+    };
+    const failingTool: AgentTool = {
+      spec: {
+        name: "failing_tool",
+        description: "항상 실패하는 allow 툴",
+        inputSchema: { type: "object" },
+        permissionTier: "tool",
+        defaultPolicy: "allow",
+      },
+      async invoke(input) {
+        return {
+          toolCallId: input.toolCallId,
+          content: {
+            kind: "error",
+            error: new (await import("@wchat/interfaces")).WChatError(
+              "UPSTREAM_ERROR",
+              "tool",
+              true,
+              "실패",
+            ),
+          },
+        };
+      },
+    };
+
+    const { toolContext } = fakeToolContextWithLoggerSpy();
+    const toolMetrics = fakeToolMetricRepo();
+
+    const result: ChatEvent[] = [];
+    for await (const event of runTurn({
+      provider: fakeProvider,
+      model: "fake-model",
+      systemBlocks: [],
+      messages: [{ role: "user", content: "hi" }],
+      maxTokens: 512,
+      signal: new AbortController().signal,
+      tools: [failingTool],
+      toolContext,
+      toolMetrics,
+    })) {
+      result.push(event);
+    }
+
+    expect(toolMetrics.appended).toHaveLength(1);
+    expect(toolMetrics.appended[0]).toMatchObject({
+      toolName: "failing_tool",
+      status: "error",
+    });
+  });
+
+  it("toolMetrics 미주입 시에도 invoke 는 정상 동작한다(옵션 필드)", async () => {
+    let calls = 0;
+    const fakeProvider: LLMProvider = {
+      name: "fake",
+      models: ["fake-model"],
+      async *chat() {
+        calls += 1;
+        if (calls === 1) {
+          yield {
+            type: "tool_use",
+            toolCallId: "call-1",
+            name: "metered_tool",
+            args: {},
+          };
+          yield {
+            type: "stop",
+            reason: "tool_use",
+            usage: { inputTokens: 1, outputTokens: 1 },
+          };
+          return;
+        }
+        yield { type: "text_delta", text: "done" };
+        yield {
+          type: "stop",
+          reason: "end_turn",
+          usage: { inputTokens: 1, outputTokens: 1 },
+        };
+      },
+    };
+    const meteredTool: AgentTool = {
+      spec: {
+        name: "metered_tool",
+        description: "계측 대상 allow 툴",
+        inputSchema: { type: "object" },
+        permissionTier: "tool",
+        defaultPolicy: "allow",
+      },
+      async invoke(input) {
+        return {
+          toolCallId: input.toolCallId,
+          content: { kind: "text", text: "ok-result" },
+        };
+      },
+    };
+
+    const { toolContext } = fakeToolContextWithLoggerSpy();
+
+    const result: ChatEvent[] = [];
+    for await (const event of runTurn({
+      provider: fakeProvider,
+      model: "fake-model",
+      systemBlocks: [],
+      messages: [{ role: "user", content: "hi" }],
+      maxTokens: 512,
+      signal: new AbortController().signal,
+      tools: [meteredTool],
+      toolContext,
+    })) {
+      result.push(event);
+    }
+
+    expect(result.some((e) => e.type === "tool_result")).toBe(true);
   });
 });
