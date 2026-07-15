@@ -123,6 +123,8 @@ export function createApp(env: Env) {
       allowedDomains: env.ALLOWED_DOMAINS.split(",").map((d) => d.trim()),
       appOrigin,
       secureCookies: env.NODE_ENV === "production",
+      // dev/test 에서만 /api/v1/auth/dev-login 활성(production 은 404). SSO 도입 전 로컬 편의.
+      devLogin: env.NODE_ENV !== "production",
     }),
   );
 

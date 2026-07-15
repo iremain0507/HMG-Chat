@@ -31,6 +31,8 @@ export interface AuthRouteDeps {
   cookiePrefix?: string; // default: process.env.PROJECT_SLUG ?? "wchat"
   magicLinkTtlMinutes?: number; // default 15
   secureCookies?: boolean; // default true (dev/test 에선 false)
+  // dev 전용 즉시 로그인(magic-link 없이). production 에선 반드시 false — SSO 도입 전까지 로컬 테스트 편의.
+  devLogin?: boolean;
 }
 
 const ACCESS_TTL_SECONDS = 15 * 60;
@@ -251,6 +253,65 @@ export function createAuthRoutes(deps: AuthRouteDeps): Hono {
     const user = await deps.da.users.byId(userId);
     if (!user) return c.redirect(loginUrl("invalid"), 302);
 
+    await issueSession(c, user.id, user.orgId, user.role);
+    return c.redirect(`${deps.appOrigin}/`, 302);
+  });
+
+  // dev 전용 즉시 로그인 — magic-link 없이 세션 발급 후 홈으로 302.
+  //   GET /api/v1/auth/dev-login[?email=you@allowed-domain]
+  //   production(devLogin=false) 에선 404. 향후 SSO 로 교체될 로컬 테스트 편의 경로.
+  app.get("/dev-login", async (c) => {
+    if (!deps.devLogin) {
+      return c.json(
+        errorJson(
+          "NOT_FOUND",
+          "dev-login 은 개발 환경에서만 사용할 수 있습니다.",
+        ),
+        404,
+      );
+    }
+    const requestedEmail = c.req.query("email")?.trim().toLowerCase();
+    const domain =
+      requestedEmail && isValidEmail(requestedEmail)
+        ? emailDomain(requestedEmail)
+        : (deps.allowedDomains[0] ?? "");
+    let org = await findOrgByDomain(domain);
+    if (!org) {
+      // dev 전용: allowed-domain org 가 없으면 생성 — fresh DB 에서도 시드 없이 접속.
+      org = await deps.da.organizations.insert({
+        name: "Dev Org",
+        domain,
+        plan: "team",
+        allowedModels: [
+          "claude-sonnet-5",
+          "claude-opus-4-8",
+          "claude-haiku-4-5",
+        ],
+        allowedTools: [],
+        defaultTokenBudgetMicros: null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      });
+    }
+    // 요청 email 유저 → 없으면 org 의 기존 유저 → 그래도 없으면 owner dev 유저 생성.
+    let user = requestedEmail
+      ? (await deps.da.users.list({ orgId: org.id, emailEq: requestedEmail }))
+          .items[0]
+      : undefined;
+    if (!user) {
+      user = (await deps.da.users.list({ orgId: org.id })).items[0];
+    }
+    if (!user) {
+      user = await deps.da.users.insert({
+        orgId: org.id,
+        email: requestedEmail ?? `dev@${domain}`,
+        name: "Dev User",
+        role: "owner",
+        customInstructions: null,
+        status: "active",
+        lastLoginAt: new Date(),
+      });
+    }
     await issueSession(c, user.id, user.orgId, user.role);
     return c.redirect(`${deps.appOrigin}/`, 302);
   });

@@ -273,6 +273,29 @@ describe("routes/auth", () => {
     });
   });
 
+  it("dev-login: devLogin 미설정(production) → 404", async () => {
+    const res = await app.request("/dev-login", { redirect: "manual" });
+    expect(res.status).toBe(404);
+  });
+
+  it("dev-login: devLogin=true → org 유저로 세션 발급 + 302 홈 redirect + at 쿠키", async () => {
+    const devApp = createAuthRoutes({
+      da,
+      emailSender,
+      allowedDomains: ["wchat.example.com"],
+      appOrigin: "http://localhost:3000",
+      secureCookies: false,
+      devLogin: true,
+    });
+    const res = await devApp.request("/dev-login", { redirect: "manual" });
+    expect(res.status).toBe(302);
+    expect(res.headers.get("location")).toBe("http://localhost:3000/");
+    expect(res.headers.get("set-cookie") ?? "").toContain("wchat_at=");
+    // dev 유저가 org 안에 생성됨(기존 유저 없을 때).
+    const users = await da.users.list({ orgId: org.id });
+    expect(users.items.length).toBeGreaterThanOrEqual(1);
+  });
+
   it("도메인 외(gmail.com) 가입 시도 → 403 EMAIL_DOMAIN_FORBIDDEN", async () => {
     const res = await app.request("/signup", {
       method: "POST",
