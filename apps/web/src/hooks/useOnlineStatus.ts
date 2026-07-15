@@ -5,11 +5,13 @@
 import { useEffect, useState } from "react";
 
 export function useOnlineStatus(): boolean {
-  const [online, setOnline] = useState(() =>
-    typeof navigator === "undefined" ? true : navigator.onLine,
-  );
+  // SSR + 초기 렌더는 항상 online 으로 시작해 hydration mismatch 방지.
+  // (Node 21+ 는 navigator 전역이 존재하나 navigator.onLine 은 undefined → 서버가 offline 으로
+  //  오판해 배너를 SSR 하면 클라이언트와 불일치. 실제 상태는 마운트 후 useEffect 에서 반영.)
+  const [online, setOnline] = useState(true);
 
   useEffect(() => {
+    setOnline(navigator.onLine);
     function goOnline() {
       setOnline(true);
     }
