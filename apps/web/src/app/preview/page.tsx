@@ -19,6 +19,9 @@ import { MessageItem } from "../../components/chat/ChatView";
 import { ProjectPicker } from "../../components/chat/ProjectPicker";
 import { MemoryPanel } from "../../components/chat/MemoryPanel";
 import { ShareExportMenu } from "../../components/chat/ShareExportMenu";
+import { SharePublicView } from "../../components/share/SharePublicView";
+import { LoginForm } from "../../components/auth/LoginForm";
+import { SignupForm } from "../../components/auth/SignupForm";
 import { HomeContent } from "../../components/home/HomeContent";
 import { ProjectDetail } from "../../components/projects/ProjectDetail";
 import { McpServersManager } from "../../components/settings/McpServersManager";
@@ -724,6 +727,38 @@ function ChatAgenticPreview() {
   );
 }
 
+// P13-T6-14 — 공유(F16)+인증 핸드오프 정렬 프리뷰. SharePublicView 는 useShare 훅이
+//   실 fetch 를 수행하므로, Playwright(e2e/share-auth.pw.ts)가 page.route 로
+//   /api/v1/share/:token 응답을 가로채 정상/410 두 상태를 결정론적으로 재현한다.
+function SharePublicViewPreview() {
+  return (
+    <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+      <div className="flex justify-center rounded-md bg-bg p-4">
+        <SharePublicView token="preview-share-ok" />
+      </div>
+      <div className="flex justify-center rounded-md bg-bg p-4">
+        <SharePublicView token="preview-share-expired" />
+      </div>
+    </div>
+  );
+}
+
+function LoginFormPreview() {
+  return (
+    <div className="flex justify-center">
+      <LoginForm />
+    </div>
+  );
+}
+
+function SignupFormPreview() {
+  return (
+    <div className="flex justify-center">
+      <SignupForm />
+    </div>
+  );
+}
+
 function Section({
   name,
   children,
@@ -927,6 +962,18 @@ export default function PreviewGallery() {
             artifacts={ARTIFACTS}
           />
         </div>
+      </Section>
+
+      <Section name="share-public-view">
+        <SharePublicViewPreview />
+      </Section>
+
+      <Section name="login-form">
+        <LoginFormPreview />
+      </Section>
+
+      <Section name="signup-form">
+        <SignupFormPreview />
       </Section>
     </div>
   );

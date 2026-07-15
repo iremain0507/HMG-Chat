@@ -9,19 +9,28 @@ export default async function LoginPage({
   const { error } = await searchParams;
 
   return (
-    <main className="p-8">
-      <h1 className="text-2xl font-semibold">로그인</h1>
-      <p className="mt-2 text-gray-600">
-        이메일로 매직 링크를 받아 로그인하세요.
-      </p>
-      <div className="mt-6">
-        <LoginForm errorCode={error} />
+    <main className="flex min-h-screen flex-col items-center justify-center gap-6 bg-bg p-8 text-fg">
+      <div
+        aria-hidden="true"
+        data-testid="login-signature-placeholder"
+        className="flex h-[26px] w-28 items-center justify-center rounded-sm border border-dashed border-fg-subtle px-1 text-center text-[8px] leading-tight text-fg-subtle"
+      >
+        HYUNDAI WIA
+        <br />
+        시그니처 원본
       </div>
+      <div className="text-center">
+        <h1 className="text-2xl font-semibold text-fg">로그인</h1>
+        <p className="mt-2 text-sm text-fg-muted">
+          이메일로 매직 링크를 받아 로그인하세요.
+        </p>
+      </div>
+      <LoginForm errorCode={error} />
       {process.env.NODE_ENV !== "production" && (
-        <div className="mt-8 border-t border-border pt-4">
+        <div className="w-full max-w-sm border-t border-border pt-4">
           <a
             href="/api/v1/auth/dev-login"
-            className="inline-block rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-fg"
+            className="inline-block rounded-md bg-primary px-4 py-2 text-sm font-semibold text-primary-fg transition hover:opacity-90"
           >
             ⚡ 바로 로그인 (dev)
           </a>

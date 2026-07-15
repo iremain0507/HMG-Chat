@@ -38,6 +38,13 @@ const FILES = [
   "../../admin/AdminDashboard.tsx",
   "../../admin/ToolMetricsTable.tsx",
   "../../admin/AdminUsersManager.tsx",
+  "../../chat/ShareExportMenu.tsx",
+  "../../share/SharePublicView.tsx",
+  "../../auth/LoginForm.tsx",
+  "../../auth/SignupForm.tsx",
+  "../../../app/(auth)/login/page.tsx",
+  "../../../app/(auth)/signup/page.tsx",
+  "../../../app/share/[token]/page.tsx",
 ];
 
 describe("P13 하드코딩 hex 제로 회귀 가드", () => {
