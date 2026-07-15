@@ -1,12 +1,13 @@
 "use client";
 
-// components/chat/ChatInput.tsx — 19-UIUX-UPGRADE § 컴포저(C1-FE/C2/C3) P10-T6-11/12/13.
-//   📎 버튼 + 드래그드롭(드롭존 하이라이트) + 이미지 붙여넣기 → useAttachments 로 업로드해
-//   제거가능한 첨부 칩을 렌더. 전송 시 onSend(content, [{uploadId}]) 로 완료된 첨부만 전달.
-//   메시지 시작이 "/" 면 슬래시 액션 팝오버(필터→선택 시 onSlashCommand 콜백), "@" 면 멘션
-//   엔티티 픽커(첨부된 파일 + 호출부가 넘긴 tool/knowledge 엔티티 → "@label " 참조 토큰 삽입).
-//   availableModels 가 있으면 ModelModePicker(모델+추론강도+모드+웹검색) 를 렌더 — 선택값은
-//   onSend 3번째 인자(SendOptions)로 전달(availableModels 없으면 기존 2-인자 호출 그대로 유지).
+// components/chat/ChatInput.tsx — 19-UIUX-UPGRADE § 컴포저(C1-FE/C2/C3) P10-T6-11/12/13,
+//   P13-T6-04 F05 핸드오프 정렬: 첨부칩 행 → textarea(auto-grow ≤10줄) → 액션바
+//   [＋][@][/]·ModelModePicker(모델칩·모드 세그먼트·웹검색)·컨텍스트 게이지(mono)·전송/Stop.
+//   [+] 는 파일 첨부(기존 동작 유지, 드래그드롭·붙여넣기 병행), [@]/[/] 는 커서 위치에 트리거
+//   문자를 삽입해 기존 detectTrigger 흐름(타이핑으로 열리는 것과 동일 경로)을 그대로 연다.
+//   슬래시는 "메시지 시작 위치"에서만 유효하므로(§ detectTrigger) 입력이 비어있을 때만 활성화.
+//   @멘션 팝오버는 카테고리 탭(전체/에이전트/도구/커넥터/파일/지식)+정책 배지(읽기 전용/승인
+//   필요)를 노출 — MentionEntity.policy 가 있으면 배지로, kind 는 탭 필터 기준으로 쓰인다.
 import React, {
   forwardRef,
   useEffect,
@@ -20,9 +21,14 @@ import React, {
   type FormEvent,
   type KeyboardEvent,
 } from "react";
+import { Plus, AtSign, Slash, ArrowUp, Square } from "lucide-react";
 import { useAttachments } from "../../hooks/useAttachments";
 import type { SendOptions } from "../../hooks/useSessionStream";
-import { ComposerPopover, type ComposerPopoverItem } from "./ComposerPopover";
+import {
+  ComposerPopover,
+  type ComposerPopoverCategory,
+  type ComposerPopoverItem,
+} from "./ComposerPopover";
 import {
   ModelModePicker,
   type ChatMode,
@@ -40,18 +46,42 @@ export interface SlashCommand {
   description?: string;
 }
 
-export type MentionEntityKind = "file" | "tool" | "knowledge";
+export type MentionEntityKind =
+  "agent" | "tool" | "connector" | "file" | "knowledge";
+
+export type MentionEntityPolicy = "readonly" | "approval";
 
 export interface MentionEntity {
   id: string;
   kind: MentionEntityKind;
   label: string;
+  subtitle?: string;
+  policy?: MentionEntityPolicy;
 }
 
-const MENTION_KIND_BADGE: Record<MentionEntityKind, string> = {
+const MENTION_KIND_LABEL: Record<MentionEntityKind, string> = {
+  agent: "에이전트",
+  tool: "도구",
+  connector: "커넥터",
   file: "파일",
-  tool: "툴",
   knowledge: "지식",
+};
+
+const MENTION_CATEGORIES: ComposerPopoverCategory[] = [
+  { id: "all", label: "전체" },
+  { id: "agent", label: "에이전트" },
+  { id: "tool", label: "도구" },
+  { id: "connector", label: "커넥터" },
+  { id: "file", label: "파일" },
+  { id: "knowledge", label: "지식" },
+];
+
+const POLICY_BADGE: Record<
+  MentionEntityPolicy,
+  { label: string; variant: "neutral" | "warning" }
+> = {
+  readonly: { label: "읽기 전용", variant: "neutral" },
+  approval: { label: "승인 필요", variant: "warning" },
 };
 
 interface TriggerState {
@@ -110,6 +140,9 @@ export interface ChatInputProps {
   availableTools?: string[];
   // P10-T6-17 — 오프라인 상태 등 외부 사유로 전송을 막을 때 사용(§19.5 D4).
   disabled?: boolean;
+  // P13-T6-04 — F05 액션바 우측 컨텍스트 게이지. 실 토큰 사용량 배선은 별도 태스크 소관이라
+  // 호출부가 값을 넘기지 않으면(undefined) 게이지를 렌더하지 않는다.
+  contextUsagePercent?: number;
 }
 
 export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
@@ -125,6 +158,7 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
       availableModels = [],
       availableTools = [],
       disabled = false,
+      contextUsagePercent,
     },
     ref,
   ) {
@@ -132,6 +166,7 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
     const [dragActive, setDragActive] = useState(false);
     const [trigger, setTrigger] = useState<TriggerState | null>(null);
     const [activeIndex, setActiveIndex] = useState(0);
+    const [mentionCategory, setMentionCategory] = useState("all");
     const [model, setModel] = useState(availableModels[0] ?? "");
     const [effort, setEffort] = useState<ReasoningEffort>("medium");
     const [mode, setMode] = useState<ChatMode>("agent");
@@ -188,22 +223,29 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
     const filteredMentionEntities = useMemo(
       () =>
         trigger?.type === "mention"
-          ? allMentionEntities.filter((e) =>
-              e.label.toLowerCase().includes(trigger.query),
-            )
+          ? allMentionEntities
+              .filter((e) => e.label.toLowerCase().includes(trigger.query))
+              .filter(
+                (e) => mentionCategory === "all" || e.kind === mentionCategory,
+              )
           : [],
-      [trigger, allMentionEntities],
+      [trigger, allMentionEntities, mentionCategory],
     );
 
     const popoverItems: ComposerPopoverItem[] =
       trigger?.type === "slash"
         ? filteredSlashCommands.map((c) => ({ id: c.id, label: c.label }))
         : trigger?.type === "mention"
-          ? filteredMentionEntities.map((e) => ({
-              id: e.id,
-              label: e.label,
-              badge: MENTION_KIND_BADGE[e.kind],
-            }))
+          ? filteredMentionEntities.map((e) => {
+              const policyBadge = e.policy ? POLICY_BADGE[e.policy] : null;
+              return {
+                id: e.id,
+                label: e.label,
+                subtitle: e.subtitle ?? MENTION_KIND_LABEL[e.kind],
+                badge: policyBadge?.label,
+                badgeVariant: policyBadge?.variant,
+              };
+            })
           : [];
 
     function selectPopoverItem(item: ComposerPopoverItem) {
@@ -222,6 +264,7 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
       const after = input.slice(trigger.end);
       setInput(`${before}@${entity.label} ${after}`);
       setTrigger(null);
+      setMentionCategory("all");
       taRef.current?.focus();
     }
 
@@ -243,6 +286,37 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
       if (!ta) return;
       ta.style.height = "auto";
       ta.style.height = `${Math.min(ta.scrollHeight, 200)}px`;
+    }
+
+    // P13-T6-04 — [@]/[/] 액션바 버튼: 커서 위치(또는 시작 위치)에 트리거 문자를 삽입해
+    // 타이핑으로 여는 것과 동일한 detectTrigger 경로를 재사용한다.
+    function triggerMention() {
+      const ta = taRef.current;
+      const cursor = ta?.selectionStart ?? input.length;
+      const before = input.slice(0, cursor);
+      const after = input.slice(cursor);
+      const nextValue = `${before}@${after}`;
+      const nextCursor = cursor + 1;
+      setInput(nextValue);
+      setMentionCategory("all");
+      setTrigger(detectTrigger(nextValue, nextCursor));
+      setActiveIndex(0);
+      requestAnimationFrame(() => {
+        ta?.focus();
+        ta?.setSelectionRange(nextCursor, nextCursor);
+      });
+    }
+
+    function triggerSlash() {
+      if (input.length > 0) return;
+      const ta = taRef.current;
+      setInput("/");
+      setTrigger({ type: "slash", start: 0, end: 1, query: "" });
+      setActiveIndex(0);
+      requestAnimationFrame(() => {
+        ta?.focus();
+        ta?.setSelectionRange(1, 1);
+      });
     }
 
     const uploading = items.some((it) => it.status === "uploading");
@@ -351,20 +425,26 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
         onDrop={onDrop}
         data-testid="composer-dropzone"
         data-drag-active={dragActive}
-        className="mx-auto flex max-w-3xl flex-col gap-2 rounded-2xl border border-border bg-surface p-2 transition-colors data-[drag-active=true]:border-primary data-[drag-active=true]:bg-primary/5"
+        className="relative mx-auto flex max-w-3xl flex-col gap-2 rounded-[14px] border border-border bg-surface p-3 transition-colors focus-within:border-primary-400 focus-within:outline focus-within:outline-2 focus-within:outline-primary-400 focus-within:outline-offset-2 data-[drag-active=true]:border-primary data-[drag-active=true]:bg-primary-50"
       >
-        <ModelModePicker
-          models={availableModels}
-          model={model}
-          onModelChange={setModel}
-          effort={effort}
-          onEffortChange={setEffort}
-          mode={mode}
-          onModeChange={setMode}
-          webSearchAvailable={webSearchAvailable}
-          webSearch={webSearch}
-          onWebSearchChange={setWebSearch}
-        />
+        {trigger && popoverItems.length > 0 && (
+          <ComposerPopover
+            items={popoverItems}
+            activeIndex={activeIndex}
+            onHover={setActiveIndex}
+            onSelect={selectPopoverItem}
+            label={trigger.type === "slash" ? "명령 선택" : "멘션 선택"}
+            query={trigger.query}
+            showFooterHints
+            {...(trigger.type === "mention"
+              ? {
+                  categories: MENTION_CATEGORIES,
+                  activeCategory: mentionCategory,
+                  onCategoryChange: setMentionCategory,
+                }
+              : {})}
+          />
+        )}
         {items.length > 0 && (
           <ul
             aria-label="첨부 파일"
@@ -394,72 +474,106 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
             ))}
           </ul>
         )}
-        <div className="relative flex items-end gap-2">
-          <input
-            ref={fileInputRef}
-            type="file"
-            multiple
-            className="hidden"
-            data-testid="attachment-file-input"
-            onChange={onFileInputChange}
-          />
+        <input
+          ref={fileInputRef}
+          type="file"
+          multiple
+          className="hidden"
+          data-testid="attachment-file-input"
+          onChange={onFileInputChange}
+        />
+        <textarea
+          id="chat-input"
+          ref={taRef}
+          rows={1}
+          aria-label="메시지 입력"
+          value={input}
+          onChange={(e) => {
+            const value = e.target.value;
+            const cursor = e.target.selectionStart ?? value.length;
+            setInput(value);
+            autogrow();
+            setTrigger(detectTrigger(value, cursor));
+            setActiveIndex(0);
+            setMentionCategory("all");
+          }}
+          onKeyDown={onKeyDown}
+          onPaste={onPaste}
+          placeholder={
+            disabled
+              ? "오프라인 상태입니다 — 연결이 복구되면 전송할 수 있어요."
+              : "메시지를 입력하세요…  (Enter 전송 · Shift+Enter 줄바꿈)"
+          }
+          className="max-h-[200px] w-full resize-none bg-transparent px-1 py-1 text-fg outline-none placeholder:text-fg-muted"
+        />
+        <div className="flex flex-wrap items-center gap-1.5">
           <button
             type="button"
             aria-label="파일 첨부"
             onClick={() => fileInputRef.current?.click()}
-            className="grid h-9 w-9 flex-none place-items-center rounded-xl text-lg text-fg-muted hover:bg-bg hover:text-fg"
+            className="grid h-7 w-7 flex-none place-items-center rounded-md border border-border text-fg-muted hover:bg-bg hover:text-fg"
           >
-            📎
+            <Plus size={13} strokeWidth={2} aria-hidden="true" />
           </button>
-          {trigger && popoverItems.length > 0 && (
-            <ComposerPopover
-              items={popoverItems}
-              activeIndex={activeIndex}
-              onHover={setActiveIndex}
-              onSelect={selectPopoverItem}
-              label={trigger.type === "slash" ? "명령 선택" : "멘션 선택"}
-            />
-          )}
-          <textarea
-            id="chat-input"
-            ref={taRef}
-            rows={1}
-            aria-label="메시지 입력"
-            value={input}
-            onChange={(e) => {
-              const value = e.target.value;
-              const cursor = e.target.selectionStart ?? value.length;
-              setInput(value);
-              autogrow();
-              setTrigger(detectTrigger(value, cursor));
-              setActiveIndex(0);
-            }}
-            onKeyDown={onKeyDown}
-            onPaste={onPaste}
-            placeholder={
-              disabled
-                ? "오프라인 상태입니다 — 연결이 복구되면 전송할 수 있어요."
-                : "메시지를 입력하세요…  (Enter 전송 · Shift+Enter 줄바꿈)"
-            }
-            className="max-h-[200px] flex-1 resize-none bg-transparent px-2 py-1.5 text-fg outline-none placeholder:text-fg-muted"
+          <button
+            type="button"
+            aria-label="멘션 삽입"
+            data-testid="composer-trigger-mention"
+            onClick={triggerMention}
+            aria-pressed={trigger?.type === "mention"}
+            className="grid h-7 w-7 flex-none place-items-center rounded-md border border-border text-fg-muted hover:bg-bg hover:text-fg aria-pressed:border-primary-200 aria-pressed:bg-primary-50 aria-pressed:text-primary"
+          >
+            <AtSign size={13} strokeWidth={2} aria-hidden="true" />
+          </button>
+          <button
+            type="button"
+            aria-label="명령어 삽입"
+            data-testid="composer-trigger-slash"
+            onClick={triggerSlash}
+            disabled={input.length > 0}
+            aria-pressed={trigger?.type === "slash"}
+            className="grid h-7 w-7 flex-none place-items-center rounded-md border border-border text-fg-muted hover:bg-bg hover:text-fg aria-pressed:border-primary-200 aria-pressed:bg-primary-50 aria-pressed:text-primary disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            <Slash size={13} strokeWidth={2} aria-hidden="true" />
+          </button>
+          <ModelModePicker
+            models={availableModels}
+            model={model}
+            onModelChange={setModel}
+            effort={effort}
+            onEffortChange={setEffort}
+            mode={mode}
+            onModeChange={setMode}
+            webSearchAvailable={webSearchAvailable}
+            webSearch={webSearch}
+            onWebSearchChange={setWebSearch}
           />
+          <span className="flex-1" />
+          {contextUsagePercent !== undefined && (
+            <span
+              data-testid="composer-context-gauge"
+              className="font-mono text-xs tabular-nums text-placeholder"
+            >
+              {contextUsagePercent}%
+            </span>
+          )}
           {isStreaming ? (
             <button
               type="button"
               onClick={() => onStop()}
               aria-label="Stop"
-              className="grid h-9 w-9 flex-none place-items-center rounded-xl bg-accent text-lg leading-none text-white"
+              className="grid h-8 w-8 flex-none place-items-center rounded-full bg-accent text-white"
             >
-              ■
+              <Square size={13} strokeWidth={2.2} fill="currentColor" />
             </button>
           ) : (
             <button
               type="submit"
               aria-label="전송"
               disabled={!canSend}
-              className="grid h-9 w-9 flex-none place-items-center rounded-xl bg-primary text-lg leading-none text-primary-fg transition disabled:opacity-40"
+              className="grid h-8 w-8 flex-none place-items-center rounded-full bg-primary text-primary-fg transition disabled:opacity-40"
             >
-              ↑
+              <ArrowUp size={14} strokeWidth={2.2} aria-hidden="true" />
             </button>
           )}
         </div>

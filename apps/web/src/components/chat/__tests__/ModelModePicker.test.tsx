@@ -89,4 +89,17 @@ describe("ModelModePicker", () => {
     fireEvent.click(screen.getByTestId("model-picker-websearch"));
     expect(onWebSearchChange).toHaveBeenCalledWith(true);
   });
+
+  // P13-T6-04 — F05 핸드오프: 모드 선택은 select 뿐 아니라 세그먼트 pill 로도 노출된다.
+  it("세그먼트 토글(에이전트|채팅) 버튼을 클릭하면 onModeChange 가 호출되고 활성 pill 이 표시된다", () => {
+    const onModeChange = vi.fn();
+    render(<ModelModePicker {...baseProps()} onModeChange={onModeChange} />);
+    const agentTab = screen.getByTestId("model-picker-mode-agent");
+    const chatTab = screen.getByTestId("model-picker-mode-chat");
+    expect(agentTab).toHaveAttribute("aria-pressed", "true");
+    expect(chatTab).toHaveAttribute("aria-pressed", "false");
+
+    fireEvent.click(chatTab);
+    expect(onModeChange).toHaveBeenCalledWith("chat");
+  });
 });

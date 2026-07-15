@@ -19,6 +19,10 @@ const FILES = [
   "../../../app/page.tsx",
   "../../chat/ChatView.tsx",
   "../../chat/RunRail.tsx",
+  "../../chat/ChatInput.tsx",
+  "../../chat/ComposerPopover.tsx",
+  "../../chat/ModelModePicker.tsx",
+  "../../chat/ProjectPicker.tsx",
 ];
 
 describe("P13 하드코딩 hex 제로 회귀 가드", () => {

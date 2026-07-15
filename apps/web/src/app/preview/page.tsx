@@ -220,11 +220,21 @@ function MemoryPanelPreview() {
 const AVAILABLE_MODELS = ["claude-opus-4-7", "claude-sonnet-4-6"];
 const AVAILABLE_TOOLS = ["knowledge_search", "web_search"];
 
+// P13-T6-04 — F05 핸드오프: 카테고리 탭(전체/에이전트/도구/커넥터/파일/지식) + 정책 배지
+//   (읽기 전용/승인 필요) 데모용으로 5개 kind 를 모두 포함하고 policy 예시를 채운다.
 const MENTION_ENTITIES = [
+  { id: "agent-quality", kind: "agent" as const, label: "품질 리포트" },
   {
     id: "tool-knowledge-search",
     kind: "tool" as const,
     label: "knowledge_search",
+    policy: "readonly" as const,
+  },
+  {
+    id: "connector-work-order",
+    kind: "connector" as const,
+    label: "work_order.update",
+    policy: "approval" as const,
   },
   { id: "kb-product-spec", kind: "knowledge" as const, label: "product-spec" },
 ];
@@ -571,6 +581,7 @@ export default function PreviewGallery() {
           mentionEntities={MENTION_ENTITIES}
           availableModels={AVAILABLE_MODELS}
           availableTools={AVAILABLE_TOOLS}
+          contextUsagePercent={8}
         />
       </Section>
 
