@@ -38,7 +38,7 @@ import { createConfigRoutes } from "./routes/config.js";
 import { createPgHealthHistoryDataAccess } from "./db/health-history-data-access.js";
 import { createPgAdminDataAccess } from "./db/admin-data-access.js";
 import { createSkillRegistry } from "./tools/skills-engine.js";
-import { createArtifactCreateTool } from "./tools/handlers/artifact-create-handler.js";
+import { assembleBuiltinTools } from "./tools/assemble-builtin-tools.js";
 import { hitlBridge } from "./tools/hitl-manager.js";
 import { createInlineArtifactStore } from "./lib/artifact-store.inline.js";
 import { createS3ArtifactStore } from "./lib/artifact-store.s3.js";
@@ -165,7 +165,17 @@ export function createApp(env: Env) {
       model: env.LLM_MODEL,
       activeRuns: { setActiveRun },
       organizations: authDa.organizations,
-      tools: [createArtifactCreateTool({ da: artifactDa })],
+      // 내장 도구 전체 배선: artifact_create + web_search + code_interpreter + deep_research.
+      //   키(TAVILY/E2B) 없으면 dev-stub 폴백(assemble-builtin-tools.ts).
+      tools: assembleBuiltinTools({
+        provider,
+        model: env.LLM_MODEL,
+        maxTokens: 4096,
+        artifactDa,
+        objectStore: createLocalObjectStore(),
+        ...(env.TAVILY_API_KEY ? { tavilyApiKey: env.TAVILY_API_KEY } : {}),
+        ...(env.E2B_API_KEY ? { e2bApiKey: env.E2B_API_KEY } : {}),
+      }),
       mcpTools: assembleOrgMcpTools(mcpServerDa, mcpBridge, mcpClientPool),
       hitl: hitlBridge,
       logger: createLogger(),

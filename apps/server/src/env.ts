@@ -20,6 +20,10 @@ const Env = z.object({
   ANTHROPIC_API_KEY: z.string().optional(),
   // 실 Anthropic 사용 시 모델 ID. 기본 Sonnet 5. .env.local 로 override 가능.
   LLM_MODEL: z.string().default("claude-sonnet-5"),
+  // 내장 도구 실 provider 키(미설정 시 dev-stub 폴백). .env.local 로 주입.
+  //   TAVILY_API_KEY → web_search/deep_research 실 웹검색. E2B_API_KEY → code_interpreter 실 샌드박스.
+  TAVILY_API_KEY: z.string().optional(),
+  E2B_API_KEY: z.string().optional(),
 });
 export type Env = z.infer<typeof Env>;
 
