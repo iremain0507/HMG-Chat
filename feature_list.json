@@ -1222,5 +1222,113 @@
     "team": "T6",
     "passes": true,
     "attempts": 1
+  },
+  {
+    "id": "P14-T1-01",
+    "desc": "org_settings 마이그레이션(0017_org_settings.sql): org_id PK FK organizations ON DELETE CASCADE, settings JSONB DEFAULT '{}', updated_by FK users ON DELETE SET NULL, updated_at + touch 트리거. RLS ENABLE+FORCE: select=같은 org(NULLIF GUC idiom), modify=같은 org AND current_user_is_admin(). 0010_quotas_usage 패턴 참조. files: db/migrations/0017_org_settings.sql(+meta/_journal.json)",
+    "acceptance": "migration-check 통과(nullable-first: 기존 테이블 NOT NULL 추가 없음, settings DEFAULT '{}'; 번호 0017 충돌 없음; rollback=DROP TABLE org_settings). RLS cross-org 격리 테스트: org A admin 은 자기 org 행만 SELECT/UPDATE, org B 행은 불가시/거부; verify-gates green",
+    "phase": "P14",
+    "team": "T1",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P14-T1-03",
+    "desc": "lib/org-settings-schema.ts: LOCAL Zod OrgSettingsSchema(24개 큐레이션 키 모두 optional) + DEFAULT_ORG_SETTINGS(maxTokens 기본 4096) + ResolvedOrgSettings 타입. packages/shared·interfaces 미사용(frozen 회피). files: lib/org-settings-schema.ts",
+    "acceptance": "unit RED→GREEN: 유효 patch 파싱; 범위 밖 maxTokens/temperature 는 issues 로 거부; DEFAULT_ORG_SETTINGS 가 ResolvedOrgSettings 로 타입체크; verify-gates green",
+    "phase": "P14",
+    "team": "T1",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P14-T1-02",
+    "desc": "db/org-settings-data-access.ts: getByOrgId(orgId)->row|null, upsert(orgId,patch,updatedBy) 머지. + auth-data-access.ts 의 organizations.update 확장(allowedModels/allowedTools/defaultTokenBudgetMicros 허용). files: db/org-settings-data-access.ts, db/auth-data-access.ts",
+    "acceptance": "unit RED→GREEN: 부재 행->null; upsert 후 get 이 머지된 JSON 반환; organizations.update 가 allowed_models JSONB round-trip; verify-gates green",
+    "phase": "P14",
+    "team": "T1",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P14-T1-04",
+    "desc": "lib/settings-service.ts: createSettingsService({da}).resolve(orgId) 가 저장 partial 을 DEFAULT_ORG_SETTINGS 위에 deep-merge + per-org TTL(~30s) 캐시; invalidate(orgId). 읽기/파싱 오류 시 logger.warn + DEFAULT 반환(throw·1024 폴백 금지, L2/L5). files: lib/settings-service.ts",
+    "acceptance": "unit: 부재 행->기본값; 2차 호출은 캐시로 DB skip; invalidate 후 재조회; 주입 DB오류->DEFAULT_ORG_SETTINGS+warn 로깅(L2/L5); verify-gates green",
+    "phase": "P14",
+    "team": "T1",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P14-T1-05",
+    "desc": "routes/admin-settings.ts: GET+PUT /api/v1/admin/settings, isAdmin 403 게이트, orgId=auth(body/query 금지), PUT=OrgSettingsSchema.partial 검증(실패 400+issues)+upsert+settingsService.invalidate. app.ts adminApp 에 마운트 + routes-mounted EXPECTED_ROUTES 에 GET·PUT 추가. files: routes/admin-settings.ts, app.ts(마운트), __tests__/routes-mounted.test.ts",
+    "acceptance": "routes-mounted green(GET·PUT 두 항목); createApp 통합테스트: 비admin->403, 잘못된 body->400, admin PUT 후 GET 이 변경 반영, org A PUT 이 org B 무영향(orgId 서버 파생), {data,meta} 엔벨로프; verify-gates green",
+    "phase": "P14",
+    "team": "T1",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P14-T2-01",
+    "desc": "채팅 생성 파라미터 배선(트리거 버그 근본해결): MessageRouteDeps 에 settings resolver 추가, messages.ts:272 의 'deps.maxTokens ?? 1024' 를 resolved.maxTokens(안전기본 4096)로 교체, temperature·systemPrompt(system-tier PromptBlock 를 systemBlocks 앞에)·defaultModel(org.allowedModels 검증 유지) 반영; app.ts createMessageRoutes 가 settingsService.resolve 전달. files: routes/messages.ts, app.ts",
+    "acceptance": "L1 last-mile RED: createApp 채팅 턴에서 org maxTokens=8192 -> runTurn/ChatInput 이 8192 를 실제 수신(1024 아님) 단언; 설정 부재 시 >=4096(1024 아님); SSE 정상 stop 회귀; verify-gates green",
+    "phase": "P14",
+    "team": "T2",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P14-T2-02",
+    "desc": "toolMaxTokens 배선: app.ts:187 assembleBuiltinTools(maxTokens:4096) 및 orchestrator/memory-extractor.ts:68(1024) 를 resolved.toolMaxTokens 로. files: app.ts, orchestrator/memory-extractor.ts",
+    "acceptance": "RED: settings.toolMaxTokens=8000 -> 내장도구+memory-extractor 가 8000 사용; 미설정 시 기본 유지; verify-gates green",
+    "phase": "P14",
+    "team": "T2",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P14-T3-01",
+    "desc": "RAG 검색 설정화: knowledge-search-handler.ts:69-70 의 topK(?? 10)·rrfK(?? 60)·relevanceThreshold 를 invoke 시점 ctx.orgId resolve 로(정적 조립 제약 처리, L1); search-service 에 post-RRF threshold 필터. files: tools/handlers/knowledge-search-handler.ts, knowledge/search-service.ts",
+    "acceptance": "RED: org ragTopK=12 -> hybridSearch 가 topK=12 로 호출(10 아님); threshold 로 저점수 hit 필터; 기본값(10/60) 유지; verify-gates green",
+    "phase": "P14",
+    "team": "T3",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P14-T3-02",
+    "desc": "chunker 설정화: knowledge/chunker.ts:6 의 chunkSizeTokens(800)·overlap 을 index 시 설정(resolved.ragChunkSizeTokens/Overlap)에서. files: knowledge/chunker.ts",
+    "acceptance": "RED: settings ragChunkSizeTokens=1200 -> chunker 가 1200 로 분할; 미설정 시 800 유지; verify-gates green",
+    "phase": "P14",
+    "team": "T3",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P14-T6-01",
+    "desc": "admin 설정 화면 셸: app/admin/settings/page.tsx(AdminGuard 안, admin|owner), AdminSettingsScreen(7탭 셸, GET 로드 via lib/fetch-with-refresh, dirty 추적, sticky Save 바). WIA 시맨틱 토큰만. files: app/admin/settings/**, components/admin/settings/**, app/preview/page.tsx",
+    "acceptance": "탭 렌더/전환; 목 GET 로드; 하드코딩 hex 0(grep 가드); preview 갤러리 등록 + Playwright 라이트/다크 스크린샷(.ralph/screenshots, L2); 신규 탭전환 상호작용 vitest RED→GREEN; verify-gates green",
+    "phase": "P14",
+    "team": "T6",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P14-T6-02",
+    "desc": "Models & Generation 탭(히어로): maxTokens·temperature·topP·defaultModel(select)·systemPrompt(textarea)·allowedModels(multiselect); PUT 저장(검증+낙관적/confirm+toast). topP 는 '아직 미적용' 힌트. files: components/admin/settings/**, e2e/admin-settings.pw.ts",
+    "acceptance": "RED: 저장 흐름(목 fetch)이 PUT patch 전송·성공 toast·오류 롤백; maxTokens/temperature 범위검증이 잘못된 입력 차단; 브라우저 라이트/다크 스크린샷; 하드코딩 hex 0; verify-gates green",
+    "phase": "P14",
+    "team": "T6",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P14-T6-03",
+    "desc": "나머지 탭(General/Branding, Knowledge/RAG, Web Search, Connectors/MCP, Users&Permissions[env 힌트], Quota/Limits)을 같은 설정 모델+PUT 저장에 바인딩. files: components/admin/settings/**, e2e/admin-settings.pw.ts",
+    "acceptance": "각 필드 존재+검증+저장; env-coupled 필드(defaultUserRole/enableSignup)는 '관리됨/미적용' 힌트; 브라우저 라이트/다크 스크린샷; 하드코딩 hex 0; verify-gates green",
+    "phase": "P14",
+    "team": "T6",
+    "passes": false,
+    "attempts": 0
   }
 ]

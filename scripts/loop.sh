@@ -13,7 +13,7 @@ NOTIFY_CMD="${NOTIFY_CMD:-}"
 SENTINEL_ALL="<ALL_TASKS_COMPLETE>"
 FP_LIMIT=3
 PLAN_DIR="rebuild_plan"
-PHASE_ORDER=(P0 P0.5 P1 P2 P3 P4 P5 P6 P7 P8 P9 P10 P11 P12 P13)
+PHASE_ORDER=(P0 P0.5 P1 P2 P3 P4 P5 P6 P7 P8 P9 P10 P11 P12 P13 P14)
 mkdir -p .ralph/logs .ralph/reports
 touch PROGRESS.md .ralph/blocked_tasks
 rm -f .ralph/BLOCKED .ralph/PHASE_DONE .ralph/fingerprints
