@@ -11,6 +11,7 @@ import type {
   ToolProgressState,
 } from "../../hooks/useSessionStream";
 import { StatusChip } from "./StatusChip";
+import { WorkerCard } from "./ActivityPanel";
 
 const LARGE_PAYLOAD_CHARS = 400;
 
@@ -262,40 +263,11 @@ export function ToolCallRenderer({
               <div className="mb-1 text-xs font-medium text-fg-muted">
                 진행 상황{progress.label ? ` · ${progress.label}` : ""}
               </div>
-              <ul className="space-y-1.5">
-                {progress.tasks.map((t) => (
-                  <li
-                    key={t.id}
-                    className="flex items-center gap-2 rounded-lg border border-border bg-bg px-2.5 py-1.5"
-                  >
-                    <span
-                      aria-hidden="true"
-                      className={`flex-none text-xs ${
-                        t.status === "running"
-                          ? "text-primary"
-                          : "text-fg-muted"
-                      }`}
-                    >
-                      {t.status === "done"
-                        ? "✓"
-                        : t.status === "running"
-                          ? "◐"
-                          : t.status === "error"
-                            ? "!"
-                            : "○"}
-                    </span>
-                    <span className="min-w-0 flex-1 truncate text-xs text-fg">
-                      {t.title}
-                    </span>
-                    {t.sourceCount ? (
-                      <span className="flex-none text-xs text-fg-muted">
-                        출처 {t.sourceCount}
-                      </span>
-                    ) : null}
-                    <StatusChip status={t.status} />
-                  </li>
+              <div className="space-y-1.5">
+                {progress.tasks.map((t, i) => (
+                  <WorkerCard key={t.id} task={t} index={i} />
                 ))}
-              </ul>
+              </div>
             </div>
           )}
 

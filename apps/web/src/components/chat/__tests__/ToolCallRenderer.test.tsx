@@ -145,6 +145,34 @@ describe("ToolCallRenderer", () => {
     expect(screen.getByText("국내 사례는?")).toBeInTheDocument();
   });
 
+  it("펼침 진행목록은 F07 워커 카드(StatusChip+mono 출처 N)로 렌더된다", () => {
+    render(
+      <ToolCallRenderer
+        toolCallId="call-1"
+        name="deep_research"
+        args={{ query: "다크팩토리" }}
+        status="running"
+        progress={{
+          stage: "researching",
+          label: "1/2 하위질문 조사 완료",
+          tasks: [
+            {
+              id: "sq-0",
+              title: "다크팩토리 정의는?",
+              status: "done",
+              sourceCount: 3,
+            },
+          ],
+        }}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: /deep_research/ }));
+    const card = screen.getByTestId("activity-worker-sq-0");
+    expect(card).toHaveTextContent("다크팩토리 정의는?");
+    expect(card).toHaveTextContent("출처 3");
+    expect(card).toHaveTextContent("완료");
+  });
+
   it("일반 툴(query 인자)은 '멀티에이전트' 배지를 보여주지 않는다", () => {
     render(
       <ToolCallRenderer

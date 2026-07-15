@@ -12,6 +12,7 @@ import { Reasoning } from "../../components/chat/Reasoning";
 import { MessageActions } from "../../components/chat/MessageActions";
 import { ToolCallRenderer } from "../../components/chat/ToolCallRenderer";
 import { StatusChip } from "../../components/chat/StatusChip";
+import { ActivityPanel } from "../../components/chat/ActivityPanel";
 import { HitlPrompt } from "../../components/chat/HitlPrompt";
 import { ChatInput } from "../../components/chat/ChatInput";
 import { MessageItem } from "../../components/chat/ChatView";
@@ -120,6 +121,56 @@ const ARTIFACTS: ArtifactCanvasArtifact[] = [
     sizeBytes: 1024,
   },
 ];
+
+// P13-T6-07 — F07(우패널 '활동' 탭) 프리뷰 데이터: 완료 2·실행 중 1·대기 1 워커로
+//   프레임의 병렬 진행 예시(2 done/1 running/1 queued)를 재현.
+const ACTIVITY_PROGRESS = {
+  stage: "researching" as const,
+  label: "2/4 하위질문 조사 완료",
+  tasks: [
+    {
+      id: "sq-0",
+      title: "글로벌 히트펌프 시장 규모·성장률",
+      status: "done" as const,
+      sourceCount: 9,
+    },
+    {
+      id: "sq-1",
+      title: "주요 OEM 열관리 아키텍처 동향",
+      status: "done" as const,
+      sourceCount: 7,
+    },
+    {
+      id: "sq-2",
+      title: "국내외 부품사 경쟁 구도",
+      status: "running" as const,
+      sourceCount: 2,
+    },
+    {
+      id: "sq-3",
+      title: "규제·보조금 영향",
+      status: "queued" as const,
+    },
+  ],
+};
+
+function ActivityPanelPreview() {
+  const [stopped, setStopped] = useState(false);
+  return (
+    <div className="flex h-[640px] overflow-hidden rounded-lg border border-border">
+      <ActivityPanel
+        progress={ACTIVITY_PROGRESS}
+        onStop={() => setStopped(true)}
+      />
+      <p
+        data-testid="activity-panel-stopped"
+        className={stopped ? "px-3 py-2 text-xs text-fg-muted" : "sr-only"}
+      >
+        {stopped ? "중지 요청됨" : "중지 미요청"}
+      </p>
+    </div>
+  );
+}
 
 function ArtifactCanvasPreview() {
   const [open, setOpen] = useState(true);
@@ -586,6 +637,10 @@ export default function PreviewGallery() {
             onRetry={() => {}}
           />
         </div>
+      </Section>
+
+      <Section name="activity-panel">
+        <ActivityPanelPreview />
       </Section>
 
       <Section name="citation">
