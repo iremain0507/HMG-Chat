@@ -985,7 +985,7 @@
     "desc": "web-result citation 확정 — web_search/knowledge tool_result json을 search_result 호환 citation 페이로드(source ephemeral+sourceUri+title+snippet)로 확정, orchestrator 기존 unpack이 citation ChatEvent fan-out",
     "acceptance": "web tool_result가 citation ChatEvent(ephemeral+sourceUri)로 fan-out; RED→GREEN, verify-gates green",
     "phase": "P11",
-    "team": "T3",
+    "team": "T2",
     "passes": false,
     "attempts": 0
   },
