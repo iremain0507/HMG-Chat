@@ -986,8 +986,8 @@
     "acceptance": "web tool_result가 citation ChatEvent(ephemeral+sourceUri)로 fan-out; RED→GREEN, verify-gates green",
     "phase": "P11",
     "team": "T2",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P11-T1-03",

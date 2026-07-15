@@ -4,7 +4,8 @@
 //   (20-MULTI-AGENT-TOOL.md §20.4-3 — 역량 메타는 tags 로 인코딩, 전용 필드 신설 금지).
 import { WChatError } from "@wchat/interfaces";
 import type { AgentTool, AgentToolSpec } from "@wchat/interfaces";
-import type { WebSearchPort } from "../web-search-port.js";
+import type { WebSearchPort, WebSearchResultItem } from "../web-search-port.js";
+import type { Citation } from "../../knowledge/citation-helper.js";
 
 export const webSearchToolSpec: AgentToolSpec = {
   name: "web_search",
@@ -26,6 +27,28 @@ export const webSearchToolSpec: AgentToolSpec = {
 export interface WebSearchToolDeps {
   port: WebSearchPort;
   maxResults?: number;
+}
+
+function hostnameOf(url: string): string {
+  try {
+    return new URL(url).hostname;
+  } catch {
+    return url;
+  }
+}
+
+// citation.source 는 "project"|"ephemeral" 로 동결(packages/interfaces) —
+// "web" 은 계약 변경이라 격리 대상(20-MULTI-AGENT-TOOL.md §20.4/92행). 웹 결과는
+// "ephemeral"로 근사하고 sourceUri 로 실제 출처 URL 을 보존한다.
+function buildWebCitations(results: WebSearchResultItem[]): Citation[] {
+  return results.map((r, i) => ({
+    index: i + 1,
+    source: "ephemeral",
+    filename: hostnameOf(r.url),
+    title: r.title,
+    sourceUri: r.url,
+    snippet: r.content.slice(0, 200),
+  }));
 }
 
 export function createWebSearchTool(deps: WebSearchToolDeps): AgentTool {
@@ -59,7 +82,10 @@ export function createWebSearchTool(deps: WebSearchToolDeps): AgentTool {
         });
         return {
           toolCallId,
-          content: { kind: "json", data: { query, results } },
+          content: {
+            kind: "json",
+            data: { query, results, citations: buildWebCitations(results) },
+          },
         };
       } catch (err) {
         if (ctx.signal.aborted) {

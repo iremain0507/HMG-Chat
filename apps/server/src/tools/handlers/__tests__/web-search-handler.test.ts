@@ -86,6 +86,89 @@ describe("createWebSearchTool", () => {
             content: "snippet",
           },
         ],
+        citations: [
+          {
+            index: 1,
+            source: "ephemeral",
+            filename: "example.com",
+            title: "result for wchat",
+            sourceUri: "https://example.com",
+            snippet: "snippet",
+          },
+        ],
+      });
+    }
+  });
+
+  it("검색 결과가 여러 개면 citations 를 1부터 순서대로 부여한다", async () => {
+    const port: WebSearchPort = {
+      async search() {
+        return [
+          {
+            title: "first",
+            url: "https://a.example.com/x",
+            content: "a".repeat(250),
+          },
+          {
+            title: "second",
+            url: "https://b.example.com/y",
+            content: "second content",
+          },
+        ];
+      },
+    };
+    const tool = createWebSearchTool({ port });
+
+    const result = await tool.invoke({
+      toolCallId: "call-5",
+      args: { query: "wchat" },
+      ctx: fakeToolContext(),
+    });
+
+    expect(result.content.kind).toBe("json");
+    if (result.content.kind === "json") {
+      const data = result.content.data;
+      expect(data.citations).toEqual([
+        {
+          index: 1,
+          source: "ephemeral",
+          filename: "a.example.com",
+          title: "first",
+          sourceUri: "https://a.example.com/x",
+          snippet: "a".repeat(200),
+        },
+        {
+          index: 2,
+          source: "ephemeral",
+          filename: "b.example.com",
+          title: "second",
+          sourceUri: "https://b.example.com/y",
+          snippet: "second content",
+        },
+      ]);
+    }
+  });
+
+  it("검색 결과가 없으면 citations 빈 배열을 반환한다", async () => {
+    const port: WebSearchPort = {
+      async search() {
+        return [];
+      },
+    };
+    const tool = createWebSearchTool({ port });
+
+    const result = await tool.invoke({
+      toolCallId: "call-6",
+      args: { query: "wchat" },
+      ctx: fakeToolContext(),
+    });
+
+    expect(result.content.kind).toBe("json");
+    if (result.content.kind === "json") {
+      expect(result.content.data).toEqual({
+        query: "wchat",
+        results: [],
+        citations: [],
       });
     }
   });
