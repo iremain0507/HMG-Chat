@@ -107,6 +107,10 @@ export interface MessageRouteDeps {
   // per-request 로 호출 — bridge.listRegisteredTools() 는 org 필터가 없는 전역 registry).
   mcpTools?: (orgId: string) => Promise<AgentTool[]>;
   organizations?: { byId(id: string): Promise<Organization | null> };
+  // 클라이언트 생성 세션 UUID(/chat/<uuid>)로 바로 메시지를 보내는 흐름에서, 아티팩트
+  //   /업로드/active-run 이 참조하는 sessions 행이 없으면 FK 위반이 난다(deep_research 리포트
+  //   저장 실패 등). 첫 메시지 시 세션을 보장(upsert)한다. 미주입 시 no-op(기존 동작).
+  ensureSession?: (sessionId: string, userId: string) => Promise<void>;
   hitl?: HitlBridge;
   logger?: Logger;
   // P11-T2-13 — 각 tool invoke 계측(tool-metrics 기록 + gen_ai.* span). 미주입 시 계측 생략.
@@ -139,6 +143,13 @@ export function createMessageRoutes(
             model?: string;
           },
       );
+    // 클라이언트 생성 세션 UUID 를 첫 메시지 시 DB 에 보장(upsert) — 이후 아티팩트/업로드/
+    //   active-run 의 sessions FK 를 충족(없으면 deep_research 리포트 저장 등이 FK 위반).
+    const authForSession = c.get("auth");
+    if (authForSession) {
+      await deps.ensureSession?.(c.req.param("id"), authForSession.sub);
+    }
+
     const content = body.content?.trim();
     if (!content) {
       return c.json(errorJson("INVALID_INPUT", "content 가 필요합니다."), 400);
