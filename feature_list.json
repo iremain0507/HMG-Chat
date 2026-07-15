@@ -1238,8 +1238,8 @@
     "acceptance": "unit RED→GREEN: 유효 patch 파싱; 범위 밖 maxTokens/temperature 는 issues 로 거부; DEFAULT_ORG_SETTINGS 가 ResolvedOrgSettings 로 타입체크; verify-gates green",
     "phase": "P14",
     "team": "T1",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P14-T1-02",
