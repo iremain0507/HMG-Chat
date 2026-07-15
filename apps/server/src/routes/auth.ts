@@ -78,10 +78,12 @@ export function createAuthRoutes(deps: AuthRouteDeps): Hono {
     return page.items[0] ?? null;
   }
 
+  // 브라우저 네비게이션 302 는 host-보존 상대경로로 준다: 브라우저가 주소창 origin
+  //   (localhost / Tailscale MagicDNS / 역프록시 도메인 무엇이든)에 상대해 해석하므로
+  //   APP_ORIGIN 하드코딩(localhost:3000)으로 외부 접속이 튕기지 않는다. (email 내
+  //   magic-link 본문만 절대 appOrigin 을 쓴다 — 메일 클라이언트엔 base URL 이 없음.)
   function loginUrl(error?: string): string {
-    return error
-      ? `${deps.appOrigin}/login?error=${error}`
-      : `${deps.appOrigin}/login`;
+    return error ? `/login?error=${error}` : `/login`;
   }
 
   async function issueSession(
@@ -254,7 +256,7 @@ export function createAuthRoutes(deps: AuthRouteDeps): Hono {
     if (!user) return c.redirect(loginUrl("invalid"), 302);
 
     await issueSession(c, user.id, user.orgId, user.role);
-    return c.redirect(`${deps.appOrigin}/`, 302);
+    return c.redirect("/", 302);
   });
 
   // dev 전용 즉시 로그인 — magic-link 없이 세션 발급 후 홈으로 302.
@@ -313,7 +315,7 @@ export function createAuthRoutes(deps: AuthRouteDeps): Hono {
       });
     }
     await issueSession(c, user.id, user.orgId, user.role);
-    return c.redirect(`${deps.appOrigin}/`, 302);
+    return c.redirect("/", 302);
   });
 
   app.get("/me", async (c) => {
