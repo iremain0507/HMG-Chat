@@ -34,7 +34,15 @@ const DOT_STYLES: Record<StatusChipStatus, string> = {
   "pending-approval": "bg-warning",
 };
 
-export function StatusChip({ status }: { status: StatusChipStatus }) {
+export function StatusChip({
+  status,
+  label,
+}: {
+  status: StatusChipStatus;
+  // 다른 화면(예: 문서 인덱싱 상태)이 5종 색·도트 어휘는 그대로 쓰되 문맥에 맞는 문구가
+  // 필요할 때만 오버라이드(P13-T6-10). 생략 시 기본 5종 라벨.
+  label?: string;
+}) {
   return (
     <span
       data-testid="status-chip"
@@ -46,7 +54,7 @@ export function StatusChip({ status }: { status: StatusChipStatus }) {
         aria-hidden="true"
         className={`h-1.5 w-1.5 flex-none rounded-full ${DOT_STYLES[status]}`}
       />
-      {LABELS[status]}
+      {label ?? LABELS[status]}
     </span>
   );
 }

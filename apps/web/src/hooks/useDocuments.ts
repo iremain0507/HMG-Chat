@@ -29,6 +29,9 @@ interface UseDocumentsResult {
   uploading: boolean;
   error: string | null;
   upload(file: File): Promise<void>;
+  // indexStatus='failed' 문서의 재인덱싱 — 16-API-CONTRACT § 5 POST /documents/:id/retry.
+  retryDocument(id: string): Promise<void>;
+  retryingId: string | null;
 }
 
 export function useDocuments(projectId: string): UseDocumentsResult {
@@ -36,6 +39,7 @@ export function useDocuments(projectId: string): UseDocumentsResult {
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [retryingId, setRetryingId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -86,5 +90,37 @@ export function useDocuments(projectId: string): UseDocumentsResult {
     [projectId, load],
   );
 
-  return { documents, loading, uploading, error, upload };
+  const retryDocument = useCallback(
+    async (id: string) => {
+      setRetryingId(id);
+      setError(null);
+      try {
+        const res = await apiFetch(`/api/v1/documents/${id}/retry`, {
+          method: "POST",
+          credentials: "include",
+        });
+        if (!res.ok) {
+          const body = (await res.json()) as {
+            error?: { message?: string };
+          };
+          setError(body.error?.message ?? "재시도에 실패했습니다.");
+          return;
+        }
+        await load();
+      } finally {
+        setRetryingId(null);
+      }
+    },
+    [load],
+  );
+
+  return {
+    documents,
+    loading,
+    uploading,
+    error,
+    upload,
+    retryDocument,
+    retryingId,
+  };
 }

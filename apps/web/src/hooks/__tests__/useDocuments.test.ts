@@ -133,6 +133,66 @@ describe("useDocuments", () => {
     );
   });
 
+  it("retryDocument 는 재시도 API POST 후 목록을 재조회한다", async () => {
+    const fetchMock = vi.fn(
+      async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        if (init?.method === "POST" && url.endsWith("/retry")) {
+          return {
+            ok: true,
+            status: 202,
+            json: async () => ({
+              data: { documentId: "doc-3", indexStatus: "pending" },
+            }),
+          };
+        }
+        if (url.includes("/api/v1/documents?projectId=")) {
+          return {
+            ok: true,
+            status: 200,
+            json: async () => ({
+              data: [
+                {
+                  id: "doc-3",
+                  projectId: "proj-1",
+                  filename: "구형매뉴얼.pdf",
+                  contentHash: "hash3",
+                  mimeType: "application/pdf",
+                  sizeBytes: 12_000_000,
+                  indexStatus: "pending",
+                  chunkCount: 0,
+                  indexedAt: null,
+                  failureReason: null,
+                  createdBy: "user-1",
+                  createdAt: "2026-04-01T00:00:00Z",
+                  updatedAt: "2026-04-03T00:00:00Z",
+                },
+              ],
+            }),
+          };
+        }
+        throw new Error(`unexpected fetch: ${url}`);
+      },
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { result } = renderHook(() => useDocuments("proj-1"));
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false);
+    });
+
+    await act(async () => {
+      await result.current.retryDocument("doc-3");
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/v1/documents/doc-3/retry",
+      expect.objectContaining({ method: "POST", credentials: "include" }),
+    );
+    expect(result.current.documents[0]?.indexStatus).toBe("pending");
+    expect(result.current.retryingId).toBeNull();
+  });
+
   it("업로드 실패 시 error 를 설정한다", async () => {
     const fetchMock = vi.fn(
       async (_input: RequestInfo | URL, init?: RequestInit) => {
