@@ -1247,8 +1247,8 @@
     "acceptance": "unit RED→GREEN: 부재 행->null; upsert 후 get 이 머지된 JSON 반환; organizations.update 가 allowed_models JSONB round-trip; verify-gates green",
     "phase": "P14",
     "team": "T1",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P14-T1-04",

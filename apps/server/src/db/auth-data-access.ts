@@ -98,9 +98,20 @@ export function createPgAuthDataAccess(): AuthDataAccess {
           `UPDATE organizations SET
              name = COALESCE($2, name),
              domain = COALESCE($3, domain),
-             plan = COALESCE($4, plan)
+             plan = COALESCE($4, plan),
+             allowed_models = COALESCE($5, allowed_models),
+             allowed_tools = COALESCE($6, allowed_tools),
+             default_token_budget_micros = COALESCE($7, default_token_budget_micros)
            WHERE id = $1 RETURNING *`,
-          [id, data.name ?? null, data.domain ?? null, data.plan ?? null],
+          [
+            id,
+            data.name ?? null,
+            data.domain ?? null,
+            data.plan ?? null,
+            data.allowedModels ? JSON.stringify(data.allowedModels) : null,
+            data.allowedTools ? JSON.stringify(data.allowedTools) : null,
+            data.defaultTokenBudgetMicros ?? null,
+          ],
         );
         if (res.rows.length === 0) throw new Error("organization not found");
         return toOrganization(res.rows[0]);
