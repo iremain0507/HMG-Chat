@@ -6,6 +6,7 @@ import { createPgAuthDataAccess } from "./db/auth-data-access.js";
 import { createEmailSender } from "./lib/email-sender.js";
 import { createAuthRoutes } from "./routes/auth.js";
 import { createSessionRoutes } from "./routes/sessions.js";
+import { createFolderRoutes } from "./routes/folders.js";
 import { createMessageRoutes } from "./routes/messages.js";
 import { createProjectRoutes } from "./routes/projects.js";
 import { createPgProjectDataAccess } from "./db/project-data-access.js";
@@ -246,6 +247,12 @@ export function createApp(env: Env) {
     }),
   );
   app.route("/api/v1/sessions", sessionsApp);
+
+  // P19-T1-03 — 세션 폴더 CRUD(migration 0019 session_folders).
+  const foldersApp = new Hono<{ Variables: AuthedVariables }>();
+  foldersApp.use("*", authMiddleware);
+  foldersApp.route("/", createFolderRoutes());
+  app.route("/api/v1/folders", foldersApp);
 
   const projectsApp = new Hono<{ Variables: AuthedVariables }>();
   projectsApp.use("*", authMiddleware);

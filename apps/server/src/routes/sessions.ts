@@ -13,6 +13,10 @@ import {
   type SessionWithPin,
 } from "../db/session-data-access.js";
 import { createPgMessageDataAccess } from "../db/message-data-access.js";
+import {
+  createPgSessionFolderDataAccess,
+  type SessionFolderDataAccess,
+} from "../db/session-folder-data-access.js";
 import type { AuthedVariables } from "../middleware/auth-middleware.js";
 
 function errorJson(code: string, message: string) {
@@ -45,7 +49,11 @@ export interface SessionsPort {
   updateForOwner(
     userId: string,
     id: string,
-    data: { title?: string | null; archived?: boolean },
+    data: {
+      title?: string | null;
+      archived?: boolean;
+      folderId?: string | null;
+    },
   ): Promise<SessionWithPin | null>;
   deleteForOwner(userId: string, id: string): Promise<boolean>;
   // P19-T1-02 — 핀 토글(같은 ownership-in-query 원자성 패턴).
@@ -63,6 +71,10 @@ export interface SessionRoutesDeps {
   artifactDa?: ArtifactDataAccess;
   sessions?: SessionsPort;
   sessionMessages?: SessionMessagesPort;
+  // P19-T1-03 — folder_id 할당(PATCH /:id) 전 ownership 검증에 필요(cross-org/타 사용자 폴더를
+  // 세션에 붙이는 것을 차단, session_folders 테이블은 sessions 와 FK 만 있고 org 체크가 없어
+  // application 레벨에서 검증해야 함).
+  folders?: SessionFolderDataAccess;
 }
 
 export function createSessionRoutes(
@@ -71,6 +83,7 @@ export function createSessionRoutes(
   const artifactDa = deps.artifactDa ?? createPgArtifactDataAccess();
   const sessions = deps.sessions ?? createPgSessionDataAccess();
   const sessionMessages = deps.sessionMessages ?? createPgMessageDataAccess();
+  const folders = deps.folders ?? createPgSessionFolderDataAccess();
   const app = new Hono<{ Variables: AuthedVariables }>();
 
   // P17-T1-02(TS-08/10) — 내 세션 목록(최신순). userId 는 auth 에서만 파생(body/query 미수신
@@ -91,6 +104,7 @@ export function createSessionRoutes(
         projectId: s.projectId,
         archived: s.archivedAt !== null,
         pinned: s.pinnedAt !== null,
+        folderId: s.folderId,
       })),
       meta: {
         requestId: randomUUID(),
@@ -150,21 +164,52 @@ export function createSessionRoutes(
 
   // P17-T1-03(TS-09) — rename(title)/archived. pin 토글은 별도 PATCH /:id/pin(P19-T1-02) 참조
   // (기존 lib/pinnedSessions.ts localStorage-only 를 서버 영속으로 승격).
+  // P19-T1-03 — folderId 할당/해제(null). 폴더는 이 사용자(created_by) 소유여야 하므로
+  // byIdForOwner 로 먼저 검증 — 타 사용자/조직 폴더 id 를 붙이려 하면 400(존재 자체는 숨기지
+  // 않아도 되는 입력 검증 성격이라 404 대신 400, 폴더 CRUD 자체의 existence-leak 은 routes/folders.ts 가 담당).
   app.patch("/:id", async (c) => {
     const auth = c.get("auth");
     const sessionId = c.req.param("id");
     const body = await c.req
-      .json<{ title?: string; archived?: boolean }>()
-      .catch(() => ({}) as { title?: string; archived?: boolean });
-    if (body.title === undefined && body.archived === undefined) {
+      .json<{ title?: string; archived?: boolean; folderId?: string | null }>()
+      .catch(
+        () =>
+          ({}) as {
+            title?: string;
+            archived?: boolean;
+            folderId?: string | null;
+          },
+      );
+    if (
+      body.title === undefined &&
+      body.archived === undefined &&
+      body.folderId === undefined
+    ) {
       return c.json(
-        errorJson("INVALID_INPUT", "title 또는 archived 가 필요합니다."),
+        errorJson(
+          "INVALID_INPUT",
+          "title, archived 또는 folderId 가 필요합니다.",
+        ),
         400,
       );
+    }
+    if (body.folderId !== undefined && body.folderId !== null) {
+      const owned = await folders.byIdForOwner(
+        auth.org,
+        auth.sub,
+        body.folderId,
+      );
+      if (!owned) {
+        return c.json(
+          errorJson("INVALID_INPUT", "존재하지 않는 folderId 입니다."),
+          400,
+        );
+      }
     }
     const updated = await sessions.updateForOwner(auth.sub, sessionId, {
       ...(body.title !== undefined ? { title: body.title } : {}),
       ...(body.archived !== undefined ? { archived: body.archived } : {}),
+      ...(body.folderId !== undefined ? { folderId: body.folderId } : {}),
     });
     if (!updated) {
       return c.json(errorJson("NOT_FOUND", "세션을 찾을 수 없습니다."), 404);
@@ -178,6 +223,7 @@ export function createSessionRoutes(
           : null,
         projectId: updated.projectId,
         archived: updated.archivedAt !== null,
+        folderId: updated.folderId,
       },
       meta: { requestId: randomUUID() },
     });

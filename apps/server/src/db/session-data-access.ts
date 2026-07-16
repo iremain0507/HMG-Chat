@@ -9,7 +9,12 @@ import { pgPool } from "./client.js";
 // 컬럼이라, packages/interfaces 를 건드리지 않고 로컬 교집합 타입으로 확장한다(org-settings-schema.ts
 // 의 "LOCAL 타입, frozen 회피" 컨벤션과 동일 사유 — 이 포트는 애초에 SessionRepo 전체가 아니라
 // routes/sessions.ts 가 실제 쓰는 부분만 좁힌 로컬 포트, P17-T1-02 주석 참조).
-export type SessionWithPin = Session & { pinnedAt: Date | null };
+// P19-T1-03 — sessions.folder_id(migration 0019)도 frozen Session 에 없는 신규 컬럼이라
+// pinnedAt 과 동일 사유로 로컬 교집합 타입에 확장한다.
+export type SessionWithPin = Session & {
+  pinnedAt: Date | null;
+  folderId: string | null;
+};
 
 function toSession(row: Record<string, unknown>): SessionWithPin {
   return {
@@ -19,6 +24,7 @@ function toSession(row: Record<string, unknown>): SessionWithPin {
     title: (row.title as string | null) ?? null,
     archivedAt: (row.archived_at as Date | null) ?? null,
     pinnedAt: (row.pinned_at as Date | null) ?? null,
+    folderId: (row.folder_id as string | null) ?? null,
     lastMessageAt: (row.last_message_at as Date | null) ?? null,
     createdAt: row.created_at as Date,
   };
@@ -33,7 +39,11 @@ export interface SessionsDataAccess {
   updateForOwner(
     userId: string,
     id: string,
-    data: { title?: string | null; archived?: boolean },
+    data: {
+      title?: string | null;
+      archived?: boolean;
+      folderId?: string | null;
+    },
   ): Promise<SessionWithPin | null>;
   deleteForOwner(userId: string, id: string): Promise<boolean>;
   // 토글: 현재 pinned_at 이 NULL 이면 NOW() 로, 아니면 NULL 로 — 원자적 단일 UPDATE
@@ -70,6 +80,11 @@ export function createPgSessionDataAccess(): SessionsDataAccess {
       if (data.archived !== undefined) {
         fields.push(`archived_at = $${i}`);
         values.push(data.archived ? new Date() : null);
+        i++;
+      }
+      if (data.folderId !== undefined) {
+        fields.push(`folder_id = $${i}`);
+        values.push(data.folderId);
         i++;
       }
       if (fields.length === 0) return this.byId(id);
