@@ -303,8 +303,10 @@ export function useSessionStream(sessionId: string) {
   }, []);
 
   // P17-T6-01(TS-08) — 세션 재진입/새로고침 시 GET /:id/messages 로 과거 대화를 복원한다.
-  // 서버는 각 turn 의 user+assistant 메시지를 생성 시각순으로 반환(P17-T1-01/02) — 편집/재생성으로
-  // 생긴 형제 분기까지는 구분하지 않으므로(parentMessageId 미포함), 단일 선형 체인으로 복원한다.
+  // P19-T6-01 — 서버가 각 메시지의 parentMessageId(P19-T1-01)를 반환하므로, 편집/재생성으로
+  // 생긴 형제 분기를 그대로 트리에 복원한다(addNode 가 시간순 addNode 호출마다 activeChildOf 를
+  // 최신 형제로 갱신하므로, 마지막에 추가된 형제가 자연히 활성 경로가 된다 — 라이브 스트리밍과 동일 규칙).
+  // parentMessageId 가 없는 과거 데이터(레거시 응답)는 root 의 자식으로 취급해 선형 체인으로 복원된다.
   // 이미 로컬에 진행 중인 대화(예: 새 세션에서 첫 메시지를 보낸 직후)가 있으면 덮어쓰지 않는다.
   const loadHistory = useCallback(async () => {
     if (historyLoadedRef.current) return;
@@ -317,9 +319,14 @@ export function useSessionStream(sessionId: string) {
       });
       if (!res.ok) return;
       const body = (await res.json()) as {
-        data: Array<{ id: string; role: string; content: unknown }>;
+        data: Array<{
+          id: string;
+          role: string;
+          content: unknown;
+          parentMessageId?: string | null;
+        }>;
       };
-      let parentId: string | null = null;
+      let previousId: string | null = null;
       for (const row of body.data) {
         if (row.role !== "user" && row.role !== "assistant") continue;
         const content =
@@ -328,8 +335,16 @@ export function useSessionStream(sessionId: string) {
             : row.content == null
               ? ""
               : JSON.stringify(row.content);
+        // parentMessageId 필드 자체가 없는 레거시 응답은 이전 메시지를 부모로 삼아 선형 체인으로
+        // 복원한다(하위호환) — 필드가 있으면(null 포함) 서버가 준 실제 부모 포인터를 그대로 쓴다.
+        const parentId = Object.prototype.hasOwnProperty.call(
+          row,
+          "parentMessageId",
+        )
+          ? (row.parentMessageId ?? null)
+          : previousId;
         addNode(row.id, parentId, { id: row.id, role: row.role, content });
-        parentId = row.id;
+        previousId = row.id;
       }
     } catch {
       // fail-soft — 히스토리 복원 실패 시 빈 대화로 시작(L2/L5, 조용한 실패 아닌 정상 폴백).

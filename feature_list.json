@@ -1634,8 +1634,8 @@
     "acceptance": "RED: 목 GET(분기 2개 포함)→편집/재생성 형제 복원 + switchBranch prev/next 동작 단언. verify-gates green",
     "phase": "P19",
     "team": "T6",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P19-T1-02",

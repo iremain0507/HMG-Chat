@@ -1010,6 +1010,67 @@ describe("useSessionStream", () => {
       expect(result.current.historyLoading).toBe(false);
     });
 
+    it("parentMessageId 로 형제 분기를 복원하고 switchBranch 로 prev/next 전환된다 (P19-T6-01)", async () => {
+      const fetchMock = vi.fn(async () => ({
+        ok: true,
+        json: async () => ({
+          data: [
+            {
+              id: "m-1",
+              sessionId: "session-1",
+              role: "user",
+              content: "안녕",
+              parentMessageId: null,
+            },
+            {
+              id: "m-2",
+              sessionId: "session-1",
+              role: "assistant",
+              content: "첫번째 답변",
+              parentMessageId: "m-1",
+            },
+            {
+              id: "m-3",
+              sessionId: "session-1",
+              role: "assistant",
+              content: "재생성된 답변",
+              parentMessageId: "m-1",
+            },
+          ],
+        }),
+      }));
+      vi.stubGlobal("fetch", fetchMock);
+
+      const { result } = renderHook(() => useSessionStream("session-1"));
+      await act(async () => {
+        await result.current.loadHistory();
+      });
+
+      // 가장 최근 형제(m-3, 재생성된 답변)가 활성 경로로 복원된다.
+      expect(result.current.messages.map((m) => [m.role, m.content])).toEqual([
+        ["user", "안녕"],
+        ["assistant", "재생성된 답변"],
+      ]);
+      const activeAssistant = result.current.messages.find(
+        (m) => m.role === "assistant",
+      );
+      expect(activeAssistant?.branch).toEqual({ index: 2, count: 2 });
+
+      act(() => {
+        result.current.switchBranch("m-3", "prev");
+      });
+
+      const afterSwitch = result.current.messages;
+      expect(afterSwitch.map((m) => [m.role, m.content])).toEqual([
+        ["user", "안녕"],
+        ["assistant", "첫번째 답변"],
+      ]);
+      expect(afterSwitch.find((m) => m.role === "assistant")?.branch).toEqual({
+        index: 1,
+        count: 2,
+      });
+    });
+
     it("이미 진행 중인 로컬 대화가 있으면 히스토리 복원으로 덮어쓰지 않는다", async () => {
       const fetchMock = vi.fn(async () => ({
         body: sseBody([

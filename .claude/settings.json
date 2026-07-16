@@ -42,7 +42,6 @@
       "Read(~/.ssh/**)",
       "Read(~/.aws/**)",
       "Edit(./packages/shared/**)",
-      "Edit(./packages/interfaces/**)",
       "Bash(rm -rf*)",
       "Bash(git push*)",
       "Bash(git merge*)",
