@@ -212,8 +212,10 @@ export function AppShell({ sidebar, rightPanel, children }: AppShellProps) {
         {rightPanelOpen && (
           <aside
             data-testid="app-shell-right-panel"
-            style={{ width: rightPanelWidth }}
-            className="relative hidden shrink-0 border-l border-border bg-surface md:flex"
+            style={{
+              ["--right-panel-width" as string]: `${rightPanelWidth}px`,
+            }}
+            className="fixed inset-0 z-[var(--z-modal)] flex shrink-0 border-l border-border bg-surface md:static md:inset-auto md:z-auto md:h-full md:w-[var(--right-panel-width)]"
           >
             <button
               type="button"
@@ -221,7 +223,7 @@ export function AppShell({ sidebar, rightPanel, children }: AppShellProps) {
               title="우패널 크기 조절"
               data-testid="app-shell-right-panel-resize-handle"
               onMouseDown={startResize}
-              className="absolute inset-y-0 left-0 z-10 w-1 cursor-col-resize bg-transparent hover:bg-primary/30"
+              className="absolute inset-y-0 left-0 z-10 hidden w-1 cursor-col-resize bg-transparent hover:bg-primary/30 md:block"
             />
             <div className="min-w-0 flex-1 pl-1">{rightPanel}</div>
           </aside>

@@ -130,6 +130,29 @@ describe("AppShell", () => {
     expect(screen.getByTestId("app-shell-right-panel")).toBeInTheDocument();
   });
 
+  it("우패널이 모바일 폭에서 풀스크린 오버레이(F17), md+ 에서 사이드 패널 클래스를 갖는다(P18-T6-03)", () => {
+    stubCurrentUserFetch();
+    render(
+      <AppShell
+        sidebar={<div>세션 목록</div>}
+        rightPanel={<div>패널 콘텐츠</div>}
+      >
+        <div>본문</div>
+      </AppShell>,
+    );
+
+    const panel = screen.getByTestId("app-shell-right-panel");
+    expect(panel).toHaveTextContent("패널 콘텐츠");
+    // 모바일 기본(<md): "hidden" 이 아니라 풀스크린 오버레이로 항상 접근 가능해야 한다.
+    expect(panel.className).not.toContain("hidden");
+    expect(panel.className).toContain("fixed");
+    expect(panel.className).toContain("inset-0");
+    expect(panel.className).toContain("z-[var(--z-modal)]");
+    // md+: 기존 사이드 패널 레이아웃으로 복귀.
+    expect(panel.className).toContain("md:static");
+    expect(panel.className).toContain("md:inset-auto");
+  });
+
   it("⌘\\ 키보드 단축키로 우패널을 토글한다", () => {
     stubCurrentUserFetch();
     render(
@@ -239,14 +262,16 @@ describe("AppShell", () => {
     );
 
     const panel = screen.getByTestId("app-shell-right-panel");
-    expect(panel).toHaveStyle({ width: "400px" });
+    // P18-T6-03: 폭은 이제 md+ 전용 CSS 변수(--right-panel-width)로 적용된다 —
+    // 직접 width 스타일을 쓰면 모바일 풀스크린 오버레이(fixed inset-0)와 충돌한다.
+    expect(panel.style.getPropertyValue("--right-panel-width")).toBe("400px");
 
     const handle = screen.getByTestId("app-shell-right-panel-resize-handle");
     fireEvent.mouseDown(handle, { clientX: 500 });
     fireEvent.mouseMove(window, { clientX: 450 });
     fireEvent.mouseUp(window);
 
-    expect(panel).toHaveStyle({ width: "450px" });
+    expect(panel.style.getPropertyValue("--right-panel-width")).toBe("450px");
   });
 
   it("헤더 아이콘 버튼(⌘K·우패널 토글·리사이즈 핸들·모바일 햄버거)에 title 툴팁이 존재한다", () => {

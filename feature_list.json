@@ -1589,8 +1589,8 @@
     "acceptance": "RED: 좁은 뷰포트에서 아티팩트 열기→오버레이 표시(가능 범위); 하드코딩 hex 0; ★human UAT(모바일 폭에서 문서 실제 표시) 필수·과장 금지; verify-gates green",
     "phase": "P18",
     "team": "T6",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P18-T1-01",
