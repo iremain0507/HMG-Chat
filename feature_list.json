@@ -1330,5 +1330,50 @@
     "team": "T6",
     "passes": true,
     "attempts": 1
+  },
+  {
+    "id": "P15-T2-01",
+    "desc": "temperature·topP 생성 파라미터 forward: RunTurnInput(orchestrator.ts, non-frozen)에 temperature?/topP? 추가→runTurn 이 ChatInput 으로 forward; llm-provider-anthropic.ts 가 SDK 에 temperature/top_p 전달(현재 미전달), llm-provider-openai.ts 동일; messages.ts 가 resolved.temperature/topP 전달. ChatInput.topP 는 이미 계약에 존재(262b1ab). files: orchestrator/orchestrator.ts, orchestrator/llm-provider-anthropic.ts, orchestrator/llm-provider-openai.ts, routes/messages.ts",
+    "acceptance": "L1 RED: createApp 채팅 턴에서 org temperature=0.2·topP=0.5 → provider.chat 이 받은 ChatInput.temperature===0.2 & topP===0.5 단언; 미설정 org 는 provider 기본 유지(비파괴); verify-gates green",
+    "phase": "P15",
+    "team": "T2",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P15-T2-02",
+    "desc": "동적 org-scoped toolMaxTokens: deep-research-handler 가 invoke 시 ctx.orgId 로 settingsService.resolve 해 toolMaxTokens 사용(정적 4096 조용히 쓰지 않도록, L1); settings resolver 를 도구 deps 로 주입(app.ts). files: tools/assemble-builtin-tools.ts, tools/handlers/deep-research-handler.ts, app.ts",
+    "acceptance": "RED: org toolMaxTokens=8000 → deep_research sub-turn 이 8000 사용(4096 아님); 미설정 시 4096 유지; verify-gates green",
+    "phase": "P15",
+    "team": "T2",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P15-T3-01",
+    "desc": "index 시 chunker 설정 반영: 문서 인덱싱 경로에서 chunkText 호출부를 찾아 ChunkOptions.chunkSizeTokens/overlap 을 해당 org 설정에서 resolve 해 전달(index 시점 org 컨텍스트). ChunkOptions 는 이미 지원. files: knowledge/**(chunkText 호출 서비스), 필요 시 routes/documents.ts",
+    "acceptance": "RED: org ragChunkSizeTokens=1200 → 인덱싱이 1200 로 분할; 미설정 시 800 유지; verify-gates green",
+    "phase": "P15",
+    "team": "T3",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P15-T1-01",
+    "desc": "enableSignup·defaultUserRole 런타임(안전 기본·비파괴): org-settings-schema 의 DEFAULT_ORG_SETTINGS.enableSignup 을 true 로(현행 보존); routes/auth.ts /signup 에서 env allowedDomains 도메인게이트를 하드 전제로 먼저 유지, 그 다음 domain→org 조회→settingsService.resolve→enableSignup=false 면 가입 거부, 생성 role=resolved.defaultUserRole; app.ts 가 auth deps 에 settings resolver 주입. files: routes/auth.ts, lib/org-settings-schema.ts, app.ts",
+    "acceptance": "RED: enableSignup=false→허용 도메인이라도 가입 거부; enableSignup=true(기본)→가입 성공+role===defaultUserRole; 미허용 도메인은 항상 거부(env 게이트 우선); org 는 이메일 도메인으로만 결정(body 지정 불가); verify-gates green",
+    "phase": "P15",
+    "team": "T1",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P15-T6-01",
+    "desc": "admin UI '미적용' 힌트 제거: temperature·topP·enableSignup·defaultUserRole 이 실제 반영되므로 해당 필드의 '아직 미적용/env 관리' 힌트 제거·정확화. 시맨틱 토큰만. files: components/admin/settings/**, app/preview/page.tsx, e2e/admin-settings.pw.ts",
+    "acceptance": "해당 힌트 제거/정확화; 하드코딩 hex 0; preview + Playwright 라이트/다크 스크린샷(.ralph/screenshots); 신규 상호작용 있으면 RED→GREEN; verify-gates green",
+    "phase": "P15",
+    "team": "T6",
+    "passes": false,
+    "attempts": 0
   }
 ]
