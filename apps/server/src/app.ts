@@ -8,6 +8,7 @@ import { createAuthRoutes } from "./routes/auth.js";
 import { createSessionRoutes } from "./routes/sessions.js";
 import { createFolderRoutes } from "./routes/folders.js";
 import { createPromptRoutes } from "./routes/prompts.js";
+import { createApiKeyRoutes } from "./routes/api-keys.js";
 import { createMessageRoutes } from "./routes/messages.js";
 import { createProjectRoutes } from "./routes/projects.js";
 import { createPgProjectDataAccess } from "./db/project-data-access.js";
@@ -427,6 +428,12 @@ export function createApp(env: Env) {
     }),
   );
   app.route("/api/v1/config", configApp);
+
+  // P19-T1-11 — API 키 발급/목록/폐기(self-service, migration 0025 api_keys).
+  const apiKeysApp = new Hono<{ Variables: AuthedVariables }>();
+  apiKeysApp.use("*", authMiddleware);
+  apiKeysApp.route("/", createApiKeyRoutes());
+  app.route("/api/v1/api-keys", apiKeysApp);
 
   return app;
 }

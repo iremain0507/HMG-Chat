@@ -1886,8 +1886,8 @@
     "acceptance": "RED: createApp 실HTTP 발급(평문 1회)/목록 마스킹/폐기 + API키로 보호 라우트 인증 통과·폐기 후 401 + cross-org 차단. verify-gates green",
     "phase": "P19",
     "team": "T1",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P19-T6-16",
