@@ -1454,8 +1454,8 @@
     "acceptance": "RED: PATCH 후 title 반영, DELETE 후 목록 제거+cascade 확인; cross-org 격리; routes-mounted green; verify-gates green",
     "phase": "P17",
     "team": "T1",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P17-T1-04",

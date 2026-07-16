@@ -23,6 +23,12 @@ export interface SessionsDataAccess {
     pagination?: { cursor?: string; limit?: number },
   ): Promise<{ items: Session[]; nextCursor?: string }>;
   byId(id: string): Promise<Session | null>;
+  updateForOwner(
+    userId: string,
+    id: string,
+    data: { title?: string | null; archived?: boolean },
+  ): Promise<Session | null>;
+  deleteForOwner(userId: string, id: string): Promise<boolean>;
 }
 
 export function createPgSessionDataAccess(): SessionsDataAccess {
@@ -41,6 +47,36 @@ export function createPgSessionDataAccess(): SessionsDataAccess {
         id,
       ]);
       return res.rows[0] ? toSession(res.rows[0]) : null;
+    },
+    async updateForOwner(userId, id, data) {
+      const fields: string[] = [];
+      const values: unknown[] = [];
+      let i = 1;
+      if (data.title !== undefined) {
+        fields.push(`title = $${i}`);
+        values.push(data.title);
+        i++;
+      }
+      if (data.archived !== undefined) {
+        fields.push(`archived_at = $${i}`);
+        values.push(data.archived ? new Date() : null);
+        i++;
+      }
+      if (fields.length === 0) return this.byId(id);
+      values.push(id, userId);
+      const res = await pgPool.query(
+        `UPDATE sessions SET ${fields.join(", ")}
+         WHERE id = $${i} AND user_id = $${i + 1} RETURNING *`,
+        values,
+      );
+      return res.rows[0] ? toSession(res.rows[0]) : null;
+    },
+    async deleteForOwner(userId, id) {
+      const res = await pgPool.query(
+        "DELETE FROM sessions WHERE id = $1 AND user_id = $2",
+        [id, userId],
+      );
+      return (res.rowCount ?? 0) > 0;
     },
   };
 }
