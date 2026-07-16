@@ -12,12 +12,40 @@ const VISIBILITY_LABEL: Record<string, string> = {
   org: "전사",
 };
 
+type VisibilityFilter = "private" | "team" | "org" | undefined;
+
+const VISIBILITY_FILTERS: { value: VisibilityFilter; label: string }[] = [
+  { value: undefined, label: "전체" },
+  { value: "private", label: "비공개" },
+  { value: "team", label: "팀" },
+  { value: "org", label: "전사" },
+];
+
 export default function ProjectsPage() {
-  const { projects, loading, error } = useProjects();
+  const [visibility, setVisibility] =
+    React.useState<VisibilityFilter>(undefined);
+  const { projects, loading, error } = useProjects(visibility);
 
   return (
     <main className="p-8">
       <h1 className="text-xl font-bold text-fg">프로젝트</h1>
+      <div role="group" aria-label="가시성 필터" className="mt-4 flex gap-2">
+        {VISIBILITY_FILTERS.map((f) => (
+          <button
+            key={f.label}
+            type="button"
+            aria-pressed={visibility === f.value}
+            onClick={() => setVisibility(f.value)}
+            className={`rounded-full border px-3 py-1 text-[12.5px] font-semibold outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--focus-ring)] focus-visible:outline-offset-2 ${
+              visibility === f.value
+                ? "border-primary bg-primary-50 text-primary"
+                : "border-border bg-bg text-fg-muted hover:border-primary"
+            }`}
+          >
+            {f.label}
+          </button>
+        ))}
+      </div>
       {loading && <p className="mt-3 text-sm text-fg-muted">불러오는 중…</p>}
       {error && (
         <p className="mt-3 text-sm text-accent" role="alert">

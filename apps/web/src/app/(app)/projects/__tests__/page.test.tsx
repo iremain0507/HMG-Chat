@@ -2,7 +2,13 @@
 // app/projects/page.tsx — 18-FRONTEND-WIREFRAMES § 18.5.2 /projects 목록.
 import React from "react";
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { render, screen, cleanup, waitFor } from "@testing-library/react";
+import {
+  render,
+  screen,
+  cleanup,
+  waitFor,
+  fireEvent,
+} from "@testing-library/react";
 import "@testing-library/jest-dom/vitest";
 import ProjectsPage from "../page";
 
@@ -42,5 +48,30 @@ describe("ProjectsPage", () => {
       "href",
       "/projects/proj-1",
     );
+  });
+
+  it("visibility 필터를 선택하면 ?visibility= 쿼리로 재조회한다", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({ ok: true, json: async () => ({ data: [] }) })),
+    );
+
+    render(<ProjectsPage />);
+
+    await waitFor(() => {
+      expect(fetch).toHaveBeenLastCalledWith(
+        "/api/v1/projects",
+        expect.objectContaining({ credentials: "include" }),
+      );
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "팀" }));
+
+    await waitFor(() => {
+      expect(fetch).toHaveBeenLastCalledWith(
+        "/api/v1/projects?visibility=team",
+        expect.objectContaining({ credentials: "include" }),
+      );
+    });
   });
 });
