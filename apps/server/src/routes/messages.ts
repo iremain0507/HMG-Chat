@@ -208,6 +208,7 @@ export function createMessageRoutes(
         content?: string;
         attachments?: Array<{ uploadId: string }>;
         model?: string;
+        webSearch?: boolean;
       }>()
       .catch(
         () =>
@@ -215,6 +216,7 @@ export function createMessageRoutes(
             content?: string;
             attachments?: Array<{ uploadId: string }>;
             model?: string;
+            webSearch?: boolean;
           },
       );
     // 클라이언트 생성 세션 UUID 를 첫 메시지 시 DB 에 보장(upsert) — 이후 아티팩트/업로드/
@@ -349,6 +351,16 @@ export function createMessageRoutes(
           budget: createBudgetClaim(org?.defaultTokenBudgetMicros ?? null),
         };
       }
+    }
+
+    // P19-T2-01 — 웹검색 토글: admin org_settings.webSearchEnabled(허용 게이트) + 요청
+    // body.webSearch(사용자 의도) 둘 다 true 일 때만 web_search 를 tool set 에 포함한다.
+    // admin off 면 요청과 무관하게 강제 제외, settings 미조회(fail-soft) 시 DEFAULT
+    // false 로 안전 기본(L2). 클라가 payload 로만 보내던 webSearch 를 여기서 처음 소비한다.
+    const includeWebSearch =
+      resolvedSettings.webSearchEnabled === true && body.webSearch === true;
+    if (!includeWebSearch) {
+      tools = tools.filter((t) => t.spec.name !== "web_search");
     }
 
     // P17-T1-01 — user 메시지를 messages 테이블에 영속(best-effort — 실패해도 turn 은 계속).

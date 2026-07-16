@@ -1607,8 +1607,8 @@
     "acceptance": "RED: createApp 실HTTP 턴에서 webSearch=true→runTurn tools 에 web_search 포함, false→미포함 단언(L1 last-mile); admin webSearchEnabled=false→요청 true 여도 미포함. verify-gates green",
     "phase": "P19",
     "team": "T2",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P19-T2-02",
