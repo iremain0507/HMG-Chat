@@ -89,6 +89,13 @@ export interface MessagesPort {
     tokensIn?: number | null;
     tokensOut?: number | null;
   }): Promise<Message>;
+  // P19-T2-03 — 응답 이어쓰기(continue)가 대상 메시지를 조회/갱신하는 데 쓴다. 둘 다
+  // 옵셔널 — 미주입 환경(기존 테스트/배선)은 continue 라우트가 항상 404 로 fail-soft.
+  byId?(id: string): Promise<Message | null>;
+  update?(
+    id: string,
+    data: { content?: unknown; tokensOut?: number | null },
+  ): Promise<Message>;
 }
 
 // P14-T2-01 — org 별 maxTokens/temperature(ISOLATE, runtime 미배선)/systemPrompt/defaultModel
@@ -512,6 +519,142 @@ export function createMessageRoutes(
               deps.logger?.warn({
                 category: "system",
                 msg: "assistant message 영속 실패",
+                context: { error: String(error) },
+              });
+            });
+        }
+      }
+    });
+  });
+
+  // P19-T2-03 — 응답 이어쓰기(continue): 직전 assistant 텍스트를 prefix 로 이어서, 기존
+  // SSE 파이프(text_delta/stop, 신규 이벤트 금지)를 그대로 재사용해 스트리밍한다. 새로 emit
+  // 하는 text_delta 는 이어지는 내용만(클라가 이미 표시 중인 prefix 를 중복 emit 하지
+  // 않음) — 완료 시 원본 assistant 메시지 행(mid)을 prefix+새텍스트로 update 한다(새 행
+  // 생성 아님). deps.messages.byId/update 미주입 시 404/no-op(L2 fail-soft).
+  app.post("/:id/messages/:mid/continue", async (c) => {
+    const sessionId = c.req.param("id");
+    const messageId = c.req.param("mid");
+    const auth = c.get("auth");
+
+    if (!deps.messages?.byId) {
+      return c.json(errorJson("NOT_FOUND", "메시지를 찾을 수 없습니다."), 404);
+    }
+    const prior = await deps.messages.byId(messageId).catch(() => null);
+    if (!prior || prior.sessionId !== sessionId) {
+      return c.json(errorJson("NOT_FOUND", "메시지를 찾을 수 없습니다."), 404);
+    }
+    if (prior.role !== "assistant") {
+      return c.json(
+        errorJson("INVALID_INPUT", "assistant 메시지만 이어쓸 수 있습니다."),
+        400,
+      );
+    }
+    const priorText = typeof prior.content === "string" ? prior.content : "";
+
+    const resolvedSettings = await resolveSettingsSafely(
+      deps.settings,
+      auth?.org,
+      deps.logger,
+    );
+
+    const continueMessages: LLMMessage[] = [
+      { role: "assistant", content: priorText },
+      {
+        role: "user",
+        content: "이전 답변에 자연스럽게 이어서 계속 작성해줘.",
+      },
+    ];
+
+    const jobId = randomUUID();
+    const activeRuns = deps.activeRuns ?? noopActiveRuns;
+    const handle = registerRun(sessionId, jobId);
+    const requestSignal = c.req.raw.signal;
+    if (requestSignal.aborted) {
+      handle.controller.abort();
+    } else {
+      requestSignal.addEventListener("abort", () => handle.controller.abort(), {
+        once: true,
+      });
+    }
+
+    c.header("X-Accel-Buffering", "no");
+    return streamSSE(c, async (stream) => {
+      const heartbeat = setInterval(() => {
+        void stream.write(": ping\n\n").catch(() => {});
+      }, 10_000);
+      let currentMessageId: string | undefined;
+      let continuedText = "";
+      let assistantUsage:
+        { inputTokens: number; outputTokens: number } | undefined;
+      try {
+        const events = runTurn({
+          provider: deps.provider,
+          model: deps.model,
+          systemBlocks: deps.systemBlocks ?? [],
+          messages: continueMessages,
+          maxTokens:
+            deps.maxTokens ??
+            resolvedSettings.maxTokens ??
+            SAFE_DEFAULT_MAX_TOKENS,
+          signal: handle.controller.signal,
+        });
+        for await (const event of events) {
+          if (event.type === "message_start") {
+            currentMessageId = event.messageId;
+            startMessageRun(event.messageId, sessionId);
+          } else if (currentMessageId) {
+            recordMessageRunEvent(currentMessageId, event);
+          }
+          if (event.type === "text_delta") {
+            continuedText += event.text;
+          } else if (event.type === "stop") {
+            assistantUsage = event.usage;
+          }
+          const { type, ...payload } = event;
+          await stream.writeSSE({ event: type, data: JSON.stringify(payload) });
+        }
+        await activeRuns.setActiveRun(
+          sessionId,
+          jobId,
+          handle.controller.signal.aborted ? "cancelled" : "completed",
+        );
+      } catch (err) {
+        const message =
+          err instanceof Error
+            ? err.message
+            : "턴 처리 중 오류가 발생했습니다.";
+        await stream
+          .writeSSE({
+            event: "error",
+            data: JSON.stringify({
+              error: {
+                code: "TURN_FAILED",
+                category: "orchestrator",
+                message,
+                retryable: true,
+              },
+            }),
+          })
+          .catch(() => {});
+        try {
+          await activeRuns.setActiveRun(sessionId, jobId, "cancelled");
+        } catch {
+          /* best-effort */
+        }
+      } finally {
+        clearInterval(heartbeat);
+        unregisterRun(sessionId, jobId);
+        if (continuedText.length > 0) {
+          await deps.messages
+            ?.update?.(messageId, {
+              content: priorText + continuedText,
+              tokensOut: assistantUsage?.outputTokens ?? prior.tokensOut,
+            })
+            .catch((error) => {
+              deps.logger?.warn({
+                category: "system",
+                msg: "continue 메시지 영속 실패",
                 context: { error: String(error) },
               });
             });

@@ -1751,8 +1751,8 @@
     "acceptance": "RED: createApp continue 턴→기존 텍스트 뒤에 이어붙는 text_delta·stop 종단 단언(L1/L5). verify-gates green",
     "phase": "P19",
     "team": "T2",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P19-T6-08",
