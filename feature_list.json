@@ -1670,8 +1670,8 @@
     "acceptance": "RED: 목 폴더 API→폴더별 세션 그룹 렌더 + 할당 상호작용 단언; verify-browser 가능 범위. verify-gates green",
     "phase": "P19",
     "team": "T6",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P19-T1-04",

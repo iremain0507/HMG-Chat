@@ -9,6 +9,7 @@ import {
   fireEvent,
   waitFor,
   cleanup,
+  within,
 } from "@testing-library/react";
 import "@testing-library/jest-dom/vitest";
 
@@ -219,6 +220,200 @@ describe("SessionList", () => {
     });
     expect(screen.queryByText("오늘")).not.toBeInTheDocument();
     expect(screen.getByLabelText("고정 해제: 세션 A")).toBeInTheDocument();
+  });
+
+  it("폴더가 있으면 폴더 그룹으로 세션을 렌더한다", async () => {
+    const fetchMock = vi.fn(
+      async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        if (
+          url === "/api/v1/folders" &&
+          (!init?.method || init.method === "GET")
+        ) {
+          return {
+            ok: true,
+            status: 200,
+            json: async () => ({
+              data: [
+                {
+                  id: "folder-1",
+                  name: "업무",
+                  createdAt: "2026-07-14T00:00:00Z",
+                },
+              ],
+            }),
+          };
+        }
+        if (
+          url === "/api/v1/sessions" &&
+          (!init?.method || init.method === "GET")
+        ) {
+          return {
+            ok: true,
+            status: 200,
+            json: async () => ({
+              data: [
+                {
+                  id: "sess-foldered",
+                  title: "폴더 세션",
+                  lastMessageAt: "2026-07-14T01:00:00Z",
+                  projectId: null,
+                  archived: false,
+                  pinned: false,
+                  folderId: "folder-1",
+                },
+                {
+                  id: "sess-plain",
+                  title: "일반 세션",
+                  lastMessageAt: "2026-07-14T01:00:00Z",
+                  projectId: null,
+                  archived: false,
+                  pinned: false,
+                  folderId: null,
+                },
+              ],
+            }),
+          };
+        }
+        return { ok: true, status: 200, json: async () => ({ data: [] }) };
+      },
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<SessionList now={new Date("2026-07-14T12:00:00Z")} />);
+
+    await waitFor(() => {
+      expect(screen.getByText("폴더 세션")).toBeInTheDocument();
+    });
+    expect(screen.getByText("업무")).toBeInTheDocument();
+    expect(screen.getByText("일반 세션")).toBeInTheDocument();
+    expect(screen.getByText("오늘")).toBeInTheDocument();
+  });
+
+  it("세션을 폴더에 할당하면 PATCH /sessions/:id 를 folderId 와 함께 호출한다", async () => {
+    const fetchMock = vi.fn(
+      async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        if (
+          url === "/api/v1/folders" &&
+          (!init?.method || init.method === "GET")
+        ) {
+          return {
+            ok: true,
+            status: 200,
+            json: async () => ({
+              data: [
+                {
+                  id: "folder-1",
+                  name: "업무",
+                  createdAt: "2026-07-14T00:00:00Z",
+                },
+              ],
+            }),
+          };
+        }
+        if (url === "/api/v1/sessions/sess-a" && init?.method === "PATCH") {
+          return {
+            ok: true,
+            status: 200,
+            json: async () => ({
+              data: { id: "sess-a", folderId: "folder-1" },
+            }),
+          };
+        }
+        if (
+          url === "/api/v1/sessions" &&
+          (!init?.method || init.method === "GET")
+        ) {
+          return {
+            ok: true,
+            status: 200,
+            json: async () => ({
+              data: [
+                {
+                  id: "sess-a",
+                  title: "세션 A",
+                  lastMessageAt: "2026-07-14T01:00:00Z",
+                  projectId: null,
+                  archived: false,
+                  pinned: false,
+                  folderId: null,
+                },
+              ],
+            }),
+          };
+        }
+        return { ok: true, status: 200, json: async () => ({ data: [] }) };
+      },
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<SessionList now={new Date("2026-07-14T12:00:00Z")} />);
+
+    await waitFor(() => {
+      expect(screen.getByText("세션 A")).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByLabelText("폴더 지정: 세션 A"));
+    const menu = screen.getByTestId("folder-menu-sess-a");
+    fireEvent.click(within(menu).getByText("업무"));
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/v1/sessions/sess-a",
+        expect.objectContaining({
+          method: "PATCH",
+          body: JSON.stringify({ folderId: "folder-1" }),
+        }),
+      );
+    });
+  });
+
+  it("＋ 폴더 버튼으로 새 폴더를 생성한다", async () => {
+    const fetchMock = vi.fn(
+      async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        if (url === "/api/v1/folders" && init?.method === "POST") {
+          return {
+            ok: true,
+            status: 201,
+            json: async () => ({
+              data: {
+                id: "folder-new",
+                name: "새 폴더",
+                createdAt: "2026-07-14T02:00:00Z",
+              },
+            }),
+          };
+        }
+        return { ok: true, status: 200, json: async () => ({ data: [] }) };
+      },
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<SessionList now={new Date("2026-07-14T12:00:00Z")} />);
+
+    await waitFor(() => {
+      expect(screen.getByText("세션이 없습니다.")).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "＋ 폴더" }));
+    const input = screen.getByPlaceholderText("새 폴더 이름");
+    fireEvent.change(input, { target: { value: "새 폴더" } });
+    fireEvent.submit(input.closest("form") as HTMLFormElement);
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/v1/folders",
+        expect.objectContaining({
+          method: "POST",
+          body: JSON.stringify({ name: "새 폴더" }),
+        }),
+      );
+    });
+    await waitFor(() => {
+      expect(screen.getByText("새 폴더")).toBeInTheDocument();
+    });
   });
 
   it("⌘N 단축키로 새 세션을 생성한다", async () => {

@@ -4,6 +4,16 @@
 import { useCallback, useEffect, useState } from "react";
 import { apiFetch } from "../lib/fetch-with-refresh";
 import { toggleSessionPin } from "../lib/pinnedSessions";
+import {
+  assignSessionFolder,
+  createFolder as createFolderApi,
+  deleteFolder as deleteFolderApi,
+  listFolders,
+  renameFolder as renameFolderApi,
+  type SessionFolder,
+} from "../lib/sessionFolders";
+
+export type { SessionFolder } from "../lib/sessionFolders";
 
 export interface SessionListItemDto {
   id: string;
@@ -12,6 +22,7 @@ export interface SessionListItemDto {
   projectId: string | null;
   archived: boolean;
   pinned: boolean;
+  folderId: string | null;
 }
 
 interface UseSessionsResult {
@@ -23,12 +34,18 @@ interface UseSessionsResult {
   deleteSession: (id: string) => Promise<void>;
   togglePin: (id: string) => Promise<void>;
   reload: () => Promise<void>;
+  folders: SessionFolder[];
+  createFolder: (name: string) => Promise<SessionFolder | null>;
+  renameFolder: (id: string, name: string) => Promise<void>;
+  deleteFolder: (id: string) => Promise<void>;
+  assignFolder: (id: string, folderId: string | null) => Promise<void>;
 }
 
 export function useSessions(): UseSessionsResult {
   const [sessions, setSessions] = useState<SessionListItemDto[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [folders, setFolders] = useState<SessionFolder[]>([]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -41,16 +58,26 @@ export function useSessions(): UseSessionsResult {
         setError("세션 목록을 불러오지 못했습니다.");
         return;
       }
-      const body = (await res.json()) as { data: SessionListItemDto[] };
-      setSessions(body.data);
+      const body = (await res.json()) as {
+        data: Array<SessionListItemDto & { folderId?: string | null }>;
+      };
+      setSessions(
+        body.data.map((s) => ({ ...s, folderId: s.folderId ?? null })),
+      );
     } finally {
       setLoading(false);
     }
   }, []);
 
+  const loadFolders = useCallback(async () => {
+    const list = await listFolders();
+    if (list) setFolders(list);
+  }, []);
+
   useEffect(() => {
     void load();
-  }, [load]);
+    void loadFolders();
+  }, [load, loadFolders]);
 
   const createSession = useCallback(async () => {
     const res = await apiFetch("/api/v1/sessions", {
@@ -75,6 +102,7 @@ export function useSessions(): UseSessionsResult {
       lastMessageAt: body.data.createdAt,
       archived: false,
       pinned: false,
+      folderId: null,
     };
     setSessions((prev) => [created, ...prev]);
     return created;
@@ -117,6 +145,47 @@ export function useSessions(): UseSessionsResult {
     );
   }, []);
 
+  const createFolder = useCallback(async (name: string) => {
+    const created = await createFolderApi(name);
+    if (created) setFolders((prev) => [...prev, created]);
+    return created;
+  }, []);
+
+  const renameFolder = useCallback(async (id: string, name: string) => {
+    const updated = await renameFolderApi(id, name);
+    if (!updated) return;
+    setFolders((prev) => prev.map((f) => (f.id === id ? updated : f)));
+  }, []);
+
+  const deleteFolder = useCallback(async (id: string) => {
+    const ok = await deleteFolderApi(id);
+    if (!ok) return;
+    setFolders((prev) => prev.filter((f) => f.id !== id));
+    setSessions((prev) =>
+      prev.map((s) => (s.folderId === id ? { ...s, folderId: null } : s)),
+    );
+  }, []);
+
+  const assignFolder = useCallback(
+    async (id: string, folderId: string | null) => {
+      let previous: string | null = null;
+      setSessions((prev) =>
+        prev.map((s) => {
+          if (s.id !== id) return s;
+          previous = s.folderId;
+          return { ...s, folderId };
+        }),
+      );
+      const result = await assignSessionFolder(id, folderId);
+      if (result === undefined) {
+        setSessions((prev) =>
+          prev.map((s) => (s.id === id ? { ...s, folderId: previous } : s)),
+        );
+      }
+    },
+    [],
+  );
+
   return {
     sessions,
     loading,
@@ -126,5 +195,10 @@ export function useSessions(): UseSessionsResult {
     deleteSession,
     togglePin,
     reload: load,
+    folders,
+    createFolder,
+    renameFolder,
+    deleteFolder,
+    assignFolder,
   };
 }

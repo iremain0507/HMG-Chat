@@ -219,4 +219,307 @@ describe("useSessions", () => {
 
     expect(result.current.sessions[0]?.pinned).toBe(false);
   });
+
+  it("폴더 목록을 GET /api/v1/folders 로 로드한다", async () => {
+    const fetchMock = vi.fn(
+      async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        if (
+          url === "/api/v1/folders" &&
+          (!init?.method || init.method === "GET")
+        ) {
+          return {
+            ok: true,
+            status: 200,
+            json: async () => ({
+              data: [
+                {
+                  id: "folder-1",
+                  name: "업무",
+                  createdAt: "2026-07-14T00:00:00Z",
+                },
+              ],
+            }),
+          };
+        }
+        return { ok: true, status: 200, json: async () => ({ data: [] }) };
+      },
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { result } = renderHook(() => useSessions());
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    await waitFor(() => expect(result.current.folders).toHaveLength(1));
+    expect(result.current.folders[0]?.name).toBe("업무");
+  });
+
+  it("createFolder 가 POST /api/v1/folders 를 호출하고 생성된 폴더를 목록에 추가한다", async () => {
+    const fetchMock = vi.fn(
+      async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        if (url === "/api/v1/folders" && init?.method === "POST") {
+          return {
+            ok: true,
+            status: 201,
+            json: async () => ({
+              data: {
+                id: "folder-new",
+                name: "새 폴더",
+                createdAt: "2026-07-14T02:00:00Z",
+              },
+            }),
+          };
+        }
+        return { ok: true, status: 200, json: async () => ({ data: [] }) };
+      },
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { result } = renderHook(() => useSessions());
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    await act(async () => {
+      const created = await result.current.createFolder("새 폴더");
+      expect(created?.id).toBe("folder-new");
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/v1/folders",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({ name: "새 폴더" }),
+      }),
+    );
+    expect(result.current.folders.some((f) => f.id === "folder-new")).toBe(
+      true,
+    );
+  });
+
+  it("renameFolder 가 PATCH /api/v1/folders/:id 를 호출한다", async () => {
+    const fetchMock = vi.fn(
+      async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        if (
+          url === "/api/v1/folders" &&
+          (!init?.method || init.method === "GET")
+        ) {
+          return {
+            ok: true,
+            status: 200,
+            json: async () => ({
+              data: [
+                {
+                  id: "folder-1",
+                  name: "old",
+                  createdAt: "2026-07-14T00:00:00Z",
+                },
+              ],
+            }),
+          };
+        }
+        if (url === "/api/v1/folders/folder-1" && init?.method === "PATCH") {
+          return {
+            ok: true,
+            status: 200,
+            json: async () => ({
+              data: {
+                id: "folder-1",
+                name: "new",
+                createdAt: "2026-07-14T00:00:00Z",
+              },
+            }),
+          };
+        }
+        return { ok: true, status: 200, json: async () => ({ data: [] }) };
+      },
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { result } = renderHook(() => useSessions());
+    await waitFor(() => expect(result.current.folders).toHaveLength(1));
+
+    await act(async () => {
+      await result.current.renameFolder("folder-1", "new");
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/v1/folders/folder-1",
+      expect.objectContaining({
+        method: "PATCH",
+        body: JSON.stringify({ name: "new" }),
+      }),
+    );
+    expect(result.current.folders[0]?.name).toBe("new");
+  });
+
+  it("deleteFolder 가 DELETE /api/v1/folders/:id 를 호출하고 목록·세션 folderId 를 정리한다", async () => {
+    const fetchMock = vi.fn(
+      async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        if (
+          url === "/api/v1/folders" &&
+          (!init?.method || init.method === "GET")
+        ) {
+          return {
+            ok: true,
+            status: 200,
+            json: async () => ({
+              data: [
+                {
+                  id: "folder-1",
+                  name: "업무",
+                  createdAt: "2026-07-14T00:00:00Z",
+                },
+              ],
+            }),
+          };
+        }
+        if (
+          url === "/api/v1/sessions" &&
+          (!init?.method || init.method === "GET")
+        ) {
+          return {
+            ok: true,
+            status: 200,
+            json: async () => ({
+              data: [
+                {
+                  id: "sess-1",
+                  title: "세션 A",
+                  lastMessageAt: "2026-07-14T01:00:00Z",
+                  projectId: null,
+                  archived: false,
+                  pinned: false,
+                  folderId: "folder-1",
+                },
+              ],
+            }),
+          };
+        }
+        if (url === "/api/v1/folders/folder-1" && init?.method === "DELETE") {
+          return { ok: true, status: 204, json: async () => ({}) };
+        }
+        return { ok: true, status: 200, json: async () => ({ data: [] }) };
+      },
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { result } = renderHook(() => useSessions());
+    await waitFor(() => expect(result.current.folders).toHaveLength(1));
+    await waitFor(() =>
+      expect(result.current.sessions[0]?.folderId).toBe("folder-1"),
+    );
+
+    await act(async () => {
+      await result.current.deleteFolder("folder-1");
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/v1/folders/folder-1",
+      expect.objectContaining({ method: "DELETE" }),
+    );
+    expect(result.current.folders).toHaveLength(0);
+    expect(result.current.sessions[0]?.folderId).toBeNull();
+  });
+
+  it("assignFolder 가 PATCH /sessions/:id 를 folderId 와 함께 호출하고 반영한다", async () => {
+    const fetchMock = vi.fn(
+      async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        if (url === "/api/v1/sessions/sess-1" && init?.method === "PATCH") {
+          return {
+            ok: true,
+            status: 200,
+            json: async () => ({
+              data: { id: "sess-1", folderId: "folder-1" },
+            }),
+          };
+        }
+        if (
+          url === "/api/v1/sessions" &&
+          (!init?.method || init.method === "GET")
+        ) {
+          return {
+            ok: true,
+            status: 200,
+            json: async () => ({
+              data: [
+                {
+                  id: "sess-1",
+                  title: "세션 A",
+                  lastMessageAt: "2026-07-14T01:00:00Z",
+                  projectId: null,
+                  archived: false,
+                  pinned: false,
+                  folderId: null,
+                },
+              ],
+            }),
+          };
+        }
+        return { ok: true, status: 200, json: async () => ({ data: [] }) };
+      },
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { result } = renderHook(() => useSessions());
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    await act(async () => {
+      await result.current.assignFolder("sess-1", "folder-1");
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/v1/sessions/sess-1",
+      expect.objectContaining({
+        method: "PATCH",
+        body: JSON.stringify({ folderId: "folder-1" }),
+      }),
+    );
+    expect(result.current.sessions[0]?.folderId).toBe("folder-1");
+  });
+
+  it("assignFolder 요청 실패 시 낙관적 업데이트를 롤백한다", async () => {
+    const fetchMock = vi.fn(
+      async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        if (url === "/api/v1/sessions/sess-1" && init?.method === "PATCH") {
+          return { ok: false, status: 500, json: async () => ({}) };
+        }
+        if (
+          url === "/api/v1/sessions" &&
+          (!init?.method || init.method === "GET")
+        ) {
+          return {
+            ok: true,
+            status: 200,
+            json: async () => ({
+              data: [
+                {
+                  id: "sess-1",
+                  title: "세션 A",
+                  lastMessageAt: "2026-07-14T01:00:00Z",
+                  projectId: null,
+                  archived: false,
+                  pinned: false,
+                  folderId: null,
+                },
+              ],
+            }),
+          };
+        }
+        return { ok: true, status: 200, json: async () => ({ data: [] }) };
+      },
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { result } = renderHook(() => useSessions());
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    await act(async () => {
+      await result.current.assignFolder("sess-1", "folder-1");
+    });
+
+    expect(result.current.sessions[0]?.folderId).toBeNull();
+  });
 });
