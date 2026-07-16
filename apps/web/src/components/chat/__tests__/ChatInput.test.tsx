@@ -426,6 +426,40 @@ describe("ChatInput 모델/모드 피커 (P10-T6-13)", () => {
     });
   });
 
+  // P19-T6-11 — 임시 채팅: 토글 시 비저장 안내를 표시하고 전송 payload 에 temporary:true 반영.
+  it("임시 채팅을 켜면 비저장 안내가 표시되고 payload 에 temporary:true 가 반영된다", async () => {
+    const onSend = vi.fn();
+    render(
+      <ChatInput
+        sessionId="session-1"
+        isStreaming={false}
+        onSend={onSend}
+        onStop={vi.fn()}
+        availableModels={MODELS}
+      />,
+    );
+
+    expect(
+      screen.queryByTestId("composer-temporary-banner"),
+    ).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByTestId("model-picker-temporary"));
+    expect(screen.getByTestId("composer-temporary-banner")).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText("메시지 입력"), {
+      target: { value: "비밀 얘기" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "전송" }));
+
+    await waitFor(() => {
+      expect(onSend).toHaveBeenCalledWith(
+        "비밀 얘기",
+        [],
+        expect.objectContaining({ temporary: true }),
+      );
+    });
+  });
+
   // P10-T6-17 — 에러/신뢰: 입력 draft 보존(세션별 sessionStorage).
   it("입력 draft 가 sessionStorage 에 보존되고 같은 sessionId 로 재마운트 시 복원된다", () => {
     const { unmount } = render(

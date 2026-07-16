@@ -107,6 +107,8 @@ export interface SendOptions {
   mode?: "agent" | "chat";
   reasoningEffort?: "low" | "medium" | "high";
   webSearch?: boolean;
+  // P19-T2-05/T6-11 — 임시 채팅: true 면 서버가 세션 upsert·메시지 영속을 스킵(미영속).
+  temporary?: boolean;
 }
 
 type ChatStreamEvent =
@@ -819,6 +821,7 @@ export function useSessionStream(sessionId: string) {
             ...(options?.webSearch !== undefined
               ? { webSearch: options.webSearch }
               : {}),
+            ...(options?.temporary ? { temporary: true } : {}),
           }),
         });
 

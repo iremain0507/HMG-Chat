@@ -171,6 +171,7 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
     const [effort, setEffort] = useState<ReasoningEffort>("medium");
     const [mode, setMode] = useState<ChatMode>("agent");
     const [webSearch, setWebSearch] = useState(false);
+    const [temporary, setTemporary] = useState(false);
     const taRef = useRef<HTMLTextAreaElement>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
     const { items, addFiles, remove, clear, readyUploadIds } =
@@ -337,7 +338,10 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
           mode,
           reasoningEffort: effort,
           ...(webSearchAvailable ? { webSearch } : {}),
+          ...(temporary ? { temporary: true } : {}),
         });
+      } else if (temporary) {
+        await onSend(content, attachments, { temporary: true });
       } else {
         await onSend(content, attachments);
       }
@@ -483,6 +487,14 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
           data-testid="attachment-file-input"
           onChange={onFileInputChange}
         />
+        {temporary && (
+          <p
+            data-testid="composer-temporary-banner"
+            className="px-1 text-xs text-fg-muted"
+          >
+            🕶️ 임시 채팅 — 이 대화는 저장되지 않습니다
+          </p>
+        )}
         <textarea
           id="chat-input"
           ref={taRef}
@@ -548,6 +560,8 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
             webSearchAvailable={webSearchAvailable}
             webSearch={webSearch}
             onWebSearchChange={setWebSearch}
+            temporary={temporary}
+            onTemporaryChange={setTemporary}
           />
           <span className="flex-1" />
           {contextUsagePercent !== undefined && (
