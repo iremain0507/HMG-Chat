@@ -158,6 +158,15 @@ export function createApp(env: Env) {
   });
   const mcpBridge = createMcpBridge({ pool: mcpClientPool });
 
+  // P14-T2-01 — routes/messages.ts 가 org-scoped maxTokens/systemPrompt/defaultModel 을
+  // 실제 turn 에 반영하도록 admin-settings 라우트(§ 아래)와 동일 인스턴스를 공유한다
+  // (createSettingsService 의 per-org TTL 캐시가 admin PUT 이후 invalidate 와 일관되도록).
+  const orgSettingsDa = createPgOrgSettingsDataAccess();
+  const settingsService = createSettingsService({
+    da: orgSettingsDa,
+    logger: createLogger(),
+  });
+
   const sessionsApp = new Hono<{ Variables: AuthedVariables }>();
   sessionsApp.use("*", authMiddleware);
   sessionsApp.route("/", createSessionRoutes());
@@ -166,9 +175,12 @@ export function createApp(env: Env) {
     createMessageRoutes({
       provider,
       // 실 Anthropic 은 env.LLM_MODEL(기본 Haiku 4.5) 사용. dev-stub 은 모델명 무시(에코).
+      // org_settings.defaultModel 이 설정돼 있으면(및 인증된 요청) messages.ts 가 이 값을
+      // 대체한다 — settings resolve 실패/미설정 시 이 값 그대로 fail-soft.
       model: env.LLM_MODEL,
       activeRuns: { setActiveRun },
       organizations: authDa.organizations,
+      settings: settingsService,
       // 클라이언트 생성 세션 UUID(/chat/<uuid>)를 첫 메시지 시 upsert — 아티팩트/업로드/
       //   active-run 의 sessions FK 충족(deep_research 리포트 저장 FK 위반 해소). best-effort:
       //   잘못된 id 형식 등은 무시(RLS 는 pgPool 롤이 bypass, FK 만 필요).
@@ -322,12 +334,6 @@ export function createApp(env: Env) {
   errorsApp.use("*", authMiddleware);
   errorsApp.route("/", createErrorRoutes({ da: createPgErrorLogDataAccess() }));
   app.route("/api/v1/errors", errorsApp);
-
-  const orgSettingsDa = createPgOrgSettingsDataAccess();
-  const settingsService = createSettingsService({
-    da: orgSettingsDa,
-    logger: createLogger(),
-  });
 
   const adminApp = new Hono<{ Variables: AuthedVariables }>();
   adminApp.use("*", authMiddleware);

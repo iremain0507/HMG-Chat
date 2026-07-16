@@ -1274,8 +1274,8 @@
     "acceptance": "L1 last-mile RED: createApp 채팅 턴에서 org maxTokens=8192 -> runTurn/ChatInput 이 8192 를 실제 수신(1024 아님) 단언; 설정 부재 시 >=4096(1024 아님); SSE 정상 stop 회귀; verify-gates green",
     "phase": "P14",
     "team": "T2",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P14-T2-02",

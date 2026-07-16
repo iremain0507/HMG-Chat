@@ -27,6 +27,10 @@ import {
 import type { AuthedVariables } from "../middleware/auth-middleware.js";
 import { hitlBridge } from "../tools/hitl-manager.js";
 import { createLogger } from "../lib/logger.js";
+import {
+  DEFAULT_ORG_SETTINGS,
+  type ResolvedOrgSettings,
+} from "../lib/org-settings-schema.js";
 
 // abort flow (L06) — Stop 클릭(routes/sessions.ts DELETE /:id/active-run) 이 run-registry 를 통해
 // 이 run 의 signal 을 abort() 시킨 뒤, 여기서 sessions_active_runs.status 를 갱신한다.
@@ -61,6 +65,42 @@ const noopAttachments: AttachmentsPort = {
     return null;
   },
 };
+
+// P14-T2-01 — org 별 maxTokens/temperature(ISOLATE, runtime 미배선)/systemPrompt/defaultModel
+// 을 admin 이 조정한 값으로 조회하는 포트. settings-service.ts(T1)와 동일 계약(resolve)만
+// 의존해 messages.ts 는 org-settings-schema.ts 의 타입만 import 한다(DI, 순환 회피).
+export interface SettingsResolverPort {
+  resolve(orgId: string): Promise<ResolvedOrgSettings>;
+}
+
+// org-settings-schema.ts 의 OrgSettingsSchema 필드는 전부 zod `.optional()` 이라
+// ResolvedOrgSettings(=Required<OrgSettingsPatch>) 로도 `string | undefined` 타입이 남는다
+// (Required<> 는 `?` modifier 만 제거, union 의 `| undefined` 는 유지되는 TS 특성). 아래
+// 안전기본 리터럴(4096)은 그 잔여 `| undefined` 를 좁히기 위한 최종 non-null 보강이며,
+// DEFAULT_ORG_SETTINGS.maxTokens 와 항상 같은 값을 유지해야 한다.
+const SAFE_DEFAULT_MAX_TOKENS = 4096;
+
+// 트리거 버그(messages.ts:272 구 `?? 1024`) 근본해결 — resolve 가 없거나(deps.settings
+// 미주입)/인증이 없거나/조회가 실패(reject)해도 절대 throw 하지 않고 DEFAULT_ORG_SETTINGS
+// (maxTokens=4096)로 fail-soft 한다(21-LOOP-LESSONS.md L2/L5 — 구 1024 폴백 금지).
+async function resolveSettingsSafely(
+  settings: SettingsResolverPort | undefined,
+  orgId: string | undefined,
+  logger: Logger | undefined,
+): Promise<ResolvedOrgSettings> {
+  if (!settings || !orgId) return DEFAULT_ORG_SETTINGS;
+  try {
+    return await settings.resolve(orgId);
+  } catch (error) {
+    logger?.warn({
+      category: "system",
+      msg: "org settings resolve 실패 — DEFAULT_ORG_SETTINGS 로 폴백",
+      orgId,
+      context: { error: String(error) },
+    });
+    return DEFAULT_ORG_SETTINGS;
+  }
+}
 
 // P11-T2-02 — 라우트가 매 요청마다 (필요 시) 조립하는 tool 실행 예산. BudgetClaim
 // (14-INTERFACES.md § 10) 의 최소 in-memory 구현 — 단일 누적 카운터만 유지하며 claim
@@ -115,6 +155,9 @@ export interface MessageRouteDeps {
   logger?: Logger;
   // P11-T2-13 — 각 tool invoke 계측(tool-metrics 기록 + gen_ai.* span). 미주입 시 계측 생략.
   toolMetrics?: Pick<ToolMetricRepo, "append">;
+  // P14-T2-01 — org-scoped admin 설정(maxTokens/systemPrompt/defaultModel) 조회. 미주입 시
+  // DEFAULT_ORG_SETTINGS 로 fail-soft(기존 동작 보존 + 구 1024 폴백은 여전히 제거됨).
+  settings?: SettingsResolverPort;
 }
 
 function errorJson(code: string, message: string) {
@@ -145,15 +188,25 @@ export function createMessageRoutes(
       );
     // 클라이언트 생성 세션 UUID 를 첫 메시지 시 DB 에 보장(upsert) — 이후 아티팩트/업로드/
     //   active-run 의 sessions FK 를 충족(없으면 deep_research 리포트 저장 등이 FK 위반).
-    const authForSession = c.get("auth");
-    if (authForSession) {
-      await deps.ensureSession?.(c.req.param("id"), authForSession.sub);
+    const auth = c.get("auth");
+    if (auth) {
+      await deps.ensureSession?.(c.req.param("id"), auth.sub);
     }
 
     const content = body.content?.trim();
     if (!content) {
       return c.json(errorJson("INVALID_INPUT", "content 가 필요합니다."), 400);
     }
+
+    // P14-T2-01 — org-scoped admin 설정 조회(maxTokens/systemPrompt/defaultModel). 인증이
+    // 없거나 deps.settings 미주입/조회 실패 시 DEFAULT_ORG_SETTINGS 로 fail-soft.
+    const resolvedSettings = await resolveSettingsSafely(
+      deps.settings,
+      auth?.org,
+      deps.logger,
+    );
+    const settingsResolved = deps.settings !== undefined && auth !== undefined;
+
     // P10-T2-06 — attachments:[{uploadId}] 를 ephemeral RAG 컨텍스트로 수용
     // (16-API-CONTRACT § POST /sessions/:id/messages 의 Phase 2/4 boundary 조기 해제).
     const attachmentsPort = deps.attachments ?? noopAttachments;
@@ -166,7 +219,12 @@ export function createMessageRoutes(
       .filter((a): a is { filename: string } => a !== null)
       .map((a) => a.filename);
 
-    const systemBlocks = deps.systemBlocks ?? [];
+    // org systemPrompt 를 system-tier PromptBlock 로 기존 systemBlocks 맨 앞에 추가한다
+    // (16-API-CONTRACT 의 tier 우선순위: system > project > user).
+    const orgSystemBlock: PromptBlock[] = resolvedSettings.systemPrompt
+      ? [{ tier: "system", content: resolvedSettings.systemPrompt }]
+      : [];
+    const systemBlocks = [...orgSystemBlock, ...(deps.systemBlocks ?? [])];
     const ephemeralBlock: PromptBlock[] =
       attachmentFilenames.length > 0
         ? [
@@ -189,12 +247,17 @@ export function createMessageRoutes(
     const staticTools = deps.tools ?? [];
     const needsToolContext =
       staticTools.length > 0 || deps.mcpTools !== undefined;
-    let model = deps.model;
+    // P14-T2-01 — org defaultModel 은 body.model 이 없을 때만, 실제 org 설정이 조회됐을 때만
+    // (settingsResolved) deps.model(서버 기본 모델)을 대체한다 — settings 미주입 환경(기존
+    // 테스트/배선)은 deps.model 그대로 유지.
+    let model =
+      requestedModel === undefined && settingsResolved
+        ? (resolvedSettings.defaultModel ?? deps.model)
+        : deps.model;
     let tools: AgentTool[] = staticTools;
     let toolContext: Omit<ToolContext, "signal"> | undefined;
 
     if (requestedModel !== undefined || needsToolContext) {
-      const auth = c.get("auth");
       if (!auth) {
         return c.json(errorJson("UNAUTHENTICATED", "인증이 필요합니다."), 401);
       }
@@ -269,7 +332,10 @@ export function createMessageRoutes(
           model,
           systemBlocks: [...systemBlocks, ...ephemeralBlock],
           messages,
-          maxTokens: deps.maxTokens ?? 1024,
+          maxTokens:
+            deps.maxTokens ??
+            resolvedSettings.maxTokens ??
+            SAFE_DEFAULT_MAX_TOKENS,
           signal: handle.controller.signal,
           ...(tools.length > 0 ? { tools, parallelToolCalls: true } : {}),
           ...(toolContext ? { toolContext } : {}),

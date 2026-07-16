@@ -2,3 +2,4 @@ P0-T1-01 | AWS 실계정 프로비저닝 필요(VPC/RDS/Redis/ECR/ECS) — proje
 P9-T6-02 | e2e Playwright + A11y audit — 전체 스택(server+web+DB) 기동 + 브라우저 e2e 필요. 코드는 준비 가능하나 LOCAL_ONLY 세션에서 실 e2e green 확정은 배포/스테이징 환경에서. 배포-시 human gate.
 P9-ALL-01 | GA 게이트: 커버리지 임계 + docs/decisions ADR INDEX 는 가능하나 "24시간 staging soak 오류 0" 요건이 세션에서 불가(장시간 실행+스테이징 환경). 배포-시 human gate.
 P9-ALL-02 | v1.0 GA production 배포 = AWS(LOCAL_ONLY 라 불가) + 회고 ADR. 실 배포는 사람이 AWS 프로비저닝(P0-T1-01) 후 수행. 배포-시 human gate.
+P14-T2-01(temperature) | temperature 런타임 반영은 RunTurnInput/ChatInput 에 temperature 필드를 추가해 orchestrator.ts(provider.chat 호출부)에서 forward 해야 하나, 이 phase-loop-prompt 의 P14-T2-01 표는 편집 허용 파일을 routes/messages.ts, app.ts 로만 한정(orchestrator.ts 는 표 밖). maxTokens/systemPrompt/defaultModel(테스트된 acceptance)은 완료 — temperature 배선만 별도 후속 태스크로 격리.

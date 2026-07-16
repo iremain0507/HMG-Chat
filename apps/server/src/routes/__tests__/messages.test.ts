@@ -4,12 +4,14 @@ import { Hono } from "hono";
 import type {
   AgentTool,
   ChatEvent,
+  ChatInput,
   LLMProvider,
   PromptBlock,
 } from "@wchat/interfaces";
 import type { AuthedVariables } from "../../middleware/auth-middleware.js";
 import { listPendingHitl, resolveHitl } from "../../tools/hitl-manager.js";
 import { createMessageRoutes, type AttachmentsPort } from "../messages.js";
+import { DEFAULT_ORG_SETTINGS } from "../../lib/org-settings-schema.js";
 
 function fakeHelloProvider(): LLMProvider {
   return {
@@ -478,5 +480,177 @@ describe("POST /:id/messages — tools/toolContext 배선 — P11-T2-02", () => 
     });
     expect(res.status).toBe(200);
     await res.text();
+  });
+});
+
+describe("POST /:id/messages — org settings 배선(트리거 버그 근본해결) — P14-T2-01", () => {
+  function appWithAuth(routes: ReturnType<typeof createMessageRoutes>) {
+    const app = new Hono<{ Variables: AuthedVariables }>();
+    app.use("*", async (c, next) => {
+      c.set("auth", {
+        sub: "user-1",
+        org: "org-1",
+        role: "member",
+        scope: "access",
+        jti: "x",
+      });
+      await next();
+    });
+    app.route("/", routes);
+    return app;
+  }
+
+  function capturingProvider(captured: ChatInput[]): LLMProvider {
+    return {
+      name: "fake",
+      models: ["fake-model", "org-default-model"],
+      async *chat(req) {
+        captured.push(req);
+        const events: ChatEvent[] = [
+          {
+            type: "message_start",
+            messageId: "msg-settings-1",
+            meta: { provider: "fake", model: req.model },
+          },
+          { type: "text_delta", text: "ok" },
+          {
+            type: "stop",
+            reason: "end_turn",
+            usage: { inputTokens: 1, outputTokens: 1 },
+          },
+        ];
+        for (const event of events) yield event;
+      },
+    };
+  }
+
+  it("org maxTokens=8192 설정이 runTurn/ChatInput 에 실제 반영된다(1024 아님)", async () => {
+    const captured: ChatInput[] = [];
+    const routes = createMessageRoutes({
+      provider: capturingProvider(captured),
+      model: "fake-model",
+      settings: {
+        async resolve() {
+          return { ...DEFAULT_ORG_SETTINGS, maxTokens: 8192 };
+        },
+      },
+    });
+    const app = appWithAuth(routes);
+
+    const res = await app.request("/session-1/messages", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "text/event-stream",
+      },
+      body: JSON.stringify({ content: "hi" }),
+    });
+    expect(res.status).toBe(200);
+    const text = await res.text();
+
+    expect(captured).toHaveLength(1);
+    expect(captured[0].maxTokens).toBe(8192);
+    // SSE 정상 stop 회귀 — 설정 배선이 정상 종료 흐름을 깨지 않는다.
+    expect(text).toContain("event: stop");
+    expect(text).toContain('"reason":"end_turn"');
+  });
+
+  it("settings 미주입 시에도 maxTokens 기본값은 4096 이상이다(구 1024 폴백 금지 — L2)", async () => {
+    const captured: ChatInput[] = [];
+    const app = createMessageRoutes({
+      provider: capturingProvider(captured),
+      model: "fake-model",
+    });
+
+    const res = await app.request("/session-1/messages", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ content: "hi" }),
+    });
+    expect(res.status).toBe(200);
+    await res.text();
+
+    expect(captured).toHaveLength(1);
+    expect(captured[0].maxTokens).toBeGreaterThanOrEqual(4096);
+  });
+
+  it("settings 조회가 실패(reject)해도 fail-soft 로 4096 이상을 사용한다(L2/L5 — throw 금지)", async () => {
+    const captured: ChatInput[] = [];
+    const routes = createMessageRoutes({
+      provider: capturingProvider(captured),
+      model: "fake-model",
+      settings: {
+        async resolve() {
+          throw new Error("db down");
+        },
+      },
+    });
+    const app = appWithAuth(routes);
+
+    const res = await app.request("/session-1/messages", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ content: "hi" }),
+    });
+    expect(res.status).toBe(200);
+    await res.text();
+
+    expect(captured).toHaveLength(1);
+    expect(captured[0].maxTokens).toBeGreaterThanOrEqual(4096);
+  });
+
+  it("org systemPrompt 설정이 system-tier PromptBlock 로 systemBlocks 맨 앞에 추가된다", async () => {
+    const captured: ChatInput[] = [];
+    const routes = createMessageRoutes({
+      provider: capturingProvider(captured),
+      model: "fake-model",
+      systemBlocks: [{ tier: "project", content: "기존 프로젝트 블록" }],
+      settings: {
+        async resolve() {
+          return {
+            ...DEFAULT_ORG_SETTINGS,
+            systemPrompt: "당신은 WIA 상담원입니다.",
+          };
+        },
+      },
+    });
+    const app = appWithAuth(routes);
+
+    const res = await app.request("/session-1/messages", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ content: "hi" }),
+    });
+    await res.text();
+
+    expect(captured).toHaveLength(1);
+    const blocks = captured[0].systemBlocks;
+    expect(blocks[0].tier).toBe("system");
+    expect(blocks[0].content).toBe("당신은 WIA 상담원입니다.");
+    expect(blocks.some((b) => b.content === "기존 프로젝트 블록")).toBe(true);
+  });
+
+  it("org defaultModel 설정이 body.model 미지정 시 실 turn model 로 반영된다", async () => {
+    const captured: ChatInput[] = [];
+    const routes = createMessageRoutes({
+      provider: capturingProvider(captured),
+      model: "fake-model",
+      settings: {
+        async resolve() {
+          return { ...DEFAULT_ORG_SETTINGS, defaultModel: "org-default-model" };
+        },
+      },
+    });
+    const app = appWithAuth(routes);
+
+    const res = await app.request("/session-1/messages", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ content: "hi" }),
+    });
+    await res.text();
+
+    expect(captured).toHaveLength(1);
+    expect(captured[0].model).toBe("org-default-model");
   });
 });
