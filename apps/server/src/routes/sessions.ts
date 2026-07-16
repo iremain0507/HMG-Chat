@@ -114,6 +114,7 @@ export function createSessionRoutes(
         sessionId: m.sessionId,
         role: m.role,
         content: m.content,
+        parentMessageId: m.parentMessageId,
         createdAt: m.createdAt.toISOString(),
         tokensIn: m.tokensIn,
         tokensOut: m.tokensOut,

@@ -1625,8 +1625,8 @@
     "acceptance": "RED: createApp 통합테스트 GET /:id/messages 응답 각 항목에 parentMessageId(있으면) 포함 단언. verify-gates green",
     "phase": "P19",
     "team": "T1",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P19-T6-01",
