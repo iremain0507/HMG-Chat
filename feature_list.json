@@ -1580,8 +1580,8 @@
     "acceptance": "RED: 목 GET /:id/artifacts → 마운트 시 artifacts 복원·카드 렌더 단언; human UAT(재방문 시 문서 유지); verify-gates green",
     "phase": "P18",
     "team": "T6",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P18-T6-03",

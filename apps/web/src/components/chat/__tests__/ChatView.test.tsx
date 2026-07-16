@@ -1857,4 +1857,70 @@ describe("ChatView", () => {
     expect(screen.getByText("예전 답변")).toBeInTheDocument();
     expect(screen.queryByText("무엇을 도와드릴까요?")).not.toBeInTheDocument();
   });
+
+  it("세션을 열면 GET /:id/artifacts 로 아티팩트를 복원해 인라인 카드로 렌더한다 (P18-T6-02)", async () => {
+    const fetchMock = vi.fn(async (url: string) => {
+      const u = String(url);
+      if (u === "/api/v1/sessions/session-1/messages") {
+        return {
+          ok: true,
+          json: async () => ({
+            data: [
+              {
+                id: "m-1",
+                sessionId: "session-1",
+                role: "user",
+                content: "이전 요청",
+              },
+              {
+                id: "m-2",
+                sessionId: "session-1",
+                role: "assistant",
+                content: "예전 문서 작성했습니다",
+              },
+            ],
+          }),
+        };
+      }
+      if (u === "/api/v1/sessions/session-1/artifacts") {
+        return {
+          ok: true,
+          json: async () => ({
+            data: [
+              {
+                id: "artifact-1",
+                sessionId: "session-1",
+                type: "markdown",
+                filename: "restored.md",
+                sizeBytes: 200,
+                storageKind: "inline",
+                createdAt: "2026-07-01T00:00:00.000Z",
+              },
+            ],
+          }),
+        };
+      }
+      return {
+        body: new ReadableStream<Uint8Array>({ start: (c) => c.close() }),
+      };
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<ChatView sessionId="session-1" />);
+
+    await waitFor(() => {
+      expect(screen.getByText("예전 문서 작성했습니다")).toBeInTheDocument();
+    });
+
+    const assistantMessage = screen
+      .getByText("예전 문서 작성했습니다")
+      .closest("li");
+    expect(assistantMessage).not.toBeNull();
+    await waitFor(() => {
+      const card = within(assistantMessage as HTMLElement).getByTestId(
+        "artifact-card",
+      );
+      expect(card).toHaveTextContent("restored.md");
+    });
+  });
 });

@@ -946,4 +946,59 @@ describe("useSessionStream", () => {
       ).toBe(false);
     });
   });
+
+  describe("loadArtifacts (P18-T6-02)", () => {
+    it("GET /:id/artifacts 응답으로 artifacts 상태를 복원한다", async () => {
+      const fetchMock = vi.fn(async () => ({
+        ok: true,
+        json: async () => ({
+          data: [
+            {
+              id: "artifact-1",
+              sessionId: "session-1",
+              type: "markdown",
+              filename: "report.md",
+              sizeBytes: 120,
+              storageKind: "inline",
+              createdAt: "2026-07-01T00:00:00.000Z",
+            },
+          ],
+        }),
+      }));
+      vi.stubGlobal("fetch", fetchMock);
+
+      const { result } = renderHook(() => useSessionStream("session-1"));
+      await act(async () => {
+        await result.current.loadArtifacts();
+      });
+
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/v1/sessions/session-1/artifacts",
+        expect.objectContaining({ credentials: "include" }),
+      );
+      expect(result.current.artifacts).toEqual([
+        {
+          artifactId: "artifact-1",
+          artifactKind: "markdown",
+          filename: "report.md",
+          sizeBytes: 120,
+          restored: true,
+        },
+      ]);
+    });
+
+    it("응답 실패 시 조용히 빈 목록으로 폴백한다(fail-soft)", async () => {
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async () => ({ ok: false })),
+      );
+
+      const { result } = renderHook(() => useSessionStream("session-1"));
+      await act(async () => {
+        await result.current.loadArtifacts();
+      });
+
+      expect(result.current.artifacts).toEqual([]);
+    });
+  });
 });

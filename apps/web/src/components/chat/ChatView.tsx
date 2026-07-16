@@ -77,6 +77,7 @@ export function ChatView({ sessionId }: { sessionId: string }) {
     switchBranch,
     historyLoading,
     loadHistory,
+    loadArtifacts,
   } = useSessionStream(sessionId);
   const { org } = useCurrentUser();
   const online = useOnlineStatus();
@@ -196,14 +197,20 @@ export function ChatView({ sessionId }: { sessionId: string }) {
   // design-reference §4: artifact_created → 우패널 '아티팩트' 탭 자동 오픈 + 토스트.
   useEffect(() => {
     if (artifacts.length > prevArtifactCountRef.current) {
-      setActiveArtifactIndex(artifacts.length - 1);
-      setArtifactPanelOpen(true);
-      setRightPanelFocus({
-        tab: "artifacts",
-        token: ++panelFocusTokenRef.current,
-      });
-      const created = artifacts[artifacts.length - 1];
-      if (created) showToast("success", `새 아티팩트: ${created.filename}`);
+      // P18-T6-02 — 복원된(restored) 항목만으로 늘어난 경우엔 "새 아티팩트"가 아니라
+      // 재방문 시 기존 문서를 되찾은 것뿐이므로 자동오픈+토스트를 건너뛴다.
+      const newlyAdded = artifacts.slice(prevArtifactCountRef.current);
+      const allRestored = newlyAdded.every((a) => a.restored);
+      if (!allRestored) {
+        setActiveArtifactIndex(artifacts.length - 1);
+        setArtifactPanelOpen(true);
+        setRightPanelFocus({
+          tab: "artifacts",
+          token: ++panelFocusTokenRef.current,
+        });
+        const created = artifacts[artifacts.length - 1];
+        if (created) showToast("success", `새 아티팩트: ${created.filename}`);
+      }
     }
     prevArtifactCountRef.current = artifacts.length;
   }, [artifacts]);
@@ -253,6 +260,12 @@ export function ChatView({ sessionId }: { sessionId: string }) {
   useEffect(() => {
     void loadHistory();
   }, [loadHistory]);
+
+  // P18-T6-02 — 세션을 열 때 아티팩트도 함께 복원(라이브 스트림으로만 채워지면
+  // 재방문/새로고침 시 사라짐, P18 증상②).
+  useEffect(() => {
+    void loadArtifacts();
+  }, [loadArtifacts]);
 
   const lastMessage = messages[messages.length - 1];
   const lastAssistantContent =

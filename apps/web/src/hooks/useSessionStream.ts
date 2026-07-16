@@ -87,6 +87,8 @@ export interface HitlPromptData {
 // 14-INTERFACES § ChatEvent.artifact_created 와 1:1 (artifactId/artifactKind/filename/sizeBytes/downloadUrl).
 // messageId 는 서버 wire format 에 없는 클라이언트 전용 필드(P18-T6-01) — 라이브 스트림에서
 // artifact_created 가 도착한 시점의 assistantId 로 채워, 메시지 인라인 카드 귀속에 쓴다.
+// restored 도 클라이언트 전용(P18-T6-02) — GET /:id/artifacts 로 복원된 항목 표시. ChatView 의
+// "새 아티팩트" 자동오픈+토스트가 재방문 시 기존 문서를 새 문서로 오인하지 않도록 구분하는 용도.
 export interface ArtifactSummary {
   artifactId: string;
   artifactKind: string;
@@ -94,6 +96,7 @@ export interface ArtifactSummary {
   sizeBytes: number;
   downloadUrl?: string;
   messageId?: string;
+  restored?: boolean;
 }
 
 // P10-T6-13 — 모델/모드 피커 선택값. 서버 계약(16-API-CONTRACT § POST /sessions/:id/messages)에
@@ -246,6 +249,7 @@ export function useSessionStream(sessionId: string) {
   const [artifacts, setArtifacts] = useState<ArtifactSummary[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
   const historyLoadedRef = useRef(false);
+  const artifactsLoadedRef = useRef(false);
   const abortRef = useRef<AbortController | null>(null);
 
   // P17-T6-01(TS-08) — 세션 재진입/새로고침 시 GET /:id/messages 로 과거 대화를 복원한다.
@@ -283,6 +287,45 @@ export function useSessionStream(sessionId: string) {
       setHistoryLoading(false);
     }
   }, [sessionId, addNode]);
+
+  // P18-T6-02 — 세션 재진입 시 GET /:id/artifacts 로 아티팩트를 복원한다. 지금까지는
+  // artifact_created 라이브 이벤트로만 artifacts state 가 채워져 재방문/새로고침 시
+  // 문서가 사라졌다(P18 증상②). 서버 wire format(id/type)을 클라이언트 ArtifactSummary
+  // (artifactId/artifactKind)로 매핑 — messageId 는 서버에 없어(frozen interfaces) 비워두고,
+  // ChatView 의 기존 orphanArtifacts 폴백(마지막 assistant 메시지 귀속, P18-T6-01)에 맡긴다.
+  // 이미 진행 중인 라이브 아티팩트가 있으면 덮어쓰지 않는다(loadHistory 와 동일한 폴백 원칙).
+  const loadArtifacts = useCallback(async () => {
+    if (artifactsLoadedRef.current) return;
+    artifactsLoadedRef.current = true;
+    try {
+      const res = await apiFetch(`/api/v1/sessions/${sessionId}/artifacts`, {
+        credentials: "include",
+      });
+      if (!res.ok) return;
+      const body = (await res.json()) as {
+        data: Array<{
+          id: string;
+          type: string;
+          filename: string;
+          sizeBytes: number;
+        }>;
+      };
+      if (body.data.length === 0) return;
+      setArtifacts((prev) =>
+        prev.length > 0
+          ? prev
+          : body.data.map((a) => ({
+              artifactId: a.id,
+              artifactKind: a.type,
+              filename: a.filename,
+              sizeBytes: a.sizeBytes,
+              restored: true,
+            })),
+      );
+    } catch {
+      // fail-soft — 복원 실패 시 아티팩트 없이 시작(L2/L5, 조용한 실패 아닌 정상 폴백).
+    }
+  }, [sessionId]);
 
   const messages = useMemo<StreamMessage[]>(() => {
     const t = treeRef.current;
@@ -739,5 +782,6 @@ export function useSessionStream(sessionId: string) {
     switchBranch,
     historyLoading,
     loadHistory,
+    loadArtifacts,
   };
 }
