@@ -1598,7 +1598,7 @@
     "acceptance": "RED/검증: null 제목+메시지 있는 세션→백필 후 파생 title; 메시지 없는 세션→null 유지; 재실행 idempotent; verify-gates green",
     "phase": "P18",
     "team": "T1",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   }
 ]
