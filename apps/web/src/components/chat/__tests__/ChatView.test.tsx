@@ -925,6 +925,143 @@ describe("ChatView", () => {
     });
   });
 
+  // P17-T6-08(TS-24) — 429/rate-limit 오류는 재시도 버튼과 별개로 mono 백오프
+  // 카운트다운을 보여주고, 카운트다운이 끝나면 사용자 클릭 없이 자동 재전송한다.
+  it("rate-limit 오류는 mono 백오프 카운트다운을 렌더하고, 카운트다운이 끝나면 자동으로 재전송한다", async () => {
+    const encoder = new TextEncoder();
+    const fetchMock = vi.fn(async () => ({
+      body: new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.enqueue(
+            encoder.encode(sseFrame("message_start", { messageId: "msg-1" })),
+          );
+          controller.enqueue(
+            encoder.encode(
+              sseFrame("error", {
+                error: {
+                  code: "RATE_LIMITED",
+                  category: "rate-limit",
+                  message: "요청이 너무 많습니다",
+                  retryable: true,
+                },
+              }),
+            ),
+          );
+          controller.close();
+        },
+      }),
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<ChatView sessionId="session-1" />);
+    fireEvent.change(screen.getByLabelText("메시지 입력"), {
+      target: { value: "다시 물어볼게" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "전송" }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("rate-limit-countdown")).toBeInTheDocument();
+    });
+    expect(screen.getByTestId("rate-limit-countdown")).toHaveClass("font-mono");
+
+    fetchMock.mockClear();
+
+    await waitFor(
+      () => {
+        expect(fetchMock).toHaveBeenCalledWith(
+          "/api/v1/sessions/session-1/messages",
+          expect.objectContaining({
+            body: JSON.stringify({ content: "다시 물어볼게" }),
+          }),
+        );
+      },
+      { timeout: 4500 },
+    );
+  }, 6000);
+
+  // P17-T6-08(TS-24) — SSE 재연결(resume)까지 실패해 발생한 network 오류는, 오프라인→
+  // 온라인 전환 시 사용자 클릭 없이 자동으로 재전송한다(오프라인 배너와 별개 동작).
+  it("네트워크 오류(연결 끊김) 후 오프라인→온라인으로 전환되면 자동으로 재전송한다", async () => {
+    const encoder = new TextEncoder();
+    const messagesUrl = "/api/v1/sessions/session-1/messages";
+    // 마운트 시 useCurrentUser/useProjects/useSessionProject/loadHistory 등도
+    // 같은 fetch 를 공유하므로, 대상 POST(전송)/GET(resume)만 시나리오대로 순서 제어하고
+    // 나머지는 기존 다른 테스트들처럼 안전한 기본 응답으로 흘려보낸다(fail-soft 훅들).
+    let sendCount = 0;
+    const fetchMock = vi.fn(async (url: unknown, init?: RequestInit) => {
+      const href = String(url);
+      if (init?.method === "POST" && href === messagesUrl) {
+        sendCount += 1;
+        if (sendCount === 1) {
+          return {
+            body: new ReadableStream<Uint8Array>({
+              start(controller) {
+                controller.enqueue(
+                  encoder.encode(
+                    sseFrame("message_start", { messageId: "msg-1" }),
+                  ),
+                );
+                controller.close();
+              },
+            }),
+          };
+        }
+        return {
+          body: new ReadableStream<Uint8Array>({
+            start(controller) {
+              controller.enqueue(
+                encoder.encode(
+                  sseFrame("message_start", { messageId: "msg-2" }),
+                ),
+              );
+              controller.enqueue(
+                encoder.encode(sseFrame("stop", { reason: "end_turn" })),
+              );
+              controller.close();
+            },
+          }),
+        };
+      }
+      if (href.includes(`${messagesUrl}/msg-1/stream`)) {
+        throw new Error("network down");
+      }
+      return { ok: false };
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<ChatView sessionId="session-1" />);
+    fireEvent.change(screen.getByLabelText("메시지 입력"), {
+      target: { value: "다시 연결" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "전송" }));
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("연결이 끊어졌습니다. 다시 시도해주세요."),
+      ).toBeInTheDocument();
+    });
+
+    fetchMock.mockClear();
+    act(() => {
+      window.dispatchEvent(new Event("offline"));
+    });
+    act(() => {
+      window.dispatchEvent(new Event("online"));
+    });
+
+    await waitFor(
+      () => {
+        expect(fetchMock).toHaveBeenCalledWith(
+          "/api/v1/sessions/session-1/messages",
+          expect.objectContaining({
+            body: JSON.stringify({ content: "다시 연결" }),
+          }),
+        );
+      },
+      { timeout: 4500 },
+    );
+  }, 6000);
+
   it("hitl_request 이벤트가 오면 HitlPrompt 카드가 렌더되고, 승인 클릭 시 POST /messages/hitl 을 호출한다", async () => {
     let releaseStream: (() => void) | undefined;
     const encoder = new TextEncoder();

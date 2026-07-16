@@ -1553,8 +1553,8 @@
     "acceptance": "RED: 429 응답 시 카운트다운 표시; SSE 끊김 시 자동 재연결 시도; 하드코딩 hex 0; verify-gates green",
     "phase": "P17",
     "team": "T6",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P17-T6-09",

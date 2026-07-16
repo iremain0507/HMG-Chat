@@ -846,6 +846,9 @@ describe("useSessionStream", () => {
     const errorMessage = result.current.messages.find((m) => m.error);
     expect(errorMessage).toBeDefined();
     expect(errorMessage?.retryable).toBe(true);
+    // P17-T6-08(TS-24) — ChatView 가 오프라인→온라인 복귀 시 이 카테고리만 골라
+    // 자동 재연결하므로, rate-limit 등 다른 재시도 가능 오류와 구분돼야 한다.
+    expect(errorMessage?.errorCategory).toBe("network");
   });
 
   describe("loadHistory (P17-T6-01, TS-08)", () => {

@@ -223,6 +223,39 @@ export function ChatView({ sessionId }: { sessionId: string }) {
   const lastAssistantContent =
     lastMessage?.role === "assistant" ? lastMessage.content : "";
 
+  // P17-T6-08(TS-24) — 오프라인→온라인 복귀 시, SSE 드롭+재연결(resume)까지 실패해
+  // 남은 network 오류(errorCategory==="network")만 골라 사용자 클릭 없이 자동 재전송한다.
+  // (rate-limit 등 다른 재시도 가능 오류까지 무조건 자동 재전송하면 안 되므로 카테고리로 한정.)
+  // 지수 백오프: 같은 오프라인 구간에서 반복 실패할수록 대기시간을 2배씩 늘린다(최대 16초).
+  const wasOnlineRef = useRef(online);
+  const reconnectAttemptRef = useRef(0);
+  useEffect(() => {
+    if (!online) {
+      reconnectAttemptRef.current = 0;
+    }
+  }, [online]);
+  useEffect(() => {
+    const cameBackOnline = online && wasOnlineRef.current === false;
+    wasOnlineRef.current = online;
+    if (!cameBackOnline) return;
+    if (
+      !lastMessage ||
+      lastMessage.role !== "assistant" ||
+      !lastMessage.error ||
+      !lastMessage.retryable ||
+      lastMessage.errorCategory !== "network"
+    ) {
+      return;
+    }
+    const attempt = reconnectAttemptRef.current;
+    reconnectAttemptRef.current = attempt + 1;
+    const delayMs = Math.min(1000 * 2 ** attempt, 16_000);
+    const timer = setTimeout(() => {
+      void regenerate(lastMessage.id);
+    }, delayMs);
+    return () => clearTimeout(timer);
+  }, [online, lastMessage, regenerate]);
+
   // 빠른 델타마다 SR 안내가 갱신되면 스크린리더가 매 글자를 읽어 소음이 되므로,
   // 델타가 잠잠해진 뒤(트레일링 디바운스)에만 announcer 텍스트를 갱신한다.
   useEffect(() => {
@@ -480,6 +513,33 @@ export function ChatView({ sessionId }: { sessionId: string }) {
   );
 }
 
+// P17-T6-08(TS-24) — 429/rate-limit 오류의 백오프 대기시간(서버가 Retry-After 를 아직
+// 전달하지 않아 클라이언트 기본값을 쓴다). 카운트다운이 끝나면 사용자 클릭 없이 자동 재시도.
+const RATE_LIMIT_BACKOFF_MS = 3000;
+
+function useRateLimitCountdown(active: boolean, onExpire: () => void): number {
+  const [retryAt] = useState(() => Date.now() + RATE_LIMIT_BACKOFF_MS);
+  const [remainingMs, setRemainingMs] = useState(() => retryAt - Date.now());
+  const firedRef = useRef(false);
+  const onExpireRef = useRef(onExpire);
+  onExpireRef.current = onExpire;
+
+  useEffect(() => {
+    if (!active || remainingMs <= 0) return;
+    const timer = setTimeout(() => setRemainingMs(retryAt - Date.now()), 1000);
+    return () => clearTimeout(timer);
+  }, [active, remainingMs, retryAt]);
+
+  useEffect(() => {
+    if (active && remainingMs <= 0 && !firedRef.current) {
+      firedRef.current = true;
+      onExpireRef.current();
+    }
+  }, [active, remainingMs]);
+
+  return Math.max(0, remainingMs);
+}
+
 export function MessageItem({
   role,
   content,
@@ -520,9 +580,17 @@ export function MessageItem({
     el?.scrollIntoView?.({ block: "nearest" });
     onCitationFocus?.(index);
   };
+  const isRateLimitError = Boolean(
+    error && errorCategory === "rate-limit" && retryable,
+  );
+  const rateLimitMsLeft = useRateLimitCountdown(isRateLimitError, () => {
+    onRegenerate?.();
+  });
   if (error) {
     // P10-T6-17 — 재시도 가능(retryable:true) 오류만 재시도 버튼 노출(크레딧부족 등
-    // 비재시도 오류는 노출 안 함). rate-limit 카테고리는 429 백오프 안내를 덧붙인다.
+    // 비재시도 오류는 노출 안 함). rate-limit 카테고리는 mono 백오프 카운트다운을
+    // 덧붙이고, 카운트다운이 끝나면 클릭 없이 자동으로 재시도한다(useRateLimitCountdown).
+    const rateLimitSecondsLeft = Math.ceil(rateLimitMsLeft / 1000);
     return (
       <li data-role="error" className="flex gap-3">
         <div className="mt-0.5 grid h-8 w-8 flex-none place-items-center rounded-lg bg-accent text-sm font-bold text-white">
@@ -531,9 +599,14 @@ export function MessageItem({
         <div className="flex min-w-0 flex-1 items-start justify-between gap-3 rounded-xl border border-accent/40 bg-accent/10 px-3 py-2 text-sm text-accent">
           <span>
             <span className="font-semibold">오류</span> · {content}
-            {errorCategory === "rate-limit" && (
-              <span className="ml-1 text-accent/80">
-                잠시 후 다시 시도해주세요.
+            {isRateLimitError && (
+              <span
+                data-testid="rate-limit-countdown"
+                className="ml-1 font-mono tabular-nums text-accent/80"
+              >
+                {rateLimitSecondsLeft > 0
+                  ? ` ${rateLimitSecondsLeft}초 후 자동 재시도`
+                  : " 재시도 중…"}
               </span>
             )}
           </span>

@@ -330,6 +330,10 @@ export function useSessionStream(sessionId: string) {
           content: message,
           error: true,
           retryable: true,
+          // P17-T6-08(TS-24) — 오프라인→온라인 복귀 시 ChatView 가 이 카테고리의 재시도
+          // 가능 오류만 골라 자동 재연결(regenerate)한다(rate-limit 등 다른 재시도
+          // 가능 오류까지 무조건 자동 재전송하면 안 되므로 구분 필요).
+          errorCategory: "network",
         });
         showToast("error", message);
         receivedTerminal = true;
