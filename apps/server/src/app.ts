@@ -41,6 +41,7 @@ import { createPgHealthHistoryDataAccess } from "./db/health-history-data-access
 import { createPgAdminDataAccess } from "./db/admin-data-access.js";
 import { createPgOrgSettingsDataAccess } from "./db/org-settings-data-access.js";
 import { createSettingsService } from "./lib/settings-service.js";
+import { DEFAULT_ORG_SETTINGS } from "./lib/org-settings-schema.js";
 import { createSkillRegistry } from "./tools/skills-engine.js";
 import { assembleBuiltinTools } from "./tools/assemble-builtin-tools.js";
 import { hitlBridge } from "./tools/hitl-manager.js";
@@ -196,10 +197,17 @@ export function createApp(env: Env) {
       },
       // 내장 도구 전체 배선: artifact_create + web_search + code_interpreter + deep_research.
       //   키(TAVILY/E2B) 없으면 dev-stub 폴백(assemble-builtin-tools.ts).
+      // P14-T2-02 — assembleBuiltinTools 는 app 조립 시점(요청 전, org 미지정)에 한 번만
+      // 실행되는 싱글톤이라 org_settings.toolMaxTokens 를 요청별로 반영할 수 없다(정적 조립
+      // 제약 — T3-01 의 invoke-time resolve 와 달리, tools 배열 자체를 messages.ts 가 요청마다
+      // 재구성하지 않는 한 불가능하며 그 배선은 이 태스크 표(app.ts/memory-extractor.ts) 밖).
+      // 여기서는 중복 매직넘버(4096)를 없애 DEFAULT_ORG_SETTINGS.toolMaxTokens 단일 출처만
+      // 참조한다 — 실 org-scoped 동적 반영은 .ralph/blocked_tasks 에 격리.
       tools: assembleBuiltinTools({
         provider,
         model: env.LLM_MODEL,
-        maxTokens: 4096,
+        // `?? 4096` — messages.ts SAFE_DEFAULT_MAX_TOKENS 와 동일한 TS `| undefined` 잔여 보강.
+        maxTokens: DEFAULT_ORG_SETTINGS.toolMaxTokens ?? 4096,
         artifactDa,
         objectStore: createLocalObjectStore(),
         ...(env.TAVILY_API_KEY ? { tavilyApiKey: env.TAVILY_API_KEY } : {}),

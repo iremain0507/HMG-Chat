@@ -1283,8 +1283,8 @@
     "acceptance": "RED: settings.toolMaxTokens=8000 -> 내장도구+memory-extractor 가 8000 사용; 미설정 시 기본 유지; verify-gates green",
     "phase": "P14",
     "team": "T2",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P14-T3-01",
