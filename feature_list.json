@@ -1463,8 +1463,8 @@
     "acceptance": "RED: PATCH /me 후 GET /me 에 반영; 인증 필요; routes-mounted green; verify-gates green",
     "phase": "P17",
     "team": "T1",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P17-T1-05",

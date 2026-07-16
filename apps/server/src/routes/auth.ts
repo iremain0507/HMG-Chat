@@ -407,6 +407,61 @@ export function createAuthRoutes(deps: AuthRouteDeps): Hono {
     });
   });
 
+  // P17-T1-04(TS-20) — 본인 프로필 수정. 16-API-CONTRACT.md § PATCH /auth/me:
+  // name(1~100자)·customInstructions(null=제거, max 2000자) 부분 갱신, 갱신된 User 반환.
+  app.patch("/me", async (c) => {
+    const auth = await authenticate(c);
+    if (!auth) {
+      return c.json(errorJson("UNAUTHENTICATED", "로그인이 필요합니다."), 401);
+    }
+    const body = await c.req
+      .json<{ name?: string; customInstructions?: string | null }>()
+      .catch(
+        () => ({}) as { name?: string; customInstructions?: string | null },
+      );
+
+    const patch: { name?: string; customInstructions?: string | null } = {};
+    if (body.name !== undefined) {
+      const trimmed = body.name.trim();
+      if (trimmed.length < 1 || trimmed.length > 100) {
+        return c.json(
+          errorJson("INVALID_INPUT", "이름은 1~100자여야 합니다."),
+          400,
+        );
+      }
+      patch.name = trimmed;
+    }
+    if (body.customInstructions !== undefined) {
+      if (
+        body.customInstructions !== null &&
+        body.customInstructions.length > 2000
+      ) {
+        return c.json(
+          errorJson(
+            "INVALID_INPUT",
+            "customInstructions 는 최대 2000자입니다.",
+          ),
+          400,
+        );
+      }
+      patch.customInstructions = body.customInstructions;
+    }
+
+    const updated = await deps.da.users.update(auth.sub, patch);
+    return c.json({
+      data: {
+        id: updated.id,
+        email: updated.email,
+        name: updated.name,
+        orgId: updated.orgId,
+        role: updated.role,
+        customInstructions: updated.customInstructions,
+        createdAt: updated.createdAt.toISOString(),
+      },
+      meta: { requestId: randomUUID() },
+    });
+  });
+
   app.post("/logout", (c) => {
     deleteCookie(c, atCookie, { path: "/" });
     deleteCookie(c, rtCookie, { path: "/api/v1/auth/refresh" });

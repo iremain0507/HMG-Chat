@@ -559,4 +559,84 @@ describe("routes/auth", () => {
     ).items;
     expect(inOtherOrg).toHaveLength(0);
   });
+
+  it("P17-T1-04: PATCH /me — 인증된 유저가 name·customInstructions 수정 → GET /me 에 반영", async () => {
+    const devApp = createAuthRoutes({
+      da,
+      emailSender,
+      allowedDomains: ["wchat.example.com"],
+      appOrigin: "http://localhost:3000",
+      secureCookies: false,
+      devLogin: true,
+    });
+    const loginRes = await devApp.request("/dev-login", {
+      redirect: "manual",
+    });
+    const setCookies = loginRes.headers.getSetCookie
+      ? loginRes.headers.getSetCookie()
+      : [loginRes.headers.get("set-cookie") ?? ""];
+    const accessCookie = cookieValue(setCookies, "wchat_at");
+
+    const patchRes = await devApp.request("/me", {
+      method: "PATCH",
+      headers: {
+        cookie: `wchat_at=${accessCookie}`,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        name: "Updated Name",
+        customInstructions: "항상 한국어로 답해줘",
+      }),
+    });
+    expect(patchRes.status).toBe(200);
+    const patchBody = await patchRes.json();
+    expect(patchBody.data.name).toBe("Updated Name");
+    expect(patchBody.data.customInstructions).toBe("항상 한국어로 답해줘");
+
+    const meRes = await devApp.request("/me", {
+      headers: { cookie: `wchat_at=${accessCookie}` },
+    });
+    const meBody = await meRes.json();
+    expect(meBody.data.user.name).toBe("Updated Name");
+    expect(meBody.data.user.customInstructions).toBe("항상 한국어로 답해줘");
+  });
+
+  it("P17-T1-04: PATCH /me — 인증 없이 호출 → 401", async () => {
+    const res = await app.request("/me", {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ name: "X" }),
+    });
+    expect(res.status).toBe(401);
+  });
+
+  it("P17-T1-04: PATCH /me — name 빈 문자열 → 400 INVALID_INPUT", async () => {
+    const devApp = createAuthRoutes({
+      da,
+      emailSender,
+      allowedDomains: ["wchat.example.com"],
+      appOrigin: "http://localhost:3000",
+      secureCookies: false,
+      devLogin: true,
+    });
+    const loginRes = await devApp.request("/dev-login", {
+      redirect: "manual",
+    });
+    const setCookies = loginRes.headers.getSetCookie
+      ? loginRes.headers.getSetCookie()
+      : [loginRes.headers.get("set-cookie") ?? ""];
+    const accessCookie = cookieValue(setCookies, "wchat_at");
+
+    const res = await devApp.request("/me", {
+      method: "PATCH",
+      headers: {
+        cookie: `wchat_at=${accessCookie}`,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({ name: "" }),
+    });
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.error.code).toBe("INVALID_INPUT");
+  });
 });

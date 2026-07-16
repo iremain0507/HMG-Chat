@@ -34,6 +34,7 @@ const EXPECTED_ROUTES: Array<{ method: string; path: string; phase: string }> =
     // auth 라우터 마운트 확인은 확실히 존재하는 /me 로 (auth-protected → 401).
     // 주의: 계약(16 §273)의 POST /auth/login(password fallback)은 현재 미구현 — 별도 gap(PROGRESS 기록).
     { method: "GET", path: "/api/v1/auth/me", phase: "P1" },
+    { method: "PATCH", path: "/api/v1/auth/me", phase: "P17" },
     { method: "GET", path: "/api/v1/sessions", phase: "P17" },
     { method: "GET", path: `/api/v1/sessions/${sid}/messages`, phase: "P17" },
     { method: "PATCH", path: `/api/v1/sessions/${sid}`, phase: "P17" },
