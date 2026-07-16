@@ -85,12 +85,15 @@ export interface HitlPromptData {
 }
 
 // 14-INTERFACES § ChatEvent.artifact_created 와 1:1 (artifactId/artifactKind/filename/sizeBytes/downloadUrl).
+// messageId 는 서버 wire format 에 없는 클라이언트 전용 필드(P18-T6-01) — 라이브 스트림에서
+// artifact_created 가 도착한 시점의 assistantId 로 채워, 메시지 인라인 카드 귀속에 쓴다.
 export interface ArtifactSummary {
   artifactId: string;
   artifactKind: string;
   filename: string;
   sizeBytes: number;
   downloadUrl?: string;
+  messageId?: string;
 }
 
 // P10-T6-13 — 모델/모드 피커 선택값. 서버 계약(16-API-CONTRACT § POST /sessions/:id/messages)에
@@ -465,6 +468,7 @@ export function useSessionStream(sessionId: string) {
               ...(event.downloadUrl !== undefined
                 ? { downloadUrl: event.downloadUrl }
                 : {}),
+              ...(assistantId ? { messageId: assistantId } : {}),
             },
           ]);
         } else if (event.type === "hitl_request") {

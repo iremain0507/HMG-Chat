@@ -10,6 +10,7 @@ import {
   waitFor,
   cleanup,
   act,
+  within,
 } from "@testing-library/react";
 import "@testing-library/jest-dom/vitest";
 import { ChatView } from "../ChatView";
@@ -1384,6 +1385,72 @@ describe("ChatView", () => {
         "원본 콘텐츠",
       );
     });
+  });
+
+  it("artifact_created 이벤트가 오면 해당 어시스턴트 메시지 하단에 인라인 아티팩트 카드가 렌더된다 (P18-T6-01)", async () => {
+    const encoder = new TextEncoder();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({
+        body: new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.enqueue(
+              encoder.encode(sseFrame("message_start", { messageId: "msg-1" })),
+            );
+            controller.enqueue(
+              encoder.encode(
+                sseFrame("text_delta", { text: "보고서 작성했습니다" }),
+              ),
+            );
+            controller.enqueue(
+              encoder.encode(
+                sseFrame("artifact_created", {
+                  artifactId: "artifact-1",
+                  artifactKind: "markdown",
+                  filename: "report.md",
+                  sizeBytes: 100,
+                }),
+              ),
+            );
+            controller.enqueue(
+              encoder.encode(sseFrame("stop", { reason: "end_turn" })),
+            );
+            controller.close();
+          },
+        }),
+      })),
+    );
+
+    render(<ChatView sessionId="session-1" />);
+    fireEvent.change(screen.getByLabelText("메시지 입력"), {
+      target: { value: "보고서 만들어줘" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "전송" }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("artifact-panel")).toBeInTheDocument();
+    });
+
+    const assistantMessage = screen
+      .getByText("보고서 작성했습니다")
+      .closest("li");
+    expect(assistantMessage).not.toBeNull();
+    const card = within(assistantMessage as HTMLElement).getByTestId(
+      "artifact-card",
+    );
+    expect(card).toHaveTextContent("report.md");
+    expect(card).toHaveTextContent("열기");
+
+    // 패널을 닫은 뒤 인라인 카드를 클릭하면 다시 열려야 한다(발견 경로 검증).
+    fireEvent.keyDown(window, { key: "\\", metaKey: true });
+    expect(screen.queryByTestId("artifact-panel")).not.toBeInTheDocument();
+
+    fireEvent.click(card);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("artifact-panel")).toBeInTheDocument();
+    });
+    expect(screen.getAllByText("report.md").length).toBeGreaterThan(0);
   });
 
   it("artifact_created 가 두 번 오면 버전 페이저로 이전 아티팩트를 탐색할 수 있다", async () => {

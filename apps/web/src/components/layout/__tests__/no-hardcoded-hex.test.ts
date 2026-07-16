@@ -27,6 +27,7 @@ const FILES = [
   "../../chat/ActivityPanel.tsx",
   "../../chat/ToolCallRenderer.tsx",
   "../../artifacts/ArtifactCanvas.tsx",
+  "../../artifacts/ArtifactCard.tsx",
   "../../artifacts/ArtifactPanel.tsx",
   "../../artifacts/PdfRenderer.tsx",
   "../../artifacts/PptxRenderer.tsx",

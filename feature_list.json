@@ -1571,8 +1571,8 @@
     "acceptance": "RED: artifact_created 후 메시지 영역에 카드 렌더 + 클릭 시 active artifact/panel 오픈; 하드코딩 hex 0; preview+Playwright; human UAT(문서 카드 실제 표시); verify-gates green",
     "phase": "P18",
     "team": "T6",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P18-T6-02",

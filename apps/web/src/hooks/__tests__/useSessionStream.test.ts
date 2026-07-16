@@ -428,12 +428,15 @@ describe("useSessionStream", () => {
       await result.current.send("보고서 만들어줘");
     });
 
+    // messageId(P18-T6-01) — 라이브 스트림에서 artifact_created 가 도착한 시점의
+    // assistantId 로 채워져 메시지 인라인 카드 귀속에 쓰인다.
     expect(result.current.artifacts).toEqual([
       {
         artifactId: "artifact-1",
         artifactKind: "markdown",
         filename: "report.md",
         sizeBytes: 120,
+        messageId: expect.any(String),
       },
       {
         artifactId: "artifact-2",
@@ -441,8 +444,12 @@ describe("useSessionStream", () => {
         filename: "report.pdf",
         sizeBytes: 4096,
         downloadUrl: "https://s3.example.com/artifact-2",
+        messageId: expect.any(String),
       },
     ]);
+    expect(result.current.artifacts[0]?.messageId).toEqual(
+      result.current.artifacts[1]?.messageId,
+    );
   });
 
   it("hitl_request 이벤트를 받으면 hitlRequest 상태를 채우고, hitl_resolved 로 같은 toolCallId 가 도착하면 비운다", async () => {

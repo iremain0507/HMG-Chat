@@ -10,6 +10,7 @@ import {
   type MessagePart,
   type Citation,
   type MessageBranch,
+  type ArtifactSummary,
 } from "../../hooks/useSessionStream";
 import { useCurrentUser } from "../../hooks/useCurrentUser";
 import { randomUUID } from "../../lib/uuid";
@@ -18,6 +19,7 @@ import { useOnlineStatus } from "../../hooks/useOnlineStatus";
 import { useProjects } from "../../hooks/useProjects";
 import { useSessionProject } from "../../hooks/useSessionProject";
 import { ArtifactCanvas } from "../artifacts/ArtifactCanvas";
+import { ArtifactCard } from "../artifacts/ArtifactCard";
 import {
   ChatInput,
   type ChatInputHandle,
@@ -115,6 +117,39 @@ export function ChatView({ sessionId }: { sessionId: string }) {
       tab: "activity",
       token: ++panelFocusTokenRef.current,
     });
+  }
+
+  // 인라인 아티팩트 카드 클릭(P18-T6-01) — 기존 자동오픈(artifact_created useEffect,
+  // ChatView.tsx:162-174)과 동일한 열람 흐름(activeArtifactIndex + 우패널 아티팩트 탭)을 재사용.
+  function handleOpenArtifact(artifactId: string) {
+    const index = artifacts.findIndex((a) => a.artifactId === artifactId);
+    if (index === -1) return;
+    setActiveArtifactIndex(index);
+    setArtifactPanelOpen(true);
+    setRightPanelFocus({
+      tab: "artifacts",
+      token: ++panelFocusTokenRef.current,
+    });
+  }
+
+  // 메시지 귀속(P18-T6-01) — artifact_created 는 라이브에서 assistantId 로 messageId 를
+  // 채우지만(useSessionStream.ts), messageId 가 없는 아티팩트(세션 단위 폴백)는 마지막
+  // assistant 메시지 하단에 몰아서 노출한다.
+  const lastAssistantMessageId = useMemo(() => {
+    for (let i = messages.length - 1; i >= 0; i--) {
+      if (messages[i]?.role === "assistant") return messages[i]?.id ?? null;
+    }
+    return null;
+  }, [messages]);
+  const orphanArtifacts = useMemo(
+    () => artifacts.filter((a) => !a.messageId),
+    [artifacts],
+  );
+  function artifactsForMessage(messageId: string): ArtifactSummary[] {
+    const own = artifacts.filter((a) => a.messageId === messageId);
+    return messageId === lastAssistantMessageId
+      ? [...own, ...orphanArtifacts]
+      : own;
   }
 
   // @ 피커(TS-11 #1) — dev preview 고정 목록이 아니라 org.allowedTools 로 실배선된 도구만 노출.
@@ -409,6 +444,10 @@ export function ChatView({ sessionId }: { sessionId: string }) {
                         i === messages.length - 1 &&
                         m.role === "assistant"
                       }
+                      artifacts={
+                        m.role === "assistant" ? artifactsForMessage(m.id) : []
+                      }
+                      onOpenArtifact={handleOpenArtifact}
                       onCitationFocus={handleCitationFocus}
                       onActivityFocus={handleActivityFocus}
                       {...(canRegenerate
@@ -550,11 +589,13 @@ export function MessageItem({
   error,
   retryable,
   errorCategory,
+  artifacts,
   onRegenerate,
   onEditSubmit,
   onSwitchBranch,
   onCitationFocus,
   onActivityFocus,
+  onOpenArtifact,
 }: {
   role: "user" | "assistant";
   content: string;
@@ -565,11 +606,13 @@ export function MessageItem({
   error?: boolean;
   retryable?: boolean;
   errorCategory?: string;
+  artifacts?: ArtifactSummary[];
   onRegenerate?: () => void;
   onEditSubmit?: (nextContent: string) => void;
   onSwitchBranch?: (direction: "prev" | "next") => void;
   onCitationFocus?: (index: number) => void;
   onActivityFocus?: () => void;
+  onOpenArtifact?: (artifactId: string) => void;
 }) {
   const [focusedCitation, setFocusedCitation] = useState<number | null>(null);
   const [isEditing, setIsEditing] = useState(false);
@@ -757,6 +800,17 @@ export function MessageItem({
             {content}
           </Markdown>
         ) : null}
+        {artifacts && artifacts.length > 0 && (
+          <div className="flex flex-wrap gap-2">
+            {artifacts.map((a) => (
+              <ArtifactCard
+                key={a.artifactId}
+                artifact={a}
+                onOpen={() => onOpenArtifact?.(a.artifactId)}
+              />
+            ))}
+          </div>
+        )}
         {citations && citations.length > 0 && (
           <div
             data-testid="citation-reference-footer"
