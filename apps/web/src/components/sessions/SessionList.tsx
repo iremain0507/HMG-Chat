@@ -17,6 +17,10 @@ import {
   type SessionFolder,
   type SessionListItemDto,
 } from "../../hooks/useSessions";
+import {
+  searchSessions,
+  type SessionSearchResultDto,
+} from "../../lib/sessionSearch";
 import { SessionCard } from "./SessionCard";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -202,6 +206,9 @@ export function SessionList({ now }: { now?: Date } = {}) {
   );
   const [tagFilter, setTagFilter] = useState<string | null>(null);
   const [archivedView, setArchivedView] = useState(false);
+  const [contentMatches, setContentMatches] = useState<
+    SessionSearchResultDto[]
+  >([]);
 
   function openArchivedView() {
     setArchivedView(true);
@@ -249,6 +256,24 @@ export function SessionList({ now }: { now?: Date } = {}) {
     };
   }, [createSession, router]);
 
+  useEffect(() => {
+    const q = query.trim();
+    if (!q || archivedView) {
+      setContentMatches([]);
+      return;
+    }
+    const controller = new AbortController();
+    const timer = setTimeout(() => {
+      void searchSessions(q, controller.signal).then((results) => {
+        if (results) setContentMatches(results);
+      });
+    }, 200);
+    return () => {
+      clearTimeout(timer);
+      controller.abort();
+    };
+  }, [query, archivedView]);
+
   function handleTogglePin(id: string) {
     void togglePin(id);
   }
@@ -272,6 +297,11 @@ export function SessionList({ now }: { now?: Date } = {}) {
     () => partitionByFolder(filtered, folders),
     [filtered, folders],
   );
+
+  const contentOnlyMatches = useMemo(() => {
+    const shown = new Set(filtered.map((s) => s.id));
+    return contentMatches.filter((r) => !shown.has(r.id));
+  }, [contentMatches, filtered]);
 
   const groups = useMemo(
     () => groupSessionsByDate(unfoldered, now ?? new Date()),
@@ -388,6 +418,29 @@ export function SessionList({ now }: { now?: Date } = {}) {
         </div>
       )}
       <nav className="mt-1.5 flex-1 overflow-y-auto">
+        {!archivedView && query.trim() && contentOnlyMatches.length > 0 ? (
+          <div className="mb-3">
+            <h3 className="px-2 py-1 text-xs font-semibold text-fg-muted">
+              메시지 내용 검색결과
+            </h3>
+            {contentOnlyMatches.map((r) => (
+              <button
+                key={r.id}
+                type="button"
+                onClick={() => router.push(`/chat/${r.id}`)}
+                data-testid={`content-match-${r.id}`}
+                className="flex w-full flex-col items-start gap-0.5 rounded-md px-2 py-1.5 text-left hover:bg-bg"
+              >
+                <span className="w-full truncate text-sm text-fg">
+                  {r.title ?? "제목 없음"}
+                </span>
+                <span className="w-full truncate text-xs text-fg-muted">
+                  {r.snippet ?? "메시지 내용이 일치합니다."}
+                </span>
+              </button>
+            ))}
+          </div>
+        ) : null}
         {archivedView ? (
           archivedLoading ? (
             <p className="px-2 py-1 text-sm text-fg-muted">불러오는 중…</p>

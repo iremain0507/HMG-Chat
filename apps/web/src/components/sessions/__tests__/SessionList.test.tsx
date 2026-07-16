@@ -730,4 +730,50 @@ describe("SessionList", () => {
 
     expect(screen.getByTestId("session-search-input")).toHaveFocus();
   });
+
+  it("검색어 입력 시 서버 내용검색 결과를 스니펫과 함께 렌더한다", async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.startsWith("/api/v1/sessions/search")) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            data: [
+              {
+                id: "sess-content-match",
+                title: "예산 회의록",
+                lastMessageAt: "2026-07-12T01:00:00Z",
+                snippet: "…3분기 예산은 전년 대비 12% 증가…",
+              },
+            ],
+          }),
+        };
+      }
+      return { ok: true, status: 200, json: async () => ({ data: [] }) };
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<SessionList now={new Date("2026-07-14T12:00:00Z")} />);
+    await waitFor(() => {
+      expect(screen.getByText("세션이 없습니다.")).toBeInTheDocument();
+    });
+
+    fireEvent.change(screen.getByTestId("session-search-input"), {
+      target: { value: "예산" },
+    });
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        expect.stringContaining("/api/v1/sessions/search?q="),
+        expect.anything(),
+      );
+    });
+    await waitFor(() => {
+      expect(screen.getByText("예산 회의록")).toBeInTheDocument();
+    });
+    expect(
+      screen.getByText("…3분기 예산은 전년 대비 12% 증가…"),
+    ).toBeInTheDocument();
+  });
 });
