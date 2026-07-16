@@ -74,6 +74,7 @@ export function ChatView({ sessionId }: { sessionId: string }) {
     artifacts,
     editMessage,
     regenerate,
+    continueMessage,
     switchBranch,
     historyLoading,
     loadHistory,
@@ -447,6 +448,7 @@ export function ChatView({ sessionId }: { sessionId: string }) {
                       {...(m.parts ? { parts: m.parts } : {})}
                       {...(m.citations ? { citations: m.citations } : {})}
                       {...(m.branch ? { branch: m.branch } : {})}
+                      {...(m.truncated ? { truncated: m.truncated } : {})}
                       error={m.error ?? false}
                       {...(m.retryable !== undefined
                         ? { retryable: m.retryable }
@@ -470,6 +472,13 @@ export function ChatView({ sessionId }: { sessionId: string }) {
                             // P17-T6-03(TS-06) — 재생성은 같은 user 턴 아래 새 assistant
                             // 형제를 만든다(중복 turn 아님, editMessage 와 동일 tree 의미).
                             onRegenerate: () => void regenerate(m.id),
+                          }
+                        : {})}
+                      {...(canRegenerate && m.truncated
+                        ? {
+                            // P19-T6-08 — 이어쓰기: max_tokens 등으로 잘린 assistant 응답을
+                            // 서버 continue 로 이어받아 같은 노드에 병합(새 턴 아님).
+                            onContinue: () => void continueMessage(m.id),
                           }
                         : {})}
                       {...(m.role === "user"
@@ -602,12 +611,14 @@ export function MessageItem({
   parts,
   citations,
   branch,
+  truncated,
   streaming,
   error,
   retryable,
   errorCategory,
   artifacts,
   onRegenerate,
+  onContinue,
   onEditSubmit,
   onSwitchBranch,
   onCitationFocus,
@@ -621,12 +632,14 @@ export function MessageItem({
   parts?: MessagePart[];
   citations?: Citation[];
   branch?: MessageBranch;
+  truncated?: boolean;
   streaming: boolean;
   error?: boolean;
   retryable?: boolean;
   errorCategory?: string;
   artifacts?: ArtifactSummary[];
   onRegenerate?: () => void;
+  onContinue?: () => void;
   onEditSubmit?: (nextContent: string) => void;
   onSwitchBranch?: (direction: "prev" | "next") => void;
   onCitationFocus?: (index: number) => void;
@@ -896,6 +909,15 @@ export function MessageItem({
                   ›
                 </button>
               </div>
+            )}
+            {!streaming && truncated && onContinue && (
+              <button
+                type="button"
+                onClick={onContinue}
+                className="rounded-full border border-primary/40 px-2.5 py-0.5 text-xs text-primary hover:bg-primary/10"
+              >
+                이어쓰기
+              </button>
             )}
             {!streaming && (
               <div className="opacity-0 transition-opacity group-hover:opacity-100">

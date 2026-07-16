@@ -618,6 +618,10 @@ export function useSessionStream(sessionId: string) {
             receivedTerminal = true;
             setIsStreaming(false);
           }
+          // P19-T6-08 — max_tokens 로 끊긴 응답은 truncated 로 표시해 이어쓰기 버튼을 노출한다.
+          if (event.reason === "max_tokens" && assistantId) {
+            updateNode(assistantId, (m) => ({ ...m, truncated: true }));
+          }
         } else if (event.type === "error") {
           receivedTerminal = true;
           const message = event.error?.message ?? "알 수 없는 오류";
@@ -897,6 +901,83 @@ export function useSessionStream(sessionId: string) {
     [streamTurn],
   );
 
+  // P19-T6-08 — 응답 이어쓰기: 잘린(truncated) assistant 메시지를 대상으로 서버
+  // continue 엔드포인트(P19-T2-03)를 호출해, 기존 SSE 파이프(text_delta/stop)를 그대로
+  // 재사용하면서 새로 온 text_delta 만 대상 노드의 content 뒤에 이어붙인다(새 노드 생성 X).
+  const continueMessage = useCallback(
+    async (assistantMessageId: string) => {
+      const target = treeRef.current.nodes[assistantMessageId];
+      if (!target || target.role !== "assistant") return;
+
+      setIsStreaming(true);
+      isStreamingRef.current = true;
+      const controller = new AbortController();
+      abortRef.current = controller;
+
+      try {
+        const res = await apiFetch(
+          `/api/v1/sessions/${sessionId}/messages/${assistantMessageId}/continue`,
+          {
+            method: "POST",
+            credentials: "include",
+            signal: controller.signal,
+            headers: { Accept: "text/event-stream" },
+          },
+        );
+        const reader = res.body?.getReader();
+        if (!reader) return;
+        const decoder = new TextDecoder();
+        let buffer = "";
+        for (;;) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+          let sepIndex = buffer.indexOf("\n\n");
+          while (sepIndex !== -1) {
+            const frame = buffer.slice(0, sepIndex);
+            buffer = buffer.slice(sepIndex + 2);
+            const event = parseSseFrame(frame);
+            sepIndex = buffer.indexOf("\n\n");
+            if (!event) continue;
+            if (event.type === "text_delta") {
+              updateNode(assistantMessageId, (m) => {
+                const parts = m.parts ?? [];
+                const last = parts.at(-1);
+                const nextParts: MessagePart[] =
+                  last?.type === "text"
+                    ? [
+                        ...parts.slice(0, -1),
+                        { type: "text", text: last.text + event.text },
+                      ]
+                    : [...parts, { type: "text", text: event.text }];
+                return {
+                  ...m,
+                  content: m.content + event.text,
+                  parts: nextParts,
+                  truncated: false,
+                };
+              });
+            } else if (event.type === "stop") {
+              setIsStreaming(false);
+            } else if (event.type === "error") {
+              setIsStreaming(false);
+              showToast("error", event.error?.message ?? "알 수 없는 오류");
+            }
+          }
+        }
+      } catch (err) {
+        if ((err as Error).name !== "AbortError") {
+          showToast("error", "연결이 끊어졌습니다. 다시 시도해주세요.");
+        }
+      } finally {
+        setIsStreaming(false);
+        isStreamingRef.current = false;
+        abortRef.current = null;
+      }
+    },
+    [sessionId, updateNode],
+  );
+
   const switchBranch = useCallback(
     (messageId: string, direction: "prev" | "next") => {
       const t = treeRef.current;
@@ -970,6 +1051,7 @@ export function useSessionStream(sessionId: string) {
     artifacts,
     editMessage,
     regenerate,
+    continueMessage,
     switchBranch,
     historyLoading,
     loadHistory,

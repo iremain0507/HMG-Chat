@@ -1923,4 +1923,76 @@ describe("ChatView", () => {
       expect(card).toHaveTextContent("restored.md");
     });
   });
+
+  it("응답이 max_tokens 로 잘리면 이어쓰기 버튼이 보이고, 클릭 시 POST .../continue 를 호출해 이어진 텍스트를 병합한다 (P19-T6-08)", async () => {
+    const encoder = new TextEncoder();
+    const fetchMock = vi.fn(async () => ({
+      body: new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.enqueue(
+            encoder.encode(sseFrame("message_start", { messageId: "msg-1" })),
+          );
+          controller.enqueue(
+            encoder.encode(sseFrame("text_delta", { text: "긴 답변 앞부분" })),
+          );
+          controller.enqueue(
+            encoder.encode(sseFrame("stop", { reason: "max_tokens" })),
+          );
+          controller.close();
+        },
+      }),
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<ChatView sessionId="session-1" />);
+    fireEvent.change(screen.getByLabelText("메시지 입력"), {
+      target: { value: "긴 글 써줘" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "전송" }));
+
+    await waitFor(() => {
+      expect(screen.getByText("긴 답변 앞부분")).toBeInTheDocument();
+    });
+
+    const continueButton = await screen.findByRole("button", {
+      name: "이어쓰기",
+    });
+
+    fetchMock.mockClear();
+    fetchMock.mockImplementationOnce(async () => ({
+      body: new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.enqueue(
+            encoder.encode(sseFrame("text_delta", { text: " 뒷부분" })),
+          );
+          controller.enqueue(
+            encoder.encode(sseFrame("stop", { reason: "end_turn" })),
+          );
+          controller.close();
+        },
+      }),
+    }));
+
+    fireEvent.click(continueButton);
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        expect.stringMatching(
+          /^\/api\/v1\/sessions\/session-1\/messages\/.+\/continue$/,
+        ),
+        expect.objectContaining({ method: "POST" }),
+      );
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("긴 답변 앞부분 뒷부분")).toBeInTheDocument();
+    });
+
+    // 이어쓰기가 끝나면 더 이상 잘린 상태가 아니므로 버튼이 사라진다.
+    await waitFor(() => {
+      expect(
+        screen.queryByRole("button", { name: "이어쓰기" }),
+      ).not.toBeInTheDocument();
+    });
+  });
 });

@@ -1760,8 +1760,8 @@
     "acceptance": "RED: 목 continue→버튼 클릭 시 호출·이어진 텍스트 병합 단언. verify-gates green",
     "phase": "P19",
     "team": "T6",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P19-T2-04",
