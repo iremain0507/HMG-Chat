@@ -1742,6 +1742,72 @@ describe("ChatView", () => {
     expect(screen.queryByTestId("memory-panel")).not.toBeInTheDocument();
   });
 
+  it("'/' 로 프롬프트 라이브러리 명령을 자동완성·삽입하면 변수({{today}}·{{user}})가 치환된다 (P19-T6-13)", async () => {
+    const fetchMock = vi.fn(async (url: string) => {
+      const u = String(url);
+      if (u.startsWith("/api/v1/prompts")) {
+        return {
+          ok: true,
+          json: async () => ({
+            data: [
+              {
+                id: "prompt-1",
+                command: "/greet",
+                title: "인사",
+                content: "안녕하세요 {{user}}, 오늘은 {{today}} 입니다",
+                access: "private",
+                ownerId: "user-1",
+                createdAt: "2026-04-01T00:00:00Z",
+                updatedAt: "2026-04-01T00:00:00Z",
+              },
+            ],
+          }),
+        };
+      }
+      if (u.startsWith("/api/v1/auth/me")) {
+        return {
+          ok: true,
+          json: async () => ({
+            data: {
+              user: {
+                id: "user-1",
+                email: "kim@example.com",
+                name: "김철수",
+                orgId: "org-1",
+                role: "member",
+                customInstructions: null,
+                createdAt: "2026-01-01T00:00:00Z",
+              },
+              org: null,
+            },
+          }),
+        };
+      }
+      return {
+        body: new ReadableStream<Uint8Array>({ start: (c) => c.close() }),
+      };
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<ChatView sessionId="session-1" />);
+
+    fireEvent.change(screen.getByLabelText("메시지 입력"), {
+      target: { value: "/greet" },
+    });
+
+    const item = await screen.findByTestId(
+      "composer-popover-item-prompt:prompt-1",
+    );
+    fireEvent.click(item);
+
+    const today = new Date().toLocaleDateString("ko-KR");
+    await waitFor(() => {
+      expect(screen.getByLabelText("메시지 입력")).toHaveValue(
+        `안녕하세요 김철수, 오늘은 ${today} 입니다`,
+      );
+    });
+  });
+
   it("user 메시지를 편집하면 새 분기로 전환되고, 페이저로 형제 분기 사이를 오갈 수 있다 (P10-T6-15)", async () => {
     const encoder = new TextEncoder();
     const fetchMock = vi.fn(async () => ({

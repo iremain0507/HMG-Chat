@@ -13,9 +13,11 @@ import {
   type ArtifactSummary,
 } from "../../hooks/useSessionStream";
 import { useCurrentUser } from "../../hooks/useCurrentUser";
+import { usePrompts } from "../../hooks/usePrompts";
 import { randomUUID } from "../../lib/uuid";
 import { showToast } from "../../lib/toast";
 import { apiFetch } from "../../lib/fetch-with-refresh";
+import { substitutePromptVariables } from "../../lib/promptVariables";
 import { useOnlineStatus } from "../../hooks/useOnlineStatus";
 import { useProjects } from "../../hooks/useProjects";
 import { useSessionProject } from "../../hooks/useSessionProject";
@@ -99,7 +101,8 @@ export function ChatView({ sessionId }: { sessionId: string }) {
     loadHistory,
     loadArtifacts,
   } = useSessionStream(sessionId);
-  const { org } = useCurrentUser();
+  const { user, org } = useCurrentUser();
+  const { prompts } = usePrompts();
   const online = useOnlineStatus();
   const { projects } = useProjects();
   const { projectId, setProject } = useSessionProject(sessionId);
@@ -183,6 +186,45 @@ export function ChatView({ sessionId }: { sessionId: string }) {
       }),
     [org?.allowedTools],
   );
+
+  // P19-T6-13 — 프롬프트 라이브러리(/api/v1/prompts)를 '/' 자동완성 목록에 합류. id 는
+  // "prompt:<promptId>" 로 감싸 정적 SLASH_COMMANDS(memories 등)와 충돌하지 않게 한다.
+  const promptSlashCommands = useMemo<SlashCommand[]>(
+    () =>
+      prompts.map((p) => ({
+        id: `prompt:${p.id}`,
+        label: p.command.replace(/^\//, ""),
+        description: p.title,
+      })),
+    [prompts],
+  );
+  const slashCommands = useMemo<SlashCommand[]>(
+    () => [...SLASH_COMMANDS, ...promptSlashCommands],
+    [promptSlashCommands],
+  );
+
+  // P19-T6-13 — 선택된 프롬프트 본문의 {{today}}/{{user}}/{{clipboard}} 를 삽입 직전 치환.
+  // 클립보드 접근이 거부/미지원이어도(L2) throw 없이 빈 문자열로 대체한다.
+  async function insertPromptContent(content: string) {
+    let clipboardText: string | undefined;
+    if (
+      content.includes("{{clipboard}}") &&
+      typeof navigator !== "undefined" &&
+      navigator.clipboard?.readText
+    ) {
+      try {
+        clipboardText = await navigator.clipboard.readText();
+      } catch {
+        clipboardText = "";
+      }
+    }
+    const substituted = substitutePromptVariables(content, {
+      ...(user?.name !== undefined ? { userName: user.name } : {}),
+      ...(clipboardText !== undefined ? { clipboardText } : {}),
+    });
+    chatInputRef.current?.setValue(substituted);
+    chatInputRef.current?.focus();
+  }
 
   // 원문 하이라이트(primary-100)는 2초 후 페이드아웃 — design-reference §6:
   // "클릭: 우패널 '출처' 탭 활성 + 해당 원문 블록 하이라이트(primary-100 배경 2초 페이드)".
@@ -590,9 +632,17 @@ export function ChatView({ sessionId }: { sessionId: string }) {
             onSend={(content, attachments, options) =>
               send(content, attachments, options)
             }
-            slashCommands={SLASH_COMMANDS}
+            slashCommands={slashCommands}
             onSlashCommand={(command) => {
-              if (command.id === "memories") setMemoryPanelOpen(true);
+              if (command.id === "memories") {
+                setMemoryPanelOpen(true);
+                return;
+              }
+              if (command.id.startsWith("prompt:")) {
+                const promptId = command.id.slice("prompt:".length);
+                const prompt = prompts.find((p) => p.id === promptId);
+                if (prompt) void insertPromptContent(prompt.content);
+              }
             }}
             mentionEntities={mentionEntities}
             availableModels={org?.allowedModels ?? []}
