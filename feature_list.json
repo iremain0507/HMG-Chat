@@ -1429,5 +1429,140 @@
     "team": "T1",
     "passes": true,
     "attempts": 1
+  },
+  {
+    "id": "P17-T1-01",
+    "desc": "메시지 영속(TS-08): messages.ts 가 턴마다 user+assistant 메시지를 messages 테이블에 저장(da.messages 또는 pgPool INSERT). files: routes/messages.ts, db/*(messages data-access)",
+    "acceptance": "RED: createApp 턴 완료 후 messages 테이블에 해당 세션의 user+assistant 행 존재; 스트리밍/취소 경로 모두 영속; verify-gates green",
+    "phase": "P17",
+    "team": "T1",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P17-T1-02",
+    "desc": "세션 목록·히스토리 API(TS-08/10): sessions.ts 에 GET /(내 세션 목록, 최신순+pagination) + GET /:id/messages(tree 순서 히스토리); app.ts 마운트 + routes-mounted EXPECTED 추가. files: routes/sessions.ts, app.ts, __tests__/routes-mounted.test.ts",
+    "acceptance": "RED: GET /api/v1/sessions 가 내 세션 배열 반환(404 아님); GET /:id/messages 히스토리 반환; cross-org 격리(타 org 세션 안 보임); routes-mounted green; verify-gates green",
+    "phase": "P17",
+    "team": "T1",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P17-T1-03",
+    "desc": "세션 rename/delete API(TS-09): PATCH /:id(title) + DELETE /:id(cascade messages/artifacts, 204); pin 영속이 frozen Session 타입 변경 요구 시 pin 서브파트만 격리; 마운트+EXPECTED. files: routes/sessions.ts, db/*, app.ts, routes-mounted.test.ts",
+    "acceptance": "RED: PATCH 후 title 반영, DELETE 후 목록 제거+cascade 확인; cross-org 격리; routes-mounted green; verify-gates green",
+    "phase": "P17",
+    "team": "T1",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P17-T1-04",
+    "desc": "프로필 저장 API(TS-20): auth.ts 에 PATCH /api/v1/auth/me(name+customInstructions); 마운트+EXPECTED. ProfileManager 가 이미 이 경로 호출(현재 서버 GET /me 만). files: routes/auth.ts, app.ts, routes-mounted.test.ts",
+    "acceptance": "RED: PATCH /me 후 GET /me 에 반영; 인증 필요; routes-mounted green; verify-gates green",
+    "phase": "P17",
+    "team": "T1",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P17-T1-05",
+    "desc": "채팅 문서첨부 RAG 배선(TS-14): app.ts 가 attachments dep 를 createMessageRoutes 에 전달(현재 0 매칭)→messages.ts 가 세션 업로드 ephemeral 청크를 RAG 검색에 사용. files: app.ts, routes/messages.ts",
+    "acceptance": "RED: 첨부 있는 createApp 턴이 ephemeral 청크 검색·인용 반영; 첨부 없으면 기존 동작; verify-gates green",
+    "phase": "P17",
+    "team": "T1",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P17-T1-06",
+    "desc": "문서 재시도 route(TS-15): POST /api/v1/documents/:id/retry(실패 문서 재인덱싱); 마운트+EXPECTED. files: routes/documents.ts, app.ts, routes-mounted.test.ts",
+    "acceptance": "RED: 미등록 404 → 200 재인덱싱(indexStatus 갱신); 소유권 격리; routes-mounted green; verify-gates green",
+    "phase": "P17",
+    "team": "T1",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P17-T6-01",
+    "desc": "세션 히스토리 UI 배선(TS-08/09/10): SessionList 가 GET /sessions 로 목록 로드, 세션 열면 GET /:id/messages 로 과거 대화 복원, rename/delete 가 새 API 호출(영속); 오늘/어제/이전7일 그룹. files: hooks/useSessions.ts, hooks/useSessionStream.ts, components/sessions/*",
+    "acceptance": "목록/복원/rename/delete 상호작용 RED→GREEN; 하드코딩 hex 0; ★human UAT 필요(TS-08: 채팅→나갔다 복귀→히스토리 복원) 명시(과장 금지); verify-gates green",
+    "phase": "P17",
+    "team": "T6",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P17-T6-02",
+    "desc": "프로덕션 도구 피커 + Run Rail 클릭(TS-11): 프로덕션 ChatView @mention 피커에 실제 도구/에이전트/커넥터 채움(현재 dev preview 만); Run Rail 눈금 클릭→우패널 활동 탭(onStepClick unwired ChatView.tsx:571). files: components/chat/ChatView.tsx, 피커",
+    "acceptance": "RED: 피커가 실제 도구 목록 렌더; Run Rail 클릭이 활동 탭 오픈; verify-gates green; human UAT(TS-11)",
+    "phase": "P17",
+    "team": "T6",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P17-T6-03",
+    "desc": "재생성=같은턴 형제(TS-06): 재생성이 중복 user+assistant 턴 추가 대신 같은 user 턴의 assistant 형제 생성(편집/분기와 동일 tree 의미) + 형제 페이저. files: components/chat/ChatView.tsx, hooks/useSessionStream.ts",
+    "acceptance": "RED: 재생성 후 같은 user 턴에 assistant 형제 2/2 생성(중복 turn 아님); 페이저 동작; verify-gates green",
+    "phase": "P17",
+    "team": "T6",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P17-T6-04",
+    "desc": "딥리서치 활동 탭 자동 열림(TS-12): deep_research 실행 시 우패널 활동 탭 자동 오픈(현재 artifact/citation 만). files: components/chat/ChatView.tsx",
+    "acceptance": "RED: deep_research tool_use 시 활동 탭 자동 오픈; 다른 도구엔 영향 없음; verify-gates green; human UAT(TS-12)",
+    "phase": "P17",
+    "team": "T6",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P17-T6-05",
+    "desc": "프로젝트 가시성 필터(TS-16): 프로젝트 목록에 visibility 필터(org/team/private) + useProjects 가 ?visibility 전달. files: app/(app)/projects/page.tsx, hooks/useProjects.ts, components/projects/*",
+    "acceptance": "RED: 필터 선택 시 useProjects 가 ?visibility 로 재조회; 하드코딩 hex 0; verify-gates green",
+    "phase": "P17",
+    "team": "T6",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P17-T6-06",
+    "desc": "단축키 ⌘B·⌘/(TS-22): ⌘B 사이드바 접기/펼치기, ⌘/ 단축키 치트시트 오버레이(기존 ⌘K/⌘N/⌘\\ 유지). files: components/layout/AppShell.tsx, 새 ShortcutSheet",
+    "acceptance": "RED: ⌘B 가 사이드바 토글, ⌘/ 가 치트시트 오픈/닫기; 포커스 링·Esc; 하드코딩 hex 0; verify-gates green",
+    "phase": "P17",
+    "team": "T6",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P17-T6-07",
+    "desc": "revoked 공유 페이지(TS-21): 만료(expired)와 취소(revoked)를 구분해 각각 다른 안내(현재 둘 다 동일 410); 서버 410 reason 추가 필요 시 T1 격리. files: app/share/[token]/*, components/share/*",
+    "acceptance": "RED: revoked 토큰과 expired 토큰이 서로 다른 안내 렌더; 하드코딩 hex 0; verify-gates green; human UAT(TS-21)",
+    "phase": "P17",
+    "team": "T6",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P17-T6-08",
+    "desc": "에러 UX(TS-24): 429 시 백오프 카운트다운(mono tabular-nums) + SSE 끊김 시 자동 재연결. files: components/chat/ChatView.tsx, hooks/useSessionStream.ts, 에러 배너",
+    "acceptance": "RED: 429 응답 시 카운트다운 표시; SSE 끊김 시 자동 재연결 시도; 하드코딩 hex 0; verify-gates green",
+    "phase": "P17",
+    "team": "T6",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P17-T6-09",
+    "desc": "모달 a11y(TS-26): ShareDialog·HitlPrompt 에 focus-trap + Esc 닫기 + 닫을 때 트리거로 포커스 복귀. files: components/share/ShareDialog.tsx, components/chat/HitlPrompt.tsx, 공용 useFocusTrap",
+    "acceptance": "RED: 모달 열림 시 포커스 가둠, Esc 닫힘, 닫을 때 트리거 포커스 복귀; verify-gates green; human UAT(TS-26)",
+    "phase": "P17",
+    "team": "T6",
+    "passes": false,
+    "attempts": 0
   }
 ]
