@@ -1868,8 +1868,8 @@
     "acceptance": "RED: 목 설정(typed 배너)→배너 렌더·type별 스타일·닫기 단언. verify-gates green",
     "phase": "P19",
     "team": "T6",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P19-T2-06",

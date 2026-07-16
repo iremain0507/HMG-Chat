@@ -419,6 +419,7 @@ export function createApp(env: Env) {
     createConfigRoutes({
       organizations: authDa.organizations,
       models: provider.models,
+      settings: settingsService,
     }),
   );
   app.route("/api/v1/config", configApp);

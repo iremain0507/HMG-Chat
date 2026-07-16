@@ -10,6 +10,21 @@ import { NavRail } from "./NavRail";
 import { ThemeToggle } from "./ThemeToggle";
 import { ToastContainer } from "./ToastContainer";
 import { ShortcutSheet } from "./ShortcutSheet";
+import { Banner } from "./Banner";
+import { useAppConfig } from "../../hooks/useAppConfig";
+
+const DISMISSED_BANNERS_KEY = "wchat:dismissedBanners";
+
+function loadDismissedBannerKeys(): Set<string> {
+  try {
+    const raw = window.sessionStorage.getItem(DISMISSED_BANNERS_KEY);
+    if (!raw) return new Set();
+    const parsed: unknown = JSON.parse(raw);
+    return Array.isArray(parsed) ? new Set(parsed) : new Set();
+  } catch {
+    return new Set();
+  }
+}
 
 export interface AppShellProps {
   sidebar: React.ReactNode;
@@ -36,6 +51,25 @@ export function AppShell({ sidebar, rightPanel, children }: AppShellProps) {
   const resizeState = useRef<{ startX: number; startWidth: number } | null>(
     null,
   );
+  const { banner } = useAppConfig();
+  const [dismissedBannerKeys, setDismissedBannerKeys] = useState<Set<string>>(
+    () => loadDismissedBannerKeys(),
+  );
+
+  const dismissBanner = useCallback((key: string) => {
+    setDismissedBannerKeys((prev) => {
+      const next = new Set(prev).add(key);
+      try {
+        window.sessionStorage.setItem(
+          DISMISSED_BANNERS_KEY,
+          JSON.stringify([...next]),
+        );
+      } catch {
+        // sessionStorage 미가용 — 이번 렌더에서만 닫힘 상태 유지.
+      }
+      return next;
+    });
+  }, []);
 
   const openCommandSearch = useCallback(() => {
     window.dispatchEvent(new CustomEvent(CMDK_EVENT));
@@ -181,6 +215,12 @@ export function AppShell({ sidebar, rightPanel, children }: AppShellProps) {
           <PanelRight size={14} strokeWidth={1.8} />
         </button>
       </header>
+
+      <Banner
+        banners={banner}
+        dismissedKeys={dismissedBannerKeys}
+        onDismiss={dismissBanner}
+      />
 
       <div className="flex min-h-0 flex-1">
         <div className="hidden md:flex">
