@@ -50,6 +50,8 @@ const FILES = [
   "../../../app/(auth)/login/page.tsx",
   "../../../app/(auth)/signup/page.tsx",
   "../../../app/share/[token]/page.tsx",
+  "../../admin/settings/AdminSettingsScreen.tsx",
+  "../../../app/admin/settings/page.tsx",
 ];
 
 describe("P13 하드코딩 hex 제로 회귀 가드", () => {

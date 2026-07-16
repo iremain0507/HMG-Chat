@@ -31,6 +31,7 @@ import { QuotaPanel } from "../../components/settings/QuotaPanel";
 import { AdminDashboard } from "../../components/admin/AdminDashboard";
 import { ToolMetricsTable } from "../../components/admin/ToolMetricsTable";
 import { AdminUsersManager } from "../../components/admin/AdminUsersManager";
+import { AdminSettingsScreen } from "../../components/admin/settings/AdminSettingsScreen";
 import { ToastContainer } from "../../components/layout/ToastContainer";
 import {
   ArtifactCanvas,
@@ -258,6 +259,22 @@ function AdminUsersManagerPreview() {
       className="rounded-md border border-border px-3 py-1.5 text-sm text-fg-muted hover:border-primary hover:text-fg"
     >
       사용자 관리 열기
+    </button>
+  );
+}
+
+function AdminSettingsScreenPreview() {
+  const [open, setOpen] = useState(false);
+  return open ? (
+    <AdminSettingsScreen />
+  ) : (
+    <button
+      type="button"
+      data-testid="admin-settings-screen-preview-trigger"
+      onClick={() => setOpen(true)}
+      className="rounded-md border border-border px-3 py-1.5 text-sm text-fg-muted hover:border-primary hover:text-fg"
+    >
+      관리자 설정 열기
     </button>
   );
 }
@@ -907,6 +924,10 @@ export default function PreviewGallery() {
 
       <Section name="admin-users-manager">
         <AdminUsersManagerPreview />
+      </Section>
+
+      <Section name="admin-settings-screen">
+        <AdminSettingsScreenPreview />
       </Section>
 
       <Section name="chat-input">

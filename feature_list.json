@@ -1310,8 +1310,8 @@
     "acceptance": "탭 렌더/전환; 목 GET 로드; 하드코딩 hex 0(grep 가드); preview 갤러리 등록 + Playwright 라이트/다크 스크린샷(.ralph/screenshots, L2); 신규 탭전환 상호작용 vitest RED→GREEN; verify-gates green",
     "phase": "P14",
     "team": "T6",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P14-T6-02",

@@ -1,0 +1,93 @@
+import { test, expect } from "@playwright/test";
+
+// e2e/admin-settings.pw.ts — P14-T6-01 브라우저 검증(Layer 1).
+//   /preview 의 admin-settings-screen 섹션을 실제 chromium 으로 열어 7탭 셸이
+//   design-reference 핸드오프대로 렌더/전환되는지 검증한다. GET 은 page.route() 로 목킹.
+const SETTINGS = {
+  maxTokens: 4096,
+  temperature: 0.7,
+  topP: 0.9,
+  defaultModel: "claude-sonnet-5",
+  systemPrompt: "",
+  toolMaxTokens: 4096,
+  ragTopK: 10,
+  ragRrfK: 60,
+  ragChunkSizeTokens: 800,
+  ragChunkOverlapTokens: 100,
+  ragHybridEnabled: true,
+  ragRelevanceThreshold: 0,
+  webSearchEnabled: false,
+  webSearchResultCount: 3,
+  enableDirectConnections: false,
+  instanceName: "WChat",
+  banner: "",
+  responseWatermark: "",
+  defaultUserRole: "member",
+  enableSignup: false,
+  maxUploadSizeMb: 25,
+  maxUploadCount: 10,
+};
+
+async function mockBackend(page: import("@playwright/test").Page) {
+  await page.route("**/api/v1/admin/settings", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ data: SETTINGS }),
+    }),
+  );
+}
+
+test.describe("P14 preview — 관리자 설정(P14-T6-01) 핸드오프 정렬", () => {
+  test("7탭 셸이 렌더되고 전환된다(라이트)", async ({ page }) => {
+    await mockBackend(page);
+    await page.goto("/preview");
+
+    const settingsScreen = page.getByTestId("preview-admin-settings-screen");
+    await expect(settingsScreen).toBeVisible();
+    await settingsScreen
+      .getByTestId("admin-settings-screen-preview-trigger")
+      .click();
+
+    await expect(
+      settingsScreen.getByRole("tab", { name: "Models & Generation" }),
+    ).toHaveAttribute("aria-selected", "true");
+    await expect(
+      settingsScreen.getByTestId("admin-settings-panel-models"),
+    ).toBeVisible();
+
+    await settingsScreen.getByRole("tab", { name: "Knowledge/RAG" }).click();
+    await expect(
+      settingsScreen.getByRole("tab", { name: "Knowledge/RAG" }),
+    ).toHaveAttribute("aria-selected", "true");
+    await expect(
+      settingsScreen.getByTestId("admin-settings-panel-rag"),
+    ).toBeVisible();
+
+    await settingsScreen.scrollIntoViewIfNeeded();
+    await settingsScreen.screenshot({
+      path: "../../.ralph/screenshots/admin-settings-screen-light.png",
+    });
+  });
+
+  test("다크 테마에서도 관리자 설정 화면이 정상 렌더된다", async ({ page }) => {
+    await page.addInitScript(() => {
+      window.localStorage.setItem("wchat-theme", "dark");
+    });
+    await mockBackend(page);
+    await page.goto("/preview");
+    await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
+
+    const settingsScreen = page.getByTestId("preview-admin-settings-screen");
+    await settingsScreen
+      .getByTestId("admin-settings-screen-preview-trigger")
+      .click();
+    await expect(
+      settingsScreen.getByRole("tab", { name: "Models & Generation" }),
+    ).toHaveAttribute("aria-selected", "true");
+    await settingsScreen.scrollIntoViewIfNeeded();
+    await settingsScreen.screenshot({
+      path: "../../.ralph/screenshots/admin-settings-screen-dark.png",
+    });
+  });
+});
