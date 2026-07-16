@@ -18,8 +18,15 @@ vi.mock("../PptxRenderer", () => ({
     <div data-testid="pptx-renderer">{contentUrl}</div>
   ),
 }));
+vi.mock("../../chat/Markdown", () => ({
+  Markdown: ({ children }: { children: string }) => (
+    <div data-testid="md">{children}</div>
+  ),
+}));
+vi.mock("../../../lib/fetch-with-refresh", () => ({ apiFetch: vi.fn() }));
 
 import { ArtifactPanel, type ArtifactDto } from "../ArtifactPanel";
+import { apiFetch } from "../../../lib/fetch-with-refresh";
 
 function makeArtifact(overrides: Partial<ArtifactDto> = {}): ArtifactDto {
   return {
@@ -78,5 +85,24 @@ describe("ArtifactPanel", () => {
     ).toBeInTheDocument();
     expect(screen.queryByTestId("pdf-renderer")).not.toBeInTheDocument();
     expect(screen.queryByTestId("pptx-renderer")).not.toBeInTheDocument();
+  });
+
+  it("markdown artifact 는 콘텐츠를 fetch 해 Markdown 으로 미리보기한다", async () => {
+    vi.mocked(apiFetch).mockResolvedValue({
+      text: () => Promise.resolve("# 데이터레이크 구축 가이드\n\n본문"),
+    } as unknown as Response);
+    render(
+      <ArtifactPanel
+        artifact={makeArtifact({ type: "markdown", filename: "guide.md" })}
+      />,
+    );
+    const md = await screen.findByTestId("md");
+    expect(md).toHaveTextContent("데이터레이크 구축 가이드");
+    expect(apiFetch).toHaveBeenCalledWith(
+      "/api/v1/artifacts/artifact-1/content",
+    );
+    expect(
+      screen.queryByText("이 형식은 미리보기를 지원하지 않습니다."),
+    ).not.toBeInTheDocument();
   });
 });
