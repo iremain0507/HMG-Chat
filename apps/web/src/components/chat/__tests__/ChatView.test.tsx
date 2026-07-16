@@ -485,6 +485,133 @@ describe("ChatView", () => {
     );
   });
 
+  // P17-T6-02(TS-11) — Run Rail 눈금 클릭은 우패널 '활동' 탭을 열어야 한다(onStepClick 미배선 시 RED).
+  it("Run Rail 눈금을 클릭하면 우패널 활동 탭이 열린다", async () => {
+    const encoder = new TextEncoder();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({
+        ok: true,
+        json: async () => ({ data: [] }),
+        body: new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.enqueue(
+              encoder.encode(sseFrame("message_start", { messageId: "msg-1" })),
+            );
+            controller.enqueue(
+              encoder.encode(
+                sseFrame("tool_use", {
+                  toolCallId: "call-1",
+                  name: "deep_research",
+                  args: { query: "wchat" },
+                }),
+              ),
+            );
+            controller.enqueue(
+              encoder.encode(
+                sseFrame("tool_progress", {
+                  toolCallId: "call-1",
+                  stage: "researching",
+                }),
+              ),
+            );
+            controller.enqueue(
+              encoder.encode(
+                sseFrame("tool_result", {
+                  toolCallId: "call-1",
+                  content: "정리 완료",
+                }),
+              ),
+            );
+            controller.enqueue(
+              encoder.encode(sseFrame("stop", { reason: "end_turn" })),
+            );
+            controller.close();
+          },
+        }),
+      })),
+    );
+
+    render(<ChatView sessionId="session-1" />);
+    fireEvent.change(screen.getByLabelText("메시지 입력"), {
+      target: { value: "리서치해줘" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "전송" }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("run-rail-tick-call-1")).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByTestId("run-rail-tick-call-1"));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("artifact-panel-tab-activity")).toHaveAttribute(
+        "aria-pressed",
+        "true",
+      );
+    });
+  });
+
+  // P17-T6-02(TS-11) — @ 피커는 dev preview 고정 목록이 아니라 org.allowedTools 기반 실제
+  // 도구/에이전트를 렌더해야 한다(현재 ChatView 가 mentionEntities 를 전달하지 않아 RED).
+  it("@ 멘션 피커가 org.allowedTools 기반 실제 도구/에이전트 목록을 렌더한다", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = typeof input === "string" ? input : input.toString();
+        if (url.includes("/auth/me")) {
+          return {
+            ok: true,
+            json: async () => ({
+              data: {
+                user: {
+                  id: "u1",
+                  email: "a@b.com",
+                  name: "A",
+                  orgId: "org-1",
+                  role: "member",
+                  customInstructions: null,
+                  createdAt: "",
+                },
+                org: {
+                  id: "org-1",
+                  name: "Org",
+                  domain: "b.com",
+                  plan: "pro",
+                  allowedModels: [],
+                  allowedTools: ["web_search", "deep_research"],
+                  defaultTokenBudgetMicros: null,
+                  createdAt: "",
+                  updatedAt: "",
+                },
+              },
+            }),
+          };
+        }
+        return {
+          ok: true,
+          json: async () => ({ data: [] }),
+          body: new ReadableStream<Uint8Array>({
+            start(controller) {
+              controller.close();
+            },
+          }),
+        };
+      }),
+    );
+
+    render(<ChatView sessionId="session-1" />);
+
+    fireEvent.change(screen.getByLabelText("메시지 입력"), {
+      target: { value: "@" },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("web_search")).toBeInTheDocument();
+    });
+    expect(screen.getByText("딥리서치")).toBeInTheDocument();
+  });
+
   it("tool_result 가 error content 를 담으면 재시도 칩이 렌더되고 클릭 시 마지막 user 메시지를 재전송한다", async () => {
     const encoder = new TextEncoder();
     const fetchMock = vi.fn(async () => ({

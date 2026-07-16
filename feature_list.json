@@ -1499,8 +1499,8 @@
     "acceptance": "RED: 피커가 실제 도구 목록 렌더; Run Rail 클릭이 활동 탭 오픈; verify-gates green; human UAT(TS-11)",
     "phase": "P17",
     "team": "T6",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P17-T6-03",

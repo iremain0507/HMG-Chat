@@ -21,6 +21,7 @@ import { ArtifactCanvas } from "../artifacts/ArtifactCanvas";
 import {
   ChatInput,
   type ChatInputHandle,
+  type MentionEntity,
   type SlashCommand,
 } from "./ChatInput";
 import { HitlPrompt } from "./HitlPrompt";
@@ -36,6 +37,19 @@ import { ArrowDown } from "lucide-react";
 const SLASH_COMMANDS: SlashCommand[] = [
   { id: "memories", label: "memories", description: "저장된 메모리 보기" },
 ];
+
+// P17-T6-02(TS-11) — org.allowedTools(실제 배선된 내장 도구, assemble-builtin-tools.ts
+//   단일출처: artifact_create/web_search/code_interpreter/deep_research) 를 @ 피커
+//   MentionEntity 로 매핑. deep_research 는 멀티에이전트 리서치 흐름이라 "에이전트"로 분류.
+const TOOL_MENTION_META: Record<
+  string,
+  Pick<MentionEntity, "kind" | "label" | "policy">
+> = {
+  web_search: { kind: "tool", label: "web_search", policy: "readonly" },
+  code_interpreter: { kind: "tool", label: "code_interpreter" },
+  artifact_create: { kind: "tool", label: "artifact_create" },
+  deep_research: { kind: "agent", label: "딥리서치" },
+};
 
 const BOTTOM_THRESHOLD_PX = 80;
 const ANNOUNCE_DEBOUNCE_MS = 500;
@@ -92,6 +106,25 @@ export function ChatView({ sessionId }: { sessionId: string }) {
       token: ++panelFocusTokenRef.current,
     });
   }
+
+  // Run Rail 눈금 클릭(TS-11 #5) — 우패널 '활동' 탭 오픈(RunRail 은 순수 표시+콜백만 담당).
+  function handleActivityFocus() {
+    setArtifactPanelOpen(true);
+    setRightPanelFocus({
+      tab: "activity",
+      token: ++panelFocusTokenRef.current,
+    });
+  }
+
+  // @ 피커(TS-11 #1) — dev preview 고정 목록이 아니라 org.allowedTools 로 실배선된 도구만 노출.
+  const mentionEntities = useMemo<MentionEntity[]>(
+    () =>
+      (org?.allowedTools ?? []).flatMap((id) => {
+        const meta = TOOL_MENTION_META[id];
+        return meta ? [{ id, ...meta }] : [];
+      }),
+    [org?.allowedTools],
+  );
 
   // 원문 하이라이트(primary-100)는 2초 후 페이드아웃 — design-reference §6:
   // "클릭: 우패널 '출처' 탭 활성 + 해당 원문 블록 하이라이트(primary-100 배경 2초 페이드)".
@@ -319,6 +352,7 @@ export function ChatView({ sessionId }: { sessionId: string }) {
                         m.role === "assistant"
                       }
                       onCitationFocus={handleCitationFocus}
+                      onActivityFocus={handleActivityFocus}
                       {...(canRegenerate
                         ? {
                             onRegenerate: () => {
@@ -391,6 +425,7 @@ export function ChatView({ sessionId }: { sessionId: string }) {
             onSlashCommand={(command) => {
               if (command.id === "memories") setMemoryPanelOpen(true);
             }}
+            mentionEntities={mentionEntities}
             availableModels={org?.allowedModels ?? []}
             availableTools={org?.allowedTools ?? []}
           />
@@ -437,6 +472,7 @@ export function MessageItem({
   onEditSubmit,
   onSwitchBranch,
   onCitationFocus,
+  onActivityFocus,
 }: {
   role: "user" | "assistant";
   content: string;
@@ -451,6 +487,7 @@ export function MessageItem({
   onEditSubmit?: (nextContent: string) => void;
   onSwitchBranch?: (direction: "prev" | "next") => void;
   onCitationFocus?: (index: number) => void;
+  onActivityFocus?: () => void;
 }) {
   const [focusedCitation, setFocusedCitation] = useState<number | null>(null);
   const [isEditing, setIsEditing] = useState(false);
@@ -582,7 +619,9 @@ export function MessageItem({
     .map((p) => ({ id: p.toolCallId, label: p.name, status: p.status }));
   return (
     <li data-role="assistant" className="group flex gap-3">
-      {hasToolParts && <RunRail steps={runRailSteps} />}
+      {hasToolParts && (
+        <RunRail steps={runRailSteps} onStepClick={() => onActivityFocus?.()} />
+      )}
       <div className="min-w-0 flex-1">
         {hasToolParts ? (
           <div className="space-y-3">
