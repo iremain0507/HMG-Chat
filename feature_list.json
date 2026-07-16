@@ -1940,7 +1940,7 @@
     "acceptance": "RED: 목 groups/grants API→그룹·멤버·권한 편집 상호작용 단언; verify-browser 가능 범위. verify-gates green",
     "phase": "P19",
     "team": "T6",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   }
 ]
