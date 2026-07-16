@@ -19,6 +19,7 @@ import { createArtifactRoutes } from "./routes/artifacts.js";
 import { createPgArtifactDataAccess } from "./db/artifact-data-access.js";
 import { createPgMessageDataAccess } from "./db/message-data-access.js";
 import { createPgSessionDataAccess } from "./db/session-data-access.js";
+import { createPgSessionTagDataAccess } from "./db/session-tag-data-access.js";
 import { pgPool } from "./db/client.js";
 import { createArtifactShareRoutes } from "./routes/artifact-shares.js";
 import { createPgArtifactShareDataAccess } from "./db/artifact-share-data-access.js";
@@ -183,6 +184,8 @@ export function createApp(env: Env) {
   const messageDa = createPgMessageDataAccess();
   // P19-T2-04 — followups ownership 검증(session.userId !== auth.sub)에도 재사용.
   const sessionDa = createPgSessionDataAccess();
+  // P19-T2-06 — 첫 턴 완료 후 생성된 세션 태그를 session_tags(0020)에 반영.
+  const sessionTagDa = createPgSessionTagDataAccess();
 
   const sessionsApp = new Hono<{ Variables: AuthedVariables }>();
   sessionsApp.use("*", authMiddleware);
@@ -203,6 +206,7 @@ export function createApp(env: Env) {
       model: env.LLM_MODEL,
       activeRuns: { setActiveRun },
       sessions: sessionDa,
+      tags: sessionTagDa,
       organizations: authDa.organizations,
       settings: settingsService,
       // 클라이언트 생성 세션 UUID(/chat/<uuid>)를 첫 메시지 시 upsert — 아티팩트/업로드/

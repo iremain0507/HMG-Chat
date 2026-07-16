@@ -1877,8 +1877,8 @@
     "acceptance": "RED: createApp 턴 종료→LLM 제목 반영(provider 부재 시 파생 폴백), 태그 생성 단언. verify-gates green",
     "phase": "P19",
     "team": "T2",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P19-T1-11",

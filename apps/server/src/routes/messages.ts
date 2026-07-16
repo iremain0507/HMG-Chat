@@ -20,6 +20,7 @@ import {
 } from "@wchat/interfaces";
 import { runTurn } from "../orchestrator/orchestrator.js";
 import { generateFollowups } from "../orchestrator/followups.js";
+import { generateSessionTitleAndTags } from "../orchestrator/session-title-tags.js";
 import { registerRun, unregisterRun } from "../orchestrator/run-registry.js";
 import {
   startMessageRun,
@@ -113,6 +114,20 @@ export interface MessagesPort {
 // 아는 타 사용자/조직이 이 엔드포인트로 남의 대화 내용을 읽어낼 수 있다(cross-org 정보 노출).
 export interface FollowupsSessionsPort {
   byId(id: string): Promise<{ userId: string } | null>;
+  // P19-T2-06 — 첫 턴 완료 후 LLM 제목 반영에 재사용(구조적 타이핑 — app.ts 가 이미 주입 중인
+  // createPgSessionDataAccess() 의 full SessionsDataAccess 가 updateForOwner 를 구현하므로
+  // app.ts 변경 없이 충족). 옵셔널 — 미주입/미구현 시 제목 반영을 건너뛴다(L2 fail-soft).
+  updateForOwner?(
+    userId: string,
+    id: string,
+    data: { title?: string | null },
+  ): Promise<unknown>;
+}
+
+// P19-T2-06 — 첫 턴 완료 후 생성한 태그를 session_tags(migration 0020)에 반영하는 포트.
+// db/session-tag-data-access.ts SessionTagDataAccess 의 add 만 필요(구조적 타이핑).
+export interface SessionTagsPort {
+  add(orgId: string, sessionId: string, tag: string): Promise<unknown>;
 }
 
 // P14-T2-01 — org 별 maxTokens/temperature(ISOLATE, runtime 미배선)/systemPrompt/defaultModel
@@ -215,6 +230,8 @@ export interface MessageRouteDeps {
   settings?: SettingsResolverPort;
   // P17-T1-01 — 턴마다 user/assistant 메시지를 messages 테이블에 영속. 미주입 시 no-op.
   messages?: MessagesPort;
+  // P19-T2-06 — 첫 턴 완료 후 session_tags 에 생성된 태그를 반영. 미주입 시 태그 반영 생략.
+  tags?: SessionTagsPort;
 }
 
 function errorJson(code: string, message: string) {
@@ -418,6 +435,18 @@ export function createMessageRoutes(
             return undefined;
           });
 
+    // P19-T2-06 — 첫 턴(세션 최초 user 메시지) 여부: 방금 삽입한 이 user 메시지 하나뿐이면
+    // 최초 턴이다(LLM 제목/태그 생성은 이때만 트리거). deps.messages.list 미주입/조회 실패
+    // 시 실행하지 않는다(L2 fail-soft) — messages-followups-composition.test.ts 의
+    // list?.() 옵셔널 재사용 패턴과 동일.
+    const isFirstTurn =
+      !isTemporary && userMessage !== undefined && deps.messages?.list
+        ? await deps.messages
+            .list({ sessionId }, { limit: 2 })
+            .then((r) => r.items.length <= 1)
+            .catch(() => false)
+        : false;
+
     const jobId = randomUUID();
     const activeRuns = deps.activeRuns ?? noopActiveRuns;
     const handle = registerRun(sessionId, jobId);
@@ -548,6 +577,44 @@ export function createMessageRoutes(
               deps.logger?.warn({
                 category: "system",
                 msg: "assistant message 영속 실패",
+                context: { error: String(error) },
+              });
+            });
+        }
+        // P19-T2-06 — 첫 턴 완료 후 세션 제목·태그를 LLM 으로 생성(provider 부재/파싱 실패 시
+        // deriveSessionTitle 파생 폴백 — L5). 취소된 턴(사용자 Stop)은 건너뛴다.
+        if (
+          isFirstTurn &&
+          currentMessageId &&
+          auth &&
+          !handle.controller.signal.aborted
+        ) {
+          await generateSessionTitleAndTags({
+            provider: deps.provider,
+            model,
+            userText: content,
+            assistantText,
+            signal: handle.controller.signal,
+            ...(resolvedSettings.maxTokens !== undefined
+              ? { maxTokens: resolvedSettings.maxTokens }
+              : {}),
+          })
+            .then(async ({ title, tags }) => {
+              if (title) {
+                await deps.sessions?.updateForOwner?.(auth.sub, sessionId, {
+                  title,
+                });
+              }
+              if (tags.length > 0 && deps.tags) {
+                for (const tag of tags) {
+                  await deps.tags.add(auth.org, sessionId, tag);
+                }
+              }
+            })
+            .catch((error) => {
+              deps.logger?.warn({
+                category: "system",
+                msg: "세션 제목/태그 생성 실패",
                 context: { error: String(error) },
               });
             });
