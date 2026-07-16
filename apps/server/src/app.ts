@@ -197,12 +197,11 @@ export function createApp(env: Env) {
       },
       // 내장 도구 전체 배선: artifact_create + web_search + code_interpreter + deep_research.
       //   키(TAVILY/E2B) 없으면 dev-stub 폴백(assemble-builtin-tools.ts).
-      // P14-T2-02 — assembleBuiltinTools 는 app 조립 시점(요청 전, org 미지정)에 한 번만
-      // 실행되는 싱글톤이라 org_settings.toolMaxTokens 를 요청별로 반영할 수 없다(정적 조립
-      // 제약 — T3-01 의 invoke-time resolve 와 달리, tools 배열 자체를 messages.ts 가 요청마다
-      // 재구성하지 않는 한 불가능하며 그 배선은 이 태스크 표(app.ts/memory-extractor.ts) 밖).
-      // 여기서는 중복 매직넘버(4096)를 없애 DEFAULT_ORG_SETTINGS.toolMaxTokens 단일 출처만
-      // 참조한다 — 실 org-scoped 동적 반영은 .ralph/blocked_tasks 에 격리.
+      // assembleBuiltinTools 는 app 조립 시점(요청 전, org 미지정)에 한 번만 실행되는 싱글톤이라
+      // tools 배열 자체(정적 maxTokens 등)는 org-scoped 로 재구성하지 않는다. 대신 deep_research
+      // 는 settings resolver 를 deps 로 주입받아 invoke 시점에 ctx.orgId 로 동적 조회한다
+      // (P15-T2-02, T3-01 의 invoke-time resolve 와 동일 패턴). 여기서는 정적 폴백값(settings
+      // 미조회/미설정 시)으로 DEFAULT_ORG_SETTINGS.toolMaxTokens 단일 출처만 참조.
       tools: assembleBuiltinTools({
         provider,
         model: env.LLM_MODEL,
@@ -212,6 +211,7 @@ export function createApp(env: Env) {
         objectStore: createLocalObjectStore(),
         ...(env.TAVILY_API_KEY ? { tavilyApiKey: env.TAVILY_API_KEY } : {}),
         ...(env.E2B_API_KEY ? { e2bApiKey: env.E2B_API_KEY } : {}),
+        settings: settingsService,
       }),
       mcpTools: assembleOrgMcpTools(mcpServerDa, mcpBridge, mcpClientPool),
       hitl: hitlBridge,

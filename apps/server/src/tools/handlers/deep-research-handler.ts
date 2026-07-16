@@ -31,6 +31,7 @@ import {
   createArtifactService,
   type ArtifactDataAccess,
 } from "../../db/artifact-service.js";
+import type { ResolvedOrgSettings } from "../../lib/org-settings-schema.js";
 
 export const DEFAULT_MAX_SUB_QUESTIONS = 4;
 export const DEFAULT_MAX_GAP_ITERATIONS = 2;
@@ -40,6 +41,14 @@ export const DEFAULT_MAX_GAP_ITERATIONS = 2;
 //   keep-alive(messages.ts) 가 그 사이 연결을 유지한다.
 const DEEP_RESEARCH_TIMEOUT_MS = 300_000;
 
+// P15-T2-02 — org-scoped toolMaxTokens 동적 조회 포트. settings-service.ts(P14)의
+// SettingsService.resolve 와 구조적으로 호환되는 최소 계약만 의존(DI, 순환 회피 — T2 는
+// lib/settings-service.ts 를 직접 import 하지 않고 org-settings-schema.ts 의 ResolvedOrgSettings
+// 형태만 재사용).
+export interface ToolSettingsResolverPort {
+  resolve(orgId: string): Promise<Pick<ResolvedOrgSettings, "toolMaxTokens">>;
+}
+
 export interface DeepResearchToolDeps {
   leadProvider: LLMProvider;
   leadModel: string;
@@ -47,12 +56,43 @@ export interface DeepResearchToolDeps {
   workerModel: string;
   // researcher 에게 부여할 스코프 tool 목록(read-only 만 — web_search/knowledge_search).
   workerTools: AgentTool[];
+  // settings 미주입/조회 실패/org 미설정 시 fail-soft 폴백(항상 DEFAULT_ORG_SETTINGS.toolMaxTokens
+  // 와 동일값 유지 — 21-LOOP-LESSONS.md L2).
   maxTokens: number;
   da: ArtifactDataAccess;
   // 하위 질문 개수 상한(effort cap) — 무제한 fan-out 방지. 기본 4.
   maxSubQuestions?: number;
   // gap 반성/재검색 라운드 hard cap(MAST 종료조건 가드) — 기본 2.
   maxGapIterations?: number;
+  // 주입 시 invoke 시점에 ctx.orgId 로 조회해 toolMaxTokens 를 동적 반영(정적 maxTokens 를
+  // 조용히 쓰지 않도록 — L1). 미주입 시 기존처럼 deps.maxTokens 그대로 사용(비파괴).
+  settings?: ToolSettingsResolverPort;
+}
+
+// settings 미주입/조회 실패는 절대 throw 하지 않고 deps.maxTokens 로 fail-soft 한다
+// (messages.ts resolveSettingsSafely 와 동일 원칙, L2/L5).
+async function resolveToolMaxTokens(
+  deps: DeepResearchToolDeps,
+  orgId: string,
+  logger: ToolContext["logger"] | undefined,
+): Promise<number> {
+  if (!deps.settings) return deps.maxTokens;
+  try {
+    const resolved = await deps.settings.resolve(orgId);
+    // ResolvedOrgSettings 의 각 필드는 zod `.optional()` 기반이라 Required<> 로도
+    // `| undefined` 가 남는다(messages.ts SAFE_DEFAULT_MAX_TOKENS 와 동일 TS 특성) —
+    // `??` 는 그 잔여 undefined 에 대한 최종 non-null 보강일 뿐, 정상 케이스는 항상
+    // DEFAULT_ORG_SETTINGS.toolMaxTokens(4096) 이상의 값을 갖는다.
+    return resolved.toolMaxTokens ?? deps.maxTokens;
+  } catch (error) {
+    logger?.warn({
+      category: "system",
+      msg: "deep_research: org settings resolve 실패 — 정적 deps.maxTokens 로 폴백",
+      orgId,
+      context: { error: String(error) },
+    });
+    return deps.maxTokens;
+  }
 }
 
 export const deepResearchToolSpec: AgentToolSpec = {
@@ -204,6 +244,7 @@ async function runIsolatedText(
 async function runResearcher(
   subQuestion: string,
   deps: DeepResearchToolDeps,
+  maxTokens: number,
   ctx: ToolContext,
 ): Promise<ResearchFinding> {
   const messages: LLMMessage[] = [{ role: "user", content: subQuestion }];
@@ -214,7 +255,7 @@ async function runResearcher(
     model: deps.workerModel,
     systemBlocks: buildResearcherSystemBlocks(),
     messages,
-    maxTokens: deps.maxTokens,
+    maxTokens,
     signal: ctx.signal,
     tools: deps.workerTools,
     toolContext: toolContextFrom(ctx),
@@ -307,13 +348,17 @@ export function createDeepResearchTool(deps: DeepResearchToolDeps): AgentTool {
         signal: AbortSignal.any([baseCtx.signal, timeoutController.signal]),
       };
 
+      // P15-T2-02 — 정적 deps.maxTokens 를 조용히 쓰지 않도록 invoke 시점에 ctx.orgId 로
+      // org-scoped toolMaxTokens 를 조회(L1). settings 미주입/조회 실패 시 deps.maxTokens 유지.
+      const maxTokens = await resolveToolMaxTokens(deps, ctx.orgId, ctx.logger);
+
       ctx.emitProgress?.({ stage: "planning", label: "조사 계획 수립 중" });
       const plannerText = await runIsolatedText(
         query,
         deps.leadProvider,
         deps.leadModel,
         buildPlannerSystemBlocks(maxSubQuestions),
-        deps.maxTokens,
+        maxTokens,
         ctx,
       );
       const subQuestions = parseSubQuestions(
@@ -342,7 +387,12 @@ export function createDeepResearchTool(deps: DeepResearchToolDeps): AgentTool {
       emitResearch();
       let findings = await Promise.all(
         subQuestions.map(async (subQuestion, i) => {
-          const finding = await runResearcher(subQuestion, deps, ctx);
+          const finding = await runResearcher(
+            subQuestion,
+            deps,
+            maxTokens,
+            ctx,
+          );
           const task = tasks[i];
           if (task) {
             task.status = "done";
@@ -368,7 +418,7 @@ export function createDeepResearchTool(deps: DeepResearchToolDeps): AgentTool {
           deps.leadProvider,
           deps.leadModel,
           buildSynthesisSystemBlocks(),
-          deps.maxTokens,
+          maxTokens,
           ctx,
         );
 
@@ -381,13 +431,18 @@ export function createDeepResearchTool(deps: DeepResearchToolDeps): AgentTool {
           deps.leadProvider,
           deps.leadModel,
           buildGapCheckSystemBlocks(),
-          deps.maxTokens,
+          maxTokens,
           ctx,
         );
         const gap = parseGapCheck(gapCheckText);
         if (gap.complete || !gap.gapQuestion) break;
 
-        const extra = await runResearcher(gap.gapQuestion, deps, ctx);
+        const extra = await runResearcher(
+          gap.gapQuestion,
+          deps,
+          maxTokens,
+          ctx,
+        );
         findings = [...findings, extra];
         tasks.push({
           id: `gap-${iteration}`,

@@ -11,7 +11,10 @@ import type { WebSearchPort } from "./web-search-port.js";
 import { createArtifactCreateTool } from "./handlers/artifact-create-handler.js";
 import { createWebSearchTool } from "./handlers/web-search-handler.js";
 import { createCodeInterpreterTool } from "./handlers/code-interpreter-handler.js";
-import { createDeepResearchTool } from "./handlers/deep-research-handler.js";
+import {
+  createDeepResearchTool,
+  type ToolSettingsResolverPort,
+} from "./handlers/deep-research-handler.js";
 import { createTavilyWebSearchProvider } from "./web-search-provider-tavily.js";
 import { createDevStubWebSearchProvider } from "./web-search-provider-dev-stub.js";
 import { createE2BSandboxTransport } from "./sandbox/sandbox-transport-e2b.js";
@@ -26,6 +29,9 @@ export interface AssembleBuiltinToolsDeps {
   // 없으면 dev-stub 폴백. 실 배포/로컬 실검색 시 .env.local 로 주입.
   tavilyApiKey?: string;
   e2bApiKey?: string;
+  // P15-T2-02 — 주입 시 deep_research 가 invoke 시점에 org-scoped toolMaxTokens 를 동적
+  // 반영(정적 maxTokens 를 조용히 쓰지 않도록, L1). 미주입 시 비파괴(정적 maxTokens 유지).
+  settings?: ToolSettingsResolverPort;
 }
 
 export function assembleBuiltinTools(
@@ -59,6 +65,7 @@ export function assembleBuiltinTools(
       workerTools: [webSearchTool],
       maxTokens: deps.maxTokens,
       da: deps.artifactDa,
+      ...(deps.settings ? { settings: deps.settings } : {}),
     }),
   ];
 }

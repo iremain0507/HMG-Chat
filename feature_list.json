@@ -1346,8 +1346,8 @@
     "acceptance": "RED: org toolMaxTokens=8000 → deep_research sub-turn 이 8000 사용(4096 아님); 미설정 시 4096 유지; verify-gates green",
     "phase": "P15",
     "team": "T2",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P15-T3-01",
