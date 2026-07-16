@@ -75,6 +75,7 @@ describe("(app)/layout — 전역 인증 shell", () => {
       "chat/[sessionId]/page.tsx",
       "projects/page.tsx",
       "settings/memories/page.tsx",
+      "settings/profile/page.tsx",
       "admin/page.tsx",
     ];
     for (const rel of routesInsideAppGroup) {

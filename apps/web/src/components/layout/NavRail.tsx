@@ -27,7 +27,7 @@ interface NavItem {
 const NAV_ITEMS: NavItem[] = [
   { key: "home", label: "홈", href: "/", icon: Home },
   { key: "projects", label: "프로젝트", href: "/projects", icon: Briefcase },
-  { key: "agents", label: "에이전트", href: "/agents", icon: Bot },
+  { key: "agents", label: "에이전트", href: "/settings/skills", icon: Bot },
   { key: "connectors", label: "커넥터", href: "/settings/mcp", icon: Plug },
   {
     key: "settings",

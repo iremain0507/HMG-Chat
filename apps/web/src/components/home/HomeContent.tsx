@@ -154,9 +154,13 @@ export function HomeContent({
           연결됨
         </a>
         <span className="text-border">·</span>
-        <span data-testid="capability-agents" className="font-medium">
+        <a
+          href="/settings/skills"
+          data-testid="capability-agents"
+          className="font-medium hover:text-fg"
+        >
           에이전트 <span className="font-mono tabular-nums">{agentsCount}</span>
-        </span>
+        </a>
         <span className="text-border">·</span>
         <a
           href="/settings/skills"

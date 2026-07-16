@@ -1418,8 +1418,8 @@
     "acceptance": "profile 폼 렌더+저장 RED→GREEN; agents 링크가 더 이상 404 아님(존재 라우트 이동); 하드코딩 hex 0; verify-gates green; human UAT(TS-20)",
     "phase": "P16",
     "team": "T6",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P16-T1-01",

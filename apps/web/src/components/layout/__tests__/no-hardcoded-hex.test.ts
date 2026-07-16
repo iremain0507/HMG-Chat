@@ -62,6 +62,8 @@ const FILES = [
   "../../../app/(app)/admin/settings/page.tsx",
   "../../settings/SettingsIndex.tsx",
   "../../../app/(app)/settings/page.tsx",
+  "../../settings/ProfileManager.tsx",
+  "../../../app/(app)/settings/profile/page.tsx",
 ];
 
 describe("P13 하드코딩 hex 제로 회귀 가드", () => {

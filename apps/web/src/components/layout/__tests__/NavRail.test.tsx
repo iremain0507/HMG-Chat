@@ -67,6 +67,16 @@ describe("NavRail", () => {
     );
   });
 
+  it("에이전트 항목은 404 라우트(/agents) 대신 기존 표면(/settings/skills)을 가리킨다(갭5)", () => {
+    stubCurrentUser("member");
+    render(<NavRail />);
+
+    expect(screen.getByTestId("nav-rail-agents")).toHaveAttribute(
+      "href",
+      "/settings/skills",
+    );
+  });
+
   it("일반 멤버에게는 관리 항목을 숨긴다", async () => {
     stubCurrentUser("member");
     render(<NavRail />);
