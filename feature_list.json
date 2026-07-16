@@ -1679,8 +1679,8 @@
     "acceptance": "RED: createApp 실HTTP 태그 추가/제거 + tag 필터 목록 + cross-org 차단. verify-gates green",
     "phase": "P19",
     "team": "T1",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P19-T6-04",

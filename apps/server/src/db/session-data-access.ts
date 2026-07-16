@@ -11,9 +11,12 @@ import { pgPool } from "./client.js";
 // routes/sessions.ts 가 실제 쓰는 부분만 좁힌 로컬 포트, P17-T1-02 주석 참조).
 // P19-T1-03 — sessions.folder_id(migration 0019)도 frozen Session 에 없는 신규 컬럼이라
 // pinnedAt 과 동일 사유로 로컬 교집합 타입에 확장한다.
+// P19-T1-04 — tags 는 session_tags(migration 0020) 조인 집계(컬럼 아님) — 동일 사유로
+// 로컬 교집합 타입에 확장한다.
 export type SessionWithPin = Session & {
   pinnedAt: Date | null;
   folderId: string | null;
+  tags: string[];
 };
 
 function toSession(row: Record<string, unknown>): SessionWithPin {
@@ -25,6 +28,7 @@ function toSession(row: Record<string, unknown>): SessionWithPin {
     archivedAt: (row.archived_at as Date | null) ?? null,
     pinnedAt: (row.pinned_at as Date | null) ?? null,
     folderId: (row.folder_id as string | null) ?? null,
+    tags: (row.tags as string[] | null) ?? [],
     lastMessageAt: (row.last_message_at as Date | null) ?? null,
     createdAt: row.created_at as Date,
   };
@@ -32,7 +36,8 @@ function toSession(row: Record<string, unknown>): SessionWithPin {
 
 export interface SessionsDataAccess {
   list(
-    filter: { userId: string },
+    // P19-T1-04 — tag 필터(GET /sessions?tag=). 미지정 시 전체(기존 동작 무변경).
+    filter: { userId: string; tag?: string },
     pagination?: { cursor?: string; limit?: number },
   ): Promise<{ items: SessionWithPin[]; nextCursor?: string }>;
   byId(id: string): Promise<SessionWithPin | null>;
@@ -56,9 +61,17 @@ export function createPgSessionDataAccess(): SessionsDataAccess {
     async list(filter, pagination) {
       const limit = pagination?.limit ?? 20;
       const res = await pgPool.query(
-        `SELECT * FROM sessions WHERE user_id = $1
-         ORDER BY COALESCE(last_message_at, created_at) DESC LIMIT $2`,
-        [filter.userId, limit],
+        `SELECT s.*, COALESCE(
+           (SELECT array_agg(t.tag ORDER BY t.tag) FROM session_tags t WHERE t.session_id = s.id),
+           '{}'
+         ) AS tags
+         FROM sessions s
+         WHERE s.user_id = $1
+           AND ($2::text IS NULL OR EXISTS (
+             SELECT 1 FROM session_tags t WHERE t.session_id = s.id AND t.tag = $2
+           ))
+         ORDER BY COALESCE(s.last_message_at, s.created_at) DESC LIMIT $3`,
+        [filter.userId, filter.tag ?? null, limit],
       );
       return { items: res.rows.map(toSession) };
     },

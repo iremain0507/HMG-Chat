@@ -17,6 +17,10 @@ import {
   createPgSessionFolderDataAccess,
   type SessionFolderDataAccess,
 } from "../db/session-folder-data-access.js";
+import {
+  createPgSessionTagDataAccess,
+  type SessionTagDataAccess,
+} from "../db/session-tag-data-access.js";
 import type { AuthedVariables } from "../middleware/auth-middleware.js";
 
 function errorJson(code: string, message: string) {
@@ -40,7 +44,8 @@ function parseLimit(
 // 전체 구현(lock 등 미사용 메서드)까지 강제하지 않는다.
 export interface SessionsPort {
   list(
-    filter: { userId: string },
+    // P19-T1-04 — tag 필터(GET /?tag=).
+    filter: { userId: string; tag?: string },
     pagination?: { cursor?: string; limit?: number },
   ): Promise<{ items: SessionWithPin[]; nextCursor?: string }>;
   byId(id: string): Promise<SessionWithPin | null>;
@@ -75,6 +80,8 @@ export interface SessionRoutesDeps {
   // 세션에 붙이는 것을 차단, session_folders 테이블은 sessions 와 FK 만 있고 org 체크가 없어
   // application 레벨에서 검증해야 함).
   folders?: SessionFolderDataAccess;
+  // P19-T1-04 — 태그 추가/제거(POST/DELETE /:id/tags).
+  tags?: SessionTagDataAccess;
 }
 
 export function createSessionRoutes(
@@ -84,16 +91,19 @@ export function createSessionRoutes(
   const sessions = deps.sessions ?? createPgSessionDataAccess();
   const sessionMessages = deps.sessionMessages ?? createPgMessageDataAccess();
   const folders = deps.folders ?? createPgSessionFolderDataAccess();
+  const tags = deps.tags ?? createPgSessionTagDataAccess();
   const app = new Hono<{ Variables: AuthedVariables }>();
 
   // P17-T1-02(TS-08/10) — 내 세션 목록(최신순). userId 는 auth 에서만 파생(body/query 미수신
   // → cross-org/타 사용자 열람 원천 차단, projects.ts actorOf 와 동일 패턴).
+  // P19-T1-04 — ?tag= 로 태그 필터(해당 태그가 붙은 세션만).
   app.get("/", async (c) => {
     const auth = c.get("auth");
     const cursor = c.req.query("cursor");
     const limit = parseLimit(c.req.query("limit"), 20, 100);
+    const tag = c.req.query("tag");
     const page = await sessions.list(
-      { userId: auth.sub },
+      { userId: auth.sub, ...(tag ? { tag } : {}) },
       { ...(cursor ? { cursor } : {}), limit },
     );
     return c.json({
@@ -105,12 +115,55 @@ export function createSessionRoutes(
         archived: s.archivedAt !== null,
         pinned: s.pinnedAt !== null,
         folderId: s.folderId,
+        tags: s.tags,
       })),
       meta: {
         requestId: randomUUID(),
         ...(page.nextCursor ? { nextCursor: page.nextCursor } : {}),
       },
     });
+  });
+
+  // P19-T1-04 — 태그 추가. 세션 ownership 은 byId 로 먼저 검증(existence-leak 방지, 타 사용자
+  // 세션은 404). org_id 는 auth 에서만 파생(body/query 미수신 → cross-org 불가).
+  app.post("/:id/tags", async (c) => {
+    const auth = c.get("auth");
+    const sessionId = c.req.param("id");
+    const session = await sessions.byId(sessionId);
+    if (!session || session.userId !== auth.sub) {
+      return c.json(errorJson("NOT_FOUND", "세션을 찾을 수 없습니다."), 404);
+    }
+    const body = await c.req
+      .json<{ tag?: string }>()
+      .catch(() => ({}) as { tag?: string });
+    const tag = body.tag?.trim();
+    if (!tag) {
+      return c.json(errorJson("INVALID_INPUT", "tag 가 필요합니다."), 400);
+    }
+    const created = await tags.add(auth.org, sessionId, tag);
+    return c.json(
+      {
+        data: { sessionId: created.sessionId, tag: created.tag },
+        meta: { requestId: randomUUID() },
+      },
+      201,
+    );
+  });
+
+  // P19-T1-04 — 태그 제거. 세션 ownership 은 POST 와 동일하게 먼저 검증.
+  app.delete("/:id/tags/:tag", async (c) => {
+    const auth = c.get("auth");
+    const sessionId = c.req.param("id");
+    const session = await sessions.byId(sessionId);
+    if (!session || session.userId !== auth.sub) {
+      return c.json(errorJson("NOT_FOUND", "세션을 찾을 수 없습니다."), 404);
+    }
+    const tag = c.req.param("tag");
+    const deleted = await tags.remove(auth.org, sessionId, tag);
+    if (!deleted) {
+      return c.json(errorJson("NOT_FOUND", "태그를 찾을 수 없습니다."), 404);
+    }
+    return c.body(null, 204);
   });
 
   // P19-T1-02 — 핀 토글. ownership 은 togglePinForOwner 쿼리에 내장(TS-09 원자성 패턴,
