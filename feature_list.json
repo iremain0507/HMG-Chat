@@ -1409,8 +1409,8 @@
     "acceptance": "설정 인덱스가 전 섹션 링크 렌더; 라우트 이동 RED→GREEN; 하드코딩 hex 0; verify-gates green; human UAT(TS-20)",
     "phase": "P16",
     "team": "T6",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P16-T6-05",

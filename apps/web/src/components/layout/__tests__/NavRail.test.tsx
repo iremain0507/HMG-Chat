@@ -57,6 +57,16 @@ describe("NavRail", () => {
     expect(screen.getByTestId("nav-rail-settings")).toBeInTheDocument();
   });
 
+  it("설정 항목은 인덱스(/settings)를 가리킨다(갭9: /settings/memories 하드코딩 제거)", () => {
+    stubCurrentUser("member");
+    render(<NavRail />);
+
+    expect(screen.getByTestId("nav-rail-settings")).toHaveAttribute(
+      "href",
+      "/settings",
+    );
+  });
+
   it("일반 멤버에게는 관리 항목을 숨긴다", async () => {
     stubCurrentUser("member");
     render(<NavRail />);

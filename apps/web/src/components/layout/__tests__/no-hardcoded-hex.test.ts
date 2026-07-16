@@ -60,6 +60,8 @@ const FILES = [
   "../../admin/settings/PermissionsTab.tsx",
   "../../admin/settings/QuotaTab.tsx",
   "../../../app/(app)/admin/settings/page.tsx",
+  "../../settings/SettingsIndex.tsx",
+  "../../../app/(app)/settings/page.tsx",
 ];
 
 describe("P13 하드코딩 hex 제로 회귀 가드", () => {

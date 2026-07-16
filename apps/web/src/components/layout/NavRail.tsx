@@ -32,7 +32,7 @@ const NAV_ITEMS: NavItem[] = [
   {
     key: "settings",
     label: "설정",
-    href: "/settings/memories",
+    href: "/settings",
     icon: Settings,
   },
 ];
