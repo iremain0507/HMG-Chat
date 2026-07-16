@@ -174,6 +174,30 @@ describe("createArtifactRoutes", () => {
     expect(await res.text()).toBe("hello");
   });
 
+  it("GET /:id/content — 한글 파일명도 200 (헤더 Latin1/ByteString 변환 에러 회귀 방지)", async () => {
+    const da = makeDa();
+    const artifact = await da.artifacts.insert({
+      sessionId: null,
+      createdBy: userId,
+      type: "markdown",
+      filename: "데이터레이크_구축_가이드.md",
+      mimeType: "text/markdown",
+      sizeBytes: 6,
+      storageKind: "inline",
+      s3Key: null,
+      inlineContent: Buffer.from("# 가이드"),
+      sharedAt: null,
+    });
+    const { app } = appWith(da);
+
+    const res = await app.request(`/${artifact.id}/content`);
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-disposition")).toContain(
+      "filename*=UTF-8''",
+    );
+    expect(await res.text()).toBe("# 가이드");
+  });
+
   it("GET /:id/content — s3 artifact 는 signed downloadUrl 로만 바이트 조회 가능", async () => {
     const da = makeDa();
     const objectStore = createInMemoryObjectStore();
