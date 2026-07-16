@@ -136,4 +136,87 @@ describe("useSessions", () => {
     );
     expect(result.current.sessions[0]?.title).toBe("new title");
   });
+
+  it("togglePin 이 PATCH /sessions/:id/pin 을 호출하고 서버 pinned 값을 반영한다", async () => {
+    const fetchMock = vi.fn(
+      async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        if (url === "/api/v1/sessions/sess-1/pin" && init?.method === "PATCH") {
+          return {
+            ok: true,
+            status: 200,
+            json: async () => ({ data: { id: "sess-1", pinned: true } }),
+          };
+        }
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            data: [
+              {
+                id: "sess-1",
+                title: "세션 A",
+                lastMessageAt: "2026-07-14T01:00:00Z",
+                projectId: null,
+                archived: false,
+                pinned: false,
+              },
+            ],
+          }),
+        };
+      },
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { result } = renderHook(() => useSessions());
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.sessions[0]?.pinned).toBe(false);
+
+    await act(async () => {
+      await result.current.togglePin("sess-1");
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/v1/sessions/sess-1/pin",
+      expect.objectContaining({ method: "PATCH" }),
+    );
+    expect(result.current.sessions[0]?.pinned).toBe(true);
+  });
+
+  it("togglePin 요청 실패 시 낙관적 업데이트를 롤백한다", async () => {
+    const fetchMock = vi.fn(
+      async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        if (url === "/api/v1/sessions/sess-1/pin" && init?.method === "PATCH") {
+          return { ok: false, status: 500, json: async () => ({}) };
+        }
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            data: [
+              {
+                id: "sess-1",
+                title: "세션 A",
+                lastMessageAt: "2026-07-14T01:00:00Z",
+                projectId: null,
+                archived: false,
+                pinned: false,
+              },
+            ],
+          }),
+        };
+      },
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { result } = renderHook(() => useSessions());
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    await act(async () => {
+      await result.current.togglePin("sess-1");
+    });
+
+    expect(result.current.sessions[0]?.pinned).toBe(false);
+  });
 });

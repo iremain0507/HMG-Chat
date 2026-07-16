@@ -15,6 +15,7 @@ const session: SessionListItemDto = {
   lastMessageAt: "2026-07-14T12:00:00Z",
   projectId: null,
   archived: false,
+  pinned: false,
 };
 
 describe("SessionCard 툴팁", () => {

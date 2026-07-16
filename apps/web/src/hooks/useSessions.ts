@@ -3,6 +3,7 @@
 // hooks/useSessions.ts — 16-API-CONTRACT § GET/POST/PATCH/DELETE /sessions 소비.
 import { useCallback, useEffect, useState } from "react";
 import { apiFetch } from "../lib/fetch-with-refresh";
+import { toggleSessionPin } from "../lib/pinnedSessions";
 
 export interface SessionListItemDto {
   id: string;
@@ -10,6 +11,7 @@ export interface SessionListItemDto {
   lastMessageAt: string | null;
   projectId: string | null;
   archived: boolean;
+  pinned: boolean;
 }
 
 interface UseSessionsResult {
@@ -19,6 +21,7 @@ interface UseSessionsResult {
   createSession: () => Promise<SessionListItemDto | null>;
   renameSession: (id: string, title: string) => Promise<void>;
   deleteSession: (id: string) => Promise<void>;
+  togglePin: (id: string) => Promise<void>;
   reload: () => Promise<void>;
 }
 
@@ -31,7 +34,9 @@ export function useSessions(): UseSessionsResult {
     setLoading(true);
     setError(null);
     try {
-      const res = await apiFetch("/api/v1/sessions", { credentials: "include" });
+      const res = await apiFetch("/api/v1/sessions", {
+        credentials: "include",
+      });
       if (!res.ok) {
         setError("세션 목록을 불러오지 못했습니다.");
         return;
@@ -69,6 +74,7 @@ export function useSessions(): UseSessionsResult {
       projectId: body.data.projectId,
       lastMessageAt: body.data.createdAt,
       archived: false,
+      pinned: false,
     };
     setSessions((prev) => [created, ...prev]);
     return created;
@@ -94,6 +100,23 @@ export function useSessions(): UseSessionsResult {
     setSessions((prev) => prev.filter((s) => s.id !== id));
   }, []);
 
+  const togglePin = useCallback(async (id: string) => {
+    let previous = false;
+    setSessions((prev) =>
+      prev.map((s) => {
+        if (s.id !== id) return s;
+        previous = s.pinned;
+        return { ...s, pinned: !s.pinned };
+      }),
+    );
+    const result = await toggleSessionPin(id);
+    setSessions((prev) =>
+      prev.map((s) =>
+        s.id === id ? { ...s, pinned: result === null ? previous : result } : s,
+      ),
+    );
+  }, []);
+
   return {
     sessions,
     loading,
@@ -101,6 +124,7 @@ export function useSessions(): UseSessionsResult {
     createSession,
     renameSession,
     deleteSession,
+    togglePin,
     reload: load,
   };
 }

@@ -6,10 +6,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useSessions, type SessionListItemDto } from "../../hooks/useSessions";
-import {
-  getPinnedSessionIds,
-  toggleSessionPinned,
-} from "../../lib/pinnedSessions";
 import { SessionCard } from "./SessionCard";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -23,7 +19,6 @@ interface DateGroup {
 export function groupSessionsByDate(
   sessions: SessionListItemDto[],
   now: Date,
-  pinnedIds: Set<string> = new Set(),
 ): DateGroup[] {
   const startOfToday = Date.UTC(
     now.getUTCFullYear(),
@@ -40,7 +35,7 @@ export function groupSessionsByDate(
   };
 
   for (const session of sessions) {
-    if (pinnedIds.has(session.id)) {
+    if (session.pinned) {
       buckets["고정"]?.push(session);
       continue;
     }
@@ -64,15 +59,16 @@ export function groupSessionsByDate(
 
 export function SessionList({ now }: { now?: Date } = {}) {
   const router = useRouter();
-  const { sessions, loading, createSession, renameSession, deleteSession } =
-    useSessions();
+  const {
+    sessions,
+    loading,
+    createSession,
+    renameSession,
+    deleteSession,
+    togglePin,
+  } = useSessions();
   const [query, setQuery] = useState("");
-  const [pinnedIds, setPinnedIds] = useState<Set<string>>(new Set());
   const searchRef = useRef<HTMLInputElement>(null);
-
-  useEffect(() => {
-    setPinnedIds(getPinnedSessionIds());
-  }, []);
 
   async function handleNewSession() {
     const created = await createSession();
@@ -100,7 +96,7 @@ export function SessionList({ now }: { now?: Date } = {}) {
   }, [createSession, router]);
 
   function handleTogglePin(id: string) {
-    setPinnedIds(new Set(toggleSessionPinned(id)));
+    void togglePin(id);
   }
 
   const filtered = useMemo(() => {
@@ -110,8 +106,8 @@ export function SessionList({ now }: { now?: Date } = {}) {
   }, [sessions, query]);
 
   const groups = useMemo(
-    () => groupSessionsByDate(filtered, now ?? new Date(), pinnedIds),
-    [filtered, now, pinnedIds],
+    () => groupSessionsByDate(filtered, now ?? new Date()),
+    [filtered, now],
   );
 
   return (
@@ -154,7 +150,7 @@ export function SessionList({ now }: { now?: Date } = {}) {
                 <SessionCard
                   key={session.id}
                   session={session}
-                  pinned={pinnedIds.has(session.id)}
+                  pinned={session.pinned}
                   onOpen={(id) => router.push(`/chat/${id}`)}
                   onRename={(id, title) => void renameSession(id, title)}
                   onDelete={(id) => void deleteSession(id)}

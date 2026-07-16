@@ -167,25 +167,36 @@ describe("SessionList", () => {
     });
   });
 
-  it("고정 버튼 클릭 시 해당 세션이 '고정' 그룹으로 이동한다", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async () => ({
-        ok: true,
-        status: 200,
-        json: async () => ({
-          data: [
-            {
-              id: "sess-a",
-              title: "세션 A",
-              lastMessageAt: "2026-07-14T01:00:00Z",
-              projectId: null,
-              archived: false,
-            },
-          ],
-        }),
-      })),
+  it("고정 버튼 클릭 시 서버 PATCH /pin 을 호출하고 '고정' 그룹으로 이동한다", async () => {
+    const fetchMock = vi.fn(
+      async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        if (url === "/api/v1/sessions/sess-a/pin" && init?.method === "PATCH") {
+          return {
+            ok: true,
+            status: 200,
+            json: async () => ({ data: { id: "sess-a", pinned: true } }),
+          };
+        }
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            data: [
+              {
+                id: "sess-a",
+                title: "세션 A",
+                lastMessageAt: "2026-07-14T01:00:00Z",
+                projectId: null,
+                archived: false,
+                pinned: false,
+              },
+            ],
+          }),
+        };
+      },
     );
+    vi.stubGlobal("fetch", fetchMock);
 
     render(<SessionList now={new Date("2026-07-14T12:00:00Z")} />);
 
@@ -197,7 +208,15 @@ describe("SessionList", () => {
 
     fireEvent.click(screen.getByLabelText("고정: 세션 A"));
 
-    expect(screen.getByText("고정")).toBeInTheDocument();
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/v1/sessions/sess-a/pin",
+        expect.objectContaining({ method: "PATCH" }),
+      );
+    });
+    await waitFor(() => {
+      expect(screen.getByText("고정")).toBeInTheDocument();
+    });
     expect(screen.queryByText("오늘")).not.toBeInTheDocument();
     expect(screen.getByLabelText("고정 해제: 세션 A")).toBeInTheDocument();
   });
