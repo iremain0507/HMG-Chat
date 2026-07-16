@@ -1859,8 +1859,8 @@
     "acceptance": "RED: 스키마 검증(typed 배너 통과/불량 거부) + 기존값 폴백 단언(L2). verify-gates green",
     "phase": "P19",
     "team": "T1",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P19-T6-15",

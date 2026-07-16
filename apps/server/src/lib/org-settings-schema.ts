@@ -5,6 +5,22 @@
 
 import { z } from "zod";
 
+// P19-T1-10: 배너 typed 스키마. 기존 저장값이 평문 문자열(구 버전)일 수 있어
+// safeParse 단계에서 typed 배너 1건(또는 빈 배열)으로 폴백 변환한다(L2, 마이그레이션 불필요).
+export const BannerSchema = z.object({
+  type: z.enum(["info", "success", "warning", "error"]).default("info"),
+  title: z.string().max(200).optional(),
+  content: z.string().min(1).max(2000),
+  dismissible: z.boolean().default(true),
+});
+
+export type Banner = z.infer<typeof BannerSchema>;
+
+const BannerListInput = z.union([
+  z.string().max(2000),
+  z.array(BannerSchema).max(20),
+]);
+
 export const OrgSettingsSchema = z.object({
   // Models & Generation
   maxTokens: z.number().int().min(1).max(128_000).optional(),
@@ -31,7 +47,15 @@ export const OrgSettingsSchema = z.object({
 
   // General/Branding
   instanceName: z.string().min(1).max(120).optional(),
-  banner: z.string().max(2000).optional(),
+  banner: BannerListInput.optional().transform((val) => {
+    if (val === undefined) return undefined;
+    if (typeof val === "string") {
+      return val.length === 0
+        ? []
+        : [{ type: "info" as const, content: val, dismissible: true }];
+    }
+    return val;
+  }),
   responseWatermark: z.string().max(200).optional(),
 
   // Users & Permissions — env/ALLOWED_DOMAINS 도메인 게이트와 결합해 routes/auth.ts 가 반영(P15-T1-01)
@@ -67,7 +91,7 @@ export const DEFAULT_ORG_SETTINGS: ResolvedOrgSettings = {
   enableDirectConnections: false,
 
   instanceName: "WChat",
-  banner: "",
+  banner: [],
   responseWatermark: "",
 
   defaultUserRole: "member",
