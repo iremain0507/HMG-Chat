@@ -634,6 +634,28 @@ export function useSessionStream(sessionId: string) {
     [addNode, streamTurn],
   );
 
+  // P17-T6-03(TS-06) — 재생성은 새 user 턴을 추가하지 않고, 대상 assistant 메시지가
+  // 속한 user 턴을 그대로 재사용해 그 user 노드 아래 새 assistant 형제를 만든다(편집/분기와
+  // 동일한 tree 의미 — addNode 가 형제 목록에 append+활성 자식 전환까지 처리).
+  // error 메시지는 스트리밍 중 만든 빈 assistant placeholder 의 자식으로 추가되므로
+  // (emitConnectionError/error 핸들러가 assistantId ?? userNodeId 를 부모로 씀), 재시도 시엔
+  // 곧바로 위 부모가 user 가 아닐 수 있어 user 노드를 만날 때까지 부모 체인을 거슬러 올라간다.
+  const regenerate = useCallback(
+    async (assistantMessageId: string) => {
+      const t = treeRef.current;
+      let cursor: string | null = t.parentOf[assistantMessageId] ?? null;
+      while (cursor) {
+        const node = t.nodes[cursor];
+        if (node?.role === "user") {
+          await streamTurn(cursor, node.content);
+          return;
+        }
+        cursor = t.parentOf[cursor] ?? null;
+      }
+    },
+    [streamTurn],
+  );
+
   const switchBranch = useCallback(
     (messageId: string, direction: "prev" | "next") => {
       const t = treeRef.current;
@@ -705,6 +727,7 @@ export function useSessionStream(sessionId: string) {
     respondHitl,
     artifacts,
     editMessage,
+    regenerate,
     switchBranch,
     historyLoading,
     loadHistory,

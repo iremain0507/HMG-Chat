@@ -1508,8 +1508,8 @@
     "acceptance": "RED: 재생성 후 같은 user 턴에 assistant 형제 2/2 생성(중복 turn 아님); 페이저 동작; verify-gates green",
     "phase": "P17",
     "team": "T6",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P17-T6-04",

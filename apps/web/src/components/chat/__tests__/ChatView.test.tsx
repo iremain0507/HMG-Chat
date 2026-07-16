@@ -201,6 +201,22 @@ describe("ChatView", () => {
     });
 
     fetchMock.mockClear();
+    fetchMock.mockImplementationOnce(async () => ({
+      body: new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.enqueue(
+            encoder.encode(sseFrame("message_start", { messageId: "msg-2" })),
+          );
+          controller.enqueue(
+            encoder.encode(sseFrame("text_delta", { text: "대안 응답" })),
+          );
+          controller.enqueue(
+            encoder.encode(sseFrame("stop", { reason: "end_turn" })),
+          );
+          controller.close();
+        },
+      }),
+    }));
     fireEvent.click(screen.getByRole("button", { name: "재생성" }));
 
     await waitFor(() => {
@@ -211,6 +227,24 @@ describe("ChatView", () => {
         }),
       );
     });
+
+    // P17-T6-03(TS-06) — 재생성은 새 user 턴을 추가하지 않는다(중복 turn 아님) +
+    // 같은 user 턴 아래 assistant 형제 페이저(2/2)가 생긴다.
+    await waitFor(() => {
+      expect(screen.getByText("대안 응답")).toBeInTheDocument();
+    });
+    expect(screen.getAllByText("hi")).toHaveLength(1);
+    expect(screen.getByTestId("message-branch-pager")).toHaveTextContent(
+      "2 / 2",
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "이전 응답" }));
+    await waitFor(() => {
+      expect(screen.getByText("hello")).toBeInTheDocument();
+    });
+    expect(screen.getByTestId("message-branch-pager")).toHaveTextContent(
+      "1 / 2",
+    );
   });
 
   it("첫 토큰 도착 전에는 shimmer 스켈레톤을 보여주고 델타 도착 시 사라진다", async () => {

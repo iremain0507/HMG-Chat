@@ -613,6 +613,64 @@ describe("useSessionStream", () => {
     expect(assistantMessage?.content).toBe("편집된 응답");
   });
 
+  it("regenerate 는 같은 user 턴 아래 assistant 형제를 새로 만들고, user 턴은 중복되지 않는다 (P17-T6-03, TS-06)", async () => {
+    const fetchMock = vi.fn(async () => ({
+      body: sseBody([
+        sseFrame("message_start", { messageId: "msg-1" }),
+        sseFrame("text_delta", { text: "첫 응답" }),
+        sseFrame("stop", { reason: "end_turn" }),
+      ]),
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { result } = renderHook(() => useSessionStream("session-1"));
+
+    await act(async () => {
+      await result.current.send("원본 질문");
+    });
+
+    const assistantMessage = result.current.messages.find(
+      (m) => m.role === "assistant",
+    );
+    expect(assistantMessage).toBeDefined();
+
+    fetchMock.mockImplementationOnce(async () => ({
+      body: sseBody([
+        sseFrame("message_start", { messageId: "msg-2" }),
+        sseFrame("text_delta", { text: "대안 응답" }),
+        sseFrame("stop", { reason: "end_turn" }),
+      ]),
+    }));
+
+    await act(async () => {
+      await result.current.regenerate(assistantMessage!.id);
+    });
+
+    // 재생성은 새 user 턴을 추가하지 않는다 — user 메시지는 여전히 1개.
+    const userMessages = result.current.messages.filter(
+      (m) => m.role === "user",
+    );
+    expect(userMessages).toHaveLength(1);
+    expect(userMessages[0]?.content).toBe("원본 질문");
+    expect(userMessages[0]?.branch).toBeUndefined();
+
+    // 같은 user 턴 아래 assistant 형제 2/2 가 생기고 활성경로는 새 형제로 전환된다.
+    const activeAssistant = result.current.messages.find(
+      (m) => m.role === "assistant",
+    );
+    expect(activeAssistant?.content).toBe("대안 응답");
+    expect(activeAssistant?.branch).toEqual({ index: 2, count: 2 });
+
+    // regenerate 요청도 동일 엔드포인트로 전송됨(새 세션 경로 아님).
+    expect(fetchMock).toHaveBeenLastCalledWith(
+      "/api/v1/sessions/session-1/messages",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({ content: "원본 질문" }),
+      }),
+    );
+  });
+
   it("switchBranch 로 형제 분기를 전환하면 활성경로가 해당 분기의 이전에 스트리밍된 내용으로 복원된다 (P10-T6-15)", async () => {
     const fetchMock = vi.fn(async () => ({
       body: sseBody([

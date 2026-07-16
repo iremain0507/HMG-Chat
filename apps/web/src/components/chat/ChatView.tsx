@@ -71,6 +71,7 @@ export function ChatView({ sessionId }: { sessionId: string }) {
     respondHitl,
     artifacts,
     editMessage,
+    regenerate,
     switchBranch,
     historyLoading,
     loadHistory,
@@ -355,23 +356,20 @@ export function ChatView({ sessionId }: { sessionId: string }) {
                       onActivityFocus={handleActivityFocus}
                       {...(canRegenerate
                         ? {
-                            onRegenerate: () => {
-                              const priorUser = messages
-                                .slice(0, i)
-                                .reverse()
-                                .find((prev) => prev.role === "user");
-                              if (priorUser) void send(priorUser.content);
-                            },
+                            // P17-T6-03(TS-06) — 재생성은 같은 user 턴 아래 새 assistant
+                            // 형제를 만든다(중복 turn 아님, editMessage 와 동일 tree 의미).
+                            onRegenerate: () => void regenerate(m.id),
                           }
                         : {})}
                       {...(m.role === "user"
                         ? {
                             onEditSubmit: (nextContent: string) =>
                               void editMessage(m.id, nextContent),
-                            onSwitchBranch: (direction: "prev" | "next") =>
-                              switchBranch(m.id, direction),
                           }
                         : {})}
+                      onSwitchBranch={(direction: "prev" | "next") =>
+                        switchBranch(m.id, direction)
+                      }
                     />
                   );
                 })}
@@ -702,13 +700,42 @@ export function MessageItem({
             aria-label="응답 생성 중"
           />
         )}
-        {!streaming && (
-          <div className="mt-1 opacity-0 transition-opacity group-hover:opacity-100">
-            <MessageActions
-              role="assistant"
-              content={content}
-              {...(onRegenerate ? { onRegenerate } : {})}
-            />
+        {(!streaming || (branch && branch.count > 1)) && (
+          <div className="mt-1 flex items-center gap-2">
+            {branch && branch.count > 1 && (
+              <div className="flex items-center gap-1 text-fg-muted">
+                <button
+                  type="button"
+                  aria-label="이전 응답"
+                  disabled={branch.index === 1}
+                  onClick={() => onSwitchBranch?.("prev")}
+                  className="rounded-md px-1 py-0.5 text-xs hover:text-fg disabled:opacity-30"
+                >
+                  ‹
+                </button>
+                <span data-testid="message-branch-pager" className="text-xs">
+                  {branch.index} / {branch.count}
+                </span>
+                <button
+                  type="button"
+                  aria-label="다음 응답"
+                  disabled={branch.index === branch.count}
+                  onClick={() => onSwitchBranch?.("next")}
+                  className="rounded-md px-1 py-0.5 text-xs hover:text-fg disabled:opacity-30"
+                >
+                  ›
+                </button>
+              </div>
+            )}
+            {!streaming && (
+              <div className="opacity-0 transition-opacity group-hover:opacity-100">
+                <MessageActions
+                  role="assistant"
+                  content={content}
+                  {...(onRegenerate ? { onRegenerate } : {})}
+                />
+              </div>
+            )}
           </div>
         )}
       </div>
