@@ -35,9 +35,12 @@ import { createPgUsageLogDataAccess } from "./db/usage-log-data-access.js";
 import { createErrorRoutes } from "./routes/errors.js";
 import { createPgErrorLogDataAccess } from "./db/error-log-data-access.js";
 import { createAdminRoutes } from "./routes/admin.js";
+import { createAdminSettingsRoutes } from "./routes/admin-settings.js";
 import { createConfigRoutes } from "./routes/config.js";
 import { createPgHealthHistoryDataAccess } from "./db/health-history-data-access.js";
 import { createPgAdminDataAccess } from "./db/admin-data-access.js";
+import { createPgOrgSettingsDataAccess } from "./db/org-settings-data-access.js";
+import { createSettingsService } from "./lib/settings-service.js";
 import { createSkillRegistry } from "./tools/skills-engine.js";
 import { assembleBuiltinTools } from "./tools/assemble-builtin-tools.js";
 import { hitlBridge } from "./tools/hitl-manager.js";
@@ -320,6 +323,12 @@ export function createApp(env: Env) {
   errorsApp.route("/", createErrorRoutes({ da: createPgErrorLogDataAccess() }));
   app.route("/api/v1/errors", errorsApp);
 
+  const orgSettingsDa = createPgOrgSettingsDataAccess();
+  const settingsService = createSettingsService({
+    da: orgSettingsDa,
+    logger: createLogger(),
+  });
+
   const adminApp = new Hono<{ Variables: AuthedVariables }>();
   adminApp.use("*", authMiddleware);
   adminApp.route(
@@ -327,6 +336,13 @@ export function createApp(env: Env) {
     createAdminRoutes({
       da: createPgHealthHistoryDataAccess(),
       adminDa: createPgAdminDataAccess(),
+    }),
+  );
+  adminApp.route(
+    "/settings",
+    createAdminSettingsRoutes({
+      da: orgSettingsDa,
+      settingsService,
     }),
   );
   app.route("/api/v1/admin", adminApp);

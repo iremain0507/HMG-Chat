@@ -1265,8 +1265,8 @@
     "acceptance": "routes-mounted green(GET·PUT 두 항목); createApp 통합테스트: 비admin->403, 잘못된 body->400, admin PUT 후 GET 이 변경 반영, org A PUT 이 org B 무영향(orgId 서버 파생), {data,meta} 엔벨로프; verify-gates green",
     "phase": "P14",
     "team": "T1",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P14-T2-01",
