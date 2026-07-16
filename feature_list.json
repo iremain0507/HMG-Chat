@@ -1301,8 +1301,8 @@
     "acceptance": "RED: settings ragChunkSizeTokens=1200 -> chunker 가 1200 로 분할; 미설정 시 800 유지; verify-gates green",
     "phase": "P14",
     "team": "T3",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P14-T6-01",
