@@ -442,6 +442,8 @@ export function ChatView({ sessionId }: { sessionId: string }) {
                       key={m.id}
                       role={m.role}
                       content={m.content}
+                      sessionId={sessionId}
+                      messageId={m.id}
                       {...(m.parts ? { parts: m.parts } : {})}
                       {...(m.citations ? { citations: m.citations } : {})}
                       {...(m.branch ? { branch: m.branch } : {})}
@@ -595,6 +597,8 @@ function useRateLimitCountdown(active: boolean, onExpire: () => void): number {
 export function MessageItem({
   role,
   content,
+  sessionId,
+  messageId,
   parts,
   citations,
   branch,
@@ -612,6 +616,8 @@ export function MessageItem({
 }: {
   role: "user" | "assistant";
   content: string;
+  sessionId?: string;
+  messageId?: string;
   parts?: MessagePart[];
   citations?: Citation[];
   branch?: MessageBranch;
@@ -896,6 +902,7 @@ export function MessageItem({
                 <MessageActions
                   role="assistant"
                   content={content}
+                  {...(sessionId && messageId ? { sessionId, messageId } : {})}
                   {...(onRegenerate ? { onRegenerate } : {})}
                 />
               </div>

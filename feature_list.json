@@ -1742,8 +1742,8 @@
     "acceptance": "RED: 목 feedback API→클릭 시 상태 반영·재클릭 취소 단언. verify-gates green",
     "phase": "P19",
     "team": "T6",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P19-T2-03",
