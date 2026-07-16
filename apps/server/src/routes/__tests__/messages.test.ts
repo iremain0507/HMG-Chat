@@ -196,6 +196,80 @@ describe("POST /:id/messages (SSE) — 16-API-CONTRACT § /sessions/:id/messages
     const blockText = capturedSystemBlocks[0].map((b) => b.content).join("\n");
     expect(blockText).toContain("spec.pdf");
   });
+
+  it("attachments.searchEphemeralChunks 결과가 citation SSE 이벤트로 반영된다 (P17-T1-05)", async () => {
+    const attachments: AttachmentsPort = {
+      async resolveEphemeralContext() {
+        return null;
+      },
+      async searchEphemeralChunks(input) {
+        expect(input).toEqual({
+          sessionId: "session-1",
+          uploadIds: ["u1"],
+          queryText: "hi",
+        });
+        return [
+          {
+            index: 1,
+            source: "ephemeral",
+            uploadId: "u1",
+            filename: "spec.pdf",
+            snippet: "관련 내용",
+          },
+        ];
+      },
+    };
+    const app = createMessageRoutes({
+      provider: fakeHelloProvider(),
+      model: "fake-model",
+      attachments,
+    });
+
+    const res = await app.request("/session-1/messages", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "text/event-stream",
+      },
+      body: JSON.stringify({
+        content: "hi",
+        attachments: [{ uploadId: "u1" }],
+      }),
+    });
+    const text = await res.text();
+
+    expect(text).toContain("event: citation");
+    expect(text).toContain('"uploadId":"u1"');
+    expect(text).toContain('"filename":"spec.pdf"');
+  });
+
+  it("attachments 가 없으면 citation 이벤트가 방출되지 않는다 (기존 동작 보존)", async () => {
+    const attachments: AttachmentsPort = {
+      async resolveEphemeralContext() {
+        return null;
+      },
+      async searchEphemeralChunks() {
+        throw new Error("호출되면 안 됨");
+      },
+    };
+    const app = createMessageRoutes({
+      provider: fakeHelloProvider(),
+      model: "fake-model",
+      attachments,
+    });
+
+    const res = await app.request("/session-1/messages", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "text/event-stream",
+      },
+      body: JSON.stringify({ content: "hi" }),
+    });
+    const text = await res.text();
+
+    expect(text).not.toContain("event: citation");
+  });
 });
 
 describe("GET /:id/messages/:messageId/stream (resume) — 16-API-CONTRACT § resume", () => {

@@ -1472,8 +1472,8 @@
     "acceptance": "RED: 첨부 있는 createApp 턴이 ephemeral 청크 검색·인용 반영; 첨부 없으면 기존 동작; verify-gates green",
     "phase": "P17",
     "team": "T1",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P17-T1-06",

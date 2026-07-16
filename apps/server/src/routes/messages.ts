@@ -32,6 +32,7 @@ import {
   DEFAULT_ORG_SETTINGS,
   type ResolvedOrgSettings,
 } from "../lib/org-settings-schema.js";
+import type { Citation } from "../knowledge/citation-helper.js";
 
 // abort flow (L06) — Stop 클릭(routes/sessions.ts DELETE /:id/active-run) 이 run-registry 를 통해
 // 이 run 의 signal 을 abort() 시킨 뒤, 여기서 sessions_active_runs.status 를 갱신한다.
@@ -59,6 +60,15 @@ export interface AttachmentsPort {
   resolveEphemeralContext(
     uploadId: string,
   ): Promise<{ filename: string } | null>;
+  // P17-T1-05(TS-14) — 첨부 uploadId 들의 ephemeral_chunks 를 실제 hybridSearch 로 검색해
+  // citation 으로 반환한다. 미주입 시(옵셔널) 기존 동작(파일명 안내만) 그대로 유지.
+  // 청크 적재(업로드 시 parse+chunk+embed) 자체는 이 태스크 범위 밖 — 이미 적재된 청크를
+  // "검색해 인용"하는 소비 측만 담당(db/ephemeral-chunk-search.ts).
+  searchEphemeralChunks?(input: {
+    sessionId: string;
+    uploadIds: string[];
+    queryText: string;
+  }): Promise<Citation[]>;
 }
 
 const noopAttachments: AttachmentsPort = {
@@ -257,6 +267,23 @@ export function createMessageRoutes(
 
     const sessionId = c.req.param("id");
 
+    // P17-T1-05(TS-14) — 첨부가 있으면 세션 ephemeral_chunks 를 실제 검색해 citation 으로
+    // 반영한다. 미주입/미첨부 시 빈 배열(기존 동작 보존).
+    const uploadIds = (body.attachments ?? []).map((a) => a.uploadId);
+    const attachmentCitations: Citation[] =
+      uploadIds.length > 0 && attachmentsPort.searchEphemeralChunks
+        ? await attachmentsPort
+            .searchEphemeralChunks({ sessionId, uploadIds, queryText: content })
+            .catch((error) => {
+              deps.logger?.warn({
+                category: "system",
+                msg: "ephemeral chunk 검색 실패",
+                context: { error: String(error) },
+              });
+              return [];
+            })
+        : [];
+
     // P11-T2-02 — 내장 handler+MCP 툴을 AgentTool[] 로 조립해 runTurn 에 tools+toolContext
     // 주입 + body.model 을 org.allowedModels 화이트리스트로 검증해 실 turn model 로 반영.
     // 기존 테스트(auth/tools/model 미사용)는 이 분기에 전혀 들어오지 않아 그대로 통과한다.
@@ -387,6 +414,16 @@ export function createMessageRoutes(
           if (event.type === "message_start") {
             currentMessageId = event.messageId;
             startMessageRun(event.messageId, sessionId);
+            // P17-T1-05(TS-14) — 첨부 ephemeral 청크 검색 결과를 이 turn 의 citation 이벤트로
+            // 방출(모델의 tool_use 여부와 무관하게 결정적으로 반영).
+            for (const citation of attachmentCitations) {
+              const citationEvent = { type: "citation" as const, ...citation };
+              recordMessageRunEvent(currentMessageId, citationEvent);
+              await stream.writeSSE({
+                event: "citation",
+                data: JSON.stringify(citation),
+              });
+            }
           } else if (currentMessageId) {
             recordMessageRunEvent(currentMessageId, event);
           }

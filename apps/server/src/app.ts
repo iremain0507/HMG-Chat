@@ -53,6 +53,7 @@ import { createLocalObjectStore } from "./lib/object-store.js";
 import { createParserPipeline } from "./knowledge/parser-pipeline.js";
 import { withUsageTracking } from "./knowledge/embedding-provider.js";
 import { createDevStubEmbeddingProvider } from "./knowledge/embedding-provider-dev-stub.js";
+import { createPgAttachmentsPort } from "./db/ephemeral-chunk-search.js";
 import {
   authMiddleware,
   type AuthedVariables,
@@ -233,6 +234,11 @@ export function createApp(env: Env) {
       logger: createLogger(),
       // P17-T1-01 — 턴마다 user/assistant 메시지를 messages 테이블에 영속.
       messages: messageDa,
+      // P17-T1-05(TS-14) — 첨부 uploadId 의 ephemeral_chunks 를 실제 검색해 citation 반영
+      // (dev-stub embedding — 실 Voyage 는 배포 시 교체, CLAUDE.md LOCAL_ONLY 방침).
+      attachments: createPgAttachmentsPort({
+        embeddingProvider: createDevStubEmbeddingProvider(),
+      }),
     }),
   );
   app.route("/api/v1/sessions", sessionsApp);
