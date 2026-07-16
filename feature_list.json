@@ -1823,8 +1823,8 @@
     "acceptance": "RED: createApp 실HTTP 프롬프트 CRUD + private/org 접근제어 + cross-org 차단 + 마운트 가드. verify-gates green",
     "phase": "P19",
     "team": "T1",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P19-T6-13",

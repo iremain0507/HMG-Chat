@@ -7,6 +7,7 @@ import { createEmailSender } from "./lib/email-sender.js";
 import { createAuthRoutes } from "./routes/auth.js";
 import { createSessionRoutes } from "./routes/sessions.js";
 import { createFolderRoutes } from "./routes/folders.js";
+import { createPromptRoutes } from "./routes/prompts.js";
 import { createMessageRoutes } from "./routes/messages.js";
 import { createProjectRoutes } from "./routes/projects.js";
 import { createPgProjectDataAccess } from "./db/project-data-access.js";
@@ -256,6 +257,12 @@ export function createApp(env: Env) {
   foldersApp.use("*", authMiddleware);
   foldersApp.route("/", createFolderRoutes());
   app.route("/api/v1/folders", foldersApp);
+
+  // P19-T1-08 — 프롬프트 라이브러리 CRUD(migration 0024 prompts).
+  const promptsApp = new Hono<{ Variables: AuthedVariables }>();
+  promptsApp.use("*", authMiddleware);
+  promptsApp.route("/", createPromptRoutes());
+  app.route("/api/v1/prompts", promptsApp);
 
   const projectsApp = new Hono<{ Variables: AuthedVariables }>();
   projectsApp.use("*", authMiddleware);

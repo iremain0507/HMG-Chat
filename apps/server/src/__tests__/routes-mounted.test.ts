@@ -44,6 +44,8 @@ const EXPECTED_ROUTES: Array<{ method: string; path: string; phase: string }> =
     { method: "GET", path: "/api/v1/sessions/search?q=x", phase: "P19" },
     { method: "GET", path: "/api/v1/folders", phase: "P19" },
     { method: "POST", path: "/api/v1/folders", phase: "P19" },
+    { method: "GET", path: "/api/v1/prompts", phase: "P19" },
+    { method: "POST", path: "/api/v1/prompts", phase: "P19" },
     {
       method: "POST",
       path: `/api/v1/sessions/${sid}/messages/${randomUUID()}/feedback`,
