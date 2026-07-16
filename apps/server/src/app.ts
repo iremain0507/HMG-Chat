@@ -179,13 +179,15 @@ export function createApp(env: Env) {
   // P17-T1-02 — createSessionRoutes(GET /, GET /:id/messages)와 createMessageRoutes(메시지
   // 영속, P17-T1-01)가 같은 messages 테이블 데이터 접근 인스턴스를 공유.
   const messageDa = createPgMessageDataAccess();
+  // P19-T2-04 — followups ownership 검증(session.userId !== auth.sub)에도 재사용.
+  const sessionDa = createPgSessionDataAccess();
 
   const sessionsApp = new Hono<{ Variables: AuthedVariables }>();
   sessionsApp.use("*", authMiddleware);
   sessionsApp.route(
     "/",
     createSessionRoutes({
-      sessions: createPgSessionDataAccess(),
+      sessions: sessionDa,
       sessionMessages: messageDa,
     }),
   );
@@ -198,6 +200,7 @@ export function createApp(env: Env) {
       // 대체한다 — settings resolve 실패/미설정 시 이 값 그대로 fail-soft.
       model: env.LLM_MODEL,
       activeRuns: { setActiveRun },
+      sessions: sessionDa,
       organizations: authDa.organizations,
       settings: settingsService,
       // 클라이언트 생성 세션 UUID(/chat/<uuid>)를 첫 메시지 시 upsert — 아티팩트/업로드/

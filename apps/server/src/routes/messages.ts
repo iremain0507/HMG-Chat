@@ -19,6 +19,7 @@ import {
   type ToolMetricRepo,
 } from "@wchat/interfaces";
 import { runTurn } from "../orchestrator/orchestrator.js";
+import { generateFollowups } from "../orchestrator/followups.js";
 import { registerRun, unregisterRun } from "../orchestrator/run-registry.js";
 import {
   startMessageRun,
@@ -96,6 +97,22 @@ export interface MessagesPort {
     id: string,
     data: { content?: unknown; tokensOut?: number | null },
   ): Promise<Message>;
+  // P19-T2-04 — 후속질문 제안이 마지막 턴(직전 user/assistant) 텍스트를 조회하는 데 쓴다.
+  // 옵셔널 — 미주입 시 빈 컨텍스트로 orchestrator/followups.ts 의 파생 폴백만 반환(L2/L5).
+  // app.ts 는 이미 createPgMessageDataAccess() 의 full MessageRepo(list 기 구현)를 주입 중이라
+  // 구조적 타이핑으로 충족(app.ts 변경 불필요, P19-T2-03 byId/update 와 동일 패턴).
+  list?(
+    filter: { sessionId: string },
+    pagination?: { cursor?: string; limit?: number },
+  ): Promise<{ items: Message[]; nextCursor?: string }>;
+}
+
+// P19-T2-04 — 후속질문이 세션 메시지 내용을 읽어 응답에 반영하므로(deriveFollowups 는 마지막
+// 턴 텍스트 일부를 그대로 응답에 splice), routes/sessions.ts GET /:id/messages 와 동일한
+// ownership 검증(session.userId !== auth.sub → 404)이 반드시 필요하다 — 없으면 sessionId 를
+// 아는 타 사용자/조직이 이 엔드포인트로 남의 대화 내용을 읽어낼 수 있다(cross-org 정보 노출).
+export interface FollowupsSessionsPort {
+  byId(id: string): Promise<{ userId: string } | null>;
 }
 
 // P14-T2-01 — org 별 maxTokens/temperature(ISOLATE, runtime 미배선)/systemPrompt/defaultModel
@@ -172,6 +189,8 @@ export interface MessageRouteDeps {
   systemBlocks?: PromptBlock[];
   maxTokens?: number;
   activeRuns?: ActiveRunsPort;
+  // P19-T2-04 — followups ownership 검증 전용(FollowupsSessionsPort 참고).
+  sessions?: FollowupsSessionsPort;
   attachments?: AttachmentsPort;
   // P11-T2-02 — 내장 handler 로 조립된 정적 AgentTool[](artifact_create 등, app.ts 조립).
   tools?: AgentTool[];
@@ -660,6 +679,58 @@ export function createMessageRoutes(
             });
         }
       }
+    });
+  });
+
+  // P19-T2-04 — 후속질문 제안: 마지막 턴(직전 user/assistant) 텍스트를 orchestrator/
+  // followups.ts 에 넘겨 LLM 에게 3개 질문을 요청한다. SSE 아님(frozen ChatEvent 확장 회피,
+  // §1 REST 규칙) — 단일 JSON 응답. deps.messages.list 미주입/조회 실패 시 빈 컨텍스트로도
+  // generateFollowups 가 항상 3개(파생 폴백)를 반환하므로 조용한 실패가 없다(L5).
+  app.post("/:id/followups", async (c) => {
+    const sessionId = c.req.param("id");
+    const auth = c.get("auth");
+
+    // routes/sessions.ts GET /:id/messages 와 동일한 ownership 검증 — deriveFollowups 가
+    // 마지막 턴 텍스트 일부를 응답에 그대로 splice 하므로, 세션 소유자가 아니면 컨텍스트를
+    // 읽지 않고 404 로 차단한다(existence-leak 방지, cross-org 정보 노출 방지).
+    if (deps.sessions) {
+      const session = await deps.sessions.byId(sessionId);
+      if (!session || session.userId !== auth?.sub) {
+        return c.json(errorJson("NOT_FOUND", "세션을 찾을 수 없습니다."), 404);
+      }
+    }
+
+    let lastUserText = "";
+    let lastAssistantText = "";
+    if (deps.messages?.list) {
+      const page = await deps.messages
+        .list({ sessionId }, { limit: 100 })
+        .catch((error) => {
+          deps.logger?.warn({
+            category: "system",
+            msg: "followups 컨텍스트 조회 실패 — 빈 컨텍스트로 폴백",
+            context: { error: String(error) },
+          });
+          return { items: [] as Message[] };
+        });
+      for (const m of page.items) {
+        const text = typeof m.content === "string" ? m.content : "";
+        if (m.role === "user") lastUserText = text;
+        else if (m.role === "assistant") lastAssistantText = text;
+      }
+    }
+
+    const followups = await generateFollowups({
+      provider: deps.provider,
+      model: deps.model,
+      lastUserText,
+      lastAssistantText,
+      signal: c.req.raw.signal,
+    });
+
+    return c.json({
+      data: { followups },
+      meta: { requestId: randomUUID() },
     });
   });
 

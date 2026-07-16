@@ -59,6 +59,11 @@ const EXPECTED_ROUTES: Array<{ method: string; path: string; phase: string }> =
       path: `/api/v1/sessions/${sid}/messages/${randomUUID()}/continue`,
       phase: "P19",
     },
+    {
+      method: "POST",
+      path: `/api/v1/sessions/${sid}/followups`,
+      phase: "P19",
+    },
     { method: "POST", path: `/api/v1/sessions/${sid}/messages`, phase: "P2" },
     {
       method: "DELETE",

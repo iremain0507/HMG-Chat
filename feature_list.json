@@ -1769,8 +1769,8 @@
     "acceptance": "RED: createApp→후속질문 3개 반환(provider 부재 시 dev-stub 결정적, 조용한 실패 금지 L5). verify-gates green",
     "phase": "P19",
     "team": "T2",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P19-T6-09",
