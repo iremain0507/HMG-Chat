@@ -4,7 +4,7 @@
 //   design-reference F09 카드 언어(보더만·그림자 없음, radius 10)로 정렬(P13-T6-10).
 import React from "react";
 import Link from "next/link";
-import { useProjects } from "../../hooks/useProjects";
+import { useProjects } from "../../../hooks/useProjects";
 
 const VISIBILITY_LABEL: Record<string, string> = {
   private: "비공개",

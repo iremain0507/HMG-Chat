@@ -4,8 +4,8 @@ import "@testing-library/jest-dom/vitest";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, fireEvent, cleanup } from "@testing-library/react";
 import Home from "../page";
-import { QUICK_STARTS } from "../../components/home/HomeContent";
-import { draftKey } from "../../components/chat/ChatInput";
+import { QUICK_STARTS } from "../../../components/home/HomeContent";
+import { draftKey } from "../../../components/chat/ChatInput";
 
 afterEach(() => {
   cleanup();
@@ -18,12 +18,12 @@ vi.mock("next/navigation", () => ({
 }));
 
 const state = vi.fn();
-vi.mock("../../hooks/useCurrentUser", () => ({
+vi.mock("../../../hooks/useCurrentUser", () => ({
   useCurrentUser: () => state(),
 }));
 
 let mockSessions: unknown[] = [];
-vi.mock("../../hooks/useSessions", () => ({
+vi.mock("../../../hooks/useSessions", () => ({
   useSessions: () => ({
     sessions: mockSessions,
     loading: false,
@@ -36,7 +36,7 @@ vi.mock("../../hooks/useSessions", () => ({
 }));
 
 let mockServers: unknown[] = [];
-vi.mock("../../hooks/useMcpServers", () => ({
+vi.mock("../../../hooks/useMcpServers", () => ({
   useMcpServers: () => ({
     servers: mockServers,
     loading: false,
@@ -47,7 +47,7 @@ vi.mock("../../hooks/useMcpServers", () => ({
 }));
 
 let mockSkills: unknown[] = [];
-vi.mock("../../hooks/useSkills", () => ({
+vi.mock("../../../hooks/useSkills", () => ({
   useSkills: () => ({ skills: mockSkills, loading: false, error: null }),
 }));
 

@@ -1,5 +1,5 @@
 import React from "react";
-import { ProjectDetail } from "../../../components/projects/ProjectDetail";
+import { ProjectDetail } from "../../../../components/projects/ProjectDetail";
 
 export default async function ProjectDetailPage({
   params,

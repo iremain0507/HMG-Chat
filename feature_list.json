@@ -1382,8 +1382,8 @@
     "acceptance": "레이아웃이 NavRail+SessionList 를 포함함을 렌더 단언 + 인증 라우트가 그룹 하위에 위치함을 구조 단언; verify-gates green; ★실제 라우트(홈·admin 에 NavRail·히스토리 등장)는 유닛 불가 → 커밋/PROGRESS 에 'human UAT 필요(TS-03/17/23)' 명시(과장 금지)",
     "phase": "P16",
     "team": "T6",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P16-T6-02",

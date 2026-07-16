@@ -1,12 +1,12 @@
 import React from "react";
 import { AdminGuard } from "../../../components/admin/AdminGuard";
-import { AdminUsersManager } from "../../../components/admin/AdminUsersManager";
+import { AdminDashboard } from "../../../components/admin/AdminDashboard";
 
-export default function AdminUsersPage() {
+export default function AdminDashboardPage() {
   return (
     <main className="mx-auto max-w-5xl p-8">
       <AdminGuard>
-        <AdminUsersManager />
+        <AdminDashboard />
       </AdminGuard>
     </main>
   );

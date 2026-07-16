@@ -1,5 +1,5 @@
 import React from "react";
-import { MemoryManager } from "../../../components/settings/MemoryManager";
+import { MemoryManager } from "../../../../components/settings/MemoryManager";
 
 export default function MemoriesSettingsPage() {
   return (

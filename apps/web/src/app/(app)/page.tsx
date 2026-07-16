@@ -6,13 +6,13 @@
 //   보존). (magic-link verify 가 / 로 302 하므로 이 페이지가 로그인 직후 착지점.)
 import React, { useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { useCurrentUser } from "../hooks/useCurrentUser";
-import { useSessions } from "../hooks/useSessions";
-import { useMcpServers } from "../hooks/useMcpServers";
-import { useSkills } from "../hooks/useSkills";
-import { randomUUID } from "../lib/uuid";
-import { HomeContent } from "../components/home/HomeContent";
-import { draftKey } from "../components/chat/ChatInput";
+import { useCurrentUser } from "../../hooks/useCurrentUser";
+import { useSessions } from "../../hooks/useSessions";
+import { useMcpServers } from "../../hooks/useMcpServers";
+import { useSkills } from "../../hooks/useSkills";
+import { randomUUID } from "../../lib/uuid";
+import { HomeContent } from "../../components/home/HomeContent";
+import { draftKey } from "../../components/chat/ChatInput";
 
 // 내장 에이전틱 도구(tools/assemble-builtin-tools.ts) 개수 — artifact_create/web_search/
 // code_interpreter/deep_research. 전용 "에이전트" API 가 아직 없어 정적 상수로 반영.

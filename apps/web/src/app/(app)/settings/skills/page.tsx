@@ -1,5 +1,5 @@
 import React from "react";
-import { SkillsManager } from "../../../components/settings/SkillsManager";
+import { SkillsManager } from "../../../../components/settings/SkillsManager";
 
 export default function SkillsSettingsPage() {
   return (

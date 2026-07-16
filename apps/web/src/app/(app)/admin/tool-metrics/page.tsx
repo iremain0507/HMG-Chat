@@ -1,6 +1,6 @@
 import React from "react";
-import { AdminGuard } from "../../../components/admin/AdminGuard";
-import { ToolMetricsTable } from "../../../components/admin/ToolMetricsTable";
+import { AdminGuard } from "../../../../components/admin/AdminGuard";
+import { ToolMetricsTable } from "../../../../components/admin/ToolMetricsTable";
 
 export default function AdminToolMetricsPage() {
   return (

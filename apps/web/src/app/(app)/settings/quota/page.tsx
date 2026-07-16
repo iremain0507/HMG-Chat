@@ -1,5 +1,5 @@
 import React from "react";
-import { QuotaPanel } from "../../../components/settings/QuotaPanel";
+import { QuotaPanel } from "../../../../components/settings/QuotaPanel";
 
 export default function QuotaSettingsPage() {
   return (

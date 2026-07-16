@@ -1,5 +1,5 @@
 import React from "react";
-import { McpServersManager } from "../../../components/settings/McpServersManager";
+import { McpServersManager } from "../../../../components/settings/McpServersManager";
 
 export default function McpSettingsPage() {
   return (

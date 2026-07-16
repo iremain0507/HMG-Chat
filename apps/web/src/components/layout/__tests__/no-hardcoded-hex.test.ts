@@ -16,7 +16,7 @@ const FILES = [
   "../../sessions/SessionCard.tsx",
   "../../../lib/pinnedSessions.ts",
   "../../home/HomeContent.tsx",
-  "../../../app/page.tsx",
+  "../../../app/(app)/page.tsx",
   "../../chat/ChatView.tsx",
   "../../chat/RunRail.tsx",
   "../../chat/ChatInput.tsx",
@@ -34,7 +34,7 @@ const FILES = [
   "../../chat/Mermaid.tsx",
   "../../projects/ProjectDetail.tsx",
   "../../projects/DocumentsPanel.tsx",
-  "../../../app/projects/page.tsx",
+  "../../../app/(app)/projects/page.tsx",
   "../../settings/McpServersManager.tsx",
   "../../settings/SkillsManager.tsx",
   "../../settings/MemoryManager.tsx",
@@ -58,7 +58,7 @@ const FILES = [
   "../../admin/settings/BrandingTab.tsx",
   "../../admin/settings/PermissionsTab.tsx",
   "../../admin/settings/QuotaTab.tsx",
-  "../../../app/admin/settings/page.tsx",
+  "../../../app/(app)/admin/settings/page.tsx",
 ];
 
 describe("P13 하드코딩 hex 제로 회귀 가드", () => {
