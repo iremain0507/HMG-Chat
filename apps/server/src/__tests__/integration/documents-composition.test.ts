@@ -13,6 +13,7 @@ import { createApp } from "../../app.js";
 import type { Env } from "../../env.js";
 import { pgPool } from "../../db/client.js";
 import { signAccessToken } from "../../middleware/jwt.js";
+import { createLocalObjectStore } from "../../lib/object-store.js";
 
 const docxFixturePath = new URL(
   "../../knowledge/__tests__/fixtures/single-paragraph.docx",
@@ -215,5 +216,74 @@ describe("app.ts /api/v1/documents mount — P4-T3-07", () => {
       [body.data.id],
     );
     expect(chunks.rows[0]?.count).toBe(body.data.chunkCount);
+  });
+
+  describe("POST /api/v1/documents/:id/retry (P17-T1-06 / TS-15)", () => {
+    const objectStore = createLocalObjectStore();
+
+    async function insertFailedDocument(filename: string, contentHash: string) {
+      const id = randomUUID();
+      const s3Key = `documents/${id}`;
+      await objectStore.put(s3Key, readFileSync(docxFixturePath));
+      await pgPool.query(
+        `INSERT INTO project_documents
+           (id, project_id, filename, content_hash, mime_type, size_bytes, s3_key, created_by, index_status, failure_reason)
+         VALUES ($1, $2, $3, $4,
+           'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+           100, $5, $6, 'failed', 'parse error')`,
+        [id, projectId, filename, contentHash, s3Key, userA.id],
+      );
+      return id;
+    }
+
+    it("미마운트/미인증 상태 확인 없이 실패 문서를 재인덱싱하면 200 + indexed", async () => {
+      const docId = await insertFailedDocument("retry-a.docx", "hash-retry-a");
+
+      const res = await app.request(`/api/v1/documents/${docId}/retry`, {
+        method: "POST",
+        headers: { Cookie: cookieFor(userA, orgA) },
+      });
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as {
+        data: { id: string; indexStatus: string; chunkCount: number };
+      };
+      expect(body.data.indexStatus).toBe("indexed");
+      expect(body.data.chunkCount).toBeGreaterThan(0);
+
+      const chunks = await pgPool.query(
+        "SELECT count(*)::int AS count FROM document_chunks WHERE document_id = $1",
+        [docId],
+      );
+      expect(chunks.rows[0]?.count).toBe(body.data.chunkCount);
+    });
+
+    it("indexStatus 가 'failed' 가 아니면 409 CONFLICT", async () => {
+      const docId = await insertDocument("retry-indexed.pdf", "hash-retry-b");
+
+      const res = await app.request(`/api/v1/documents/${docId}/retry`, {
+        method: "POST",
+        headers: { Cookie: cookieFor(userA, orgA) },
+      });
+      expect(res.status).toBe(409);
+    });
+
+    it("다른 org 사용자는 재시도할 수 없다 (404, existence-leak 방지)", async () => {
+      const docId = await insertFailedDocument("retry-c.docx", "hash-retry-c");
+
+      const res = await app.request(`/api/v1/documents/${docId}/retry`, {
+        method: "POST",
+        headers: { Cookie: cookieFor(userB, orgB) },
+      });
+      expect(res.status).toBe(404);
+    });
+
+    it("미인증 요청은 401", async () => {
+      const docId = await insertFailedDocument("retry-d.docx", "hash-retry-d");
+
+      const res = await app.request(`/api/v1/documents/${docId}/retry`, {
+        method: "POST",
+      });
+      expect(res.status).toBe(401);
+    });
   });
 });

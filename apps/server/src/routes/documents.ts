@@ -66,9 +66,12 @@ export function createDocumentRoutes(
 
   function handleServiceError(err: unknown): {
     body: ReturnType<typeof errorJson>;
-    status: 404;
+    status: 404 | 409;
   } {
     if (err instanceof DocumentServiceError) {
+      if (err.code === "CONFLICT") {
+        return { body: errorJson("CONFLICT", err.message), status: 409 };
+      }
       // FORBIDDEN 도 404 로 매핑 — existence-leak 방지 (다른 org/비멤버에게 문서 존재 자체를 숨김).
       return { body: errorJson("NOT_FOUND", err.message), status: 404 };
     }
@@ -140,6 +143,16 @@ export function createDocumentRoutes(
       return c.json(errorJson("NOT_FOUND", "문서를 찾을 수 없습니다."), 404);
     }
     return c.json({ data: toDto(found), meta: { requestId: randomUUID() } });
+  });
+
+  app.post("/:id/retry", async (c) => {
+    try {
+      const doc = await service.retryDocument(actorOf(c), c.req.param("id"));
+      return c.json({ data: toDto(doc), meta: { requestId: randomUUID() } });
+    } catch (err) {
+      const { body, status } = handleServiceError(err);
+      return c.json(body, status);
+    }
   });
 
   app.delete("/:id", async (c) => {

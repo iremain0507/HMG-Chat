@@ -53,6 +53,11 @@ const EXPECTED_ROUTES: Array<{ method: string; path: string; phase: string }> =
     { method: "GET", path: `/api/v1/documents?projectId=${pid}`, phase: "P4" },
     { method: "GET", path: `/api/v1/documents/${randomUUID()}`, phase: "P4" },
     { method: "POST", path: "/api/v1/documents", phase: "P4" },
+    {
+      method: "POST",
+      path: `/api/v1/documents/${randomUUID()}/retry`,
+      phase: "P17",
+    },
     { method: "GET", path: `/api/v1/artifacts/${randomUUID()}`, phase: "P5" },
     {
       method: "POST",

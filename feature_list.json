@@ -1481,8 +1481,8 @@
     "acceptance": "RED: 미등록 404 → 200 재인덱싱(indexStatus 갱신); 소유권 격리; routes-mounted green; verify-gates green",
     "phase": "P17",
     "team": "T1",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P17-T6-01",
