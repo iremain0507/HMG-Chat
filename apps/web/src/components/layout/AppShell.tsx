@@ -209,7 +209,7 @@ export function AppShell({ sidebar, rightPanel, children }: AppShellProps) {
           {children}
         </main>
 
-        {rightPanelOpen && (
+        {rightPanel && rightPanelOpen && (
           <aside
             data-testid="app-shell-right-panel"
             style={{

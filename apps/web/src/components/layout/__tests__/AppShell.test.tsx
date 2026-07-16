@@ -56,7 +56,10 @@ describe("AppShell", () => {
   it("헤더/나비레일/사이드바/본문/우패널 5 region 을 렌더한다", () => {
     stubCurrentUserFetch();
     render(
-      <AppShell sidebar={<div>세션 목록</div>}>
+      <AppShell
+        sidebar={<div>세션 목록</div>}
+        rightPanel={<div>패널 콘텐츠</div>}
+      >
         <div>본문</div>
       </AppShell>,
     );
@@ -73,7 +76,10 @@ describe("AppShell", () => {
   it("테마 토글 클릭 시 document.documentElement 에 data-theme 를 스탬프한다", () => {
     stubCurrentUserFetch();
     render(
-      <AppShell sidebar={<div>세션 목록</div>}>
+      <AppShell
+        sidebar={<div>세션 목록</div>}
+        rightPanel={<div>패널 콘텐츠</div>}
+      >
         <div>본문</div>
       </AppShell>,
     );
@@ -91,7 +97,10 @@ describe("AppShell", () => {
   it("모바일 폭에서 사이드바가 슬라이드오버로 접힌다(기본 숨김 → 토글로 노출)", () => {
     stubCurrentUserFetch();
     render(
-      <AppShell sidebar={<div>세션 목록</div>}>
+      <AppShell
+        sidebar={<div>세션 목록</div>}
+        rightPanel={<div>패널 콘텐츠</div>}
+      >
         <div>본문</div>
       </AppShell>,
     );
@@ -111,7 +120,10 @@ describe("AppShell", () => {
   it("우패널 토글 버튼 클릭 시 우패널이 사라졌다 다시 나타난다", () => {
     stubCurrentUserFetch();
     render(
-      <AppShell sidebar={<div>세션 목록</div>}>
+      <AppShell
+        sidebar={<div>세션 목록</div>}
+        rightPanel={<div>패널 콘텐츠</div>}
+      >
         <div>본문</div>
       </AppShell>,
     );
@@ -156,7 +168,10 @@ describe("AppShell", () => {
   it("⌘\\ 키보드 단축키로 우패널을 토글한다", () => {
     stubCurrentUserFetch();
     render(
-      <AppShell sidebar={<div>세션 목록</div>}>
+      <AppShell
+        sidebar={<div>세션 목록</div>}
+        rightPanel={<div>패널 콘텐츠</div>}
+      >
         <div>본문</div>
       </AppShell>,
     );
@@ -171,7 +186,10 @@ describe("AppShell", () => {
   it("⌘B 키보드 단축키로 사이드바가 접히고 펼쳐진다", () => {
     stubCurrentUserFetch();
     render(
-      <AppShell sidebar={<div>세션 목록</div>}>
+      <AppShell
+        sidebar={<div>세션 목록</div>}
+        rightPanel={<div>패널 콘텐츠</div>}
+      >
         <div>본문</div>
       </AppShell>,
     );
@@ -190,7 +208,10 @@ describe("AppShell", () => {
   it("사이드바 접기 버튼 클릭으로도 사이드바를 토글한다", () => {
     stubCurrentUserFetch();
     render(
-      <AppShell sidebar={<div>세션 목록</div>}>
+      <AppShell
+        sidebar={<div>세션 목록</div>}
+        rightPanel={<div>패널 콘텐츠</div>}
+      >
         <div>본문</div>
       </AppShell>,
     );
@@ -207,7 +228,10 @@ describe("AppShell", () => {
   it("⌘/ 키보드 단축키로 단축키 도움말 오버레이가 열린다", () => {
     stubCurrentUserFetch();
     render(
-      <AppShell sidebar={<div>세션 목록</div>}>
+      <AppShell
+        sidebar={<div>세션 목록</div>}
+        rightPanel={<div>패널 콘텐츠</div>}
+      >
         <div>본문</div>
       </AppShell>,
     );
@@ -224,7 +248,10 @@ describe("AppShell", () => {
   it("단축키 도움말 버튼 클릭으로도 오버레이를 연다", () => {
     stubCurrentUserFetch();
     render(
-      <AppShell sidebar={<div>세션 목록</div>}>
+      <AppShell
+        sidebar={<div>세션 목록</div>}
+        rightPanel={<div>패널 콘텐츠</div>}
+      >
         <div>본문</div>
       </AppShell>,
     );
@@ -239,7 +266,10 @@ describe("AppShell", () => {
     window.addEventListener("wchat:cmdk", listener);
 
     render(
-      <AppShell sidebar={<div>세션 목록</div>}>
+      <AppShell
+        sidebar={<div>세션 목록</div>}
+        rightPanel={<div>패널 콘텐츠</div>}
+      >
         <div>본문</div>
       </AppShell>,
     );
@@ -256,7 +286,10 @@ describe("AppShell", () => {
   it("우패널 드래그 핸들로 폭을 조절한다", () => {
     stubCurrentUserFetch();
     render(
-      <AppShell sidebar={<div>세션 목록</div>}>
+      <AppShell
+        sidebar={<div>세션 목록</div>}
+        rightPanel={<div>패널 콘텐츠</div>}
+      >
         <div>본문</div>
       </AppShell>,
     );
@@ -277,7 +310,10 @@ describe("AppShell", () => {
   it("헤더 아이콘 버튼(⌘K·우패널 토글·리사이즈 핸들·모바일 햄버거)에 title 툴팁이 존재한다", () => {
     stubCurrentUserFetch();
     render(
-      <AppShell sidebar={<div>세션 목록</div>}>
+      <AppShell
+        sidebar={<div>세션 목록</div>}
+        rightPanel={<div>패널 콘텐츠</div>}
+      >
         <div>본문</div>
       </AppShell>,
     );
@@ -302,7 +338,10 @@ describe("AppShell", () => {
   it("나비 레일에 현재 로그인 사용자 아바타를 노출한다", async () => {
     stubCurrentUserFetch();
     render(
-      <AppShell sidebar={<div>세션 목록</div>}>
+      <AppShell
+        sidebar={<div>세션 목록</div>}
+        rightPanel={<div>패널 콘텐츠</div>}
+      >
         <div>본문</div>
       </AppShell>,
     );
