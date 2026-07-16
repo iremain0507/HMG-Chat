@@ -1535,8 +1535,8 @@
     "acceptance": "RED: ⌘B 가 사이드바 토글, ⌘/ 가 치트시트 오픈/닫기; 포커스 링·Esc; 하드코딩 hex 0; verify-gates green",
     "phase": "P17",
     "team": "T6",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P17-T6-07",

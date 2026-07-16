@@ -145,6 +145,71 @@ describe("AppShell", () => {
     ).not.toBeInTheDocument();
   });
 
+  it("⌘B 키보드 단축키로 사이드바가 접히고 펼쳐진다", () => {
+    stubCurrentUserFetch();
+    render(
+      <AppShell sidebar={<div>세션 목록</div>}>
+        <div>본문</div>
+      </AppShell>,
+    );
+
+    const sidebar = screen.getByTestId("app-shell-sidebar");
+    expect(sidebar).toHaveAttribute("data-collapsed", "false");
+
+    fireEvent.keyDown(window, { key: "b", metaKey: true });
+    expect(sidebar).toHaveAttribute("data-collapsed", "true");
+    expect(sidebar.className).toContain("md:w-0");
+
+    fireEvent.keyDown(window, { key: "b", metaKey: true });
+    expect(sidebar).toHaveAttribute("data-collapsed", "false");
+  });
+
+  it("사이드바 접기 버튼 클릭으로도 사이드바를 토글한다", () => {
+    stubCurrentUserFetch();
+    render(
+      <AppShell sidebar={<div>세션 목록</div>}>
+        <div>본문</div>
+      </AppShell>,
+    );
+
+    const toggle = screen.getByTestId("app-shell-sidebar-toggle");
+    const sidebar = screen.getByTestId("app-shell-sidebar");
+    expect(toggle).toHaveAttribute("aria-pressed", "true");
+
+    fireEvent.click(toggle);
+    expect(sidebar).toHaveAttribute("data-collapsed", "true");
+    expect(toggle).toHaveAttribute("aria-pressed", "false");
+  });
+
+  it("⌘/ 키보드 단축키로 단축키 도움말 오버레이가 열린다", () => {
+    stubCurrentUserFetch();
+    render(
+      <AppShell sidebar={<div>세션 목록</div>}>
+        <div>본문</div>
+      </AppShell>,
+    );
+
+    expect(screen.queryByTestId("shortcut-sheet")).not.toBeInTheDocument();
+    fireEvent.keyDown(window, { key: "/", metaKey: true });
+    expect(screen.getByTestId("shortcut-sheet")).toBeInTheDocument();
+    expect(screen.getByTestId("shortcut-sheet")).toHaveTextContent("⌘B");
+
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(screen.queryByTestId("shortcut-sheet")).not.toBeInTheDocument();
+  });
+
+  it("단축키 도움말 버튼 클릭으로도 오버레이를 연다", () => {
+    stubCurrentUserFetch();
+    render(
+      <AppShell sidebar={<div>세션 목록</div>}>
+        <div>본문</div>
+      </AppShell>,
+    );
+
+    fireEvent.click(screen.getByTestId("app-shell-shortcuts-button"));
+    expect(screen.getByTestId("shortcut-sheet")).toBeInTheDocument();
+  });
+
   it("⌘K 버튼 클릭 시 wchat:cmdk 이벤트를 전역에 발행한다", () => {
     stubCurrentUserFetch();
     const listener = vi.fn();
