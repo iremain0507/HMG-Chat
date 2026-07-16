@@ -1895,8 +1895,8 @@
     "acceptance": "RED: 목 API→발급 후 평문 1회 표시·폐기 단언. verify-gates green",
     "phase": "P19",
     "team": "T6",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P19-T1-12",
