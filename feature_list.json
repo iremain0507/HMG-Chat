@@ -1796,8 +1796,8 @@
     "acceptance": "RED: createApp temporary 턴→messages.insert·ensureSession 미호출 단언, 스트림은 정상 종단. verify-gates green",
     "phase": "P19",
     "team": "T2",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P19-T6-11",

@@ -72,6 +72,59 @@ describe("POST /:id/messages (SSE) — 16-API-CONTRACT § /sessions/:id/messages
     expect(ensured).toEqual([{ id: "sess-abc", userId: "user-1" }]);
   });
 
+  it("body.temporary=true 면 ensureSession/messages.insert 를 스킵하고 스트림만 정상 종단한다(P19-T2-05)", async () => {
+    const ensured: Array<{ id: string; userId: string }> = [];
+    const inserted: Array<{ role: string; content: unknown }> = [];
+    const app = new Hono<{ Variables: AuthedVariables }>();
+    app.use("*", async (c, next) => {
+      c.set("auth", {
+        sub: "user-1",
+        org: "org-1",
+        role: "member",
+      } as AuthedVariables["auth"]);
+      await next();
+    });
+    app.route(
+      "/",
+      createMessageRoutes({
+        provider: fakeHelloProvider(),
+        model: "fake-model",
+        ensureSession: async (id, userId) => {
+          ensured.push({ id, userId });
+        },
+        messages: {
+          insert: async (data) => {
+            inserted.push({ role: data.role, content: data.content });
+            return {
+              id: "msg-temp",
+              sessionId: data.sessionId,
+              role: data.role,
+              content: data.content,
+              createdAt: new Date().toISOString(),
+            } as never;
+          },
+        },
+      }),
+    );
+    const res = await app.request("/sess-temp/messages", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "text/event-stream",
+      },
+      body: JSON.stringify({ content: "hi", temporary: true }),
+    });
+
+    expect(res.status).toBe(200);
+    const text = await res.text();
+    // 스트림은 영향받지 않고 정상 종단(text_delta + stop) 해야 한다.
+    expect(text).toContain("event: text_delta");
+    expect(text).toContain("event: stop");
+    // 영속 경로는 완전히 스킵된다.
+    expect(ensured).toEqual([]);
+    expect(inserted).toEqual([]);
+  });
+
   it("'hello' 메시지를 보내면 SSE 로 text_delta + stop 이 순서대로 온다", async () => {
     const app = createMessageRoutes({
       provider: fakeHelloProvider(),

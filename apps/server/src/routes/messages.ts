@@ -236,6 +236,7 @@ export function createMessageRoutes(
         model?: string;
         webSearch?: boolean;
         mode?: "agent" | "chat";
+        temporary?: boolean;
       }>()
       .catch(
         () =>
@@ -245,12 +246,17 @@ export function createMessageRoutes(
             model?: string;
             webSearch?: boolean;
             mode?: "agent" | "chat";
+            temporary?: boolean;
           },
       );
+    // P19-T2-05 — 임시 채팅: body.temporary=true 면 세션 upsert(ensureSession)와
+    //   user/assistant 메시지 영속(messages.insert)을 모두 스킵한다(미영속, 스트림만 반환).
+    const isTemporary = body.temporary === true;
+
     // 클라이언트 생성 세션 UUID 를 첫 메시지 시 DB 에 보장(upsert) — 이후 아티팩트/업로드/
     //   active-run 의 sessions FK 를 충족(없으면 deep_research 리포트 저장 등이 FK 위반).
     const auth = c.get("auth");
-    if (auth) {
+    if (auth && !isTemporary) {
       await deps.ensureSession?.(
         c.req.param("id"),
         auth.sub,
@@ -398,16 +404,19 @@ export function createMessageRoutes(
     }
 
     // P17-T1-01 — user 메시지를 messages 테이블에 영속(best-effort — 실패해도 turn 은 계속).
-    const userMessage = await deps.messages
-      ?.insert({ sessionId, role: "user", content })
-      .catch((error) => {
-        deps.logger?.warn({
-          category: "system",
-          msg: "user message 영속 실패",
-          context: { error: String(error) },
-        });
-        return undefined;
-      });
+    // P19-T2-05 — temporary 턴은 영속 자체를 스킵한다.
+    const userMessage = isTemporary
+      ? undefined
+      : await deps.messages
+          ?.insert({ sessionId, role: "user", content })
+          .catch((error) => {
+            deps.logger?.warn({
+              category: "system",
+              msg: "user message 영속 실패",
+              context: { error: String(error) },
+            });
+            return undefined;
+          });
 
     const jobId = randomUUID();
     const activeRuns = deps.activeRuns ?? noopActiveRuns;
@@ -524,7 +533,8 @@ export function createMessageRoutes(
         unregisterRun(sessionId, jobId);
         // P17-T1-01 — assistant 메시지 영속(정상 종료·취소·에러 경로 모두 finally 에서 1회).
         // message_start 가 한 번도 없었으면(예: 초기 검증 실패) 빈 행을 남기지 않는다.
-        if (currentMessageId) {
+        // P19-T2-05 — temporary 턴은 영속 자체를 스킵한다.
+        if (currentMessageId && !isTemporary) {
           await deps.messages
             ?.insert({
               sessionId,
