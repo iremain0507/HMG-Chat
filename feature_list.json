@@ -1600,5 +1600,347 @@
     "team": "T1",
     "passes": true,
     "attempts": 1
+  },
+  {
+    "id": "P19-T2-01",
+    "desc": "웹검색 토글 실동작: routes/messages.ts 가 body.webSearch(요청) + resolvedSettings.webSearchEnabled(admin)을 소비해 web_search 도구를 tool set 에 포함/제외. admin off 면 강제 off, on+요청 off 면 미노출. 현재 payload 로만 전송되고 서버 미소비(no-op). files: apps/server/src/routes/messages.ts, apps/server/src/app.ts(deps 필요시)",
+    "acceptance": "RED: createApp 실HTTP 턴에서 webSearch=true→runTurn tools 에 web_search 포함, false→미포함 단언(L1 last-mile); admin webSearchEnabled=false→요청 true 여도 미포함. verify-gates green",
+    "phase": "P19",
+    "team": "T2",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P19-T2-02",
+    "desc": "모드(agent/chat) 실동작: routes/messages.ts 가 body.mode 를 소비 — 'chat'=도구 없이 순수 대화(tools=[]), 'agent'=도구 활성. 현재 서버 미소비. files: apps/server/src/routes/messages.ts",
+    "acceptance": "RED: createApp 턴에서 mode='chat'→runTurn tools 비어있음, mode='agent'→tools 존재 단언(L1). verify-gates green",
+    "phase": "P19",
+    "team": "T2",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P19-T1-01",
+    "desc": "GET /:id/messages 응답에 parentMessageId 포함: 메시지 목록 핸들러가 각 행의 parent_message_id 를 반환(현재 생략→편집/재생성 분기 reload 복원 불가). frozen api-types 미수정(hand-rolled 응답). files: apps/server/src/routes/messages.ts(또는 sessions.ts 해당 핸들러), messages data-access",
+    "acceptance": "RED: createApp 통합테스트 GET /:id/messages 응답 각 항목에 parentMessageId(있으면) 포함 단언. verify-gates green",
+    "phase": "P19",
+    "team": "T1",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P19-T6-01",
+    "desc": "분기 새로고침 복원: hooks/useSessionStream.ts loadHistory 가 parentMessageId 로 트리(부모 포인터) 복원 — 선형 체인 대신 형제 분기 유지. files: apps/web/src/hooks/useSessionStream.ts",
+    "acceptance": "RED: 목 GET(분기 2개 포함)→편집/재생성 형제 복원 + switchBranch prev/next 동작 단언. verify-gates green",
+    "phase": "P19",
+    "team": "T6",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P19-T1-02",
+    "desc": "세션 핀 서버 영속: migration 0018 sessions.pinned_at(nullable-first) + PATCH /api/v1/sessions/:id/pin(토글) + 목록 응답에 pinned 반영. RLS(같은 org)·cross-org 격리. 신규 route→routes-mounted EXPECTED_ROUTES 추가. files: apps/server/src/db/migrations/0018_session_pin.sql(+_journal), routes/sessions.ts, data-access, __tests__/routes-mounted.test.ts",
+    "acceptance": "RED: createApp 실HTTP pin/unpin→목록 pinned 반영 + cross-org 차단(403/404) + 마운트 가드 green. verify-gates green",
+    "phase": "P19",
+    "team": "T1",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P19-T6-02",
+    "desc": "핀 서버 연동: lib/pinnedSessions.ts localStorage→서버 PATCH /pin 로 전환, 목록 pinned 우선 정렬. files: apps/web/src/components/chat/SessionList.tsx, hooks/useSessions.ts, lib/pinnedSessions.ts",
+    "acceptance": "RED: 목 PATCH /pin→핀 상태·정렬 반영 단언. verify-gates green",
+    "phase": "P19",
+    "team": "T6",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P19-T1-03",
+    "desc": "폴더 데이터/라우트: migration 0019 session_folders(id,org_id,name,created_by) + sessions.folder_id(nullable, ON DELETE SET NULL) + CRUD 라우트(POST/GET/PATCH/DELETE /api/v1/folders, PATCH /sessions/:id 로 folder_id 할당). RLS·cross-org. routes-mounted 갱신. files: db/migrations/0019_session_folders.sql, routes/folders.ts(신규)+app.ts 마운트, routes/sessions.ts, __tests__/routes-mounted.test.ts",
+    "acceptance": "RED: createApp 실HTTP 폴더 CRUD + 세션 할당 + cross-org 차단 + 마운트 가드. verify-gates green",
+    "phase": "P19",
+    "team": "T1",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P19-T6-03",
+    "desc": "폴더 UI: 사이드바에 폴더 그룹(생성/이름변경/삭제, 세션 폴더 할당, 폴더 접기/필터). 하드코딩 hex 0, 라이트/다크. files: apps/web/src/components/chat/SessionList.tsx, 신규 컴포넌트",
+    "acceptance": "RED: 목 폴더 API→폴더별 세션 그룹 렌더 + 할당 상호작용 단언; verify-browser 가능 범위. verify-gates green",
+    "phase": "P19",
+    "team": "T6",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P19-T1-04",
+    "desc": "태그 데이터/라우트: migration 0020 session_tags(session_id,org_id,tag, UNIQUE(session_id,tag)) + 라우트(POST/DELETE /sessions/:id/tags, GET /sessions?tag= 필터). RLS·cross-org. files: db/migrations/0020_session_tags.sql, routes/sessions.ts, data-access",
+    "acceptance": "RED: createApp 실HTTP 태그 추가/제거 + tag 필터 목록 + cross-org 차단. verify-gates green",
+    "phase": "P19",
+    "team": "T1",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P19-T6-04",
+    "desc": "태그 UI+필터: 세션 카드 태그 칩 + 태그 추가/제거 + 사이드바 태그 필터. files: apps/web/src/components/chat/SessionList.tsx, SessionCard.tsx",
+    "acceptance": "RED: 목 태그 API→칩 렌더 + 필터 적용 단언. verify-gates green",
+    "phase": "P19",
+    "team": "T6",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P19-T1-05",
+    "desc": "아카이브: migration 0021 sessions.archived_at(nullable) + PATCH /sessions/:id/archive(토글) + 기본 목록에서 archived 제외, ?archived=true 필터. RLS. files: db/migrations/0021_session_archive.sql, routes/sessions.ts, data-access",
+    "acceptance": "RED: createApp 실HTTP archive→기본목록 제외, ?archived=true 로 조회, cross-org 차단. verify-gates green",
+    "phase": "P19",
+    "team": "T1",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P19-T6-05",
+    "desc": "아카이브 UI: 세션 아카이브/복원 액션 + 보관함(archived) 뷰. files: apps/web/src/components/chat/SessionList.tsx, SessionCard.tsx",
+    "acceptance": "RED: 목 archive API→액션 후 목록에서 제거·보관함 표시 단언. verify-gates green",
+    "phase": "P19",
+    "team": "T6",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P19-T1-06",
+    "desc": "메시지 내용 검색: GET /api/v1/sessions/search?q= — 제목 + 메시지 내용(org-scoped ILIKE, 필요시 0022 GIN 인덱스) 매칭한 세션 반환. RLS·cross-org. routes-mounted 갱신. files: routes/sessions.ts(또는 신규 search 핸들러)+app.ts, data-access, __tests__/routes-mounted.test.ts",
+    "acceptance": "RED: createApp 실HTTP 본문 매칭 세션 반환 + cross-org 미노출 단언. verify-gates green",
+    "phase": "P19",
+    "team": "T1",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P19-T6-06",
+    "desc": "검색 UI 확장: ⌘K 커맨드 검색이 제목뿐 아니라 서버 내용검색 결과도 표시(스니펫). files: apps/web/src/components/chat/SessionList.tsx(검색), 관련 훅",
+    "acceptance": "RED: 목 /sessions/search→내용 매칭 결과·스니펫 렌더 단언. verify-gates green",
+    "phase": "P19",
+    "team": "T6",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P19-T1-07",
+    "desc": "메시지 평가: migration 0023 message_feedback(message_id,user_id,org_id,rating smallint CHECK(-1,1), UNIQUE(message_id,user_id)) + POST /sessions/:id/messages/:mid/feedback(upsert/취소) + GET. RLS·cross-org. routes-mounted 갱신. files: db/migrations/0023_message_feedback.sql, routes/messages.ts 또는 sessions.ts, data-access, __tests__/routes-mounted.test.ts",
+    "acceptance": "RED: createApp 실HTTP 평가 upsert/토글 취소 + 조회 + cross-org 차단 + 마운트 가드. verify-gates green",
+    "phase": "P19",
+    "team": "T1",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P19-T6-07",
+    "desc": "평가 UI: assistant 메시지에 👍/👎(선택 토글·취소, aria-label). files: apps/web/src/components/chat/MessageItem.tsx",
+    "acceptance": "RED: 목 feedback API→클릭 시 상태 반영·재클릭 취소 단언. verify-gates green",
+    "phase": "P19",
+    "team": "T6",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P19-T2-03",
+    "desc": "응답 이어쓰기(continue): POST /sessions/:id/messages/:mid/continue → 직전 assistant 텍스트를 prefix 로 이어서 SSE 스트리밍(기존 messages 스트림 파이프 재사용). frozen 회피(신규 SSE 이벤트 금지). routes-mounted 갱신. files: routes/messages.ts, __tests__/routes-mounted.test.ts",
+    "acceptance": "RED: createApp continue 턴→기존 텍스트 뒤에 이어붙는 text_delta·stop 종단 단언(L1/L5). verify-gates green",
+    "phase": "P19",
+    "team": "T2",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P19-T6-08",
+    "desc": "이어쓰기 UI: assistant 메시지(특히 max_tokens/truncated)에 '이어쓰기' 버튼→continue 호출·추가 스트림 병합. files: apps/web/src/components/chat/MessageItem.tsx, hooks/useSessionStream.ts",
+    "acceptance": "RED: 목 continue→버튼 클릭 시 호출·이어진 텍스트 병합 단언. verify-gates green",
+    "phase": "P19",
+    "team": "T6",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P19-T2-04",
+    "desc": "후속질문 생성: POST /sessions/:id/followups → 마지막 턴 맥락으로 후속질문 3개 JSON 반환(SSE 아님=frozen 회피, dev-stub 결정적). routes-mounted 갱신. files: routes/*(신규 또는 sessions.ts)+app.ts, orchestrator 헬퍼, __tests__/routes-mounted.test.ts",
+    "acceptance": "RED: createApp→후속질문 3개 반환(provider 부재 시 dev-stub 결정적, 조용한 실패 금지 L5). verify-gates green",
+    "phase": "P19",
+    "team": "T2",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P19-T6-09",
+    "desc": "후속질문 칩: 턴 완료 후 후속질문 칩 렌더, 클릭 시 해당 질문 전송. files: apps/web/src/components/chat/ChatView.tsx",
+    "acceptance": "RED: 목 /followups→칩 렌더 + 클릭 전송 단언. verify-gates green",
+    "phase": "P19",
+    "team": "T6",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P19-T6-10",
+    "desc": "PDF 내보내기: 대화를 인쇄용 뷰(print stylesheet)로 렌더 후 window.print()로 PDF 저장 — 신규 의존성 금지. files: apps/web/src/components/chat/ShareExportMenu.tsx, print CSS(globals 또는 컴포넌트)",
+    "acceptance": "RED: 목→내보내기 메뉴 'PDF' 항목 + 인쇄뷰 마크업(대화 전체) 단언. verify-gates green",
+    "phase": "P19",
+    "team": "T6",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P19-T2-05",
+    "desc": "임시 채팅(서버): body.temporary=true 면 ensureSession/messages.insert 를 스킵(미영속)하고 스트림만 반환. files: apps/server/src/routes/messages.ts, app.ts",
+    "acceptance": "RED: createApp temporary 턴→messages.insert·ensureSession 미호출 단언, 스트림은 정상 종단. verify-gates green",
+    "phase": "P19",
+    "team": "T2",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P19-T6-11",
+    "desc": "임시 채팅 UI: 컴포저/모델메뉴에 임시채팅 토글(비저장 표시), temporary 플래그 전송, 새로고침 시 히스토리에 없음. files: apps/web/src/components/chat/ChatInput.tsx 또는 ModelModePicker.tsx",
+    "acceptance": "RED: 목→토글 시 temporary=true 전송·비저장 표시 단언. verify-gates green",
+    "phase": "P19",
+    "team": "T6",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P19-T6-12",
+    "desc": "완료 알림: document.hidden(탭 비활성) 상태에서 턴 완료 시 Notification API 로 1회 알림(권한 요청, 미허용/보임 상태엔 미발생). files: apps/web/src/hooks/useSessionStream.ts 또는 ChatView.tsx",
+    "acceptance": "RED: 목 Notification→hidden+완료 시 1회 호출, visible 상태엔 미호출 단언. verify-gates green",
+    "phase": "P19",
+    "team": "T6",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P19-T1-08",
+    "desc": "프롬프트 데이터/라우트: migration 0024 prompts(id,org_id,owner_id,command UNIQUE(org),title,content,access enum[private|org]) + CRUD 라우트(/api/v1/prompts, org/user scoped 접근제어). RLS·cross-org. routes-mounted 갱신. files: db/migrations/0024_prompts.sql, routes/prompts.ts(신규)+app.ts, data-access, __tests__/routes-mounted.test.ts",
+    "acceptance": "RED: createApp 실HTTP 프롬프트 CRUD + private/org 접근제어 + cross-org 차단 + 마운트 가드. verify-gates green",
+    "phase": "P19",
+    "team": "T1",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P19-T6-13",
+    "desc": "프롬프트 UI + /명령 + 변수: 설정 프롬프트 매니저(CRUD) + 컴포저 '/' 자동완성으로 프롬프트 삽입 + 변수 치환({{today}}·{{user}}·{{clipboard}} 등). files: apps/web/src/components/settings/*(신규 PromptsManager), components/chat/ChatInput.tsx",
+    "acceptance": "RED: 목 prompts→'/' 자동완성·삽입 + 변수 치환({{today}}→날짜) 단언. verify-gates green",
+    "phase": "P19",
+    "team": "T6",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P19-T1-09",
+    "desc": "allowedModels 편집 라우트: PUT /api/v1/admin/settings(또는 신규 /admin/models)로 organizations.allowedModels(기존 컬럼 재사용) 편집 — isAdmin 403 게이트, orgId=auth only(cross-org 불가), 검증(문자열 배열). frozen Organization 타입 미수정(data-access hand-rolled). routes-mounted 갱신 필요시. files: routes/admin-settings.ts 또는 admin.ts + app.ts(마운트만), auth-data-access.ts(organizations.update 확장), __tests__/routes-mounted.test.ts",
+    "acceptance": "RED: createApp 실HTTP 403(비admin)/편집 반영/cross-org 차단 + 마운트 가드. verify-gates green",
+    "phase": "P19",
+    "team": "T1",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P19-T6-14",
+    "desc": "allowedModels 편집 UI: ModelsGenerationTab 읽기전용→추가/제거 편집(칩 입력, 저장 PUT). files: apps/web/src/components/admin/settings/ModelsGenerationTab.tsx",
+    "acceptance": "RED: 목 PUT→모델 추가/제거·저장 상호작용 단언. verify-gates green",
+    "phase": "P19",
+    "team": "T6",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P19-T1-10",
+    "desc": "배너 typed 스키마: lib/org-settings-schema.ts(LOCAL Zod)의 banner 를 typed 목록(type[info|success|warning|error], title, content, dismissible)로 확장 — 기존 문자열/기본값 하위호환(마이그레이션 불필요, JSONB). files: apps/server/src/lib/org-settings-schema.ts",
+    "acceptance": "RED: 스키마 검증(typed 배너 통과/불량 거부) + 기존값 폴백 단언(L2). verify-gates green",
+    "phase": "P19",
+    "team": "T1",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P19-T6-15",
+    "desc": "배너 실표시: AppShell 상단에 org 배너 표시(type별 시맨틱 색, 닫기, 세션 유지) — 저장돼도 안 뜨던 문제 해결. 하드코딩 hex 0. files: apps/web/src/components/layout/AppShell.tsx, 신규 Banner 컴포넌트",
+    "acceptance": "RED: 목 설정(typed 배너)→배너 렌더·type별 스타일·닫기 단언. verify-gates green",
+    "phase": "P19",
+    "team": "T6",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P19-T2-06",
+    "desc": "LLM 제목/태그 생성: 첫 턴 완료 후 세션 제목·태그를 LLM 로 생성(deriveSessionTitle 은 폴백 유지, dev-stub 결정적, 실패 시 파생 폴백 — L5). 태그는 session_tags(0020) 재사용. files: apps/server/src/app.ts 또는 orchestrator, routes/messages.ts(턴 종료 훅)",
+    "acceptance": "RED: createApp 턴 종료→LLM 제목 반영(provider 부재 시 파생 폴백), 태그 생성 단언. verify-gates green",
+    "phase": "P19",
+    "team": "T2",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P19-T1-11",
+    "desc": "API 키 데이터/라우트+인증: migration 0025 api_keys(id,org_id,user_id,name,key_hash,key_prefix,scopes,last_used_at,revoked_at) + 라우트(POST create=평문 1회 노출/GET list=마스킹/DELETE revoke) + auth 미들웨어가 Authorization: Bearer <key> 수용(JWT 대체). RLS·cross-org. routes-mounted 갱신. files: db/migrations/0025_api_keys.sql, routes/api-keys.ts(신규)+app.ts, lib/auth 미들웨어, __tests__/routes-mounted.test.ts",
+    "acceptance": "RED: createApp 실HTTP 발급(평문 1회)/목록 마스킹/폐기 + API키로 보호 라우트 인증 통과·폐기 후 401 + cross-org 차단. verify-gates green",
+    "phase": "P19",
+    "team": "T1",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P19-T6-16",
+    "desc": "API 키 UI: 설정 화면 발급/목록/폐기(평문 1회 노출 경고·복사). files: apps/web/src/components/settings/*(신규 ApiKeysManager)",
+    "acceptance": "RED: 목 API→발급 후 평문 1회 표시·폐기 단언. verify-gates green",
+    "phase": "P19",
+    "team": "T6",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P19-T1-12",
+    "desc": "웹검색 provider 설정: org-settings-schema 에 webSearchProvider(enum)/webSearchEndpoint/webSearchApiKeyRef 추가(JSONB, 마이그레이션 불필요) + web_search 핸들러가 org 설정 provider 로 resolve(미설정 시 기본/dev-stub, LOCAL_ONLY). files: lib/org-settings-schema.ts, tools/handlers/web-search-handler.ts, app.ts(resolve 주입)",
+    "acceptance": "RED: org webSearchProvider=X→핸들러가 X provider 로 호출됨 단언(L1 last-mile), 미설정→dev-stub 폴백. verify-gates green",
+    "phase": "P19",
+    "team": "T1",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P19-T6-17",
+    "desc": "웹검색 provider UI: WebSearchTab 에 provider(select)/endpoint/apiKeyRef 필드. files: apps/web/src/components/admin/settings/WebSearchTab.tsx",
+    "acceptance": "RED: 목→provider 필드 편집·저장 단언. verify-gates green",
+    "phase": "P19",
+    "team": "T6",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P19-T1-13",
+    "desc": "그룹 데이터/라우트: migration 0026 groups(id,org_id,name) + group_members(group_id,user_id,PRIMARY KEY 복합) + admin CRUD 라우트(/api/v1/admin/groups, 멤버 추가/제거). RLS·cross-org·isAdmin. routes-mounted 갱신. frozen User/Organization 미수정. files: db/migrations/0026_groups.sql, routes/admin-groups.ts(신규)+app.ts, data-access, __tests__/routes-mounted.test.ts",
+    "acceptance": "RED: createApp 실HTTP 그룹 CRUD + 멤버 추가/제거 + 403(비admin) + cross-org 차단 + 마운트 가드. verify-gates green",
+    "phase": "P19",
+    "team": "T1",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P19-T1-14",
+    "desc": "리소스 권한/접근제어: migration 0027 resource_grants(org_id,resource_type[model|knowledge|tool|prompt],resource_id,subject_type[user|group],subject_id,access[read|write]) + lib/access-control.ts(주체의 그룹 합집합으로 접근 결정) + 관련 조회 라우트 enforcement(비허용 리소스 미노출). frozen 타입 변경 필요한 부분은 ISOLATE(blocked_tasks). files: db/migrations/0027_resource_grants.sql, lib/access-control.ts(신규), 관련 routes",
+    "acceptance": "RED: 그룹 read 부여→멤버 접근 허용/비멤버 거부 단언(additive union). frozen 요구 시 격리 기록. verify-gates green",
+    "phase": "P19",
+    "team": "T1",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P19-T6-18",
+    "desc": "RBAC 관리 UI: admin 그룹/권한 화면(그룹 생성·멤버 관리·리소스 접근 부여 토글). files: apps/web/src/components/admin/*(신규 GroupsManager)",
+    "acceptance": "RED: 목 groups/grants API→그룹·멤버·권한 편집 상호작용 단언; verify-browser 가능 범위. verify-gates green",
+    "phase": "P19",
+    "team": "T6",
+    "passes": false,
+    "attempts": 0
   }
 ]
