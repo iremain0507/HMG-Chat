@@ -1,7 +1,8 @@
 "use client";
 // components/admin/settings/ModelsGenerationTab.tsx — P14-T6-02 Models & Generation 탭.
 //   org_settings 기반 필드(maxTokens/temperature/topP/defaultModel/systemPrompt/toolMaxTokens)만
-//   저장 가능. allowedModels 는 organizations 컬럼(§14-INTERFACES Organization)이고 이를
+//   저장 가능. temperature/topP 는 P15-T2-01 에서 orchestrator provider 호출까지 배선 완료.
+//   allowedModels 는 organizations 컬럼(§14-INTERFACES Organization)이고 이를
 //   admin 이 PUT 으로 편집할 라우트가 이 phase 표(routes/admin-settings.ts 는 T1-05 전용) 밖이라
 //   읽기 전용 노출로 격리 — 여기서 저장하는 척 하면 L5(조용한 실패)가 된다.
 import React from "react";
@@ -90,9 +91,6 @@ export function ModelsGenerationTab({
             {errors.topP}
           </span>
         )}
-        <span data-testid="admin-settings-topP-hint" className={HINT_CLASS}>
-          아직 미적용 — 저장은 되지만 응답 생성에는 반영되지 않습니다.
-        </span>
       </label>
 
       <label className={LABEL_CLASS}>

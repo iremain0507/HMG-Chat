@@ -1,14 +1,8 @@
 "use client";
 // components/admin/settings/PermissionsTab.tsx — P14-T6-03 Users & Permissions 탭.
-//   defaultUserRole/enableSignup 은 런타임 미배선(ISOLATE, env/ALLOWED_DOMAINS 결합) —
-//   저장은 되지만 아직 적용되지 않는다는 힌트를 노출해 L5(조용한 실패)를 피한다.
+//   defaultUserRole/enableSignup 은 P15-T1-01 에서 routes/auth.ts /signup 에 배선 완료.
 import React from "react";
-import {
-  LABEL_CLASS,
-  INPUT_CLASS,
-  CHECKBOX_LABEL_CLASS,
-  HINT_CLASS,
-} from "./tabStyles";
+import { LABEL_CLASS, INPUT_CLASS, CHECKBOX_LABEL_CLASS } from "./tabStyles";
 
 export type PermissionsValue = {
   defaultUserRole: "member" | "admin" | "owner";
@@ -48,12 +42,6 @@ export function PermissionsTab({ value, onChange }: PermissionsTabProps) {
             </option>
           ))}
         </select>
-        <span
-          data-testid="admin-settings-defaultUserRole-hint"
-          className={HINT_CLASS}
-        >
-          아직 미적용 — 저장은 되지만 가입 처리에는 반영되지 않습니다.
-        </span>
       </label>
 
       <label className={CHECKBOX_LABEL_CLASS}>
@@ -64,12 +52,6 @@ export function PermissionsTab({ value, onChange }: PermissionsTabProps) {
           onChange={(e) => onChange({ enableSignup: e.target.checked })}
         />
         가입 허용(enableSignup)
-        <span
-          data-testid="admin-settings-enableSignup-hint"
-          className={HINT_CLASS}
-        >
-          아직 미적용 — 저장은 되지만 가입 흐름에는 반영되지 않습니다.
-        </span>
       </label>
     </div>
   );

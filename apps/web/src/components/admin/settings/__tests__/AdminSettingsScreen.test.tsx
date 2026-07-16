@@ -291,7 +291,7 @@ describe("AdminSettingsScreen", () => {
     }
   });
 
-  it("defaultUserRole/enableSignup 은 '아직 미적용' 힌트를 노출한다", async () => {
+  it("defaultUserRole/enableSignup 은 '아직 미적용' 힌트를 노출하지 않는다(런타임 배선 완료)", async () => {
     stubFetch();
     render(<AdminSettingsScreen />);
     await waitFor(() => {
@@ -300,11 +300,14 @@ describe("AdminSettingsScreen", () => {
 
     fireEvent.click(screen.getByTestId("admin-settings-tab-permissions"));
     expect(
-      await screen.findByTestId("admin-settings-defaultUserRole-hint"),
-    ).toHaveTextContent("아직 미적용");
+      await screen.findByTestId("admin-settings-defaultUserRole"),
+    ).toBeInTheDocument();
     expect(
-      screen.getByTestId("admin-settings-enableSignup-hint"),
-    ).toHaveTextContent("아직 미적용");
+      screen.queryByTestId("admin-settings-defaultUserRole-hint"),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByTestId("admin-settings-enableSignup-hint"),
+    ).not.toBeInTheDocument();
   });
 
   it("RAG 탭 필드를 변경하고 저장하면 PUT patch 에 반영된다", async () => {

@@ -16,18 +16,18 @@ const VALUE: {
 describe("PermissionsTab", () => {
   afterEach(() => cleanup());
 
-  it("defaultUserRole/enableSignup 필드와 env 힌트를 렌더한다", () => {
+  it("defaultUserRole/enableSignup 필드를 렌더하고 '아직 미적용' 힌트는 노출하지 않는다(런타임 배선 완료)", () => {
     render(<PermissionsTab value={VALUE} onChange={() => {}} />);
     expect(screen.getByTestId("admin-settings-defaultUserRole")).toHaveValue(
       "member",
     );
     expect(screen.getByTestId("admin-settings-enableSignup")).not.toBeChecked();
     expect(
-      screen.getByTestId("admin-settings-defaultUserRole-hint"),
-    ).toHaveTextContent("아직 미적용");
+      screen.queryByTestId("admin-settings-defaultUserRole-hint"),
+    ).not.toBeInTheDocument();
     expect(
-      screen.getByTestId("admin-settings-enableSignup-hint"),
-    ).toHaveTextContent("아직 미적용");
+      screen.queryByTestId("admin-settings-enableSignup-hint"),
+    ).not.toBeInTheDocument();
   });
 
   it("입력을 변경하면 onChange 에 patch 를 전달한다", () => {

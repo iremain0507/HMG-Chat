@@ -93,7 +93,7 @@ test.describe("P14 preview — 관리자 설정(P14-T6-01) 핸드오프 정렬",
     ).toHaveValue("claude-sonnet-5");
     await expect(
       settingsScreen.getByTestId("admin-settings-topP-hint"),
-    ).toContainText("아직 미적용");
+    ).toHaveCount(0);
     await expect(
       settingsScreen.getByTestId("admin-settings-allowedModels-list"),
     ).toContainText("claude-opus-4-8");
@@ -134,10 +134,10 @@ test.describe("P14 preview — 관리자 설정(P14-T6-01) 핸드오프 정렬",
       .click();
     await expect(
       settingsScreen.getByTestId("admin-settings-defaultUserRole-hint"),
-    ).toContainText("아직 미적용");
+    ).toHaveCount(0);
     await expect(
       settingsScreen.getByTestId("admin-settings-enableSignup-hint"),
-    ).toContainText("아직 미적용");
+    ).toHaveCount(0);
 
     await settingsScreen.getByRole("tab", { name: "Quota/Limits" }).click();
     await expect(

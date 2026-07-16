@@ -55,7 +55,7 @@ describe("ModelsGenerationTab", () => {
     );
   });
 
-  it("topP 는 '아직 미적용' 힌트를 노출한다", () => {
+  it("topP 는 '아직 미적용' 힌트를 노출하지 않는다(런타임 배선 완료)", () => {
     render(
       <ModelsGenerationTab
         value={VALUE}
@@ -64,9 +64,9 @@ describe("ModelsGenerationTab", () => {
         onChange={() => {}}
       />,
     );
-    expect(screen.getByTestId("admin-settings-topP-hint")).toHaveTextContent(
-      "아직 미적용",
-    );
+    expect(
+      screen.queryByTestId("admin-settings-topP-hint"),
+    ).not.toBeInTheDocument();
   });
 
   it("allowedModels 는 읽기 전용 칩 목록 + 별도 관리 힌트로 노출한다(편집 저장 엔드포인트 부재)", () => {

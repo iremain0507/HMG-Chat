@@ -1373,7 +1373,7 @@
     "acceptance": "해당 힌트 제거/정확화; 하드코딩 hex 0; preview + Playwright 라이트/다크 스크린샷(.ralph/screenshots); 신규 상호작용 있으면 RED→GREEN; verify-gates green",
     "phase": "P15",
     "team": "T6",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   }
 ]
