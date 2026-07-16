@@ -3,9 +3,10 @@
 // components/chat/HitlPrompt.tsx — HITL 승인 카드 (design-reference F06 핸드오프).
 //   z-hitl(300) 딤 모달: 경고 아이콘+제목+평문 요약(도구명·비가역 고지)+JSON 인라인 편집+
 //   카운트다운(mono)+[거부/수정 후 승인/승인] → 호출부가 POST /messages/hitl 로 전송.
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { AlertTriangle, Clock } from "lucide-react";
 import type { HitlPromptData } from "../../hooks/useSessionStream";
+import { useFocusTrap } from "../../hooks/useFocusTrap";
 
 function formatCountdown(remainingMs: number): string {
   const totalSeconds = Math.max(0, Math.round(remainingMs / 1000));
@@ -48,6 +49,8 @@ export function HitlPrompt({
   );
   const [argsError, setArgsError] = useState<string | null>(null);
   const remainingMs = useCountdown(request.expiresAt);
+  const dialogRef = useRef<HTMLDivElement>(null);
+  useFocusTrap(dialogRef, { active: true, onClose: () => deny() });
 
   function approve() {
     if (!editing) {
@@ -76,6 +79,7 @@ export function HitlPrompt({
   return (
     <div className="fixed inset-0 z-[var(--z-hitl)] flex items-center justify-center bg-fg/40 px-4">
       <div
+        ref={dialogRef}
         data-testid="hitl-prompt"
         role="alertdialog"
         aria-modal="true"

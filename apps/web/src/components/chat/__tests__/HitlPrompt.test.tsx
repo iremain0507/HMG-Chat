@@ -127,4 +127,38 @@ describe("HitlPrompt", () => {
       vi.useRealTimers();
     }
   });
+
+  it("열리면 첫 포커스 가능 요소(거부 버튼)로 포커스가 이동한다", () => {
+    render(<HitlPrompt request={REQUEST} onRespond={vi.fn()} />);
+    expect(screen.getByRole("button", { name: "거부" })).toHaveFocus();
+  });
+
+  it("Esc 를 누르면 거부로 처리된다", () => {
+    const onRespond = vi.fn();
+    render(<HitlPrompt request={REQUEST} onRespond={onRespond} />);
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(onRespond).toHaveBeenCalledWith("denied", undefined, undefined);
+  });
+
+  it("닫힐 때 트리거 요소로 포커스가 복귀한다", () => {
+    function Wrapper() {
+      const [open, setOpen] = React.useState(false);
+      return (
+        <div>
+          <button data-testid="trigger" onClick={() => setOpen(true)}>
+            열기
+          </button>
+          {open && (
+            <HitlPrompt request={REQUEST} onRespond={() => setOpen(false)} />
+          )}
+        </div>
+      );
+    }
+    render(<Wrapper />);
+    const trigger = screen.getByTestId("trigger");
+    trigger.focus();
+    fireEvent.click(trigger);
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(trigger).toHaveFocus();
+  });
 });

@@ -1562,7 +1562,7 @@
     "acceptance": "RED: 모달 열림 시 포커스 가둠, Esc 닫힘, 닫을 때 트리거 포커스 복귀; verify-gates green; human UAT(TS-26)",
     "phase": "P17",
     "team": "T6",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   }
 ]
