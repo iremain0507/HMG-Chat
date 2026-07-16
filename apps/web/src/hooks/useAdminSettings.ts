@@ -19,6 +19,9 @@ export interface AdminOrgSettings {
 
   webSearchEnabled: boolean;
   webSearchResultCount: number;
+  webSearchProvider: "dev-stub" | "tavily";
+  webSearchEndpoint: string;
+  webSearchApiKeyRef: string;
 
   enableDirectConnections: boolean;
 

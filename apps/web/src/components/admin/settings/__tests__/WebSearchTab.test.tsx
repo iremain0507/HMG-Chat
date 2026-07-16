@@ -5,7 +5,13 @@ import { render, screen, cleanup, fireEvent } from "@testing-library/react";
 import "@testing-library/jest-dom/vitest";
 import { WebSearchTab } from "../WebSearchTab";
 
-const VALUE = { webSearchEnabled: false, webSearchResultCount: 3 };
+const VALUE = {
+  webSearchEnabled: false,
+  webSearchResultCount: 3,
+  webSearchProvider: "dev-stub" as const,
+  webSearchEndpoint: "",
+  webSearchApiKeyRef: "",
+};
 
 describe("WebSearchTab", () => {
   afterEach(() => cleanup());
@@ -44,5 +50,33 @@ describe("WebSearchTab", () => {
     expect(
       screen.getByTestId("admin-settings-webSearchResultCount-error"),
     ).toHaveTextContent("1~20");
+  });
+
+  it("provider/endpoint/apiKeyRef 필드를 렌더하고 편집하면 onChange 에 patch 를 전달한다", () => {
+    const onChange = vi.fn();
+    render(<WebSearchTab value={VALUE} errors={{}} onChange={onChange} />);
+
+    expect(screen.getByTestId("admin-settings-webSearchProvider")).toHaveValue(
+      "dev-stub",
+    );
+
+    fireEvent.change(screen.getByTestId("admin-settings-webSearchProvider"), {
+      target: { value: "tavily" },
+    });
+    expect(onChange).toHaveBeenCalledWith({ webSearchProvider: "tavily" });
+
+    fireEvent.change(screen.getByTestId("admin-settings-webSearchEndpoint"), {
+      target: { value: "https://api.tavily.com/search" },
+    });
+    expect(onChange).toHaveBeenCalledWith({
+      webSearchEndpoint: "https://api.tavily.com/search",
+    });
+
+    fireEvent.change(screen.getByTestId("admin-settings-webSearchApiKeyRef"), {
+      target: { value: "secrets/tavily-key" },
+    });
+    expect(onChange).toHaveBeenCalledWith({
+      webSearchApiKeyRef: "secrets/tavily-key",
+    });
   });
 });
