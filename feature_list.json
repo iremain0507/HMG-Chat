@@ -1490,8 +1490,8 @@
     "acceptance": "목록/복원/rename/delete 상호작용 RED→GREEN; 하드코딩 hex 0; ★human UAT 필요(TS-08: 채팅→나갔다 복귀→히스토리 복원) 명시(과장 금지); verify-gates green",
     "phase": "P17",
     "team": "T6",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P17-T6-02",

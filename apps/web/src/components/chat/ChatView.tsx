@@ -58,6 +58,8 @@ export function ChatView({ sessionId }: { sessionId: string }) {
     artifacts,
     editMessage,
     switchBranch,
+    historyLoading,
+    loadHistory,
   } = useSessionStream(sessionId);
   const { org } = useCurrentUser();
   const online = useOnlineStatus();
@@ -154,6 +156,11 @@ export function ChatView({ sessionId }: { sessionId: string }) {
     if (el && autoFollow) el.scrollTop = el.scrollHeight;
   }, [messages, isStreaming, autoFollow]);
 
+  // P17-T6-01(TS-08) — 세션을 열 때(마운트/세션 전환) 과거 대화를 서버에서 복원.
+  useEffect(() => {
+    void loadHistory();
+  }, [loadHistory]);
+
   const lastMessage = messages[messages.length - 1];
   const lastAssistantContent =
     lastMessage?.role === "assistant" ? lastMessage.content : "";
@@ -248,7 +255,14 @@ export function ChatView({ sessionId }: { sessionId: string }) {
             <div className="sr-only" data-testid="stream-announcer">
               {announceText}
             </div>
-            {empty ? (
+            {historyLoading ? (
+              <div
+                data-testid="history-loading"
+                className="grid h-full place-items-center text-sm text-fg-muted"
+              >
+                대화 불러오는 중…
+              </div>
+            ) : empty ? (
               <div className="grid h-full place-items-center px-6">
                 <div className="text-center">
                   <div className="mx-auto grid h-14 w-14 place-items-center rounded-2xl bg-primary text-2xl font-bold text-primary-fg">

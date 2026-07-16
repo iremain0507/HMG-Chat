@@ -1350,4 +1350,43 @@ describe("ChatView", () => {
       "1 / 2",
     );
   });
+
+  it("세션을 열면 GET /:id/messages 로 과거 대화를 복원한다 (P17-T6-01, TS-08)", async () => {
+    const fetchMock = vi.fn(async (url: string) => {
+      const u = String(url);
+      if (u === "/api/v1/sessions/session-1/messages") {
+        return {
+          ok: true,
+          json: async () => ({
+            data: [
+              {
+                id: "m-1",
+                sessionId: "session-1",
+                role: "user",
+                content: "예전 질문",
+              },
+              {
+                id: "m-2",
+                sessionId: "session-1",
+                role: "assistant",
+                content: "예전 답변",
+              },
+            ],
+          }),
+        };
+      }
+      return {
+        body: new ReadableStream<Uint8Array>({ start: (c) => c.close() }),
+      };
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<ChatView sessionId="session-1" />);
+
+    await waitFor(() => {
+      expect(screen.getByText("예전 질문")).toBeInTheDocument();
+    });
+    expect(screen.getByText("예전 답변")).toBeInTheDocument();
+    expect(screen.queryByText("무엇을 도와드릴까요?")).not.toBeInTheDocument();
+  });
 });

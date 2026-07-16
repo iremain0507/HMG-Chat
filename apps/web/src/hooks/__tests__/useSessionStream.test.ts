@@ -789,4 +789,93 @@ describe("useSessionStream", () => {
     expect(errorMessage).toBeDefined();
     expect(errorMessage?.retryable).toBe(true);
   });
+
+  describe("loadHistory (P17-T6-01, TS-08)", () => {
+    it("GET /:id/messages 응답을 시간순 선형 체인으로 복원한다", async () => {
+      const fetchMock = vi.fn(async () => ({
+        ok: true,
+        json: async () => ({
+          data: [
+            {
+              id: "m-1",
+              sessionId: "session-1",
+              role: "user",
+              content: "안녕",
+            },
+            {
+              id: "m-2",
+              sessionId: "session-1",
+              role: "assistant",
+              content: "반갑습니다",
+            },
+          ],
+        }),
+      }));
+      vi.stubGlobal("fetch", fetchMock);
+
+      const { result } = renderHook(() => useSessionStream("session-1"));
+      await act(async () => {
+        await result.current.loadHistory();
+      });
+
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/v1/sessions/session-1/messages",
+        expect.objectContaining({ credentials: "include" }),
+      );
+      expect(result.current.messages.map((m) => [m.role, m.content])).toEqual([
+        ["user", "안녕"],
+        ["assistant", "반갑습니다"],
+      ]);
+      expect(result.current.historyLoading).toBe(false);
+    });
+
+    it("응답 실패 시 조용히 빈 대화로 폴백한다(fail-soft)", async () => {
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async () => ({ ok: false })),
+      );
+
+      const { result } = renderHook(() => useSessionStream("session-1"));
+      await act(async () => {
+        await result.current.loadHistory();
+      });
+
+      expect(result.current.messages).toEqual([]);
+      expect(result.current.historyLoading).toBe(false);
+    });
+
+    it("이미 진행 중인 로컬 대화가 있으면 히스토리 복원으로 덮어쓰지 않는다", async () => {
+      const fetchMock = vi.fn(async () => ({
+        body: sseBody([
+          sseFrame("message_start", { messageId: "msg-1" }),
+          sseFrame("text_delta", { text: "hello" }),
+          sseFrame("stop", { reason: "end_turn" }),
+        ]),
+        ok: true,
+        json: async () => ({
+          data: [
+            {
+              id: "m-1",
+              sessionId: "session-1",
+              role: "user",
+              content: "이전 대화",
+            },
+          ],
+        }),
+      }));
+      vi.stubGlobal("fetch", fetchMock);
+
+      const { result } = renderHook(() => useSessionStream("session-1"));
+      await act(async () => {
+        await result.current.send("hi");
+      });
+      await act(async () => {
+        await result.current.loadHistory();
+      });
+
+      expect(
+        result.current.messages.some((m) => m.content === "이전 대화"),
+      ).toBe(false);
+    });
+  });
 });

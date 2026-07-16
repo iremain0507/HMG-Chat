@@ -241,7 +241,45 @@ export function useSessionStream(sessionId: string) {
   const [isStreaming, setIsStreaming] = useState(false);
   const [hitlRequest, setHitlRequest] = useState<HitlPromptData | null>(null);
   const [artifacts, setArtifacts] = useState<ArtifactSummary[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const historyLoadedRef = useRef(false);
   const abortRef = useRef<AbortController | null>(null);
+
+  // P17-T6-01(TS-08) — 세션 재진입/새로고침 시 GET /:id/messages 로 과거 대화를 복원한다.
+  // 서버는 각 turn 의 user+assistant 메시지를 생성 시각순으로 반환(P17-T1-01/02) — 편집/재생성으로
+  // 생긴 형제 분기까지는 구분하지 않으므로(parentMessageId 미포함), 단일 선형 체인으로 복원한다.
+  // 이미 로컬에 진행 중인 대화(예: 새 세션에서 첫 메시지를 보낸 직후)가 있으면 덮어쓰지 않는다.
+  const loadHistory = useCallback(async () => {
+    if (historyLoadedRef.current) return;
+    if (Object.keys(treeRef.current.nodes).length > 0) return;
+    historyLoadedRef.current = true;
+    setHistoryLoading(true);
+    try {
+      const res = await apiFetch(`/api/v1/sessions/${sessionId}/messages`, {
+        credentials: "include",
+      });
+      if (!res.ok) return;
+      const body = (await res.json()) as {
+        data: Array<{ id: string; role: string; content: unknown }>;
+      };
+      let parentId: string | null = null;
+      for (const row of body.data) {
+        if (row.role !== "user" && row.role !== "assistant") continue;
+        const content =
+          typeof row.content === "string"
+            ? row.content
+            : row.content == null
+              ? ""
+              : JSON.stringify(row.content);
+        addNode(row.id, parentId, { id: row.id, role: row.role, content });
+        parentId = row.id;
+      }
+    } catch {
+      // fail-soft — 히스토리 복원 실패 시 빈 대화로 시작(L2/L5, 조용한 실패 아닌 정상 폴백).
+    } finally {
+      setHistoryLoading(false);
+    }
+  }, [sessionId, addNode]);
 
   const messages = useMemo<StreamMessage[]>(() => {
     const t = treeRef.current;
@@ -668,5 +706,7 @@ export function useSessionStream(sessionId: string) {
     artifacts,
     editMessage,
     switchBranch,
+    historyLoading,
+    loadHistory,
   };
 }
