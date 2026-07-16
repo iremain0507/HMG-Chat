@@ -66,6 +66,7 @@ export function ThemeToggle({
       type="button"
       onClick={toggle}
       aria-label="테마 전환"
+      title="테마 전환"
       aria-pressed={theme === "dark"}
       data-testid={testId}
       className="rounded-md border border-border px-2 py-1 text-sm text-fg-muted hover:border-primary hover:text-fg"

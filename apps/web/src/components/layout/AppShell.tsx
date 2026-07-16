@@ -87,6 +87,7 @@ export function AppShell({ sidebar, rightPanel, children }: AppShellProps) {
         <button
           type="button"
           aria-label="사이드바 닫기"
+          title="사이드바 닫기"
           onClick={() => setMobileSidebarOpen(false)}
           className="fixed inset-0 z-[var(--z-modal)] bg-fg/40 md:hidden"
         />
@@ -99,6 +100,7 @@ export function AppShell({ sidebar, rightPanel, children }: AppShellProps) {
         <button
           type="button"
           aria-label="사이드바 열기"
+          title="사이드바 열기"
           onClick={() => setMobileSidebarOpen(true)}
           className="rounded p-1.5 text-fg-muted hover:bg-surface md:hidden"
         >
@@ -122,6 +124,7 @@ export function AppShell({ sidebar, rightPanel, children }: AppShellProps) {
           type="button"
           onClick={openCommandSearch}
           aria-label="검색 (⌘K)"
+          title="검색 (⌘K)"
           data-testid="app-shell-cmdk-button"
           className="flex h-7 items-center gap-1.5 rounded-md border border-border px-2.5 text-xs text-fg-subtle hover:border-primary hover:text-fg-muted"
         >
@@ -136,6 +139,7 @@ export function AppShell({ sidebar, rightPanel, children }: AppShellProps) {
           type="button"
           onClick={() => setRightPanelOpen((open) => !open)}
           aria-label="우패널 토글 (⌘\)"
+          title="우패널 토글 (⌘\)"
           aria-pressed={rightPanelOpen}
           data-testid="app-shell-panel-toggle"
           className={`flex h-7 w-7 items-center justify-center rounded-md border ${
@@ -179,6 +183,7 @@ export function AppShell({ sidebar, rightPanel, children }: AppShellProps) {
             <button
               type="button"
               aria-label="우패널 크기 조절"
+              title="우패널 크기 조절"
               data-testid="app-shell-right-panel-resize-handle"
               onMouseDown={startResize}
               className="absolute inset-y-0 left-0 z-10 w-1 cursor-col-resize bg-transparent hover:bg-primary/30"

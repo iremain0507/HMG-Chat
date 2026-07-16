@@ -184,6 +184,31 @@ describe("AppShell", () => {
     expect(panel).toHaveStyle({ width: "450px" });
   });
 
+  it("헤더 아이콘 버튼(⌘K·우패널 토글·리사이즈 핸들·모바일 햄버거)에 title 툴팁이 존재한다", () => {
+    stubCurrentUserFetch();
+    render(
+      <AppShell sidebar={<div>세션 목록</div>}>
+        <div>본문</div>
+      </AppShell>,
+    );
+
+    expect(screen.getByTestId("app-shell-cmdk-button")).toHaveAttribute(
+      "title",
+      "검색 (⌘K)",
+    );
+    expect(screen.getByTestId("app-shell-panel-toggle")).toHaveAttribute(
+      "title",
+      "우패널 토글 (⌘\\)",
+    );
+    expect(
+      screen.getByTestId("app-shell-right-panel-resize-handle"),
+    ).toHaveAttribute("title", "우패널 크기 조절");
+    expect(screen.getByLabelText("사이드바 열기")).toHaveAttribute(
+      "title",
+      "사이드바 열기",
+    );
+  });
+
   it("나비 레일에 현재 로그인 사용자 아바타를 노출한다", async () => {
     stubCurrentUserFetch();
     render(

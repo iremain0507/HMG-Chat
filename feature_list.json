@@ -1400,8 +1400,8 @@
     "acceptance": "각 아이콘 버튼에 title/tooltip 존재 단언 RED→GREEN; 하드코딩 hex 0; preview+Playwright hover 검증; verify-gates green; human UAT(TS-23)",
     "phase": "P16",
     "team": "T6",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P16-T6-04",

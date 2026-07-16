@@ -71,6 +71,7 @@ export function SessionCard({
       <button
         type="button"
         aria-label={pinned ? `고정 해제: ${label}` : `고정: ${label}`}
+        title={pinned ? `고정 해제: ${label}` : `고정: ${label}`}
         aria-pressed={pinned}
         onClick={() => onTogglePin(session.id)}
         className={`shrink-0 rounded p-1 text-xs group-hover:block ${
@@ -86,6 +87,7 @@ export function SessionCard({
       <button
         type="button"
         aria-label={`이름변경: ${label}`}
+        title={`이름변경: ${label}`}
         onClick={startEdit}
         className="hidden shrink-0 rounded p-1 text-xs text-fg-muted hover:text-fg group-hover:block"
       >
@@ -94,6 +96,7 @@ export function SessionCard({
       <button
         type="button"
         aria-label={`삭제: ${label}`}
+        title={`삭제: ${label}`}
         onClick={() => onDelete(session.id)}
         className="hidden shrink-0 rounded p-1 text-xs text-fg-muted hover:text-accent group-hover:block"
       >
