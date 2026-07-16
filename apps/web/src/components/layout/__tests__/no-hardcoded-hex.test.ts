@@ -52,6 +52,12 @@ const FILES = [
   "../../../app/share/[token]/page.tsx",
   "../../admin/settings/AdminSettingsScreen.tsx",
   "../../admin/settings/ModelsGenerationTab.tsx",
+  "../../admin/settings/KnowledgeRagTab.tsx",
+  "../../admin/settings/WebSearchTab.tsx",
+  "../../admin/settings/ConnectorsTab.tsx",
+  "../../admin/settings/BrandingTab.tsx",
+  "../../admin/settings/PermissionsTab.tsx",
+  "../../admin/settings/QuotaTab.tsx",
   "../../../app/admin/settings/page.tsx",
 ];
 

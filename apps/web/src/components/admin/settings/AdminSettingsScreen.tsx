@@ -11,6 +11,12 @@ import {
   ModelsGenerationTab,
   type ModelsGenerationErrors,
 } from "./ModelsGenerationTab";
+import { KnowledgeRagTab, type KnowledgeRagErrors } from "./KnowledgeRagTab";
+import { WebSearchTab, type WebSearchErrors } from "./WebSearchTab";
+import { ConnectorsTab } from "./ConnectorsTab";
+import { BrandingTab, type BrandingErrors } from "./BrandingTab";
+import { PermissionsTab } from "./PermissionsTab";
+import { QuotaTab, type QuotaErrors } from "./QuotaTab";
 
 interface TabDef {
   id: string;
@@ -19,8 +25,14 @@ interface TabDef {
 
 const MAX_TOKENS_LIMIT = 128_000;
 
-function validateModelsFields(s: AdminOrgSettings): ModelsGenerationErrors {
-  const errors: ModelsGenerationErrors = {};
+type AllErrors = ModelsGenerationErrors &
+  KnowledgeRagErrors &
+  WebSearchErrors &
+  BrandingErrors &
+  QuotaErrors;
+
+function validateFields(s: AdminOrgSettings): AllErrors {
+  const errors: AllErrors = {};
   if (
     !Number.isInteger(s.maxTokens) ||
     s.maxTokens < 1 ||
@@ -45,10 +57,60 @@ function validateModelsFields(s: AdminOrgSettings): ModelsGenerationErrors {
   ) {
     errors.toolMaxTokens = `1~${MAX_TOKENS_LIMIT.toLocaleString()} 사이의 정수를 입력하세요.`;
   }
+  if (!Number.isInteger(s.ragTopK) || s.ragTopK < 1 || s.ragTopK > 100) {
+    errors.ragTopK = "1~100 사이의 정수를 입력하세요.";
+  }
+  if (!Number.isInteger(s.ragRrfK) || s.ragRrfK < 1 || s.ragRrfK > 1000) {
+    errors.ragRrfK = "1~1,000 사이의 정수를 입력하세요.";
+  }
+  if (
+    !Number.isInteger(s.ragChunkSizeTokens) ||
+    s.ragChunkSizeTokens < 50 ||
+    s.ragChunkSizeTokens > 8000
+  ) {
+    errors.ragChunkSizeTokens = "50~8,000 사이의 정수를 입력하세요.";
+  }
+  if (
+    !Number.isInteger(s.ragChunkOverlapTokens) ||
+    s.ragChunkOverlapTokens < 0 ||
+    s.ragChunkOverlapTokens > 4000
+  ) {
+    errors.ragChunkOverlapTokens = "0~4,000 사이의 정수를 입력하세요.";
+  }
+  if (
+    !Number.isFinite(s.ragRelevanceThreshold) ||
+    s.ragRelevanceThreshold < 0 ||
+    s.ragRelevanceThreshold > 1
+  ) {
+    errors.ragRelevanceThreshold = "0~1 사이 값을 입력하세요.";
+  }
+  if (
+    !Number.isInteger(s.webSearchResultCount) ||
+    s.webSearchResultCount < 1 ||
+    s.webSearchResultCount > 20
+  ) {
+    errors.webSearchResultCount = "1~20 사이의 정수를 입력하세요.";
+  }
+  if (s.instanceName.trim().length < 1 || s.instanceName.length > 120) {
+    errors.instanceName = "1~120자 사이로 입력하세요.";
+  }
+  if (
+    !Number.isInteger(s.maxUploadSizeMb) ||
+    s.maxUploadSizeMb < 1 ||
+    s.maxUploadSizeMb > 1000
+  ) {
+    errors.maxUploadSizeMb = "1~1,000 사이의 정수를 입력하세요.";
+  }
+  if (
+    !Number.isInteger(s.maxUploadCount) ||
+    s.maxUploadCount < 1 ||
+    s.maxUploadCount > 100
+  ) {
+    errors.maxUploadCount = "1~100 사이의 정수를 입력하세요.";
+  }
   return errors;
 }
 
-// 나머지 탭 필드 바인딩은 T6-03(나머지 6탭)에서 추가된다.
 const TABS: TabDef[] = [
   { id: "models", label: "Models & Generation" },
   { id: "rag", label: "Knowledge/RAG" },
@@ -77,10 +139,7 @@ export function AdminSettingsScreen() {
     draft !== null &&
     JSON.stringify(draft) !== JSON.stringify(settings);
 
-  const errors = useMemo(
-    () => (draft ? validateModelsFields(draft) : {}),
-    [draft],
-  );
+  const errors = useMemo(() => (draft ? validateFields(draft) : {}), [draft]);
   const hasErrors = Object.keys(errors).length > 0;
   const isDowngrade =
     settings !== null && draft !== null && draft.maxTokens < settings.maxTokens;
@@ -168,21 +227,69 @@ export function AdminSettingsScreen() {
             data-testid={`admin-settings-panel-${activeTab}`}
             className="mt-4 min-h-[120px] rounded-lg border border-border p-4 text-sm text-fg-muted"
           >
-            {activeTab === "models" && draft ? (
-              <ModelsGenerationTab
-                value={draft}
-                errors={errors}
-                orgAllowedModels={org?.allowedModels ?? []}
-                onChange={(patch) =>
-                  setDraft((prev) => (prev ? { ...prev, ...patch } : prev))
+            {draft &&
+              (() => {
+                const onChange = (patch: Partial<AdminOrgSettings>) =>
+                  setDraft((prev) => (prev ? { ...prev, ...patch } : prev));
+                switch (activeTab) {
+                  case "models":
+                    return (
+                      <ModelsGenerationTab
+                        value={draft}
+                        errors={errors}
+                        orgAllowedModels={org?.allowedModels ?? []}
+                        onChange={onChange}
+                      />
+                    );
+                  case "rag":
+                    return (
+                      <KnowledgeRagTab
+                        value={draft}
+                        errors={errors}
+                        onChange={onChange}
+                      />
+                    );
+                  case "web-search":
+                    return (
+                      <WebSearchTab
+                        value={draft}
+                        errors={errors}
+                        onChange={onChange}
+                      />
+                    );
+                  case "connectors":
+                    return (
+                      <ConnectorsTab
+                        value={draft}
+                        orgAllowedTools={org?.allowedTools ?? []}
+                        onChange={onChange}
+                      />
+                    );
+                  case "branding":
+                    return (
+                      <BrandingTab
+                        value={draft}
+                        errors={errors}
+                        onChange={onChange}
+                      />
+                    );
+                  case "permissions":
+                    return <PermissionsTab value={draft} onChange={onChange} />;
+                  case "quota":
+                    return (
+                      <QuotaTab
+                        value={draft}
+                        errors={errors}
+                        orgDefaultTokenBudgetMicros={
+                          org?.defaultTokenBudgetMicros ?? null
+                        }
+                        onChange={onChange}
+                      />
+                    );
+                  default:
+                    return null;
                 }
-              />
-            ) : (
-              <>
-                {TABS.find((tab) => tab.id === activeTab)?.label} 설정 항목은
-                이후 태스크에서 추가됩니다.
-              </>
-            )}
+              })()}
           </div>
         </>
       )}

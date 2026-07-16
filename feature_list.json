@@ -1328,7 +1328,7 @@
     "acceptance": "각 필드 존재+검증+저장; env-coupled 필드(defaultUserRole/enableSignup)는 '관리됨/미적용' 힌트; 브라우저 라이트/다크 스크린샷; 하드코딩 hex 0; verify-gates green",
     "phase": "P14",
     "team": "T6",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   }
 ]

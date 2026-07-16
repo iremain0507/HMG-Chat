@@ -1,6 +1,6 @@
 import { test, expect } from "@playwright/test";
 
-// e2e/admin-settings.pw.ts — P14-T6-01 브라우저 검증(Layer 1).
+// e2e/admin-settings.pw.ts — P14-T6-01/03 브라우저 검증(Layer 1).
 //   /preview 의 admin-settings-screen 섹션을 실제 chromium 으로 열어 7탭 셸이
 //   design-reference 핸드오프대로 렌더/전환되는지 검증한다. GET 은 page.route() 로 목킹.
 const SETTINGS = {
@@ -110,7 +110,46 @@ test.describe("P14 preview — 관리자 설정(P14-T6-01) 핸드오프 정렬",
     await expect(
       settingsScreen.getByTestId("admin-settings-panel-rag"),
     ).toBeVisible();
+    await expect(
+      settingsScreen.getByTestId("admin-settings-ragTopK"),
+    ).toHaveValue("10");
 
+    await settingsScreen.getByRole("tab", { name: "Web Search" }).click();
+    await expect(
+      settingsScreen.getByTestId("admin-settings-webSearchResultCount"),
+    ).toHaveValue("3");
+
+    await settingsScreen.getByRole("tab", { name: "Connectors/MCP" }).click();
+    await expect(
+      settingsScreen.getByTestId("admin-settings-allowedTools-hint"),
+    ).toContainText("읽기 전용");
+
+    await settingsScreen.getByRole("tab", { name: "General/Branding" }).click();
+    await expect(
+      settingsScreen.getByTestId("admin-settings-instanceName"),
+    ).toHaveValue("WChat");
+
+    await settingsScreen
+      .getByRole("tab", { name: "Users & Permissions" })
+      .click();
+    await expect(
+      settingsScreen.getByTestId("admin-settings-defaultUserRole-hint"),
+    ).toContainText("아직 미적용");
+    await expect(
+      settingsScreen.getByTestId("admin-settings-enableSignup-hint"),
+    ).toContainText("아직 미적용");
+
+    await settingsScreen.getByRole("tab", { name: "Quota/Limits" }).click();
+    await expect(
+      settingsScreen.getByTestId("admin-settings-maxUploadSizeMb"),
+    ).toHaveValue("25");
+    await expect(
+      settingsScreen.getByTestId("admin-settings-defaultTokenBudgetMicros"),
+    ).toContainText("제한 없음");
+
+    await settingsScreen
+      .getByRole("tab", { name: "Models & Generation" })
+      .click();
     await settingsScreen.scrollIntoViewIfNeeded();
     await settingsScreen.screenshot({
       path: "../../.ralph/screenshots/admin-settings-screen-light.png",

@@ -267,4 +267,66 @@ describe("AdminSettingsScreen", () => {
       expect(select.querySelectorAll("option")).toHaveLength(2);
     });
   });
+
+  it("나머지 6개 탭은 실제 필드를 렌더한다(플레이스홀더 텍스트 없음)", async () => {
+    stubFetch();
+    render(<AdminSettingsScreen />);
+    await waitFor(() => {
+      expect(screen.getByRole("tablist")).toBeInTheDocument();
+    });
+
+    const casesById: Record<string, string> = {
+      rag: "admin-settings-ragTopK",
+      "web-search": "admin-settings-webSearchResultCount",
+      connectors: "admin-settings-enableDirectConnections",
+      branding: "admin-settings-instanceName",
+      permissions: "admin-settings-defaultUserRole",
+      quota: "admin-settings-maxUploadSizeMb",
+    };
+
+    for (const [tabId, fieldTestId] of Object.entries(casesById)) {
+      fireEvent.click(screen.getByTestId(`admin-settings-tab-${tabId}`));
+      expect(await screen.findByTestId(fieldTestId)).toBeInTheDocument();
+      expect(screen.queryByText(/이후 태스크에서 추가됩니다/)).toBeNull();
+    }
+  });
+
+  it("defaultUserRole/enableSignup 은 '아직 미적용' 힌트를 노출한다", async () => {
+    stubFetch();
+    render(<AdminSettingsScreen />);
+    await waitFor(() => {
+      expect(screen.getByRole("tablist")).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByTestId("admin-settings-tab-permissions"));
+    expect(
+      await screen.findByTestId("admin-settings-defaultUserRole-hint"),
+    ).toHaveTextContent("아직 미적용");
+    expect(
+      screen.getByTestId("admin-settings-enableSignup-hint"),
+    ).toHaveTextContent("아직 미적용");
+  });
+
+  it("RAG 탭 필드를 변경하고 저장하면 PUT patch 에 반영된다", async () => {
+    const fetchMock = stubFetch();
+    render(<AdminSettingsScreen />);
+    await waitFor(() => {
+      expect(screen.getByRole("tablist")).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByTestId("admin-settings-tab-rag"));
+    fireEvent.change(await screen.findByTestId("admin-settings-ragTopK"), {
+      target: { value: "12" },
+    });
+    fireEvent.click(screen.getByTestId("admin-settings-save-button"));
+
+    await waitFor(() => {
+      const putCall = fetchMock.mock.calls.find(
+        ([, init]) => (init as RequestInit | undefined)?.method === "PUT",
+      );
+      expect(putCall).toBeDefined();
+      const body = JSON.parse((putCall![1] as RequestInit).body as string);
+      expect(body.ragTopK).toBe(12);
+    });
+  });
 });
