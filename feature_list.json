@@ -1436,8 +1436,8 @@
     "acceptance": "RED: createApp 턴 완료 후 messages 테이블에 해당 세션의 user+assistant 행 존재; 스트리밍/취소 경로 모두 영속; verify-gates green",
     "phase": "P17",
     "team": "T1",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P17-T1-02",

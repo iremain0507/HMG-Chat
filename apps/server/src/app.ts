@@ -15,6 +15,7 @@ import { createDocumentRoutes } from "./routes/documents.js";
 import { createPgDocumentDataAccess } from "./db/project-document-data-access.js";
 import { createArtifactRoutes } from "./routes/artifacts.js";
 import { createPgArtifactDataAccess } from "./db/artifact-data-access.js";
+import { createPgMessageDataAccess } from "./db/message-data-access.js";
 import { pgPool } from "./db/client.js";
 import { createArtifactShareRoutes } from "./routes/artifact-shares.js";
 import { createPgArtifactShareDataAccess } from "./db/artifact-share-data-access.js";
@@ -219,6 +220,8 @@ export function createApp(env: Env) {
       mcpTools: assembleOrgMcpTools(mcpServerDa, mcpBridge, mcpClientPool),
       hitl: hitlBridge,
       logger: createLogger(),
+      // P17-T1-01 — 턴마다 user/assistant 메시지를 messages 테이블에 영속.
+      messages: createPgMessageDataAccess(),
     }),
   );
   app.route("/api/v1/sessions", sessionsApp);

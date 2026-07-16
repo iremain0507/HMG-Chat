@@ -12,6 +12,7 @@ import {
   type LLMMessage,
   type LLMProvider,
   type Logger,
+  type Message,
   type Organization,
   type PromptBlock,
   type ToolContext,
@@ -65,6 +66,20 @@ const noopAttachments: AttachmentsPort = {
     return null;
   },
 };
+
+// P17-T1-01 — 메시지 영속(TS-08). db/message-data-access.ts(createPgMessageDataAccess,
+// MessageRepo 14-INTERFACES § 구현체)의 insert 만 소비 — turn 마다 user/assistant 메시지를
+// messages 테이블에 저장한다. 미주입 시 no-op(기존 동작 보존).
+export interface MessagesPort {
+  insert(data: {
+    sessionId: string;
+    role: Message["role"];
+    content: unknown;
+    parentMessageId?: string | null;
+    tokensIn?: number | null;
+    tokensOut?: number | null;
+  }): Promise<Message>;
+}
 
 // P14-T2-01 — org 별 maxTokens/temperature(ISOLATE, runtime 미배선)/systemPrompt/defaultModel
 // 을 admin 이 조정한 값으로 조회하는 포트. settings-service.ts(T1)와 동일 계약(resolve)만
@@ -158,6 +173,8 @@ export interface MessageRouteDeps {
   // P14-T2-01 — org-scoped admin 설정(maxTokens/systemPrompt/defaultModel) 조회. 미주입 시
   // DEFAULT_ORG_SETTINGS 로 fail-soft(기존 동작 보존 + 구 1024 폴백은 여전히 제거됨).
   settings?: SettingsResolverPort;
+  // P17-T1-01 — 턴마다 user/assistant 메시지를 messages 테이블에 영속. 미주입 시 no-op.
+  messages?: MessagesPort;
 }
 
 function errorJson(code: string, message: string) {
@@ -299,6 +316,18 @@ export function createMessageRoutes(
       }
     }
 
+    // P17-T1-01 — user 메시지를 messages 테이블에 영속(best-effort — 실패해도 turn 은 계속).
+    const userMessage = await deps.messages
+      ?.insert({ sessionId, role: "user", content })
+      .catch((error) => {
+        deps.logger?.warn({
+          category: "system",
+          msg: "user message 영속 실패",
+          context: { error: String(error) },
+        });
+        return undefined;
+      });
+
     const jobId = randomUUID();
     const activeRuns = deps.activeRuns ?? noopActiveRuns;
     const handle = registerRun(sessionId, jobId);
@@ -326,6 +355,9 @@ export function createMessageRoutes(
       // 재호출로 leg 가 여러 개 생기면 그때마다 message_start 가 새 messageId 를 발급하므로
       // currentMessageId 도 그에 맞춰 갱신된다.
       let currentMessageId: string | undefined;
+      let assistantText = "";
+      let assistantUsage:
+        { inputTokens: number; outputTokens: number } | undefined;
       try {
         const events = runTurn({
           provider: deps.provider,
@@ -357,6 +389,11 @@ export function createMessageRoutes(
             startMessageRun(event.messageId, sessionId);
           } else if (currentMessageId) {
             recordMessageRunEvent(currentMessageId, event);
+          }
+          if (event.type === "text_delta") {
+            assistantText += event.text;
+          } else if (event.type === "stop") {
+            assistantUsage = event.usage;
           }
           const { type, ...payload } = event;
           await stream.writeSSE({ event: type, data: JSON.stringify(payload) });
@@ -394,6 +431,26 @@ export function createMessageRoutes(
       } finally {
         clearInterval(heartbeat);
         unregisterRun(sessionId, jobId);
+        // P17-T1-01 — assistant 메시지 영속(정상 종료·취소·에러 경로 모두 finally 에서 1회).
+        // message_start 가 한 번도 없었으면(예: 초기 검증 실패) 빈 행을 남기지 않는다.
+        if (currentMessageId) {
+          await deps.messages
+            ?.insert({
+              sessionId,
+              role: "assistant",
+              content: assistantText,
+              parentMessageId: userMessage?.id ?? null,
+              tokensIn: assistantUsage?.inputTokens ?? null,
+              tokensOut: assistantUsage?.outputTokens ?? null,
+            })
+            .catch((error) => {
+              deps.logger?.warn({
+                category: "system",
+                msg: "assistant message 영속 실패",
+                context: { error: String(error) },
+              });
+            });
+        }
       }
     });
   });
