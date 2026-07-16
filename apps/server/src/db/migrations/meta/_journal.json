@@ -176,6 +176,13 @@
       "when": 1783890700000,
       "tag": "0025_api_keys",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1783890800000,
+      "tag": "0026_groups",
+      "breakpoints": true
     }
   ]
 }

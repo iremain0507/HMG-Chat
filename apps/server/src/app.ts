@@ -43,6 +43,7 @@ import { createPgErrorLogDataAccess } from "./db/error-log-data-access.js";
 import { createAdminRoutes } from "./routes/admin.js";
 import { createAdminSettingsRoutes } from "./routes/admin-settings.js";
 import { createAdminModelsRoutes } from "./routes/admin-models.js";
+import { createAdminGroupsRoutes } from "./routes/admin-groups.js";
 import { createConfigRoutes } from "./routes/config.js";
 import { createPgHealthHistoryDataAccess } from "./db/health-history-data-access.js";
 import { createPgAdminDataAccess } from "./db/admin-data-access.js";
@@ -415,6 +416,7 @@ export function createApp(env: Env) {
       organizations: authDa.organizations,
     }),
   );
+  adminApp.route("/groups", createAdminGroupsRoutes());
   app.route("/api/v1/admin", adminApp);
 
   const configApp = new Hono<{ Variables: AuthedVariables }>();

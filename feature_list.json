@@ -1922,8 +1922,8 @@
     "acceptance": "RED: createApp 실HTTP 그룹 CRUD + 멤버 추가/제거 + 403(비admin) + cross-org 차단 + 마운트 가드. verify-gates green",
     "phase": "P19",
     "team": "T1",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P19-T1-14",
