@@ -1931,8 +1931,8 @@
     "acceptance": "RED: 그룹 read 부여→멤버 접근 허용/비멤버 거부 단언(additive union). frozen 요구 시 격리 기록. verify-gates green",
     "phase": "P19",
     "team": "T1",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P19-T6-18",

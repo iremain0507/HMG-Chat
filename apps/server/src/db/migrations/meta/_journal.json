@@ -183,6 +183,13 @@
       "when": 1783890800000,
       "tag": "0026_groups",
       "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1783890900000,
+      "tag": "0027_resource_grants",
+      "breakpoints": true
     }
   ]
 }
