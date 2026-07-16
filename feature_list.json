@@ -1292,8 +1292,8 @@
     "acceptance": "RED: org ragTopK=12 -> hybridSearch 가 topK=12 로 호출(10 아님); threshold 로 저점수 hit 필터; 기본값(10/60) 유지; verify-gates green",
     "phase": "P14",
     "team": "T3",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P14-T3-02",

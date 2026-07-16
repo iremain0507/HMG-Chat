@@ -13,6 +13,8 @@ export interface HybridSearchInput {
   queryText: string;
   topK: number;
   rrfK: number;
+  // org_settings.ragRelevanceThreshold(P14) — post-RRF 필터. 0 이하(기본값 0.0)면 미필터(기존 동작 불변).
+  relevanceThreshold?: number;
 }
 
 export function cosineSimilarity(a: number[], b: number[]): number {
@@ -50,7 +52,14 @@ function rankOf(
 }
 
 export function hybridSearch(input: HybridSearchInput): HybridSearchResult[] {
-  const { candidates, queryEmbedding, queryText, topK, rrfK } = input;
+  const {
+    candidates,
+    queryEmbedding,
+    queryText,
+    topK,
+    rrfK,
+    relevanceThreshold,
+  } = input;
 
   const vectorScores = new Map<HybridSearchCandidate, number>();
   const bm25Scores = new Map<HybridSearchCandidate, number>();
@@ -78,5 +87,10 @@ export function hybridSearch(input: HybridSearchInput): HybridSearchResult[] {
 
   scored.sort((a, b) => b.rrfScore - a.rrfScore);
 
-  return scored.slice(0, topK).map((r, i) => ({ ...r, rank: i + 1 }));
+  const filtered =
+    relevanceThreshold && relevanceThreshold > 0
+      ? scored.filter((r) => r.vectorScore >= relevanceThreshold)
+      : scored;
+
+  return filtered.slice(0, topK).map((r, i) => ({ ...r, rank: i + 1 }));
 }

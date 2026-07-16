@@ -3,7 +3,9 @@ import type { EmbeddingProvider, ToolContext } from "@wchat/interfaces";
 import {
   createKnowledgeSearchTool,
   type KnowledgeRetrievalPort,
+  type KnowledgeSearchSettingsPort,
 } from "../knowledge-search-handler.js";
+import { DEFAULT_ORG_SETTINGS } from "../../../lib/org-settings-schema.js";
 
 function fakeToolContext(overrides?: Partial<ToolContext>): ToolContext {
   const logger: ToolContext["logger"] = {
@@ -168,5 +170,182 @@ describe("createKnowledgeSearchTool", () => {
     };
     expect(data.citations).toEqual([]);
     expect(typeof data.message).toBe("string");
+  });
+
+  function manyCandidates(count: number): KnowledgeRetrievalPort {
+    return {
+      async loadCandidates() {
+        const sourceMetaByDocumentId = new Map();
+        const candidates = Array.from({ length: count }, (_, i) => {
+          const documentId = `doc-${i}`;
+          sourceMetaByDocumentId.set(documentId, {
+            source: "project" as const,
+            documentId,
+            filename: `doc-${i}.pdf`,
+          });
+          return {
+            chunk: {
+              id: `doc-${i}-chunk`,
+              documentId,
+              chunkIndex: 0,
+              content: `widget widget content ${i}`,
+              tokenCount: 4,
+              embedding: [1, 0, 0],
+              metadata: {},
+              createdAt: new Date("2026-01-01T00:00:00Z"),
+            },
+          };
+        });
+        return { candidates, sourceMetaByDocumentId };
+      },
+    };
+  }
+
+  it("settings 미주입 시 기본값(topK=10) 을 유지한다", async () => {
+    const tool = createKnowledgeSearchTool({
+      embeddingProvider: fakeEmbeddingProvider([1, 0, 0]),
+      retrieval: manyCandidates(15),
+    });
+
+    const result = await tool.invoke({
+      toolCallId: "call-4",
+      args: { query: "widget" },
+      ctx: fakeToolContext(),
+    });
+
+    if (result.content.kind !== "json") {
+      throw new Error("json content 를 기대함");
+    }
+    const data = result.content.data as { citations: unknown[] };
+    expect(data.citations).toHaveLength(10);
+  });
+
+  it("org 의 ragTopK 설정을 invoke 시점 ctx.orgId 로 resolve 해 topK 로 사용한다(10 아님)", async () => {
+    const settings: KnowledgeSearchSettingsPort = {
+      async resolve(orgId) {
+        expect(orgId).toBe("org-1");
+        return { ...DEFAULT_ORG_SETTINGS, ragTopK: 12 };
+      },
+    };
+    const tool = createKnowledgeSearchTool({
+      embeddingProvider: fakeEmbeddingProvider([1, 0, 0]),
+      retrieval: manyCandidates(15),
+      settings,
+    });
+
+    const result = await tool.invoke({
+      toolCallId: "call-5",
+      args: { query: "widget" },
+      ctx: fakeToolContext({ orgId: "org-1" }),
+    });
+
+    if (result.content.kind !== "json") {
+      throw new Error("json content 를 기대함");
+    }
+    const data = result.content.data as { citations: unknown[] };
+    expect(data.citations).toHaveLength(12);
+  });
+
+  it("ragRelevanceThreshold 로 저점수 hit 을 필터한다", async () => {
+    const retrieval: KnowledgeRetrievalPort = {
+      async loadCandidates() {
+        return {
+          candidates: [
+            {
+              chunk: {
+                id: "high-chunk",
+                documentId: "doc-high",
+                chunkIndex: 0,
+                content: "widget 정확 일치",
+                tokenCount: 3,
+                embedding: [1, 0, 0],
+                metadata: {},
+                createdAt: new Date("2026-01-01T00:00:00Z"),
+              },
+            },
+            {
+              chunk: {
+                id: "low-chunk",
+                documentId: "doc-low",
+                chunkIndex: 0,
+                content: "widget 거의 무관",
+                tokenCount: 3,
+                embedding: [0, 1, 0],
+                metadata: {},
+                createdAt: new Date("2026-01-01T00:00:00Z"),
+              },
+            },
+          ],
+          sourceMetaByDocumentId: new Map([
+            [
+              "doc-high",
+              {
+                source: "project" as const,
+                documentId: "doc-high",
+                filename: "high.pdf",
+              },
+            ],
+            [
+              "doc-low",
+              {
+                source: "project" as const,
+                documentId: "doc-low",
+                filename: "low.pdf",
+              },
+            ],
+          ]),
+        };
+      },
+    };
+    const settings: KnowledgeSearchSettingsPort = {
+      async resolve() {
+        return { ...DEFAULT_ORG_SETTINGS, ragRelevanceThreshold: 0.5 };
+      },
+    };
+    const tool = createKnowledgeSearchTool({
+      embeddingProvider: fakeEmbeddingProvider([1, 0, 0]),
+      retrieval,
+      settings,
+    });
+
+    const result = await tool.invoke({
+      toolCallId: "call-6",
+      args: { query: "widget" },
+      ctx: fakeToolContext(),
+    });
+
+    if (result.content.kind !== "json") {
+      throw new Error("json content 를 기대함");
+    }
+    const data = result.content.data as {
+      citations: Array<{ filename: string }>;
+    };
+    expect(data.citations).toHaveLength(1);
+    expect(data.citations[0]?.filename).toBe("high.pdf");
+  });
+
+  it("settings.resolve 가 실패해도 throw 하지 않고 DEFAULT_ORG_SETTINGS(topK=10) 로 폴백한다", async () => {
+    const settings: KnowledgeSearchSettingsPort = {
+      async resolve() {
+        throw new Error("db down");
+      },
+    };
+    const tool = createKnowledgeSearchTool({
+      embeddingProvider: fakeEmbeddingProvider([1, 0, 0]),
+      retrieval: manyCandidates(15),
+      settings,
+    });
+
+    const result = await tool.invoke({
+      toolCallId: "call-7",
+      args: { query: "widget" },
+      ctx: fakeToolContext(),
+    });
+
+    if (result.content.kind !== "json") {
+      throw new Error("json content 를 기대함");
+    }
+    const data = result.content.data as { citations: unknown[] };
+    expect(data.citations).toHaveLength(10);
   });
 });

@@ -4,13 +4,21 @@
 //   14-INTERFACES.md § 3)은 아직 어떤 db/** pg 구현체도 없어(app.ts 에도 미배선) 이번 태스크
 //   범위 밖 — KnowledgeRetrievalPort 로 DI, 실 구현은 후속 태스크(app.ts 조립 시점)가 주입.
 import { WChatError } from "@wchat/interfaces";
-import type { AgentTool, EmbeddingProvider } from "@wchat/interfaces";
+import type { AgentTool, EmbeddingProvider, Logger } from "@wchat/interfaces";
+import { knowledgeSearchToolSpec } from "../../knowledge/knowledge-search.js";
 import {
-  knowledgeSearch,
-  knowledgeSearchToolSpec,
-} from "../../knowledge/knowledge-search.js";
-import type { CitationSourceMeta } from "../../knowledge/citation-helper.js";
-import type { HybridSearchCandidate } from "../../knowledge/search-service.js";
+  buildCitations,
+  NO_RESULTS_MESSAGE,
+  type CitationSourceMeta,
+} from "../../knowledge/citation-helper.js";
+import {
+  hybridSearch,
+  type HybridSearchCandidate,
+} from "../../knowledge/search-service.js";
+import {
+  DEFAULT_ORG_SETTINGS,
+  type ResolvedOrgSettings,
+} from "../../lib/org-settings-schema.js";
 
 export interface KnowledgeRetrievalPort {
   loadCandidates(input: {
@@ -22,11 +30,46 @@ export interface KnowledgeRetrievalPort {
   }>;
 }
 
+// P14-T3-01 — ragTopK/ragRrfK/ragRelevanceThreshold 를 org_settings 에서 조회하는 포트.
+// knowledge_search 툴은 app.ts 정적 조립 시점에 org 를 알 수 없어(21-LOOP-LESSONS.md L1),
+// 매 invoke 마다 ctx.orgId 로 resolve — settings-service.ts(T1)와 동일 계약(resolve)만
+// 의존해 순환을 피한다(messages.ts의 SettingsResolverPort 와 동일 패턴).
+export interface KnowledgeSearchSettingsPort {
+  resolve(orgId: string): Promise<ResolvedOrgSettings>;
+}
+
 export interface KnowledgeSearchToolDeps {
   embeddingProvider: EmbeddingProvider;
   retrieval: KnowledgeRetrievalPort;
-  topK?: number;
-  rrfK?: number;
+  settings?: KnowledgeSearchSettingsPort;
+}
+
+// ResolvedOrgSettings(=Required<OrgSettingsPatch>) 도 zod `.optional()` 유래 `| undefined`
+// union 은 남기므로(messages.ts SAFE_DEFAULT_MAX_TOKENS 와 동일 사유), 최종 non-null 보강.
+// DEFAULT_ORG_SETTINGS 의 ragTopK/ragRrfK/ragRelevanceThreshold 와 항상 같은 값 유지.
+const SAFE_DEFAULT_RAG_TOP_K = 10;
+const SAFE_DEFAULT_RAG_RRF_K = 60;
+const SAFE_DEFAULT_RAG_RELEVANCE_THRESHOLD = 0.0;
+
+// resolve 미주입/실패(reject) 시 절대 throw 하지 않고 DEFAULT_ORG_SETTINGS(topK=10/rrfK=60)
+// 로 fail-soft (L2/L5).
+async function resolveRagSettingsSafely(
+  settings: KnowledgeSearchSettingsPort | undefined,
+  orgId: string,
+  logger: Logger,
+): Promise<ResolvedOrgSettings> {
+  if (!settings) return DEFAULT_ORG_SETTINGS;
+  try {
+    return await settings.resolve(orgId);
+  } catch (error) {
+    logger.warn({
+      category: "system",
+      msg: "org RAG 설정 resolve 실패 — DEFAULT_ORG_SETTINGS 로 폴백",
+      orgId,
+      context: { error: String(error) },
+    });
+    return DEFAULT_ORG_SETTINGS;
+  }
 }
 
 export function createKnowledgeSearchTool(
@@ -61,14 +104,29 @@ export function createKnowledgeSearchTool(
         signal: ctx.signal,
       });
 
-      const result = knowledgeSearch({
+      const resolved = await resolveRagSettingsSafely(
+        deps.settings,
+        ctx.orgId,
+        ctx.logger,
+      );
+
+      const hits = hybridSearch({
         candidates,
-        sourceMetaByDocumentId,
         queryEmbedding: queryEmbedding ?? [],
         queryText: query,
-        topK: deps.topK ?? 10,
-        rrfK: deps.rrfK ?? 60,
+        topK: resolved.ragTopK ?? SAFE_DEFAULT_RAG_TOP_K,
+        rrfK: resolved.ragRrfK ?? SAFE_DEFAULT_RAG_RRF_K,
+        relevanceThreshold:
+          resolved.ragRelevanceThreshold ??
+          SAFE_DEFAULT_RAG_RELEVANCE_THRESHOLD,
       });
+      const result =
+        hits.length === 0
+          ? { citations: [], message: NO_RESULTS_MESSAGE }
+          : {
+              citations: buildCitations(hits, sourceMetaByDocumentId),
+              message: null,
+            };
 
       return {
         toolCallId,
