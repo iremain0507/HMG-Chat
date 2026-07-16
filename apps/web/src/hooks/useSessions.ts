@@ -3,6 +3,7 @@
 // hooks/useSessions.ts — 16-API-CONTRACT § GET/POST/PATCH/DELETE /sessions 소비.
 import { useCallback, useEffect, useState } from "react";
 import { apiFetch } from "../lib/fetch-with-refresh";
+import { toggleSessionArchive } from "../lib/archivedSessions";
 import { toggleSessionPin } from "../lib/pinnedSessions";
 import {
   assignSessionFolder,
@@ -43,6 +44,10 @@ interface UseSessionsResult {
   assignFolder: (id: string, folderId: string | null) => Promise<void>;
   addTag: (id: string, tag: string) => Promise<void>;
   removeTag: (id: string, tag: string) => Promise<void>;
+  archivedSessions: SessionListItemDto[];
+  archivedLoading: boolean;
+  loadArchived: () => Promise<void>;
+  archiveSession: (id: string) => Promise<void>;
 }
 
 export function useSessions(): UseSessionsResult {
@@ -50,6 +55,10 @@ export function useSessions(): UseSessionsResult {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [folders, setFolders] = useState<SessionFolder[]>([]);
+  const [archivedSessions, setArchivedSessions] = useState<
+    SessionListItemDto[]
+  >([]);
+  const [archivedLoading, setArchivedLoading] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -137,6 +146,41 @@ export function useSessions(): UseSessionsResult {
     });
     if (!res.ok && res.status !== 204) return;
     setSessions((prev) => prev.filter((s) => s.id !== id));
+    setArchivedSessions((prev) => prev.filter((s) => s.id !== id));
+  }, []);
+
+  const loadArchived = useCallback(async () => {
+    setArchivedLoading(true);
+    try {
+      const res = await apiFetch("/api/v1/sessions?archived=true", {
+        credentials: "include",
+      });
+      if (!res.ok) return;
+      const body = (await res.json()) as {
+        data: Array<
+          SessionListItemDto & { folderId?: string | null; tags?: string[] }
+        >;
+      };
+      setArchivedSessions(
+        body.data.map((s) => ({
+          ...s,
+          folderId: s.folderId ?? null,
+          tags: s.tags ?? [],
+        })),
+      );
+    } finally {
+      setArchivedLoading(false);
+    }
+  }, []);
+
+  const archiveSession = useCallback(async (id: string) => {
+    const archived = await toggleSessionArchive(id);
+    if (archived === null) return;
+    if (archived) {
+      setSessions((prev) => prev.filter((s) => s.id !== id));
+    } else {
+      setArchivedSessions((prev) => prev.filter((s) => s.id !== id));
+    }
   }, []);
 
   const togglePin = useCallback(async (id: string) => {
@@ -248,5 +292,9 @@ export function useSessions(): UseSessionsResult {
     assignFolder,
     addTag,
     removeTag,
+    archivedSessions,
+    archivedLoading,
+    loadArchived,
+    archiveSession,
   };
 }

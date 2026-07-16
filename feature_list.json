@@ -1706,8 +1706,8 @@
     "acceptance": "RED: 목 archive API→액션 후 목록에서 제거·보관함 표시 단언. verify-gates green",
     "phase": "P19",
     "team": "T6",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P19-T1-06",

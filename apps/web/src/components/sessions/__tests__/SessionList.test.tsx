@@ -545,6 +545,134 @@ describe("SessionList", () => {
     });
   });
 
+  it("세션 보관 버튼 클릭 시 PATCH /:id/archive 를 호출하고 목록에서 제거한다", async () => {
+    const fetchMock = vi.fn(
+      async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        if (
+          url === "/api/v1/sessions/sess-a/archive" &&
+          init?.method === "PATCH"
+        ) {
+          return {
+            ok: true,
+            status: 200,
+            json: async () => ({ data: { id: "sess-a", archived: true } }),
+          };
+        }
+        if (
+          url === "/api/v1/sessions" &&
+          (!init?.method || init.method === "GET")
+        ) {
+          return {
+            ok: true,
+            status: 200,
+            json: async () => ({
+              data: [
+                {
+                  id: "sess-a",
+                  title: "세션 A",
+                  lastMessageAt: "2026-07-14T01:00:00Z",
+                  projectId: null,
+                  archived: false,
+                  pinned: false,
+                  folderId: null,
+                  tags: [],
+                },
+              ],
+            }),
+          };
+        }
+        return { ok: true, status: 200, json: async () => ({ data: [] }) };
+      },
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<SessionList now={new Date("2026-07-14T12:00:00Z")} />);
+
+    await waitFor(() => {
+      expect(screen.getByText("세션 A")).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByLabelText("보관: 세션 A"));
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/v1/sessions/sess-a/archive",
+        expect.objectContaining({ method: "PATCH" }),
+      );
+    });
+    await waitFor(() => {
+      expect(screen.queryByText("세션 A")).not.toBeInTheDocument();
+    });
+  });
+
+  it("보관함 버튼 클릭 시 GET ?archived=true 로 보관된 세션을 불러와 표시하고, 복원 클릭 시 목록에서 제거한다", async () => {
+    const fetchMock = vi.fn(
+      async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        if (
+          url === "/api/v1/sessions/sess-b/archive" &&
+          init?.method === "PATCH"
+        ) {
+          return {
+            ok: true,
+            status: 200,
+            json: async () => ({ data: { id: "sess-b", archived: false } }),
+          };
+        }
+        if (
+          url === "/api/v1/sessions?archived=true" &&
+          (!init?.method || init.method === "GET")
+        ) {
+          return {
+            ok: true,
+            status: 200,
+            json: async () => ({
+              data: [
+                {
+                  id: "sess-b",
+                  title: "보관된 세션",
+                  lastMessageAt: "2026-07-10T01:00:00Z",
+                  projectId: null,
+                  archived: true,
+                  pinned: false,
+                  folderId: null,
+                  tags: [],
+                },
+              ],
+            }),
+          };
+        }
+        return { ok: true, status: 200, json: async () => ({ data: [] }) };
+      },
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<SessionList now={new Date("2026-07-14T12:00:00Z")} />);
+
+    await waitFor(() => {
+      expect(screen.getByText("세션이 없습니다.")).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "보관함" }));
+
+    await waitFor(() => {
+      expect(screen.getByText("보관된 세션")).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByLabelText("복원: 보관된 세션"));
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/v1/sessions/sess-b/archive",
+        expect.objectContaining({ method: "PATCH" }),
+      );
+    });
+    await waitFor(() => {
+      expect(screen.queryByText("보관된 세션")).not.toBeInTheDocument();
+    });
+  });
+
   it("⌘N 단축키로 새 세션을 생성한다", async () => {
     const fetchMock = vi.fn(
       async (input: RequestInfo | URL, init?: RequestInit) => {

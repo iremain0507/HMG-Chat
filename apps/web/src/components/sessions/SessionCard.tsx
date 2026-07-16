@@ -4,6 +4,8 @@
 // 세션 1건: 클릭 시 이동, hover 시 이름변경(인라인 편집 → PATCH)·고정(로컬)·폴더 지정·삭제.
 import React, { useState } from "react";
 import {
+  Archive,
+  ArchiveRestore,
   FolderInput,
   Pencil,
   Pin,
@@ -28,6 +30,7 @@ export interface SessionCardProps {
   onAssignFolder: (id: string, folderId: string | null) => void;
   onAddTag: (id: string, tag: string) => void;
   onRemoveTag: (id: string, tag: string) => void;
+  onArchive: (id: string) => void;
 }
 
 export function SessionCard({
@@ -41,6 +44,7 @@ export function SessionCard({
   onAssignFolder,
   onAddTag,
   onRemoveTag,
+  onArchive,
 }: SessionCardProps) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(session.title ?? "");
@@ -149,6 +153,19 @@ export function SessionCard({
           }`}
         >
           <TagIcon size={12} strokeWidth={1.8} />
+        </button>
+        <button
+          type="button"
+          aria-label={session.archived ? `복원: ${label}` : `보관: ${label}`}
+          title={session.archived ? `복원: ${label}` : `보관: ${label}`}
+          onClick={() => onArchive(session.id)}
+          className="hidden shrink-0 rounded p-1 text-xs text-fg-muted hover:text-fg group-hover:block"
+        >
+          {session.archived ? (
+            <ArchiveRestore size={12} strokeWidth={1.8} />
+          ) : (
+            <Archive size={12} strokeWidth={1.8} />
+          )}
         </button>
         <button
           type="button"

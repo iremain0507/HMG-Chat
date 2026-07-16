@@ -36,6 +36,7 @@ describe("SessionCard 툴팁", () => {
         onAssignFolder={vi.fn()}
         onAddTag={vi.fn()}
         onRemoveTag={vi.fn()}
+        onArchive={vi.fn()}
       />,
     );
 
@@ -61,11 +62,62 @@ describe("SessionCard 툴팁", () => {
         onAssignFolder={vi.fn()}
         onAddTag={vi.fn()}
         onRemoveTag={vi.fn()}
+        onArchive={vi.fn()}
       />,
     );
 
     const unpinButton = screen.getByLabelText("고정 해제: 테스트 세션");
     expect(unpinButton).toHaveAttribute("title", "고정 해제: 테스트 세션");
+  });
+});
+
+describe("SessionCard 아카이브", () => {
+  afterEach(() => cleanup());
+
+  it("보관되지 않은 세션은 '보관' 버튼을 렌더하고 클릭 시 onArchive 를 호출한다", () => {
+    const onArchive = vi.fn();
+    render(
+      <SessionCard
+        session={session}
+        pinned={false}
+        folders={[]}
+        onOpen={vi.fn()}
+        onRename={vi.fn()}
+        onDelete={vi.fn()}
+        onTogglePin={vi.fn()}
+        onAssignFolder={vi.fn()}
+        onAddTag={vi.fn()}
+        onRemoveTag={vi.fn()}
+        onArchive={onArchive}
+      />,
+    );
+
+    const archiveButton = screen.getByLabelText("보관: 테스트 세션");
+    fireEvent.click(archiveButton);
+    expect(onArchive).toHaveBeenCalledWith("sess-1");
+  });
+
+  it("보관된 세션은 '복원' 버튼을 렌더하고 클릭 시 onArchive 를 호출한다", () => {
+    const onArchive = vi.fn();
+    render(
+      <SessionCard
+        session={{ ...session, archived: true }}
+        pinned={false}
+        folders={[]}
+        onOpen={vi.fn()}
+        onRename={vi.fn()}
+        onDelete={vi.fn()}
+        onTogglePin={vi.fn()}
+        onAssignFolder={vi.fn()}
+        onAddTag={vi.fn()}
+        onRemoveTag={vi.fn()}
+        onArchive={onArchive}
+      />,
+    );
+
+    const restoreButton = screen.getByLabelText("복원: 테스트 세션");
+    fireEvent.click(restoreButton);
+    expect(onArchive).toHaveBeenCalledWith("sess-1");
   });
 });
 
@@ -85,6 +137,7 @@ describe("SessionCard 태그", () => {
         onAssignFolder={vi.fn()}
         onAddTag={vi.fn()}
         onRemoveTag={vi.fn()}
+        onArchive={vi.fn()}
       />,
     );
 
@@ -106,6 +159,7 @@ describe("SessionCard 태그", () => {
         onAssignFolder={vi.fn()}
         onAddTag={vi.fn()}
         onRemoveTag={onRemoveTag}
+        onArchive={vi.fn()}
       />,
     );
 
@@ -127,6 +181,7 @@ describe("SessionCard 태그", () => {
         onAssignFolder={vi.fn()}
         onAddTag={onAddTag}
         onRemoveTag={vi.fn()}
+        onArchive={vi.fn()}
       />,
     );
 
