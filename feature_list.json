@@ -1697,8 +1697,8 @@
     "acceptance": "RED: createApp 실HTTP archive→기본목록 제외, ?archived=true 로 조회, cross-org 차단. verify-gates green",
     "phase": "P19",
     "team": "T1",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P19-T6-05",

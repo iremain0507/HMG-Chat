@@ -40,6 +40,7 @@ const EXPECTED_ROUTES: Array<{ method: string; path: string; phase: string }> =
     { method: "PATCH", path: `/api/v1/sessions/${sid}`, phase: "P17" },
     { method: "DELETE", path: `/api/v1/sessions/${sid}`, phase: "P17" },
     { method: "PATCH", path: `/api/v1/sessions/${sid}/pin`, phase: "P19" },
+    { method: "PATCH", path: `/api/v1/sessions/${sid}/archive`, phase: "P19" },
     { method: "GET", path: "/api/v1/folders", phase: "P19" },
     { method: "POST", path: "/api/v1/folders", phase: "P19" },
     { method: "POST", path: `/api/v1/sessions/${sid}/messages`, phase: "P2" },

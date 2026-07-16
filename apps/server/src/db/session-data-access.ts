@@ -37,7 +37,9 @@ function toSession(row: Record<string, unknown>): SessionWithPin {
 export interface SessionsDataAccess {
   list(
     // P19-T1-04 — tag 필터(GET /sessions?tag=). 미지정 시 전체(기존 동작 무변경).
-    filter: { userId: string; tag?: string },
+    // P19-T1-05 — archived 필터: true 면 아카이브된 세션만, 미지정/false 면 기본값대로
+    // 아카이브 제외(archived_at IS NULL) — 16-API-CONTRACT GET /sessions?...&archived.
+    filter: { userId: string; tag?: string; archived?: boolean },
     pagination?: { cursor?: string; limit?: number },
   ): Promise<{ items: SessionWithPin[]; nextCursor?: string }>;
   byId(id: string): Promise<SessionWithPin | null>;
@@ -54,6 +56,11 @@ export interface SessionsDataAccess {
   // 토글: 현재 pinned_at 이 NULL 이면 NOW() 로, 아니면 NULL 로 — 원자적 단일 UPDATE
   // (read-then-write race 방지). ownership 은 WHERE id=.. AND user_id=.. 로 쿼리에 내장(TS-09 패턴).
   togglePinForOwner(userId: string, id: string): Promise<SessionWithPin | null>;
+  // P19-T1-05 — 아카이브 토글(togglePinForOwner 와 동일 원자적 CASE 패턴).
+  toggleArchiveForOwner(
+    userId: string,
+    id: string,
+  ): Promise<SessionWithPin | null>;
 }
 
 export function createPgSessionDataAccess(): SessionsDataAccess {
@@ -70,8 +77,12 @@ export function createPgSessionDataAccess(): SessionsDataAccess {
            AND ($2::text IS NULL OR EXISTS (
              SELECT 1 FROM session_tags t WHERE t.session_id = s.id AND t.tag = $2
            ))
-         ORDER BY COALESCE(s.last_message_at, s.created_at) DESC LIMIT $3`,
-        [filter.userId, filter.tag ?? null, limit],
+           AND (
+             ($3::boolean IS TRUE AND s.archived_at IS NOT NULL)
+             OR ($3::boolean IS NOT TRUE AND s.archived_at IS NULL)
+           )
+         ORDER BY COALESCE(s.last_message_at, s.created_at) DESC LIMIT $4`,
+        [filter.userId, filter.tag ?? null, filter.archived ?? null, limit],
       );
       return { items: res.rows.map(toSession) };
     },
@@ -120,6 +131,16 @@ export function createPgSessionDataAccess(): SessionsDataAccess {
       const res = await pgPool.query(
         `UPDATE sessions
          SET pinned_at = CASE WHEN pinned_at IS NULL THEN NOW() ELSE NULL END
+         WHERE id = $1 AND user_id = $2
+         RETURNING *`,
+        [id, userId],
+      );
+      return res.rows[0] ? toSession(res.rows[0]) : null;
+    },
+    async toggleArchiveForOwner(userId, id) {
+      const res = await pgPool.query(
+        `UPDATE sessions
+         SET archived_at = CASE WHEN archived_at IS NULL THEN NOW() ELSE NULL END
          WHERE id = $1 AND user_id = $2
          RETURNING *`,
         [id, userId],

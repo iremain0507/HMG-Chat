@@ -45,7 +45,8 @@ function parseLimit(
 export interface SessionsPort {
   list(
     // P19-T1-04 — tag 필터(GET /?tag=).
-    filter: { userId: string; tag?: string },
+    // P19-T1-05 — archived 필터(GET /?archived=true — 미지정 시 기본값대로 아카이브 제외).
+    filter: { userId: string; tag?: string; archived?: boolean },
     pagination?: { cursor?: string; limit?: number },
   ): Promise<{ items: SessionWithPin[]; nextCursor?: string }>;
   byId(id: string): Promise<SessionWithPin | null>;
@@ -63,6 +64,11 @@ export interface SessionsPort {
   deleteForOwner(userId: string, id: string): Promise<boolean>;
   // P19-T1-02 — 핀 토글(같은 ownership-in-query 원자성 패턴).
   togglePinForOwner(userId: string, id: string): Promise<SessionWithPin | null>;
+  // P19-T1-05 — 아카이브 토글(togglePinForOwner 와 동일 패턴).
+  toggleArchiveForOwner(
+    userId: string,
+    id: string,
+  ): Promise<SessionWithPin | null>;
 }
 
 export interface SessionMessagesPort {
@@ -97,13 +103,19 @@ export function createSessionRoutes(
   // P17-T1-02(TS-08/10) — 내 세션 목록(최신순). userId 는 auth 에서만 파생(body/query 미수신
   // → cross-org/타 사용자 열람 원천 차단, projects.ts actorOf 와 동일 패턴).
   // P19-T1-04 — ?tag= 로 태그 필터(해당 태그가 붙은 세션만).
+  // P19-T1-05 — ?archived=true 로 아카이브된 세션만 조회(미지정 시 기본값대로 제외).
   app.get("/", async (c) => {
     const auth = c.get("auth");
     const cursor = c.req.query("cursor");
     const limit = parseLimit(c.req.query("limit"), 20, 100);
     const tag = c.req.query("tag");
+    const archived = c.req.query("archived") === "true";
     const page = await sessions.list(
-      { userId: auth.sub, ...(tag ? { tag } : {}) },
+      {
+        userId: auth.sub,
+        ...(tag ? { tag } : {}),
+        ...(archived ? { archived } : {}),
+      },
       { ...(cursor ? { cursor } : {}), limit },
     );
     return c.json({
@@ -177,6 +189,22 @@ export function createSessionRoutes(
     }
     return c.json({
       data: { id: updated.id, pinned: updated.pinnedAt !== null },
+      meta: { requestId: randomUUID() },
+    });
+  });
+
+  // P19-T1-05 — 아카이브 토글. ownership 은 toggleArchiveForOwner 쿼리에 내장(핀 토글과 동일
+  // 원자성 패턴) — 타 사용자/조직 세션은 404(existence-leak 방지). 제목/폴더 변경 없이 아카이브만
+  // 전환하고 싶은 UI 흐름(세션 리스트 컨텍스트 메뉴)을 위해 범용 PATCH /:id 와 별도로 제공한다.
+  app.patch("/:id/archive", async (c) => {
+    const auth = c.get("auth");
+    const sessionId = c.req.param("id");
+    const updated = await sessions.toggleArchiveForOwner(auth.sub, sessionId);
+    if (!updated) {
+      return c.json(errorJson("NOT_FOUND", "세션을 찾을 수 없습니다."), 404);
+    }
+    return c.json({
+      data: { id: updated.id, archived: updated.archivedAt !== null },
       meta: { requestId: randomUUID() },
     });
   });
