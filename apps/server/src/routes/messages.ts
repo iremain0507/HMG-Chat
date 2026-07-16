@@ -337,6 +337,16 @@ export function createMessageRoutes(
             resolvedSettings.maxTokens ??
             SAFE_DEFAULT_MAX_TOKENS,
           signal: handle.controller.signal,
+          // org 가 admin 설정에서 DEFAULT_ORG_SETTINGS 값(0.7/0.9)을 바꾼 경우에만 forward —
+          // 미조정 org 는 provider SDK 기본값을 그대로 유지한다(비파괴, P15-T2-01).
+          ...(resolvedSettings.temperature !== undefined &&
+          resolvedSettings.temperature !== DEFAULT_ORG_SETTINGS.temperature
+            ? { temperature: resolvedSettings.temperature }
+            : {}),
+          ...(resolvedSettings.topP !== undefined &&
+          resolvedSettings.topP !== DEFAULT_ORG_SETTINGS.topP
+            ? { topP: resolvedSettings.topP }
+            : {}),
           ...(tools.length > 0 ? { tools, parallelToolCalls: true } : {}),
           ...(toolContext ? { toolContext } : {}),
           ...(deps.toolMetrics ? { toolMetrics: deps.toolMetrics } : {}),

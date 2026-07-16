@@ -1337,8 +1337,8 @@
     "acceptance": "L1 RED: createApp 채팅 턴에서 org temperature=0.2·topP=0.5 → provider.chat 이 받은 ChatInput.temperature===0.2 & topP===0.5 단언; 미설정 org 는 provider 기본 유지(비파괴); verify-gates green",
     "phase": "P15",
     "team": "T2",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P15-T2-02",

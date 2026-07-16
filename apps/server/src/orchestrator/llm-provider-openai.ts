@@ -167,6 +167,10 @@ export function createOpenAILLMProvider(
             ? { tools: toOpenAITools(input.tools) }
             : {}),
           ...(toolChoice ? { tool_choice: toolChoice } : {}),
+          ...(input.temperature !== undefined
+            ? { temperature: input.temperature }
+            : {}),
+          ...(input.topP !== undefined ? { top_p: input.topP } : {}),
           ...(input.parallelToolCalls === false
             ? { parallel_tool_calls: false }
             : {}),

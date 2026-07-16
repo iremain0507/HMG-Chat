@@ -1196,6 +1196,70 @@ describe("orchestrator.runTurn — 병렬 tool 실행 (P11-T2-09)", () => {
 
     expect(calls[0]?.parallelToolCalls).toBe(true);
   });
+
+  it("RunTurnInput.temperature/topP 를 provider.chat 의 ChatInput.temperature/topP 로 그대로 forward 한다(P15-T2-01)", async () => {
+    const calls: ChatInput[] = [];
+    const fakeProvider: LLMProvider = {
+      name: "fake",
+      models: ["fake-model"],
+      async *chat(input) {
+        calls.push(input);
+        yield { type: "text_delta", text: "ok" };
+        yield {
+          type: "stop",
+          reason: "end_turn",
+          usage: { inputTokens: 1, outputTokens: 1 },
+        };
+      },
+    };
+
+    for await (const event of runTurn({
+      provider: fakeProvider,
+      model: "fake-model",
+      systemBlocks: [],
+      messages: [{ role: "user", content: "hi" }],
+      maxTokens: 512,
+      signal: new AbortController().signal,
+      temperature: 0.2,
+      topP: 0.5,
+    })) {
+      void event;
+    }
+
+    expect(calls[0]?.temperature).toBe(0.2);
+    expect(calls[0]?.topP).toBe(0.5);
+  });
+
+  it("RunTurnInput.temperature/topP 미설정 시 ChatInput 에 해당 키를 넣지 않는다(provider 기본 유지, 비파괴)", async () => {
+    const calls: ChatInput[] = [];
+    const fakeProvider: LLMProvider = {
+      name: "fake",
+      models: ["fake-model"],
+      async *chat(input) {
+        calls.push(input);
+        yield { type: "text_delta", text: "ok" };
+        yield {
+          type: "stop",
+          reason: "end_turn",
+          usage: { inputTokens: 1, outputTokens: 1 },
+        };
+      },
+    };
+
+    for await (const event of runTurn({
+      provider: fakeProvider,
+      model: "fake-model",
+      systemBlocks: [],
+      messages: [{ role: "user", content: "hi" }],
+      maxTokens: 512,
+      signal: new AbortController().signal,
+    })) {
+      void event;
+    }
+
+    expect(calls[0]).not.toHaveProperty("temperature");
+    expect(calls[0]).not.toHaveProperty("topP");
+  });
 });
 
 describe("orchestrator.runTurn — arg-validator invoke 직전 검증 (P11-T2-10)", () => {

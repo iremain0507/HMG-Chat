@@ -35,6 +35,10 @@ export interface RunTurnInput {
   messages: LLMMessage[];
   maxTokens: number;
   signal: AbortSignal;
+  // provider.chat 에 그대로 forward (ChatInput.temperature/topP, 14-INTERFACES §6). 미설정
+  // 시 provider SDK 기본값을 그대로 유지한다(비파괴, P15-T2-01).
+  temperature?: number;
+  topP?: number;
   tools?: AgentTool[];
   // tools 사용 시 필수 — AgentTool.invoke 에 넘길 ToolContext. signal 은
   // RunTurnInput.signal 을 그대로 쓰므로 여기 별도 필드 없음(중복 방지).
@@ -267,6 +271,10 @@ export async function* runTurn(input: RunTurnInput): AsyncIterable<ChatEvent> {
         messages,
         maxTokens: input.maxTokens,
         ...(toolSpecs ? { tools: toolSpecs } : {}),
+        ...(input.temperature !== undefined
+          ? { temperature: input.temperature }
+          : {}),
+        ...(input.topP !== undefined ? { topP: input.topP } : {}),
         ...(input.parallelToolCalls !== undefined
           ? { parallelToolCalls: input.parallelToolCalls }
           : {}),
