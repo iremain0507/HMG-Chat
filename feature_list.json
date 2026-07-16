@@ -1564,5 +1564,41 @@
     "team": "T6",
     "passes": true,
     "attempts": 1
+  },
+  {
+    "id": "P18-T6-01",
+    "desc": "메시지 인라인 아티팩트 카드: artifact_created 로 생성된 아티팩트를 해당 어시스턴트 메시지 하단에 클릭 카드('📄 {filename} · 열기')로 렌더; 클릭 시 기존 열람 흐름(setActiveArtifactIndex + 우패널 아티팩트 탭, ChatView.tsx:160-174 재사용)으로 오픈. messageId 없으면 세션 단위 폴백(frozen 필요 시 격리). files: components/chat/ChatView.tsx, (신규) components/artifacts/ArtifactCard.tsx",
+    "acceptance": "RED: artifact_created 후 메시지 영역에 카드 렌더 + 클릭 시 active artifact/panel 오픈; 하드코딩 hex 0; preview+Playwright; human UAT(문서 카드 실제 표시); verify-gates green",
+    "phase": "P18",
+    "team": "T6",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P18-T6-02",
+    "desc": "세션 열 때 아티팩트 복원: 세션 진입 시 GET /api/v1/sessions/:id/artifacts(apiFetch)로 세션 아티팩트를 불러와 artifacts 상태·인라인 카드·우패널 재구성(현재 스트림 이벤트로만 채워져 재방문 시 사라짐). files: hooks/useSessionStream.ts(또는 useSessions), components/chat/ChatView.tsx",
+    "acceptance": "RED: 목 GET /:id/artifacts → 마운트 시 artifacts 복원·카드 렌더 단언; human UAT(재방문 시 문서 유지); verify-gates green",
+    "phase": "P18",
+    "team": "T6",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P18-T6-03",
+    "desc": "모바일 아티팩트 뷰: 좁은 뷰포트에서 우패널(400px) 접근 불가 → 인라인 카드 탭/패널 열기 시 바텀시트/전체화면 오버레이로 아티팩트 열기(F17); 데스크톱 md+ 는 기존 우패널 유지, z-index 모달100. files: components/layout/AppShell.tsx, components/artifacts/ArtifactCanvas.tsx, components/chat/ChatView.tsx",
+    "acceptance": "RED: 좁은 뷰포트에서 아티팩트 열기→오버레이 표시(가능 범위); 하드코딩 hex 0; ★human UAT(모바일 폭에서 문서 실제 표시) 필수·과장 금지; verify-gates green",
+    "phase": "P18",
+    "team": "T6",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P18-T1-01",
+    "desc": "기존 '(제목 없음)' 세션 제목 백필: title=null 이고 메시지 있는 세션에 첫 사용자 메시지에서 deriveSessionTitle(lib/session-title.ts 재사용)로 제목 채움. 일회성 스크립트 또는 idempotent migration. files: apps/server/src/scripts/*(신규) 또는 db/migrations/*, lib/session-title.ts",
+    "acceptance": "RED/검증: null 제목+메시지 있는 세션→백필 후 파생 title; 메시지 없는 세션→null 유지; 재실행 idempotent; verify-gates green",
+    "phase": "P18",
+    "team": "T1",
+    "passes": false,
+    "attempts": 0
   }
 ]
