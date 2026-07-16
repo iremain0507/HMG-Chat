@@ -40,6 +40,7 @@ import { createErrorRoutes } from "./routes/errors.js";
 import { createPgErrorLogDataAccess } from "./db/error-log-data-access.js";
 import { createAdminRoutes } from "./routes/admin.js";
 import { createAdminSettingsRoutes } from "./routes/admin-settings.js";
+import { createAdminModelsRoutes } from "./routes/admin-models.js";
 import { createConfigRoutes } from "./routes/config.js";
 import { createPgHealthHistoryDataAccess } from "./db/health-history-data-access.js";
 import { createPgAdminDataAccess } from "./db/admin-data-access.js";
@@ -401,6 +402,12 @@ export function createApp(env: Env) {
     createAdminSettingsRoutes({
       da: orgSettingsDa,
       settingsService,
+    }),
+  );
+  adminApp.route(
+    "/models",
+    createAdminModelsRoutes({
+      organizations: authDa.organizations,
     }),
   );
   app.route("/api/v1/admin", adminApp);
