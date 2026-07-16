@@ -1787,8 +1787,8 @@
     "acceptance": "RED: 목→내보내기 메뉴 'PDF' 항목 + 인쇄뷰 마크업(대화 전체) 단언. verify-gates green",
     "phase": "P19",
     "team": "T6",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P19-T2-05",

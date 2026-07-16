@@ -79,6 +79,28 @@ describe("ShareExportMenu", () => {
     );
   });
 
+  it("PDF로 내보내기를 누르면 인쇄뷰(대화 전체)가 렌더되고 window.print 가 호출된다", () => {
+    const printSpy = vi.fn();
+    vi.stubGlobal("print", printSpy);
+    render(
+      <ShareExportMenu
+        title="테스트 대화"
+        messages={MESSAGES}
+        artifacts={[]}
+      />,
+    );
+    fireEvent.click(screen.getByTestId("share-export-trigger"));
+    fireEvent.click(screen.getByRole("button", { name: "PDF로 내보내기" }));
+
+    expect(printSpy).toHaveBeenCalledTimes(1);
+    const printView = screen.getByTestId("chat-print-view");
+    expect(printView).toHaveTextContent("테스트 대화");
+    expect(printView).toHaveTextContent("안녕하세요");
+    expect(printView).toHaveTextContent("무엇을 도와드릴까요");
+    expect(screen.queryByTestId("share-export-menu")).not.toBeInTheDocument();
+    vi.unstubAllGlobals();
+  });
+
   it("세션에 아티팩트가 없으면 대화 공유 버튼이 비활성화된다", () => {
     render(
       <ShareExportMenu
@@ -165,8 +187,6 @@ describe("ShareExportMenu", () => {
     fireEvent.click(screen.getByRole("button", { name: "대화 공유" }));
     fireEvent.click(screen.getByTestId("share-confirm-accept"));
 
-    expect(
-      screen.getByRole("dialog", { name: "공유" }),
-    ).toBeInTheDocument();
+    expect(screen.getByRole("dialog", { name: "공유" })).toBeInTheDocument();
   });
 });
