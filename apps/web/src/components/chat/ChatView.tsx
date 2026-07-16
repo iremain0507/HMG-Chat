@@ -173,6 +173,30 @@ export function ChatView({ sessionId }: { sessionId: string }) {
     prevArtifactCountRef.current = artifacts.length;
   }, [artifacts]);
 
+  // P17-T6-04(TS-12) — deep_research tool_use 가 도착하면 클릭 없이도 우패널 활동 탭을
+  // 자동 오픈(artifact_created 자동오픈과 동일 패턴). toolCallId 별 1회만 트리거되도록
+  // 이미 본 id 를 기억해, tool_progress/tool_result 후속 이벤트로 messages 가 재계산돼도
+  // 활동 탭이 반복해서 강제로 다시 포커스되지 않게 한다(사용자가 다른 탭으로 옮겨도 유지).
+  const seenDeepResearchCallsRef = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    for (const m of messages) {
+      for (const p of m.parts ?? []) {
+        if (
+          p.type === "tool" &&
+          p.name === "deep_research" &&
+          !seenDeepResearchCallsRef.current.has(p.toolCallId)
+        ) {
+          seenDeepResearchCallsRef.current.add(p.toolCallId);
+          setArtifactPanelOpen(true);
+          setRightPanelFocus({
+            tab: "activity",
+            token: ++panelFocusTokenRef.current,
+          });
+        }
+      }
+    }
+  }, [messages]);
+
   // Cmd/Ctrl+\ 패널 토글 — 18-FRONTEND-WIREFRAMES § 18.5.1 키맵.
   useEffect(() => {
     function onKeyDown(e: globalThis.KeyboardEvent) {

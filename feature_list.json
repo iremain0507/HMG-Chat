@@ -1517,8 +1517,8 @@
     "acceptance": "RED: deep_research tool_use 시 활동 탭 자동 오픈; 다른 도구엔 영향 없음; verify-gates green; human UAT(TS-12)",
     "phase": "P17",
     "team": "T6",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P17-T6-05",

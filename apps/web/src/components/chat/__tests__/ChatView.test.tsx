@@ -586,6 +586,109 @@ describe("ChatView", () => {
     });
   });
 
+  // P17-T6-04(TS-12) — deep_research tool_use 가 도착하면 클릭 없이도 우패널 활동 탭이 자동 오픈된다.
+  it("deep_research tool_use 가 도착하면 우패널 활동 탭이 자동으로 열린다", async () => {
+    const encoder = new TextEncoder();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({
+        ok: true,
+        json: async () => ({ data: [] }),
+        body: new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.enqueue(
+              encoder.encode(sseFrame("message_start", { messageId: "msg-1" })),
+            );
+            controller.enqueue(
+              encoder.encode(
+                sseFrame("tool_use", {
+                  toolCallId: "call-1",
+                  name: "deep_research",
+                  args: { query: "wchat" },
+                }),
+              ),
+            );
+            controller.enqueue(
+              encoder.encode(
+                sseFrame("tool_progress", {
+                  toolCallId: "call-1",
+                  stage: "planning",
+                }),
+              ),
+            );
+            controller.close();
+          },
+        }),
+      })),
+    );
+
+    render(<ChatView sessionId="session-1" />);
+    fireEvent.change(screen.getByLabelText("메시지 입력"), {
+      target: { value: "@딥리서치 조사해줘" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "전송" }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("artifact-panel-tab-activity")).toHaveAttribute(
+        "aria-pressed",
+        "true",
+      );
+    });
+  });
+
+  // P17-T6-04(TS-12) — deep_research 가 아닌 도구(web_search)는 활동 탭을 자동으로 열지 않는다.
+  it("deep_research 가 아닌 도구는 활동 탭을 자동으로 열지 않는다", async () => {
+    const encoder = new TextEncoder();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({
+        ok: true,
+        json: async () => ({ data: [] }),
+        body: new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.enqueue(
+              encoder.encode(sseFrame("message_start", { messageId: "msg-1" })),
+            );
+            controller.enqueue(
+              encoder.encode(
+                sseFrame("tool_use", {
+                  toolCallId: "call-1",
+                  name: "web_search",
+                  args: { query: "wchat" },
+                }),
+              ),
+            );
+            controller.enqueue(
+              encoder.encode(
+                sseFrame("tool_result", {
+                  toolCallId: "call-1",
+                  content: "검색 결과",
+                }),
+              ),
+            );
+            controller.enqueue(
+              encoder.encode(sseFrame("stop", { reason: "end_turn" })),
+            );
+            controller.close();
+          },
+        }),
+      })),
+    );
+
+    render(<ChatView sessionId="session-1" />);
+    fireEvent.change(screen.getByLabelText("메시지 입력"), {
+      target: { value: "웹 검색해줘" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "전송" }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("run-rail-tick-call-1")).toBeInTheDocument();
+    });
+    expect(
+      screen.queryByTestId("artifact-panel-tab-activity"),
+    ).not.toBeInTheDocument();
+  });
+
   // P17-T6-02(TS-11) — @ 피커는 dev preview 고정 목록이 아니라 org.allowedTools 기반 실제
   // 도구/에이전트를 렌더해야 한다(현재 ChatView 가 mentionEntities 를 전달하지 않아 RED).
   it("@ 멘션 피커가 org.allowedTools 기반 실제 도구/에이전트 목록을 렌더한다", async () => {
