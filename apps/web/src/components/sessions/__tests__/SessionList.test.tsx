@@ -416,6 +416,135 @@ describe("SessionList", () => {
     });
   });
 
+  it("태그가 있는 세션은 사이드바에 태그 필터 칩을 렌더하고 클릭 시 해당 태그로 필터한다", async () => {
+    const fetchMock = vi.fn(
+      async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        if (
+          url === "/api/v1/sessions" &&
+          (!init?.method || init.method === "GET")
+        ) {
+          return {
+            ok: true,
+            status: 200,
+            json: async () => ({
+              data: [
+                {
+                  id: "sess-a",
+                  title: "세션 A",
+                  lastMessageAt: "2026-07-14T01:00:00Z",
+                  projectId: null,
+                  archived: false,
+                  pinned: false,
+                  folderId: null,
+                  tags: ["업무"],
+                },
+                {
+                  id: "sess-b",
+                  title: "세션 B",
+                  lastMessageAt: "2026-07-14T01:00:00Z",
+                  projectId: null,
+                  archived: false,
+                  pinned: false,
+                  folderId: null,
+                  tags: [],
+                },
+              ],
+            }),
+          };
+        }
+        return { ok: true, status: 200, json: async () => ({ data: [] }) };
+      },
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<SessionList now={new Date("2026-07-14T12:00:00Z")} />);
+
+    await waitFor(() => {
+      expect(screen.getByText("세션 A")).toBeInTheDocument();
+    });
+    expect(screen.getByText("세션 B")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "업무" }));
+
+    await waitFor(() => {
+      expect(screen.queryByText("세션 B")).not.toBeInTheDocument();
+    });
+    expect(screen.getByText("세션 A")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "업무" }));
+
+    await waitFor(() => {
+      expect(screen.getByText("세션 B")).toBeInTheDocument();
+    });
+  });
+
+  it("세션에 태그를 추가하면 POST /sessions/:id/tags 를 호출한다", async () => {
+    const fetchMock = vi.fn(
+      async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        if (url === "/api/v1/sessions/sess-a/tags" && init?.method === "POST") {
+          return {
+            ok: true,
+            status: 201,
+            json: async () => ({
+              data: { sessionId: "sess-a", tag: "신규" },
+            }),
+          };
+        }
+        if (
+          url === "/api/v1/sessions" &&
+          (!init?.method || init.method === "GET")
+        ) {
+          return {
+            ok: true,
+            status: 200,
+            json: async () => ({
+              data: [
+                {
+                  id: "sess-a",
+                  title: "세션 A",
+                  lastMessageAt: "2026-07-14T01:00:00Z",
+                  projectId: null,
+                  archived: false,
+                  pinned: false,
+                  folderId: null,
+                  tags: [],
+                },
+              ],
+            }),
+          };
+        }
+        return { ok: true, status: 200, json: async () => ({ data: [] }) };
+      },
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<SessionList now={new Date("2026-07-14T12:00:00Z")} />);
+
+    await waitFor(() => {
+      expect(screen.getByText("세션 A")).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByLabelText("태그 지정: 세션 A"));
+    const input = screen.getByPlaceholderText("새 태그");
+    fireEvent.change(input, { target: { value: "신규" } });
+    fireEvent.submit(input.closest("form") as HTMLFormElement);
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/v1/sessions/sess-a/tags",
+        expect.objectContaining({
+          method: "POST",
+          body: JSON.stringify({ tag: "신규" }),
+        }),
+      );
+    });
+    await waitFor(() => {
+      expect(screen.getByLabelText("태그 제거: 신규")).toBeInTheDocument();
+    });
+  });
+
   it("⌘N 단축키로 새 세션을 생성한다", async () => {
     const fetchMock = vi.fn(
       async (input: RequestInfo | URL, init?: RequestInit) => {

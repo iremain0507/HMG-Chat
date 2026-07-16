@@ -180,6 +180,8 @@ export function SessionList({ now }: { now?: Date } = {}) {
     renameFolder,
     deleteFolder,
     assignFolder,
+    addTag,
+    removeTag,
   } = useSessions();
   const [query, setQuery] = useState("");
   const searchRef = useRef<HTMLInputElement>(null);
@@ -188,6 +190,7 @@ export function SessionList({ now }: { now?: Date } = {}) {
   const [collapsedFolders, setCollapsedFolders] = useState<Set<string>>(
     new Set(),
   );
+  const [tagFilter, setTagFilter] = useState<string | null>(null);
 
   function toggleFolderCollapse(id: string) {
     setCollapsedFolders((prev) => {
@@ -234,11 +237,20 @@ export function SessionList({ now }: { now?: Date } = {}) {
     void togglePin(id);
   }
 
+  const allTags = useMemo(() => {
+    const set = new Set<string>();
+    for (const s of sessions) for (const tag of s.tags) set.add(tag);
+    return Array.from(set).sort();
+  }, [sessions]);
+
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
-    if (!q) return sessions;
-    return sessions.filter((s) => (s.title ?? "").toLowerCase().includes(q));
-  }, [sessions, query]);
+    return sessions.filter((s) => {
+      if (q && !(s.title ?? "").toLowerCase().includes(q)) return false;
+      if (tagFilter && !s.tags.includes(tagFilter)) return false;
+      return true;
+    });
+  }, [sessions, query, tagFilter]);
 
   const { byFolder, unfoldered } = useMemo(
     () => partitionByFolder(filtered, folders),
@@ -262,6 +274,8 @@ export function SessionList({ now }: { now?: Date } = {}) {
         onDelete={(id) => void deleteSession(id)}
         onTogglePin={handleTogglePin}
         onAssignFolder={(id, folderId) => void assignFolder(id, folderId)}
+        onAddTag={(id, tag) => void addTag(id, tag)}
+        onRemoveTag={(id, tag) => void removeTag(id, tag)}
       />
     );
   }
@@ -319,6 +333,27 @@ export function SessionList({ now }: { now?: Date } = {}) {
         >
           ＋ 폴더
         </button>
+      )}
+      {allTags.length > 0 && (
+        <div className="mt-1 flex flex-wrap gap-1 px-1">
+          {allTags.map((tag) => (
+            <button
+              key={tag}
+              type="button"
+              aria-pressed={tagFilter === tag}
+              onClick={() =>
+                setTagFilter((prev) => (prev === tag ? null : tag))
+              }
+              className={`rounded-full border px-2 py-0.5 text-[11px] ${
+                tagFilter === tag
+                  ? "border-primary bg-primary-50 text-primary"
+                  : "border-border text-fg-muted hover:bg-bg hover:text-fg"
+              }`}
+            >
+              {tag}
+            </button>
+          ))}
+        </div>
       )}
       <nav className="mt-1.5 flex-1 overflow-y-auto">
         {loading ? (

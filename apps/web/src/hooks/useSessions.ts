@@ -12,6 +12,7 @@ import {
   renameFolder as renameFolderApi,
   type SessionFolder,
 } from "../lib/sessionFolders";
+import { addSessionTag, removeSessionTag } from "../lib/sessionTags";
 
 export type { SessionFolder } from "../lib/sessionFolders";
 
@@ -23,6 +24,7 @@ export interface SessionListItemDto {
   archived: boolean;
   pinned: boolean;
   folderId: string | null;
+  tags: string[];
 }
 
 interface UseSessionsResult {
@@ -39,6 +41,8 @@ interface UseSessionsResult {
   renameFolder: (id: string, name: string) => Promise<void>;
   deleteFolder: (id: string) => Promise<void>;
   assignFolder: (id: string, folderId: string | null) => Promise<void>;
+  addTag: (id: string, tag: string) => Promise<void>;
+  removeTag: (id: string, tag: string) => Promise<void>;
 }
 
 export function useSessions(): UseSessionsResult {
@@ -59,10 +63,16 @@ export function useSessions(): UseSessionsResult {
         return;
       }
       const body = (await res.json()) as {
-        data: Array<SessionListItemDto & { folderId?: string | null }>;
+        data: Array<
+          SessionListItemDto & { folderId?: string | null; tags?: string[] }
+        >;
       };
       setSessions(
-        body.data.map((s) => ({ ...s, folderId: s.folderId ?? null })),
+        body.data.map((s) => ({
+          ...s,
+          folderId: s.folderId ?? null,
+          tags: s.tags ?? [],
+        })),
       );
     } finally {
       setLoading(false);
@@ -103,6 +113,7 @@ export function useSessions(): UseSessionsResult {
       archived: false,
       pinned: false,
       folderId: null,
+      tags: [],
     };
     setSessions((prev) => [created, ...prev]);
     return created;
@@ -186,6 +197,41 @@ export function useSessions(): UseSessionsResult {
     [],
   );
 
+  const addTag = useCallback(async (id: string, tag: string) => {
+    setSessions((prev) =>
+      prev.map((s) =>
+        s.id === id && !s.tags.includes(tag)
+          ? { ...s, tags: [...s.tags, tag] }
+          : s,
+      ),
+    );
+    const result = await addSessionTag(id, tag);
+    if (result === undefined) {
+      setSessions((prev) =>
+        prev.map((s) =>
+          s.id === id ? { ...s, tags: s.tags.filter((t) => t !== tag) } : s,
+        ),
+      );
+    }
+  }, []);
+
+  const removeTag = useCallback(async (id: string, tag: string) => {
+    let previous: string[] = [];
+    setSessions((prev) =>
+      prev.map((s) => {
+        if (s.id !== id) return s;
+        previous = s.tags;
+        return { ...s, tags: s.tags.filter((t) => t !== tag) };
+      }),
+    );
+    const ok = await removeSessionTag(id, tag);
+    if (!ok) {
+      setSessions((prev) =>
+        prev.map((s) => (s.id === id ? { ...s, tags: previous } : s)),
+      );
+    }
+  }, []);
+
   return {
     sessions,
     loading,
@@ -200,5 +246,7 @@ export function useSessions(): UseSessionsResult {
     renameFolder,
     deleteFolder,
     assignFolder,
+    addTag,
+    removeTag,
   };
 }
