@@ -2,6 +2,7 @@
 // 세션 종료 시 메시지 >= 4 이면 LLM 에게 4 카테고리(user/feedback/project/reference) 추출을 요청하고
 // 응답 JSON 을 파싱한다. dedup/PII reject 등 후처리는 별도 태스크(P7-T2-02/DB 계층) 범위.
 import type { LLMMessage, LLMProvider, UserMemory } from "@wchat/interfaces";
+import { DEFAULT_ORG_SETTINGS } from "../lib/org-settings-schema.js";
 
 export type ExtractedMemory = Pick<UserMemory, "category" | "content">;
 
@@ -56,6 +57,12 @@ export async function extractMemories(
   llm: LLMProvider,
   messages: LLMMessage[],
   signal: AbortSignal,
+  // P14-T2-02 — org_settings.toolMaxTokens 배선용. 호출자가 org-scoped 값을 넘기지
+  // 않으면 DEFAULT_ORG_SETTINGS.toolMaxTokens(4096)로 fail-soft — 구 하드코딩 1024
+  // 폴백 금지(21-LOOP-LESSONS.md L2/L5). `?? 4096` 은 OrgSettingsSchema 필드가 전부
+  // zod `.optional()` 이라 Required<> 후에도 `number | undefined` 가 남는 TS 특성을
+  // 좁히는 최종 non-null 보강(messages.ts SAFE_DEFAULT_MAX_TOKENS 와 동일 패턴).
+  maxTokens: number = DEFAULT_ORG_SETTINGS.toolMaxTokens ?? 4096,
 ): Promise<ExtractedMemory[]> {
   if (messages.length < MIN_MESSAGES_FOR_EXTRACTION) return [];
 
@@ -65,7 +72,7 @@ export async function extractMemories(
       model: MEMORY_EXTRACTION_MODEL,
       systemBlocks: [{ tier: "system", content: EXTRACTION_SYSTEM_PROMPT }],
       messages,
-      maxTokens: 1024,
+      maxTokens,
     },
     signal,
   )) {

@@ -322,6 +322,48 @@ describe("createOpenAILLMProvider", () => {
     expect(receivedBody()?.parallel_tool_calls).toBe(false);
   });
 
+  it("input.temperature/topP 를 body.temperature/top_p 로 전달한다(P15-T2-01)", async () => {
+    const { client, receivedBody } = fakeClient([]);
+    const provider = createOpenAILLMProvider({ client });
+
+    for await (const event of provider.chat(
+      {
+        model: "gpt-5.1",
+        systemBlocks: [],
+        messages: [{ role: "user", content: "안녕" }],
+        maxTokens: 512,
+        temperature: 0.2,
+        topP: 0.5,
+      },
+      new AbortController().signal,
+    )) {
+      void event;
+    }
+
+    expect(receivedBody()?.temperature).toBe(0.2);
+    expect(receivedBody()?.top_p).toBe(0.5);
+  });
+
+  it("input.temperature/topP 미설정 시 body 에 해당 키를 넣지 않는다(SDK/provider 기본 유지)", async () => {
+    const { client, receivedBody } = fakeClient([]);
+    const provider = createOpenAILLMProvider({ client });
+
+    for await (const event of provider.chat(
+      {
+        model: "gpt-5.1",
+        systemBlocks: [],
+        messages: [{ role: "user", content: "안녕" }],
+        maxTokens: 512,
+      },
+      new AbortController().signal,
+    )) {
+      void event;
+    }
+
+    expect(receivedBody()).not.toHaveProperty("temperature");
+    expect(receivedBody()).not.toHaveProperty("top_p");
+  });
+
   it("잘린/손상된 tool_calls arguments(invalid JSON) 은 args={} 로 안전하게 폴백하고 turn 을 안 죽인다", async () => {
     const chunks: OpenAI.Chat.Completions.ChatCompletionChunk[] = [
       textChunk("chatcmpl_3", null, {

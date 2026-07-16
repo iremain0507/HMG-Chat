@@ -5,6 +5,11 @@ import React from "react";
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { render, screen, cleanup, waitFor } from "@testing-library/react";
 import "@testing-library/jest-dom/vitest";
+
+vi.mock("next/navigation", () => ({
+  usePathname: () => "/admin/tool-metrics",
+}));
+
 import { ToolMetricsTable } from "../ToolMetricsTable";
 
 const METRIC = {
@@ -39,5 +44,25 @@ describe("ToolMetricsTable", () => {
       expect(screen.getByText("web_search")).toBeInTheDocument();
     });
     expect(screen.getByText("300")).toBeInTheDocument();
+  });
+
+  it("대시보드/사용자/설정으로 가는 서브내비를 렌더한다", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({
+        ok: true,
+        json: async () => ({ data: [METRIC] }),
+      })),
+    );
+
+    render(<ToolMetricsTable />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("admin-sub-nav")).toBeInTheDocument();
+    });
+    expect(screen.getByTestId("admin-sub-nav-settings")).toHaveAttribute(
+      "href",
+      "/admin/settings",
+    );
   });
 });

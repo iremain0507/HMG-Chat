@@ -130,6 +130,10 @@ export function createAnthropicLLMProvider(
           ? { tools: toAnthropicTools(input.tools) }
           : {}),
         ...(toolChoice ? { tool_choice: toolChoice } : {}),
+        ...(input.temperature !== undefined
+          ? { temperature: input.temperature }
+          : {}),
+        ...(input.topP !== undefined ? { top_p: input.topP } : {}),
       };
 
       let inputTokens = 0;

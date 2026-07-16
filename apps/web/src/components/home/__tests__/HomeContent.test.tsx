@@ -100,7 +100,7 @@ describe("HomeContent", () => {
     expect(skillsLink).toHaveAttribute("href", "/settings/skills");
     expect(skillsLink).toHaveTextContent("13");
     const agents = screen.getByTestId("capability-agents");
-    expect(agents.tagName).not.toBe("A");
+    expect(agents).toHaveAttribute("href", "/settings/skills");
     expect(agents).toHaveTextContent("4");
   });
 

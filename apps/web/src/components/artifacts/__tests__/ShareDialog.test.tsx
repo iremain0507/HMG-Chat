@@ -95,4 +95,41 @@ describe("ShareDialog", () => {
     fireEvent.click(screen.getByRole("button", { name: "닫기" }));
     expect(onClose).toHaveBeenCalled();
   });
+
+  it("열리면 첫 포커스 가능 요소(닫기 버튼)로 포커스가 이동한다", () => {
+    render(<ShareDialog artifactId="artifact-1" onClose={vi.fn()} />);
+    expect(screen.getByRole("button", { name: "닫기" })).toHaveFocus();
+  });
+
+  it("Esc 를 누르면 onClose 가 호출된다", () => {
+    const onClose = vi.fn();
+    render(<ShareDialog artifactId="artifact-1" onClose={onClose} />);
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(onClose).toHaveBeenCalled();
+  });
+
+  it("닫힐 때 트리거 요소로 포커스가 복귀한다", () => {
+    function Wrapper() {
+      const [open, setOpen] = React.useState(false);
+      return (
+        <div>
+          <button data-testid="trigger" onClick={() => setOpen(true)}>
+            열기
+          </button>
+          {open && (
+            <ShareDialog
+              artifactId="artifact-1"
+              onClose={() => setOpen(false)}
+            />
+          )}
+        </div>
+      );
+    }
+    render(<Wrapper />);
+    const trigger = screen.getByTestId("trigger");
+    trigger.focus();
+    fireEvent.click(trigger);
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(trigger).toHaveFocus();
+  });
 });

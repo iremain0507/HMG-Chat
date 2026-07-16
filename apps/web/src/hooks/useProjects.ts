@@ -11,7 +11,9 @@ interface UseProjectsResult {
   error: string | null;
 }
 
-export function useProjects(): UseProjectsResult {
+export function useProjects(
+  visibility?: "private" | "team" | "org",
+): UseProjectsResult {
   const [projects, setProjects] = useState<ProjectDto[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -22,7 +24,10 @@ export function useProjects(): UseProjectsResult {
       setLoading(true);
       setError(null);
       try {
-        const res = await apiFetch("/api/v1/projects", { credentials: "include" });
+        const url = visibility
+          ? `/api/v1/projects?visibility=${visibility}`
+          : "/api/v1/projects";
+        const res = await apiFetch(url, { credentials: "include" });
         if (!res.ok) {
           if (!cancelled) setError("프로젝트 목록을 불러오지 못했습니다.");
           return;
@@ -39,7 +44,7 @@ export function useProjects(): UseProjectsResult {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [visibility]);
 
   return { projects, loading, error };
 }

@@ -7,6 +7,7 @@
 // (신규 필드는 packages/interfaces 확장 없이는 불가 — 이 태스크 범위 밖).
 import React from "react";
 import { useToolMetrics } from "../../hooks/useToolMetrics";
+import { AdminSubNav } from "./AdminSubNav";
 
 const ERROR_RATE_ALERT_THRESHOLD = 0.03;
 
@@ -25,6 +26,8 @@ export function ToolMetricsTable() {
           /admin/tool-metrics
         </span>
       </div>
+
+      <AdminSubNav />
 
       {error && <p className="mt-3 text-sm text-accent">{error}</p>}
 

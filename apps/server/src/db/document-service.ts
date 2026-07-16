@@ -18,15 +18,34 @@ import {
 import type { ObjectStore } from "../lib/object-store.js";
 import type { ParserPipeline } from "../knowledge/parser-types.js";
 import { chunkText } from "../knowledge/chunker.js";
+import type { ResolvedOrgSettings } from "../lib/org-settings-schema.js";
 
 export type DocumentDataAccess = Pick<DataAccess, "projectDocuments"> &
   ProjectDataAccess & {
-    documentChunks: Pick<DocumentChunkRepo, "insert" | "bulkInsert">;
+    documentChunks: Pick<
+      DocumentChunkRepo,
+      "insert" | "bulkInsert" | "list" | "delete"
+    >;
   };
+
+// P16-T1-01 — index 시점 org-scoped 청크 설정 조회 포트. deep-research-handler.ts 의
+// ToolSettingsResolverPort 와 동일하게 SettingsService.resolve 와 구조적으로만 호환되는
+// 최소 계약(DI, 순환 회피).
+export interface ChunkSettingsResolverPort {
+  resolve(
+    orgId: string,
+  ): Promise<
+    Pick<ResolvedOrgSettings, "ragChunkSizeTokens" | "ragChunkOverlapTokens">
+  >;
+}
 
 export interface DocumentIndexingDeps {
   parserPipeline: ParserPipeline;
   embeddingProvider: EmbeddingProvider;
+  // 주입 시 index 시점에 actor.orgId 로 org 설정을 조회해 chunkText 에 반영.
+  // 미주입/조회 실패 시 chunkText 기본값(DEFAULT_ORG_SETTINGS 800/100)으로 fail-soft
+  // (21-LOOP-LESSONS.md L2 — settings 조회 실패로 인덱싱 자체가 죽어선 안 됨).
+  settings?: ChunkSettingsResolverPort;
 }
 
 export interface IndexDocumentInput {
@@ -36,11 +55,30 @@ export interface IndexDocumentInput {
 }
 
 export class DocumentServiceError extends Error {
-  code: "NOT_FOUND" | "FORBIDDEN";
+  code: "NOT_FOUND" | "FORBIDDEN" | "CONFLICT";
 
   constructor(code: DocumentServiceError["code"], message: string) {
     super(message);
     this.code = code;
+  }
+}
+
+async function resolveChunkOptions(
+  settings: ChunkSettingsResolverPort | undefined,
+  orgId: string,
+): Promise<{
+  chunkSizeTokens?: number | undefined;
+  overlapTokens?: number | undefined;
+}> {
+  if (!settings) return {};
+  try {
+    const resolved = await settings.resolve(orgId);
+    return {
+      chunkSizeTokens: resolved.ragChunkSizeTokens,
+      overlapTokens: resolved.ragChunkOverlapTokens,
+    };
+  } catch {
+    return {};
   }
 }
 
@@ -156,7 +194,11 @@ export function createDocumentService(
         mimeType: input.mimeType,
         filename: input.filename,
       });
-      const chunks = chunkText(parsed.markdown);
+      const chunkOptions = await resolveChunkOptions(
+        indexing.settings,
+        actor.orgId,
+      );
+      const chunks = chunkText(parsed.markdown, chunkOptions);
       const embeddings = chunks.length
         ? await indexing.embeddingProvider.embed(chunks.map((c) => c.content))
         : [];
@@ -187,10 +229,92 @@ export function createDocumentService(
     }
   }
 
+  // TS-15 / P17-T1-06 — 16-API-CONTRACT.md § 5 POST /documents/:id/retry.
+  // indexStatus='failed' 인 문서만 재인덱싱(그 외는 CONFLICT). 기존 chunk 를 지우고
+  // 원본 s3Key 바이트를 다시 parse→chunk→embed 한다(업로드 재파싱 없이 원본 재사용).
+  async function retryDocument(
+    actor: ProjectActor,
+    documentId: string,
+  ): Promise<ProjectDocumentRecord> {
+    if (!indexing) {
+      throw new Error(
+        "retryDocument requires parserPipeline/embeddingProvider",
+      );
+    }
+    const doc = await da.projectDocuments.byId(documentId);
+    if (!doc) {
+      throw new DocumentServiceError("NOT_FOUND", "문서를 찾을 수 없습니다.");
+    }
+    const access = await projectService.getProjectForActor(
+      actor,
+      doc.projectId,
+    );
+    if (!access) {
+      throw new DocumentServiceError("NOT_FOUND", "문서를 찾을 수 없습니다.");
+    }
+    if (access.role !== "owner" && access.role !== "editor") {
+      throw new DocumentServiceError("FORBIDDEN", "재시도 권한이 없습니다.");
+    }
+    if (doc.indexStatus !== "failed") {
+      throw new DocumentServiceError(
+        "CONFLICT",
+        `indexStatus 가 'failed' 가 아닙니다 (현재: ${doc.indexStatus}).`,
+      );
+    }
+
+    const staleChunks = await da.documentChunks.list({ documentId: doc.id });
+    for (const chunk of staleChunks.items) {
+      await da.documentChunks.delete(chunk.id);
+    }
+
+    const data = await objectStore.get(doc.s3Key);
+    try {
+      const parsed = await indexing.parserPipeline.parse({
+        bytes: data,
+        mimeType: doc.mimeType,
+        filename: doc.filename,
+      });
+      const chunkOptions = await resolveChunkOptions(
+        indexing.settings,
+        actor.orgId,
+      );
+      const chunks = chunkText(parsed.markdown, chunkOptions);
+      const embeddings = chunks.length
+        ? await indexing.embeddingProvider.embed(chunks.map((c) => c.content))
+        : [];
+      if (chunks.length) {
+        await da.documentChunks.bulkInsert(
+          chunks.map((c, i) => ({
+            documentId: doc.id,
+            chunkIndex: c.chunkIndex,
+            content: c.content,
+            tokenCount: c.tokenCount,
+            embedding: embeddings[i] ?? null,
+            metadata: {},
+          })),
+        );
+      }
+      return await da.projectDocuments.update(doc.id, {
+        indexStatus: "indexed",
+        chunkCount: chunks.length,
+        indexedAt: new Date(),
+        failureReason: null,
+      });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      await da.projectDocuments.update(doc.id, {
+        indexStatus: "failed",
+        failureReason: message,
+      });
+      throw err;
+    }
+  }
+
   return {
     listDocumentsForActor,
     getDocumentForActor,
     deleteDocument,
     indexDocument,
+    retryDocument,
   };
 }

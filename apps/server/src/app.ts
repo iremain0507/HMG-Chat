@@ -15,6 +15,8 @@ import { createDocumentRoutes } from "./routes/documents.js";
 import { createPgDocumentDataAccess } from "./db/project-document-data-access.js";
 import { createArtifactRoutes } from "./routes/artifacts.js";
 import { createPgArtifactDataAccess } from "./db/artifact-data-access.js";
+import { createPgMessageDataAccess } from "./db/message-data-access.js";
+import { createPgSessionDataAccess } from "./db/session-data-access.js";
 import { pgPool } from "./db/client.js";
 import { createArtifactShareRoutes } from "./routes/artifact-shares.js";
 import { createPgArtifactShareDataAccess } from "./db/artifact-share-data-access.js";
@@ -35,9 +37,14 @@ import { createPgUsageLogDataAccess } from "./db/usage-log-data-access.js";
 import { createErrorRoutes } from "./routes/errors.js";
 import { createPgErrorLogDataAccess } from "./db/error-log-data-access.js";
 import { createAdminRoutes } from "./routes/admin.js";
+import { createAdminSettingsRoutes } from "./routes/admin-settings.js";
 import { createConfigRoutes } from "./routes/config.js";
 import { createPgHealthHistoryDataAccess } from "./db/health-history-data-access.js";
 import { createPgAdminDataAccess } from "./db/admin-data-access.js";
+import { createPgOrgSettingsDataAccess } from "./db/org-settings-data-access.js";
+import { createSettingsService } from "./lib/settings-service.js";
+import { deriveSessionTitle } from "./lib/session-title.js";
+import { DEFAULT_ORG_SETTINGS } from "./lib/org-settings-schema.js";
 import { createSkillRegistry } from "./tools/skills-engine.js";
 import { assembleBuiltinTools } from "./tools/assemble-builtin-tools.js";
 import { hitlBridge } from "./tools/hitl-manager.js";
@@ -47,6 +54,7 @@ import { createLocalObjectStore } from "./lib/object-store.js";
 import { createParserPipeline } from "./knowledge/parser-pipeline.js";
 import { withUsageTracking } from "./knowledge/embedding-provider.js";
 import { createDevStubEmbeddingProvider } from "./knowledge/embedding-provider-dev-stub.js";
+import { createPgAttachmentsPort } from "./db/ephemeral-chunk-search.js";
 import {
   authMiddleware,
   type AuthedVariables,
@@ -115,6 +123,15 @@ export function createApp(env: Env) {
 
   const appOrigin = env.APP_ORIGIN ?? "http://localhost:3000";
 
+  // P14-T2-01/P15-T1-01 — routes/messages.ts·routes/auth.ts 가 org-scoped 설정(maxTokens 등·
+  // enableSignup/defaultUserRole)을 실제 요청에 반영하도록 admin-settings 라우트(§ 아래)와
+  // 동일 인스턴스를 공유한다(per-org TTL 캐시가 admin PUT 이후 invalidate 와 일관되도록).
+  const orgSettingsDa = createPgOrgSettingsDataAccess();
+  const settingsService = createSettingsService({
+    da: orgSettingsDa,
+    logger: createLogger(),
+  });
+
   const authDa = createPgAuthDataAccess();
   app.route(
     "/api/v1/auth",
@@ -126,6 +143,9 @@ export function createApp(env: Env) {
       secureCookies: env.NODE_ENV === "production",
       // dev/test 에서만 /api/v1/auth/dev-login 활성(production 은 404). SSO 도입 전 로컬 편의.
       devLogin: env.NODE_ENV !== "production",
+      // enableSignup=false 인 org 는 허용 도메인이라도 가입 거부, 생성 유저 role 은
+      // defaultUserRole 로 반영(P15-T1-01). 미조회/실패 시 DEFAULT_ORG_SETTINGS 로 fail-soft.
+      settings: settingsService,
     }),
   );
 
@@ -155,25 +175,41 @@ export function createApp(env: Env) {
   });
   const mcpBridge = createMcpBridge({ pool: mcpClientPool });
 
+  // P17-T1-02 — createSessionRoutes(GET /, GET /:id/messages)와 createMessageRoutes(메시지
+  // 영속, P17-T1-01)가 같은 messages 테이블 데이터 접근 인스턴스를 공유.
+  const messageDa = createPgMessageDataAccess();
+
   const sessionsApp = new Hono<{ Variables: AuthedVariables }>();
   sessionsApp.use("*", authMiddleware);
-  sessionsApp.route("/", createSessionRoutes());
+  sessionsApp.route(
+    "/",
+    createSessionRoutes({
+      sessions: createPgSessionDataAccess(),
+      sessionMessages: messageDa,
+    }),
+  );
   sessionsApp.route(
     "/",
     createMessageRoutes({
       provider,
       // 실 Anthropic 은 env.LLM_MODEL(기본 Haiku 4.5) 사용. dev-stub 은 모델명 무시(에코).
+      // org_settings.defaultModel 이 설정돼 있으면(및 인증된 요청) messages.ts 가 이 값을
+      // 대체한다 — settings resolve 실패/미설정 시 이 값 그대로 fail-soft.
       model: env.LLM_MODEL,
       activeRuns: { setActiveRun },
       organizations: authDa.organizations,
+      settings: settingsService,
       // 클라이언트 생성 세션 UUID(/chat/<uuid>)를 첫 메시지 시 upsert — 아티팩트/업로드/
       //   active-run 의 sessions FK 충족(deep_research 리포트 저장 FK 위반 해소). best-effort:
       //   잘못된 id 형식 등은 무시(RLS 는 pgPool 롤이 bypass, FK 만 필요).
-      ensureSession: async (id, userId) => {
+      ensureSession: async (id, userId, firstContent) => {
         try {
+          // 첫 메시지에서 세션 제목 파생 — ON CONFLICT DO NOTHING 이라 최초 생성 시 1회만 설정,
+          //   이후 메시지는 기존 제목 보존. 제목 없으면 히스토리가 "(제목 없음)" 으로만 보임.
+          const title = deriveSessionTitle(firstContent);
           await pgPool.query(
-            `INSERT INTO sessions (id, user_id) VALUES ($1, $2) ON CONFLICT (id) DO NOTHING`,
-            [id, userId],
+            `INSERT INTO sessions (id, user_id, title) VALUES ($1, $2, $3) ON CONFLICT (id) DO NOTHING`,
+            [id, userId, title],
           );
         } catch {
           /* best-effort — 세션 보장 실패해도 메시지 흐름은 계속 */
@@ -181,18 +217,32 @@ export function createApp(env: Env) {
       },
       // 내장 도구 전체 배선: artifact_create + web_search + code_interpreter + deep_research.
       //   키(TAVILY/E2B) 없으면 dev-stub 폴백(assemble-builtin-tools.ts).
+      // assembleBuiltinTools 는 app 조립 시점(요청 전, org 미지정)에 한 번만 실행되는 싱글톤이라
+      // tools 배열 자체(정적 maxTokens 등)는 org-scoped 로 재구성하지 않는다. 대신 deep_research
+      // 는 settings resolver 를 deps 로 주입받아 invoke 시점에 ctx.orgId 로 동적 조회한다
+      // (P15-T2-02, T3-01 의 invoke-time resolve 와 동일 패턴). 여기서는 정적 폴백값(settings
+      // 미조회/미설정 시)으로 DEFAULT_ORG_SETTINGS.toolMaxTokens 단일 출처만 참조.
       tools: assembleBuiltinTools({
         provider,
         model: env.LLM_MODEL,
-        maxTokens: 4096,
+        // `?? 4096` — messages.ts SAFE_DEFAULT_MAX_TOKENS 와 동일한 TS `| undefined` 잔여 보강.
+        maxTokens: DEFAULT_ORG_SETTINGS.toolMaxTokens ?? 4096,
         artifactDa,
         objectStore: createLocalObjectStore(),
         ...(env.TAVILY_API_KEY ? { tavilyApiKey: env.TAVILY_API_KEY } : {}),
         ...(env.E2B_API_KEY ? { e2bApiKey: env.E2B_API_KEY } : {}),
+        settings: settingsService,
       }),
       mcpTools: assembleOrgMcpTools(mcpServerDa, mcpBridge, mcpClientPool),
       hitl: hitlBridge,
       logger: createLogger(),
+      // P17-T1-01 — 턴마다 user/assistant 메시지를 messages 테이블에 영속.
+      messages: messageDa,
+      // P17-T1-05(TS-14) — 첨부 uploadId 의 ephemeral_chunks 를 실제 검색해 citation 반영
+      // (dev-stub embedding — 실 Voyage 는 배포 시 교체, CLAUDE.md LOCAL_ONLY 방침).
+      attachments: createPgAttachmentsPort({
+        embeddingProvider: createDevStubEmbeddingProvider(),
+      }),
     }),
   );
   app.route("/api/v1/sessions", sessionsApp);
@@ -327,6 +377,13 @@ export function createApp(env: Env) {
     createAdminRoutes({
       da: createPgHealthHistoryDataAccess(),
       adminDa: createPgAdminDataAccess(),
+    }),
+  );
+  adminApp.route(
+    "/settings",
+    createAdminSettingsRoutes({
+      da: orgSettingsDa,
+      settingsService,
     }),
   );
   app.route("/api/v1/admin", adminApp);

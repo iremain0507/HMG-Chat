@@ -66,4 +66,41 @@ describe("useProjects", () => {
     expect(result.current.error).toBeTruthy();
     expect(result.current.projects).toHaveLength(0);
   });
+
+  it("visibility 필터를 넘기면 ?visibility= 쿼리로 재조회한다", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({ ok: true, json: async () => ({ data: [] }) })),
+    );
+
+    const { result, rerender } = renderHook(
+      ({
+        visibility,
+      }: {
+        visibility: "private" | "team" | "org" | undefined;
+      }) => useProjects(visibility),
+      {
+        initialProps: {
+          visibility: undefined as "private" | "team" | "org" | undefined,
+        },
+      },
+    );
+
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false);
+    });
+    expect(fetch).toHaveBeenLastCalledWith(
+      "/api/v1/projects",
+      expect.objectContaining({ credentials: "include" }),
+    );
+
+    rerender({ visibility: "team" });
+
+    await waitFor(() => {
+      expect(fetch).toHaveBeenLastCalledWith(
+        "/api/v1/projects?visibility=team",
+        expect.objectContaining({ credentials: "include" }),
+      );
+    });
+  });
 });

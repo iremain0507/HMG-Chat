@@ -10,6 +10,7 @@ import {
   type MessagePart,
   type Citation,
   type MessageBranch,
+  type ArtifactSummary,
 } from "../../hooks/useSessionStream";
 import { useCurrentUser } from "../../hooks/useCurrentUser";
 import { randomUUID } from "../../lib/uuid";
@@ -18,9 +19,11 @@ import { useOnlineStatus } from "../../hooks/useOnlineStatus";
 import { useProjects } from "../../hooks/useProjects";
 import { useSessionProject } from "../../hooks/useSessionProject";
 import { ArtifactCanvas } from "../artifacts/ArtifactCanvas";
+import { ArtifactCard } from "../artifacts/ArtifactCard";
 import {
   ChatInput,
   type ChatInputHandle,
+  type MentionEntity,
   type SlashCommand,
 } from "./ChatInput";
 import { HitlPrompt } from "./HitlPrompt";
@@ -36,6 +39,19 @@ import { ArrowDown } from "lucide-react";
 const SLASH_COMMANDS: SlashCommand[] = [
   { id: "memories", label: "memories", description: "저장된 메모리 보기" },
 ];
+
+// P17-T6-02(TS-11) — org.allowedTools(실제 배선된 내장 도구, assemble-builtin-tools.ts
+//   단일출처: artifact_create/web_search/code_interpreter/deep_research) 를 @ 피커
+//   MentionEntity 로 매핑. deep_research 는 멀티에이전트 리서치 흐름이라 "에이전트"로 분류.
+const TOOL_MENTION_META: Record<
+  string,
+  Pick<MentionEntity, "kind" | "label" | "policy">
+> = {
+  web_search: { kind: "tool", label: "web_search", policy: "readonly" },
+  code_interpreter: { kind: "tool", label: "code_interpreter" },
+  artifact_create: { kind: "tool", label: "artifact_create" },
+  deep_research: { kind: "agent", label: "딥리서치" },
+};
 
 const BOTTOM_THRESHOLD_PX = 80;
 const ANNOUNCE_DEBOUNCE_MS = 500;
@@ -57,7 +73,11 @@ export function ChatView({ sessionId }: { sessionId: string }) {
     respondHitl,
     artifacts,
     editMessage,
+    regenerate,
     switchBranch,
+    historyLoading,
+    loadHistory,
+    loadArtifacts,
   } = useSessionStream(sessionId);
   const { org } = useCurrentUser();
   const online = useOnlineStatus();
@@ -90,6 +110,58 @@ export function ChatView({ sessionId }: { sessionId: string }) {
       token: ++panelFocusTokenRef.current,
     });
   }
+
+  // Run Rail 눈금 클릭(TS-11 #5) — 우패널 '활동' 탭 오픈(RunRail 은 순수 표시+콜백만 담당).
+  function handleActivityFocus() {
+    setArtifactPanelOpen(true);
+    setRightPanelFocus({
+      tab: "activity",
+      token: ++panelFocusTokenRef.current,
+    });
+  }
+
+  // 인라인 아티팩트 카드 클릭(P18-T6-01) — 기존 자동오픈(artifact_created useEffect,
+  // ChatView.tsx:162-174)과 동일한 열람 흐름(activeArtifactIndex + 우패널 아티팩트 탭)을 재사용.
+  function handleOpenArtifact(artifactId: string) {
+    const index = artifacts.findIndex((a) => a.artifactId === artifactId);
+    if (index === -1) return;
+    setActiveArtifactIndex(index);
+    setArtifactPanelOpen(true);
+    setRightPanelFocus({
+      tab: "artifacts",
+      token: ++panelFocusTokenRef.current,
+    });
+  }
+
+  // 메시지 귀속(P18-T6-01) — artifact_created 는 라이브에서 assistantId 로 messageId 를
+  // 채우지만(useSessionStream.ts), messageId 가 없는 아티팩트(세션 단위 폴백)는 마지막
+  // assistant 메시지 하단에 몰아서 노출한다.
+  const lastAssistantMessageId = useMemo(() => {
+    for (let i = messages.length - 1; i >= 0; i--) {
+      if (messages[i]?.role === "assistant") return messages[i]?.id ?? null;
+    }
+    return null;
+  }, [messages]);
+  const orphanArtifacts = useMemo(
+    () => artifacts.filter((a) => !a.messageId),
+    [artifacts],
+  );
+  function artifactsForMessage(messageId: string): ArtifactSummary[] {
+    const own = artifacts.filter((a) => a.messageId === messageId);
+    return messageId === lastAssistantMessageId
+      ? [...own, ...orphanArtifacts]
+      : own;
+  }
+
+  // @ 피커(TS-11 #1) — dev preview 고정 목록이 아니라 org.allowedTools 로 실배선된 도구만 노출.
+  const mentionEntities = useMemo<MentionEntity[]>(
+    () =>
+      (org?.allowedTools ?? []).flatMap((id) => {
+        const meta = TOOL_MENTION_META[id];
+        return meta ? [{ id, ...meta }] : [];
+      }),
+    [org?.allowedTools],
+  );
 
   // 원문 하이라이트(primary-100)는 2초 후 페이드아웃 — design-reference §6:
   // "클릭: 우패널 '출처' 탭 활성 + 해당 원문 블록 하이라이트(primary-100 배경 2초 페이드)".
@@ -125,17 +197,47 @@ export function ChatView({ sessionId }: { sessionId: string }) {
   // design-reference §4: artifact_created → 우패널 '아티팩트' 탭 자동 오픈 + 토스트.
   useEffect(() => {
     if (artifacts.length > prevArtifactCountRef.current) {
-      setActiveArtifactIndex(artifacts.length - 1);
-      setArtifactPanelOpen(true);
-      setRightPanelFocus({
-        tab: "artifacts",
-        token: ++panelFocusTokenRef.current,
-      });
-      const created = artifacts[artifacts.length - 1];
-      if (created) showToast("success", `새 아티팩트: ${created.filename}`);
+      // P18-T6-02 — 복원된(restored) 항목만으로 늘어난 경우엔 "새 아티팩트"가 아니라
+      // 재방문 시 기존 문서를 되찾은 것뿐이므로 자동오픈+토스트를 건너뛴다.
+      const newlyAdded = artifacts.slice(prevArtifactCountRef.current);
+      const allRestored = newlyAdded.every((a) => a.restored);
+      if (!allRestored) {
+        setActiveArtifactIndex(artifacts.length - 1);
+        setArtifactPanelOpen(true);
+        setRightPanelFocus({
+          tab: "artifacts",
+          token: ++panelFocusTokenRef.current,
+        });
+        const created = artifacts[artifacts.length - 1];
+        if (created) showToast("success", `새 아티팩트: ${created.filename}`);
+      }
     }
     prevArtifactCountRef.current = artifacts.length;
   }, [artifacts]);
+
+  // P17-T6-04(TS-12) — deep_research tool_use 가 도착하면 클릭 없이도 우패널 활동 탭을
+  // 자동 오픈(artifact_created 자동오픈과 동일 패턴). toolCallId 별 1회만 트리거되도록
+  // 이미 본 id 를 기억해, tool_progress/tool_result 후속 이벤트로 messages 가 재계산돼도
+  // 활동 탭이 반복해서 강제로 다시 포커스되지 않게 한다(사용자가 다른 탭으로 옮겨도 유지).
+  const seenDeepResearchCallsRef = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    for (const m of messages) {
+      for (const p of m.parts ?? []) {
+        if (
+          p.type === "tool" &&
+          p.name === "deep_research" &&
+          !seenDeepResearchCallsRef.current.has(p.toolCallId)
+        ) {
+          seenDeepResearchCallsRef.current.add(p.toolCallId);
+          setArtifactPanelOpen(true);
+          setRightPanelFocus({
+            tab: "activity",
+            token: ++panelFocusTokenRef.current,
+          });
+        }
+      }
+    }
+  }, [messages]);
 
   // Cmd/Ctrl+\ 패널 토글 — 18-FRONTEND-WIREFRAMES § 18.5.1 키맵.
   useEffect(() => {
@@ -154,9 +256,53 @@ export function ChatView({ sessionId }: { sessionId: string }) {
     if (el && autoFollow) el.scrollTop = el.scrollHeight;
   }, [messages, isStreaming, autoFollow]);
 
+  // P17-T6-01(TS-08) — 세션을 열 때(마운트/세션 전환) 과거 대화를 서버에서 복원.
+  useEffect(() => {
+    void loadHistory();
+  }, [loadHistory]);
+
+  // P18-T6-02 — 세션을 열 때 아티팩트도 함께 복원(라이브 스트림으로만 채워지면
+  // 재방문/새로고침 시 사라짐, P18 증상②).
+  useEffect(() => {
+    void loadArtifacts();
+  }, [loadArtifacts]);
+
   const lastMessage = messages[messages.length - 1];
   const lastAssistantContent =
     lastMessage?.role === "assistant" ? lastMessage.content : "";
+
+  // P17-T6-08(TS-24) — 오프라인→온라인 복귀 시, SSE 드롭+재연결(resume)까지 실패해
+  // 남은 network 오류(errorCategory==="network")만 골라 사용자 클릭 없이 자동 재전송한다.
+  // (rate-limit 등 다른 재시도 가능 오류까지 무조건 자동 재전송하면 안 되므로 카테고리로 한정.)
+  // 지수 백오프: 같은 오프라인 구간에서 반복 실패할수록 대기시간을 2배씩 늘린다(최대 16초).
+  const wasOnlineRef = useRef(online);
+  const reconnectAttemptRef = useRef(0);
+  useEffect(() => {
+    if (!online) {
+      reconnectAttemptRef.current = 0;
+    }
+  }, [online]);
+  useEffect(() => {
+    const cameBackOnline = online && wasOnlineRef.current === false;
+    wasOnlineRef.current = online;
+    if (!cameBackOnline) return;
+    if (
+      !lastMessage ||
+      lastMessage.role !== "assistant" ||
+      !lastMessage.error ||
+      !lastMessage.retryable ||
+      lastMessage.errorCategory !== "network"
+    ) {
+      return;
+    }
+    const attempt = reconnectAttemptRef.current;
+    reconnectAttemptRef.current = attempt + 1;
+    const delayMs = Math.min(1000 * 2 ** attempt, 16_000);
+    const timer = setTimeout(() => {
+      void regenerate(lastMessage.id);
+    }, delayMs);
+    return () => clearTimeout(timer);
+  }, [online, lastMessage, regenerate]);
 
   // 빠른 델타마다 SR 안내가 갱신되면 스크린리더가 매 글자를 읽어 소음이 되므로,
   // 델타가 잠잠해진 뒤(트레일링 디바운스)에만 announcer 텍스트를 갱신한다.
@@ -248,7 +394,14 @@ export function ChatView({ sessionId }: { sessionId: string }) {
             <div className="sr-only" data-testid="stream-announcer">
               {announceText}
             </div>
-            {empty ? (
+            {historyLoading ? (
+              <div
+                data-testid="history-loading"
+                className="grid h-full place-items-center text-sm text-fg-muted"
+              >
+                대화 불러오는 중…
+              </div>
+            ) : empty ? (
               <div className="grid h-full place-items-center px-6">
                 <div className="text-center">
                   <div className="mx-auto grid h-14 w-14 place-items-center rounded-2xl bg-primary text-2xl font-bold text-primary-fg">
@@ -304,26 +457,28 @@ export function ChatView({ sessionId }: { sessionId: string }) {
                         i === messages.length - 1 &&
                         m.role === "assistant"
                       }
+                      artifacts={
+                        m.role === "assistant" ? artifactsForMessage(m.id) : []
+                      }
+                      onOpenArtifact={handleOpenArtifact}
                       onCitationFocus={handleCitationFocus}
+                      onActivityFocus={handleActivityFocus}
                       {...(canRegenerate
                         ? {
-                            onRegenerate: () => {
-                              const priorUser = messages
-                                .slice(0, i)
-                                .reverse()
-                                .find((prev) => prev.role === "user");
-                              if (priorUser) void send(priorUser.content);
-                            },
+                            // P17-T6-03(TS-06) — 재생성은 같은 user 턴 아래 새 assistant
+                            // 형제를 만든다(중복 turn 아님, editMessage 와 동일 tree 의미).
+                            onRegenerate: () => void regenerate(m.id),
                           }
                         : {})}
                       {...(m.role === "user"
                         ? {
                             onEditSubmit: (nextContent: string) =>
                               void editMessage(m.id, nextContent),
-                            onSwitchBranch: (direction: "prev" | "next") =>
-                              switchBranch(m.id, direction),
                           }
                         : {})}
+                      onSwitchBranch={(direction: "prev" | "next") =>
+                        switchBranch(m.id, direction)
+                      }
                     />
                   );
                 })}
@@ -377,6 +532,7 @@ export function ChatView({ sessionId }: { sessionId: string }) {
             onSlashCommand={(command) => {
               if (command.id === "memories") setMemoryPanelOpen(true);
             }}
+            mentionEntities={mentionEntities}
             availableModels={org?.allowedModels ?? []}
             availableTools={org?.allowedTools ?? []}
           />
@@ -409,6 +565,33 @@ export function ChatView({ sessionId }: { sessionId: string }) {
   );
 }
 
+// P17-T6-08(TS-24) — 429/rate-limit 오류의 백오프 대기시간(서버가 Retry-After 를 아직
+// 전달하지 않아 클라이언트 기본값을 쓴다). 카운트다운이 끝나면 사용자 클릭 없이 자동 재시도.
+const RATE_LIMIT_BACKOFF_MS = 3000;
+
+function useRateLimitCountdown(active: boolean, onExpire: () => void): number {
+  const [retryAt] = useState(() => Date.now() + RATE_LIMIT_BACKOFF_MS);
+  const [remainingMs, setRemainingMs] = useState(() => retryAt - Date.now());
+  const firedRef = useRef(false);
+  const onExpireRef = useRef(onExpire);
+  onExpireRef.current = onExpire;
+
+  useEffect(() => {
+    if (!active || remainingMs <= 0) return;
+    const timer = setTimeout(() => setRemainingMs(retryAt - Date.now()), 1000);
+    return () => clearTimeout(timer);
+  }, [active, remainingMs, retryAt]);
+
+  useEffect(() => {
+    if (active && remainingMs <= 0 && !firedRef.current) {
+      firedRef.current = true;
+      onExpireRef.current();
+    }
+  }, [active, remainingMs]);
+
+  return Math.max(0, remainingMs);
+}
+
 export function MessageItem({
   role,
   content,
@@ -419,10 +602,13 @@ export function MessageItem({
   error,
   retryable,
   errorCategory,
+  artifacts,
   onRegenerate,
   onEditSubmit,
   onSwitchBranch,
   onCitationFocus,
+  onActivityFocus,
+  onOpenArtifact,
 }: {
   role: "user" | "assistant";
   content: string;
@@ -433,10 +619,13 @@ export function MessageItem({
   error?: boolean;
   retryable?: boolean;
   errorCategory?: string;
+  artifacts?: ArtifactSummary[];
   onRegenerate?: () => void;
   onEditSubmit?: (nextContent: string) => void;
   onSwitchBranch?: (direction: "prev" | "next") => void;
   onCitationFocus?: (index: number) => void;
+  onActivityFocus?: () => void;
+  onOpenArtifact?: (artifactId: string) => void;
 }) {
   const [focusedCitation, setFocusedCitation] = useState<number | null>(null);
   const [isEditing, setIsEditing] = useState(false);
@@ -447,9 +636,17 @@ export function MessageItem({
     el?.scrollIntoView?.({ block: "nearest" });
     onCitationFocus?.(index);
   };
+  const isRateLimitError = Boolean(
+    error && errorCategory === "rate-limit" && retryable,
+  );
+  const rateLimitMsLeft = useRateLimitCountdown(isRateLimitError, () => {
+    onRegenerate?.();
+  });
   if (error) {
     // P10-T6-17 — 재시도 가능(retryable:true) 오류만 재시도 버튼 노출(크레딧부족 등
-    // 비재시도 오류는 노출 안 함). rate-limit 카테고리는 429 백오프 안내를 덧붙인다.
+    // 비재시도 오류는 노출 안 함). rate-limit 카테고리는 mono 백오프 카운트다운을
+    // 덧붙이고, 카운트다운이 끝나면 클릭 없이 자동으로 재시도한다(useRateLimitCountdown).
+    const rateLimitSecondsLeft = Math.ceil(rateLimitMsLeft / 1000);
     return (
       <li data-role="error" className="flex gap-3">
         <div className="mt-0.5 grid h-8 w-8 flex-none place-items-center rounded-lg bg-accent text-sm font-bold text-white">
@@ -458,9 +655,14 @@ export function MessageItem({
         <div className="flex min-w-0 flex-1 items-start justify-between gap-3 rounded-xl border border-accent/40 bg-accent/10 px-3 py-2 text-sm text-accent">
           <span>
             <span className="font-semibold">오류</span> · {content}
-            {errorCategory === "rate-limit" && (
-              <span className="ml-1 text-accent/80">
-                잠시 후 다시 시도해주세요.
+            {isRateLimitError && (
+              <span
+                data-testid="rate-limit-countdown"
+                className="ml-1 font-mono tabular-nums text-accent/80"
+              >
+                {rateLimitSecondsLeft > 0
+                  ? ` ${rateLimitSecondsLeft}초 후 자동 재시도`
+                  : " 재시도 중…"}
               </span>
             )}
           </span>
@@ -568,7 +770,9 @@ export function MessageItem({
     .map((p) => ({ id: p.toolCallId, label: p.name, status: p.status }));
   return (
     <li data-role="assistant" className="group flex gap-3">
-      {hasToolParts && <RunRail steps={runRailSteps} />}
+      {hasToolParts && (
+        <RunRail steps={runRailSteps} onStepClick={() => onActivityFocus?.()} />
+      )}
       <div className="min-w-0 flex-1">
         {hasToolParts ? (
           <div className="space-y-3">
@@ -609,6 +813,17 @@ export function MessageItem({
             {content}
           </Markdown>
         ) : null}
+        {artifacts && artifacts.length > 0 && (
+          <div className="flex flex-wrap gap-2">
+            {artifacts.map((a) => (
+              <ArtifactCard
+                key={a.artifactId}
+                artifact={a}
+                onOpen={() => onOpenArtifact?.(a.artifactId)}
+              />
+            ))}
+          </div>
+        )}
         {citations && citations.length > 0 && (
           <div
             data-testid="citation-reference-footer"
@@ -649,13 +864,42 @@ export function MessageItem({
             aria-label="응답 생성 중"
           />
         )}
-        {!streaming && (
-          <div className="mt-1 opacity-0 transition-opacity group-hover:opacity-100">
-            <MessageActions
-              role="assistant"
-              content={content}
-              {...(onRegenerate ? { onRegenerate } : {})}
-            />
+        {(!streaming || (branch && branch.count > 1)) && (
+          <div className="mt-1 flex items-center gap-2">
+            {branch && branch.count > 1 && (
+              <div className="flex items-center gap-1 text-fg-muted">
+                <button
+                  type="button"
+                  aria-label="이전 응답"
+                  disabled={branch.index === 1}
+                  onClick={() => onSwitchBranch?.("prev")}
+                  className="rounded-md px-1 py-0.5 text-xs hover:text-fg disabled:opacity-30"
+                >
+                  ‹
+                </button>
+                <span data-testid="message-branch-pager" className="text-xs">
+                  {branch.index} / {branch.count}
+                </span>
+                <button
+                  type="button"
+                  aria-label="다음 응답"
+                  disabled={branch.index === branch.count}
+                  onClick={() => onSwitchBranch?.("next")}
+                  className="rounded-md px-1 py-0.5 text-xs hover:text-fg disabled:opacity-30"
+                >
+                  ›
+                </button>
+              </div>
+            )}
+            {!streaming && (
+              <div className="opacity-0 transition-opacity group-hover:opacity-100">
+                <MessageActions
+                  role="assistant"
+                  content={content}
+                  {...(onRegenerate ? { onRegenerate } : {})}
+                />
+              </div>
+            )}
           </div>
         )}
       </div>

@@ -127,9 +127,17 @@ export function createArtifactRoutes(deps: {
     }
 
     const { content, mimeType } = await storeFor(found).getInline(found.id);
+    // HTTP 헤더 값은 Latin1(ByteString) 만 허용 — 비ASCII(한글 등) 파일명을 그대로 넣으면
+    //   "Cannot convert to ByteString" 로 500. RFC 6266: ASCII fallback(filename) +
+    //   UTF-8 percent-encoded(filename*) 를 함께 제공한다.
+    const asciiName =
+      found.filename.replace(/[^\x20-\x7e]/g, "_").replace(/["\\]/g, "") ||
+      "download";
     return c.body(content, 200, {
       "content-type": mimeType,
-      "content-disposition": `attachment; filename="${found.filename}"`,
+      "content-disposition": `attachment; filename="${asciiName}"; filename*=UTF-8''${encodeURIComponent(
+        found.filename,
+      )}`,
     });
   });
 

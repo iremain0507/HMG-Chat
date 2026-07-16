@@ -2,9 +2,10 @@
 
 // components/artifacts/ShareDialog.tsx — 19-UIUX-UPGRADE.md § P10-T6-10,
 // 16-API-CONTRACT § 8 Artifact Shares(POST/DELETE /artifacts/:id/share) 단일 출처.
-import React, { useState } from "react";
+import React, { useRef, useState } from "react";
 import { apiFetch } from "../../lib/fetch-with-refresh";
 import { copyText } from "../../lib/clipboard";
+import { useFocusTrap } from "../../hooks/useFocusTrap";
 
 interface ShareLink {
   token: string;
@@ -22,6 +23,8 @@ export function ShareDialog({
   const [link, setLink] = useState<ShareLink | null>(null);
   const [pending, setPending] = useState(false);
   const [copied, setCopied] = useState(false);
+  const dialogRef = useRef<HTMLDivElement>(null);
+  useFocusTrap(dialogRef, { active: true, onClose });
 
   async function generate() {
     setPending(true);
@@ -66,6 +69,7 @@ export function ShareDialog({
       onClick={onClose}
     >
       <div
+        ref={dialogRef}
         role="dialog"
         aria-label="공유"
         aria-modal="true"

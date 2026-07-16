@@ -179,6 +179,29 @@ export function createPgDocumentDataAccess(): DocumentDataAccess {
         }
         return results;
       },
+      async list(filter, pagination) {
+        const conditions: string[] = [];
+        const values: unknown[] = [];
+        let i = 1;
+        if (filter?.documentId) {
+          conditions.push(`document_id = $${i}`);
+          values.push(filter.documentId);
+          i++;
+        }
+        const where = conditions.length
+          ? `WHERE ${conditions.join(" AND ")}`
+          : "";
+        const limit = pagination?.limit ?? 1000;
+        values.push(limit);
+        const res = await pgPool.query(
+          `SELECT * FROM document_chunks ${where} ORDER BY chunk_index ASC LIMIT $${i}`,
+          values,
+        );
+        return { items: res.rows.map(toChunk) };
+      },
+      async delete(id) {
+        await pgPool.query("DELETE FROM document_chunks WHERE id = $1", [id]);
+      },
     },
   };
 }

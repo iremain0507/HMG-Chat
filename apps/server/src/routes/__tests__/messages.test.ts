@@ -4,12 +4,14 @@ import { Hono } from "hono";
 import type {
   AgentTool,
   ChatEvent,
+  ChatInput,
   LLMProvider,
   PromptBlock,
 } from "@wchat/interfaces";
 import type { AuthedVariables } from "../../middleware/auth-middleware.js";
 import { listPendingHitl, resolveHitl } from "../../tools/hitl-manager.js";
 import { createMessageRoutes, type AttachmentsPort } from "../messages.js";
+import { DEFAULT_ORG_SETTINGS } from "../../lib/org-settings-schema.js";
 
 function fakeHelloProvider(): LLMProvider {
   return {
@@ -193,6 +195,80 @@ describe("POST /:id/messages (SSE) — 16-API-CONTRACT § /sessions/:id/messages
     expect(capturedSystemBlocks).toHaveLength(1);
     const blockText = capturedSystemBlocks[0].map((b) => b.content).join("\n");
     expect(blockText).toContain("spec.pdf");
+  });
+
+  it("attachments.searchEphemeralChunks 결과가 citation SSE 이벤트로 반영된다 (P17-T1-05)", async () => {
+    const attachments: AttachmentsPort = {
+      async resolveEphemeralContext() {
+        return null;
+      },
+      async searchEphemeralChunks(input) {
+        expect(input).toEqual({
+          sessionId: "session-1",
+          uploadIds: ["u1"],
+          queryText: "hi",
+        });
+        return [
+          {
+            index: 1,
+            source: "ephemeral",
+            uploadId: "u1",
+            filename: "spec.pdf",
+            snippet: "관련 내용",
+          },
+        ];
+      },
+    };
+    const app = createMessageRoutes({
+      provider: fakeHelloProvider(),
+      model: "fake-model",
+      attachments,
+    });
+
+    const res = await app.request("/session-1/messages", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "text/event-stream",
+      },
+      body: JSON.stringify({
+        content: "hi",
+        attachments: [{ uploadId: "u1" }],
+      }),
+    });
+    const text = await res.text();
+
+    expect(text).toContain("event: citation");
+    expect(text).toContain('"uploadId":"u1"');
+    expect(text).toContain('"filename":"spec.pdf"');
+  });
+
+  it("attachments 가 없으면 citation 이벤트가 방출되지 않는다 (기존 동작 보존)", async () => {
+    const attachments: AttachmentsPort = {
+      async resolveEphemeralContext() {
+        return null;
+      },
+      async searchEphemeralChunks() {
+        throw new Error("호출되면 안 됨");
+      },
+    };
+    const app = createMessageRoutes({
+      provider: fakeHelloProvider(),
+      model: "fake-model",
+      attachments,
+    });
+
+    const res = await app.request("/session-1/messages", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "text/event-stream",
+      },
+      body: JSON.stringify({ content: "hi" }),
+    });
+    const text = await res.text();
+
+    expect(text).not.toContain("event: citation");
   });
 });
 
@@ -478,5 +554,249 @@ describe("POST /:id/messages — tools/toolContext 배선 — P11-T2-02", () => 
     });
     expect(res.status).toBe(200);
     await res.text();
+  });
+});
+
+describe("POST /:id/messages — org settings 배선(트리거 버그 근본해결) — P14-T2-01", () => {
+  function appWithAuth(routes: ReturnType<typeof createMessageRoutes>) {
+    const app = new Hono<{ Variables: AuthedVariables }>();
+    app.use("*", async (c, next) => {
+      c.set("auth", {
+        sub: "user-1",
+        org: "org-1",
+        role: "member",
+        scope: "access",
+        jti: "x",
+      });
+      await next();
+    });
+    app.route("/", routes);
+    return app;
+  }
+
+  function capturingProvider(captured: ChatInput[]): LLMProvider {
+    return {
+      name: "fake",
+      models: ["fake-model", "org-default-model"],
+      async *chat(req) {
+        captured.push(req);
+        const events: ChatEvent[] = [
+          {
+            type: "message_start",
+            messageId: "msg-settings-1",
+            meta: { provider: "fake", model: req.model },
+          },
+          { type: "text_delta", text: "ok" },
+          {
+            type: "stop",
+            reason: "end_turn",
+            usage: { inputTokens: 1, outputTokens: 1 },
+          },
+        ];
+        for (const event of events) yield event;
+      },
+    };
+  }
+
+  it("org maxTokens=8192 설정이 runTurn/ChatInput 에 실제 반영된다(1024 아님)", async () => {
+    const captured: ChatInput[] = [];
+    const routes = createMessageRoutes({
+      provider: capturingProvider(captured),
+      model: "fake-model",
+      settings: {
+        async resolve() {
+          return { ...DEFAULT_ORG_SETTINGS, maxTokens: 8192 };
+        },
+      },
+    });
+    const app = appWithAuth(routes);
+
+    const res = await app.request("/session-1/messages", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "text/event-stream",
+      },
+      body: JSON.stringify({ content: "hi" }),
+    });
+    expect(res.status).toBe(200);
+    const text = await res.text();
+
+    expect(captured).toHaveLength(1);
+    expect(captured[0].maxTokens).toBe(8192);
+    // SSE 정상 stop 회귀 — 설정 배선이 정상 종료 흐름을 깨지 않는다.
+    expect(text).toContain("event: stop");
+    expect(text).toContain('"reason":"end_turn"');
+  });
+
+  it("settings 미주입 시에도 maxTokens 기본값은 4096 이상이다(구 1024 폴백 금지 — L2)", async () => {
+    const captured: ChatInput[] = [];
+    const app = createMessageRoutes({
+      provider: capturingProvider(captured),
+      model: "fake-model",
+    });
+
+    const res = await app.request("/session-1/messages", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ content: "hi" }),
+    });
+    expect(res.status).toBe(200);
+    await res.text();
+
+    expect(captured).toHaveLength(1);
+    expect(captured[0].maxTokens).toBeGreaterThanOrEqual(4096);
+  });
+
+  it("settings 조회가 실패(reject)해도 fail-soft 로 4096 이상을 사용한다(L2/L5 — throw 금지)", async () => {
+    const captured: ChatInput[] = [];
+    const routes = createMessageRoutes({
+      provider: capturingProvider(captured),
+      model: "fake-model",
+      settings: {
+        async resolve() {
+          throw new Error("db down");
+        },
+      },
+    });
+    const app = appWithAuth(routes);
+
+    const res = await app.request("/session-1/messages", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ content: "hi" }),
+    });
+    expect(res.status).toBe(200);
+    await res.text();
+
+    expect(captured).toHaveLength(1);
+    expect(captured[0].maxTokens).toBeGreaterThanOrEqual(4096);
+  });
+
+  it("org systemPrompt 설정이 system-tier PromptBlock 로 systemBlocks 맨 앞에 추가된다", async () => {
+    const captured: ChatInput[] = [];
+    const routes = createMessageRoutes({
+      provider: capturingProvider(captured),
+      model: "fake-model",
+      systemBlocks: [{ tier: "project", content: "기존 프로젝트 블록" }],
+      settings: {
+        async resolve() {
+          return {
+            ...DEFAULT_ORG_SETTINGS,
+            systemPrompt: "당신은 WIA 상담원입니다.",
+          };
+        },
+      },
+    });
+    const app = appWithAuth(routes);
+
+    const res = await app.request("/session-1/messages", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ content: "hi" }),
+    });
+    await res.text();
+
+    expect(captured).toHaveLength(1);
+    const blocks = captured[0].systemBlocks;
+    expect(blocks[0].tier).toBe("system");
+    expect(blocks[0].content).toBe("당신은 WIA 상담원입니다.");
+    expect(blocks.some((b) => b.content === "기존 프로젝트 블록")).toBe(true);
+  });
+
+  it("org defaultModel 설정이 body.model 미지정 시 실 turn model 로 반영된다", async () => {
+    const captured: ChatInput[] = [];
+    const routes = createMessageRoutes({
+      provider: capturingProvider(captured),
+      model: "fake-model",
+      settings: {
+        async resolve() {
+          return { ...DEFAULT_ORG_SETTINGS, defaultModel: "org-default-model" };
+        },
+      },
+    });
+    const app = appWithAuth(routes);
+
+    const res = await app.request("/session-1/messages", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ content: "hi" }),
+    });
+    await res.text();
+
+    expect(captured).toHaveLength(1);
+    expect(captured[0].model).toBe("org-default-model");
+  });
+
+  it("org temperature=0.2·topP=0.5 설정이 runTurn/ChatInput 에 실제 반영된다(P15-T2-01)", async () => {
+    const captured: ChatInput[] = [];
+    const routes = createMessageRoutes({
+      provider: capturingProvider(captured),
+      model: "fake-model",
+      settings: {
+        async resolve() {
+          return { ...DEFAULT_ORG_SETTINGS, temperature: 0.2, topP: 0.5 };
+        },
+      },
+    });
+    const app = appWithAuth(routes);
+
+    const res = await app.request("/session-1/messages", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ content: "hi" }),
+    });
+    expect(res.status).toBe(200);
+    await res.text();
+
+    expect(captured).toHaveLength(1);
+    expect(captured[0].temperature).toBe(0.2);
+    expect(captured[0].topP).toBe(0.5);
+  });
+
+  it("org 가 temperature/topP 를 기본값(DEFAULT_ORG_SETTINGS)에서 바꾸지 않았으면 ChatInput 에 forward 하지 않는다(provider 기본 유지, 비파괴)", async () => {
+    const captured: ChatInput[] = [];
+    const routes = createMessageRoutes({
+      provider: capturingProvider(captured),
+      model: "fake-model",
+      settings: {
+        async resolve() {
+          return DEFAULT_ORG_SETTINGS;
+        },
+      },
+    });
+    const app = appWithAuth(routes);
+
+    const res = await app.request("/session-1/messages", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ content: "hi" }),
+    });
+    expect(res.status).toBe(200);
+    await res.text();
+
+    expect(captured).toHaveLength(1);
+    expect(captured[0]).not.toHaveProperty("temperature");
+    expect(captured[0]).not.toHaveProperty("topP");
+  });
+
+  it("settings 미주입 시에도 temperature/topP 를 forward 하지 않는다(비파괴)", async () => {
+    const captured: ChatInput[] = [];
+    const app = createMessageRoutes({
+      provider: capturingProvider(captured),
+      model: "fake-model",
+    });
+
+    const res = await app.request("/session-1/messages", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ content: "hi" }),
+    });
+    expect(res.status).toBe(200);
+    await res.text();
+
+    expect(captured).toHaveLength(1);
+    expect(captured[0]).not.toHaveProperty("temperature");
+    expect(captured[0]).not.toHaveProperty("topP");
   });
 });

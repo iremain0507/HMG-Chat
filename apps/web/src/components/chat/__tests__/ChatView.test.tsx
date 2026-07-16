@@ -10,6 +10,7 @@ import {
   waitFor,
   cleanup,
   act,
+  within,
 } from "@testing-library/react";
 import "@testing-library/jest-dom/vitest";
 import { ChatView } from "../ChatView";
@@ -201,6 +202,22 @@ describe("ChatView", () => {
     });
 
     fetchMock.mockClear();
+    fetchMock.mockImplementationOnce(async () => ({
+      body: new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.enqueue(
+            encoder.encode(sseFrame("message_start", { messageId: "msg-2" })),
+          );
+          controller.enqueue(
+            encoder.encode(sseFrame("text_delta", { text: "대안 응답" })),
+          );
+          controller.enqueue(
+            encoder.encode(sseFrame("stop", { reason: "end_turn" })),
+          );
+          controller.close();
+        },
+      }),
+    }));
     fireEvent.click(screen.getByRole("button", { name: "재생성" }));
 
     await waitFor(() => {
@@ -211,6 +228,24 @@ describe("ChatView", () => {
         }),
       );
     });
+
+    // P17-T6-03(TS-06) — 재생성은 새 user 턴을 추가하지 않는다(중복 turn 아님) +
+    // 같은 user 턴 아래 assistant 형제 페이저(2/2)가 생긴다.
+    await waitFor(() => {
+      expect(screen.getByText("대안 응답")).toBeInTheDocument();
+    });
+    expect(screen.getAllByText("hi")).toHaveLength(1);
+    expect(screen.getByTestId("message-branch-pager")).toHaveTextContent(
+      "2 / 2",
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "이전 응답" }));
+    await waitFor(() => {
+      expect(screen.getByText("hello")).toBeInTheDocument();
+    });
+    expect(screen.getByTestId("message-branch-pager")).toHaveTextContent(
+      "1 / 2",
+    );
   });
 
   it("첫 토큰 도착 전에는 shimmer 스켈레톤을 보여주고 델타 도착 시 사라진다", async () => {
@@ -485,6 +520,236 @@ describe("ChatView", () => {
     );
   });
 
+  // P17-T6-02(TS-11) — Run Rail 눈금 클릭은 우패널 '활동' 탭을 열어야 한다(onStepClick 미배선 시 RED).
+  it("Run Rail 눈금을 클릭하면 우패널 활동 탭이 열린다", async () => {
+    const encoder = new TextEncoder();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({
+        ok: true,
+        json: async () => ({ data: [] }),
+        body: new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.enqueue(
+              encoder.encode(sseFrame("message_start", { messageId: "msg-1" })),
+            );
+            controller.enqueue(
+              encoder.encode(
+                sseFrame("tool_use", {
+                  toolCallId: "call-1",
+                  name: "deep_research",
+                  args: { query: "wchat" },
+                }),
+              ),
+            );
+            controller.enqueue(
+              encoder.encode(
+                sseFrame("tool_progress", {
+                  toolCallId: "call-1",
+                  stage: "researching",
+                }),
+              ),
+            );
+            controller.enqueue(
+              encoder.encode(
+                sseFrame("tool_result", {
+                  toolCallId: "call-1",
+                  content: "정리 완료",
+                }),
+              ),
+            );
+            controller.enqueue(
+              encoder.encode(sseFrame("stop", { reason: "end_turn" })),
+            );
+            controller.close();
+          },
+        }),
+      })),
+    );
+
+    render(<ChatView sessionId="session-1" />);
+    fireEvent.change(screen.getByLabelText("메시지 입력"), {
+      target: { value: "리서치해줘" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "전송" }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("run-rail-tick-call-1")).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByTestId("run-rail-tick-call-1"));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("artifact-panel-tab-activity")).toHaveAttribute(
+        "aria-pressed",
+        "true",
+      );
+    });
+  });
+
+  // P17-T6-04(TS-12) — deep_research tool_use 가 도착하면 클릭 없이도 우패널 활동 탭이 자동 오픈된다.
+  it("deep_research tool_use 가 도착하면 우패널 활동 탭이 자동으로 열린다", async () => {
+    const encoder = new TextEncoder();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({
+        ok: true,
+        json: async () => ({ data: [] }),
+        body: new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.enqueue(
+              encoder.encode(sseFrame("message_start", { messageId: "msg-1" })),
+            );
+            controller.enqueue(
+              encoder.encode(
+                sseFrame("tool_use", {
+                  toolCallId: "call-1",
+                  name: "deep_research",
+                  args: { query: "wchat" },
+                }),
+              ),
+            );
+            controller.enqueue(
+              encoder.encode(
+                sseFrame("tool_progress", {
+                  toolCallId: "call-1",
+                  stage: "planning",
+                }),
+              ),
+            );
+            controller.close();
+          },
+        }),
+      })),
+    );
+
+    render(<ChatView sessionId="session-1" />);
+    fireEvent.change(screen.getByLabelText("메시지 입력"), {
+      target: { value: "@딥리서치 조사해줘" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "전송" }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("artifact-panel-tab-activity")).toHaveAttribute(
+        "aria-pressed",
+        "true",
+      );
+    });
+  });
+
+  // P17-T6-04(TS-12) — deep_research 가 아닌 도구(web_search)는 활동 탭을 자동으로 열지 않는다.
+  it("deep_research 가 아닌 도구는 활동 탭을 자동으로 열지 않는다", async () => {
+    const encoder = new TextEncoder();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({
+        ok: true,
+        json: async () => ({ data: [] }),
+        body: new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.enqueue(
+              encoder.encode(sseFrame("message_start", { messageId: "msg-1" })),
+            );
+            controller.enqueue(
+              encoder.encode(
+                sseFrame("tool_use", {
+                  toolCallId: "call-1",
+                  name: "web_search",
+                  args: { query: "wchat" },
+                }),
+              ),
+            );
+            controller.enqueue(
+              encoder.encode(
+                sseFrame("tool_result", {
+                  toolCallId: "call-1",
+                  content: "검색 결과",
+                }),
+              ),
+            );
+            controller.enqueue(
+              encoder.encode(sseFrame("stop", { reason: "end_turn" })),
+            );
+            controller.close();
+          },
+        }),
+      })),
+    );
+
+    render(<ChatView sessionId="session-1" />);
+    fireEvent.change(screen.getByLabelText("메시지 입력"), {
+      target: { value: "웹 검색해줘" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "전송" }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("run-rail-tick-call-1")).toBeInTheDocument();
+    });
+    expect(
+      screen.queryByTestId("artifact-panel-tab-activity"),
+    ).not.toBeInTheDocument();
+  });
+
+  // P17-T6-02(TS-11) — @ 피커는 dev preview 고정 목록이 아니라 org.allowedTools 기반 실제
+  // 도구/에이전트를 렌더해야 한다(현재 ChatView 가 mentionEntities 를 전달하지 않아 RED).
+  it("@ 멘션 피커가 org.allowedTools 기반 실제 도구/에이전트 목록을 렌더한다", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = typeof input === "string" ? input : input.toString();
+        if (url.includes("/auth/me")) {
+          return {
+            ok: true,
+            json: async () => ({
+              data: {
+                user: {
+                  id: "u1",
+                  email: "a@b.com",
+                  name: "A",
+                  orgId: "org-1",
+                  role: "member",
+                  customInstructions: null,
+                  createdAt: "",
+                },
+                org: {
+                  id: "org-1",
+                  name: "Org",
+                  domain: "b.com",
+                  plan: "pro",
+                  allowedModels: [],
+                  allowedTools: ["web_search", "deep_research"],
+                  defaultTokenBudgetMicros: null,
+                  createdAt: "",
+                  updatedAt: "",
+                },
+              },
+            }),
+          };
+        }
+        return {
+          ok: true,
+          json: async () => ({ data: [] }),
+          body: new ReadableStream<Uint8Array>({
+            start(controller) {
+              controller.close();
+            },
+          }),
+        };
+      }),
+    );
+
+    render(<ChatView sessionId="session-1" />);
+
+    fireEvent.change(screen.getByLabelText("메시지 입력"), {
+      target: { value: "@" },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("web_search")).toBeInTheDocument();
+    });
+    expect(screen.getByText("딥리서치")).toBeInTheDocument();
+  });
+
   it("tool_result 가 error content 를 담으면 재시도 칩이 렌더되고 클릭 시 마지막 user 메시지를 재전송한다", async () => {
     const encoder = new TextEncoder();
     const fetchMock = vi.fn(async () => ({
@@ -660,6 +925,143 @@ describe("ChatView", () => {
       expect(screen.queryByTestId("offline-banner")).not.toBeInTheDocument();
     });
   });
+
+  // P17-T6-08(TS-24) — 429/rate-limit 오류는 재시도 버튼과 별개로 mono 백오프
+  // 카운트다운을 보여주고, 카운트다운이 끝나면 사용자 클릭 없이 자동 재전송한다.
+  it("rate-limit 오류는 mono 백오프 카운트다운을 렌더하고, 카운트다운이 끝나면 자동으로 재전송한다", async () => {
+    const encoder = new TextEncoder();
+    const fetchMock = vi.fn(async () => ({
+      body: new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.enqueue(
+            encoder.encode(sseFrame("message_start", { messageId: "msg-1" })),
+          );
+          controller.enqueue(
+            encoder.encode(
+              sseFrame("error", {
+                error: {
+                  code: "RATE_LIMITED",
+                  category: "rate-limit",
+                  message: "요청이 너무 많습니다",
+                  retryable: true,
+                },
+              }),
+            ),
+          );
+          controller.close();
+        },
+      }),
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<ChatView sessionId="session-1" />);
+    fireEvent.change(screen.getByLabelText("메시지 입력"), {
+      target: { value: "다시 물어볼게" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "전송" }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("rate-limit-countdown")).toBeInTheDocument();
+    });
+    expect(screen.getByTestId("rate-limit-countdown")).toHaveClass("font-mono");
+
+    fetchMock.mockClear();
+
+    await waitFor(
+      () => {
+        expect(fetchMock).toHaveBeenCalledWith(
+          "/api/v1/sessions/session-1/messages",
+          expect.objectContaining({
+            body: JSON.stringify({ content: "다시 물어볼게" }),
+          }),
+        );
+      },
+      { timeout: 4500 },
+    );
+  }, 6000);
+
+  // P17-T6-08(TS-24) — SSE 재연결(resume)까지 실패해 발생한 network 오류는, 오프라인→
+  // 온라인 전환 시 사용자 클릭 없이 자동으로 재전송한다(오프라인 배너와 별개 동작).
+  it("네트워크 오류(연결 끊김) 후 오프라인→온라인으로 전환되면 자동으로 재전송한다", async () => {
+    const encoder = new TextEncoder();
+    const messagesUrl = "/api/v1/sessions/session-1/messages";
+    // 마운트 시 useCurrentUser/useProjects/useSessionProject/loadHistory 등도
+    // 같은 fetch 를 공유하므로, 대상 POST(전송)/GET(resume)만 시나리오대로 순서 제어하고
+    // 나머지는 기존 다른 테스트들처럼 안전한 기본 응답으로 흘려보낸다(fail-soft 훅들).
+    let sendCount = 0;
+    const fetchMock = vi.fn(async (url: unknown, init?: RequestInit) => {
+      const href = String(url);
+      if (init?.method === "POST" && href === messagesUrl) {
+        sendCount += 1;
+        if (sendCount === 1) {
+          return {
+            body: new ReadableStream<Uint8Array>({
+              start(controller) {
+                controller.enqueue(
+                  encoder.encode(
+                    sseFrame("message_start", { messageId: "msg-1" }),
+                  ),
+                );
+                controller.close();
+              },
+            }),
+          };
+        }
+        return {
+          body: new ReadableStream<Uint8Array>({
+            start(controller) {
+              controller.enqueue(
+                encoder.encode(
+                  sseFrame("message_start", { messageId: "msg-2" }),
+                ),
+              );
+              controller.enqueue(
+                encoder.encode(sseFrame("stop", { reason: "end_turn" })),
+              );
+              controller.close();
+            },
+          }),
+        };
+      }
+      if (href.includes(`${messagesUrl}/msg-1/stream`)) {
+        throw new Error("network down");
+      }
+      return { ok: false };
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<ChatView sessionId="session-1" />);
+    fireEvent.change(screen.getByLabelText("메시지 입력"), {
+      target: { value: "다시 연결" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "전송" }));
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("연결이 끊어졌습니다. 다시 시도해주세요."),
+      ).toBeInTheDocument();
+    });
+
+    fetchMock.mockClear();
+    act(() => {
+      window.dispatchEvent(new Event("offline"));
+    });
+    act(() => {
+      window.dispatchEvent(new Event("online"));
+    });
+
+    await waitFor(
+      () => {
+        expect(fetchMock).toHaveBeenCalledWith(
+          "/api/v1/sessions/session-1/messages",
+          expect.objectContaining({
+            body: JSON.stringify({ content: "다시 연결" }),
+          }),
+        );
+      },
+      { timeout: 4500 },
+    );
+  }, 6000);
 
   it("hitl_request 이벤트가 오면 HitlPrompt 카드가 렌더되고, 승인 클릭 시 POST /messages/hitl 을 호출한다", async () => {
     let releaseStream: (() => void) | undefined;
@@ -983,6 +1385,72 @@ describe("ChatView", () => {
         "원본 콘텐츠",
       );
     });
+  });
+
+  it("artifact_created 이벤트가 오면 해당 어시스턴트 메시지 하단에 인라인 아티팩트 카드가 렌더된다 (P18-T6-01)", async () => {
+    const encoder = new TextEncoder();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({
+        body: new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.enqueue(
+              encoder.encode(sseFrame("message_start", { messageId: "msg-1" })),
+            );
+            controller.enqueue(
+              encoder.encode(
+                sseFrame("text_delta", { text: "보고서 작성했습니다" }),
+              ),
+            );
+            controller.enqueue(
+              encoder.encode(
+                sseFrame("artifact_created", {
+                  artifactId: "artifact-1",
+                  artifactKind: "markdown",
+                  filename: "report.md",
+                  sizeBytes: 100,
+                }),
+              ),
+            );
+            controller.enqueue(
+              encoder.encode(sseFrame("stop", { reason: "end_turn" })),
+            );
+            controller.close();
+          },
+        }),
+      })),
+    );
+
+    render(<ChatView sessionId="session-1" />);
+    fireEvent.change(screen.getByLabelText("메시지 입력"), {
+      target: { value: "보고서 만들어줘" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "전송" }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("artifact-panel")).toBeInTheDocument();
+    });
+
+    const assistantMessage = screen
+      .getByText("보고서 작성했습니다")
+      .closest("li");
+    expect(assistantMessage).not.toBeNull();
+    const card = within(assistantMessage as HTMLElement).getByTestId(
+      "artifact-card",
+    );
+    expect(card).toHaveTextContent("report.md");
+    expect(card).toHaveTextContent("열기");
+
+    // 패널을 닫은 뒤 인라인 카드를 클릭하면 다시 열려야 한다(발견 경로 검증).
+    fireEvent.keyDown(window, { key: "\\", metaKey: true });
+    expect(screen.queryByTestId("artifact-panel")).not.toBeInTheDocument();
+
+    fireEvent.click(card);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("artifact-panel")).toBeInTheDocument();
+    });
+    expect(screen.getAllByText("report.md").length).toBeGreaterThan(0);
   });
 
   it("artifact_created 가 두 번 오면 버전 페이저로 이전 아티팩트를 탐색할 수 있다", async () => {
@@ -1349,5 +1817,110 @@ describe("ChatView", () => {
     expect(screen.getByTestId("message-branch-pager")).toHaveTextContent(
       "1 / 2",
     );
+  });
+
+  it("세션을 열면 GET /:id/messages 로 과거 대화를 복원한다 (P17-T6-01, TS-08)", async () => {
+    const fetchMock = vi.fn(async (url: string) => {
+      const u = String(url);
+      if (u === "/api/v1/sessions/session-1/messages") {
+        return {
+          ok: true,
+          json: async () => ({
+            data: [
+              {
+                id: "m-1",
+                sessionId: "session-1",
+                role: "user",
+                content: "예전 질문",
+              },
+              {
+                id: "m-2",
+                sessionId: "session-1",
+                role: "assistant",
+                content: "예전 답변",
+              },
+            ],
+          }),
+        };
+      }
+      return {
+        body: new ReadableStream<Uint8Array>({ start: (c) => c.close() }),
+      };
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<ChatView sessionId="session-1" />);
+
+    await waitFor(() => {
+      expect(screen.getByText("예전 질문")).toBeInTheDocument();
+    });
+    expect(screen.getByText("예전 답변")).toBeInTheDocument();
+    expect(screen.queryByText("무엇을 도와드릴까요?")).not.toBeInTheDocument();
+  });
+
+  it("세션을 열면 GET /:id/artifacts 로 아티팩트를 복원해 인라인 카드로 렌더한다 (P18-T6-02)", async () => {
+    const fetchMock = vi.fn(async (url: string) => {
+      const u = String(url);
+      if (u === "/api/v1/sessions/session-1/messages") {
+        return {
+          ok: true,
+          json: async () => ({
+            data: [
+              {
+                id: "m-1",
+                sessionId: "session-1",
+                role: "user",
+                content: "이전 요청",
+              },
+              {
+                id: "m-2",
+                sessionId: "session-1",
+                role: "assistant",
+                content: "예전 문서 작성했습니다",
+              },
+            ],
+          }),
+        };
+      }
+      if (u === "/api/v1/sessions/session-1/artifacts") {
+        return {
+          ok: true,
+          json: async () => ({
+            data: [
+              {
+                id: "artifact-1",
+                sessionId: "session-1",
+                type: "markdown",
+                filename: "restored.md",
+                sizeBytes: 200,
+                storageKind: "inline",
+                createdAt: "2026-07-01T00:00:00.000Z",
+              },
+            ],
+          }),
+        };
+      }
+      return {
+        body: new ReadableStream<Uint8Array>({ start: (c) => c.close() }),
+      };
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<ChatView sessionId="session-1" />);
+
+    await waitFor(() => {
+      expect(screen.getByText("예전 문서 작성했습니다")).toBeInTheDocument();
+    });
+
+    const assistantMessage = screen
+      .getByText("예전 문서 작성했습니다")
+      .closest("li");
+    expect(assistantMessage).not.toBeNull();
+    await waitFor(() => {
+      const card = within(assistantMessage as HTMLElement).getByTestId(
+        "artifact-card",
+      );
+      expect(card).toHaveTextContent("restored.md");
+    });
   });
 });

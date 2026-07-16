@@ -126,4 +126,40 @@ describe("hybridSearch", () => {
 
     expect(result?.vectorScore).toBe(0);
   });
+
+  it("relevanceThreshold 생략 시 저점수 hit 도 그대로 유지(기본 동작 불변)", () => {
+    const candidates: HybridSearchCandidate[] = [
+      { chunk: makeChunk("high", "widget", [1, 0, 0]) },
+      { chunk: makeChunk("low", "widget", [0, 1, 0]) }, // 직교 → vectorScore 0
+    ];
+
+    const results = hybridSearch({
+      candidates,
+      queryEmbedding: [1, 0, 0],
+      queryText: "widget",
+      topK: 10,
+      rrfK: 60,
+    });
+
+    expect(results).toHaveLength(2);
+  });
+
+  it("relevanceThreshold 지정 시 post-RRF 로 vectorScore 미달 hit 을 제외한다", () => {
+    const candidates: HybridSearchCandidate[] = [
+      { chunk: makeChunk("high", "widget", [1, 0, 0]) }, // vectorScore 1
+      { chunk: makeChunk("low", "widget", [0, 1, 0]) }, // vectorScore 0 (직교)
+    ];
+
+    const results = hybridSearch({
+      candidates,
+      queryEmbedding: [1, 0, 0],
+      queryText: "widget",
+      topK: 10,
+      rrfK: 60,
+      relevanceThreshold: 0.5,
+    });
+
+    expect(results).toHaveLength(1);
+    expect(results[0]?.chunk.id).toBe("high");
+  });
 });

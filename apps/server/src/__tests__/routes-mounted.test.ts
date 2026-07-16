@@ -34,6 +34,11 @@ const EXPECTED_ROUTES: Array<{ method: string; path: string; phase: string }> =
     // auth 라우터 마운트 확인은 확실히 존재하는 /me 로 (auth-protected → 401).
     // 주의: 계약(16 §273)의 POST /auth/login(password fallback)은 현재 미구현 — 별도 gap(PROGRESS 기록).
     { method: "GET", path: "/api/v1/auth/me", phase: "P1" },
+    { method: "PATCH", path: "/api/v1/auth/me", phase: "P17" },
+    { method: "GET", path: "/api/v1/sessions", phase: "P17" },
+    { method: "GET", path: `/api/v1/sessions/${sid}/messages`, phase: "P17" },
+    { method: "PATCH", path: `/api/v1/sessions/${sid}`, phase: "P17" },
+    { method: "DELETE", path: `/api/v1/sessions/${sid}`, phase: "P17" },
     { method: "POST", path: `/api/v1/sessions/${sid}/messages`, phase: "P2" },
     {
       method: "DELETE",
@@ -48,6 +53,11 @@ const EXPECTED_ROUTES: Array<{ method: string; path: string; phase: string }> =
     { method: "GET", path: `/api/v1/documents?projectId=${pid}`, phase: "P4" },
     { method: "GET", path: `/api/v1/documents/${randomUUID()}`, phase: "P4" },
     { method: "POST", path: "/api/v1/documents", phase: "P4" },
+    {
+      method: "POST",
+      path: `/api/v1/documents/${randomUUID()}/retry`,
+      phase: "P17",
+    },
     { method: "GET", path: `/api/v1/artifacts/${randomUUID()}`, phase: "P5" },
     {
       method: "POST",
@@ -79,6 +89,8 @@ const EXPECTED_ROUTES: Array<{ method: string; path: string; phase: string }> =
       phase: "P9",
     },
     { method: "GET", path: "/api/v1/config", phase: "P11" },
+    { method: "GET", path: "/api/v1/admin/settings", phase: "P14" },
+    { method: "PUT", path: "/api/v1/admin/settings", phase: "P14" },
     // GET /api/v1/share/:token 은 authMiddleware 밖(인증 우회) 이라 "미마운트 404" 와
     // "유효하지 않은 토큰 → 계약상 404 NOT_FOUND"(16-API-CONTRACT § 8) 를 상태코드로 구분할 수
     // 없어 이 가드에서 제외 — 실 마운트 검증은 routes/__tests__/public-share.test.ts(유효 토큰

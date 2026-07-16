@@ -56,7 +56,10 @@ describe("AppShell", () => {
   it("헤더/나비레일/사이드바/본문/우패널 5 region 을 렌더한다", () => {
     stubCurrentUserFetch();
     render(
-      <AppShell sidebar={<div>세션 목록</div>}>
+      <AppShell
+        sidebar={<div>세션 목록</div>}
+        rightPanel={<div>패널 콘텐츠</div>}
+      >
         <div>본문</div>
       </AppShell>,
     );
@@ -73,7 +76,10 @@ describe("AppShell", () => {
   it("테마 토글 클릭 시 document.documentElement 에 data-theme 를 스탬프한다", () => {
     stubCurrentUserFetch();
     render(
-      <AppShell sidebar={<div>세션 목록</div>}>
+      <AppShell
+        sidebar={<div>세션 목록</div>}
+        rightPanel={<div>패널 콘텐츠</div>}
+      >
         <div>본문</div>
       </AppShell>,
     );
@@ -91,7 +97,10 @@ describe("AppShell", () => {
   it("모바일 폭에서 사이드바가 슬라이드오버로 접힌다(기본 숨김 → 토글로 노출)", () => {
     stubCurrentUserFetch();
     render(
-      <AppShell sidebar={<div>세션 목록</div>}>
+      <AppShell
+        sidebar={<div>세션 목록</div>}
+        rightPanel={<div>패널 콘텐츠</div>}
+      >
         <div>본문</div>
       </AppShell>,
     );
@@ -111,7 +120,10 @@ describe("AppShell", () => {
   it("우패널 토글 버튼 클릭 시 우패널이 사라졌다 다시 나타난다", () => {
     stubCurrentUserFetch();
     render(
-      <AppShell sidebar={<div>세션 목록</div>}>
+      <AppShell
+        sidebar={<div>세션 목록</div>}
+        rightPanel={<div>패널 콘텐츠</div>}
+      >
         <div>본문</div>
       </AppShell>,
     );
@@ -130,10 +142,36 @@ describe("AppShell", () => {
     expect(screen.getByTestId("app-shell-right-panel")).toBeInTheDocument();
   });
 
+  it("우패널이 모바일 폭에서 풀스크린 오버레이(F17), md+ 에서 사이드 패널 클래스를 갖는다(P18-T6-03)", () => {
+    stubCurrentUserFetch();
+    render(
+      <AppShell
+        sidebar={<div>세션 목록</div>}
+        rightPanel={<div>패널 콘텐츠</div>}
+      >
+        <div>본문</div>
+      </AppShell>,
+    );
+
+    const panel = screen.getByTestId("app-shell-right-panel");
+    expect(panel).toHaveTextContent("패널 콘텐츠");
+    // 모바일 기본(<md): "hidden" 이 아니라 풀스크린 오버레이로 항상 접근 가능해야 한다.
+    expect(panel.className).not.toContain("hidden");
+    expect(panel.className).toContain("fixed");
+    expect(panel.className).toContain("inset-0");
+    expect(panel.className).toContain("z-[var(--z-modal)]");
+    // md+: 기존 사이드 패널 레이아웃으로 복귀.
+    expect(panel.className).toContain("md:static");
+    expect(panel.className).toContain("md:inset-auto");
+  });
+
   it("⌘\\ 키보드 단축키로 우패널을 토글한다", () => {
     stubCurrentUserFetch();
     render(
-      <AppShell sidebar={<div>세션 목록</div>}>
+      <AppShell
+        sidebar={<div>세션 목록</div>}
+        rightPanel={<div>패널 콘텐츠</div>}
+      >
         <div>본문</div>
       </AppShell>,
     );
@@ -145,13 +183,93 @@ describe("AppShell", () => {
     ).not.toBeInTheDocument();
   });
 
+  it("⌘B 키보드 단축키로 사이드바가 접히고 펼쳐진다", () => {
+    stubCurrentUserFetch();
+    render(
+      <AppShell
+        sidebar={<div>세션 목록</div>}
+        rightPanel={<div>패널 콘텐츠</div>}
+      >
+        <div>본문</div>
+      </AppShell>,
+    );
+
+    const sidebar = screen.getByTestId("app-shell-sidebar");
+    expect(sidebar).toHaveAttribute("data-collapsed", "false");
+
+    fireEvent.keyDown(window, { key: "b", metaKey: true });
+    expect(sidebar).toHaveAttribute("data-collapsed", "true");
+    expect(sidebar.className).toContain("md:w-0");
+
+    fireEvent.keyDown(window, { key: "b", metaKey: true });
+    expect(sidebar).toHaveAttribute("data-collapsed", "false");
+  });
+
+  it("사이드바 접기 버튼 클릭으로도 사이드바를 토글한다", () => {
+    stubCurrentUserFetch();
+    render(
+      <AppShell
+        sidebar={<div>세션 목록</div>}
+        rightPanel={<div>패널 콘텐츠</div>}
+      >
+        <div>본문</div>
+      </AppShell>,
+    );
+
+    const toggle = screen.getByTestId("app-shell-sidebar-toggle");
+    const sidebar = screen.getByTestId("app-shell-sidebar");
+    expect(toggle).toHaveAttribute("aria-pressed", "true");
+
+    fireEvent.click(toggle);
+    expect(sidebar).toHaveAttribute("data-collapsed", "true");
+    expect(toggle).toHaveAttribute("aria-pressed", "false");
+  });
+
+  it("⌘/ 키보드 단축키로 단축키 도움말 오버레이가 열린다", () => {
+    stubCurrentUserFetch();
+    render(
+      <AppShell
+        sidebar={<div>세션 목록</div>}
+        rightPanel={<div>패널 콘텐츠</div>}
+      >
+        <div>본문</div>
+      </AppShell>,
+    );
+
+    expect(screen.queryByTestId("shortcut-sheet")).not.toBeInTheDocument();
+    fireEvent.keyDown(window, { key: "/", metaKey: true });
+    expect(screen.getByTestId("shortcut-sheet")).toBeInTheDocument();
+    expect(screen.getByTestId("shortcut-sheet")).toHaveTextContent("⌘B");
+
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(screen.queryByTestId("shortcut-sheet")).not.toBeInTheDocument();
+  });
+
+  it("단축키 도움말 버튼 클릭으로도 오버레이를 연다", () => {
+    stubCurrentUserFetch();
+    render(
+      <AppShell
+        sidebar={<div>세션 목록</div>}
+        rightPanel={<div>패널 콘텐츠</div>}
+      >
+        <div>본문</div>
+      </AppShell>,
+    );
+
+    fireEvent.click(screen.getByTestId("app-shell-shortcuts-button"));
+    expect(screen.getByTestId("shortcut-sheet")).toBeInTheDocument();
+  });
+
   it("⌘K 버튼 클릭 시 wchat:cmdk 이벤트를 전역에 발행한다", () => {
     stubCurrentUserFetch();
     const listener = vi.fn();
     window.addEventListener("wchat:cmdk", listener);
 
     render(
-      <AppShell sidebar={<div>세션 목록</div>}>
+      <AppShell
+        sidebar={<div>세션 목록</div>}
+        rightPanel={<div>패널 콘텐츠</div>}
+      >
         <div>본문</div>
       </AppShell>,
     );
@@ -168,26 +286,62 @@ describe("AppShell", () => {
   it("우패널 드래그 핸들로 폭을 조절한다", () => {
     stubCurrentUserFetch();
     render(
-      <AppShell sidebar={<div>세션 목록</div>}>
+      <AppShell
+        sidebar={<div>세션 목록</div>}
+        rightPanel={<div>패널 콘텐츠</div>}
+      >
         <div>본문</div>
       </AppShell>,
     );
 
     const panel = screen.getByTestId("app-shell-right-panel");
-    expect(panel).toHaveStyle({ width: "400px" });
+    // P18-T6-03: 폭은 이제 md+ 전용 CSS 변수(--right-panel-width)로 적용된다 —
+    // 직접 width 스타일을 쓰면 모바일 풀스크린 오버레이(fixed inset-0)와 충돌한다.
+    expect(panel.style.getPropertyValue("--right-panel-width")).toBe("400px");
 
     const handle = screen.getByTestId("app-shell-right-panel-resize-handle");
     fireEvent.mouseDown(handle, { clientX: 500 });
     fireEvent.mouseMove(window, { clientX: 450 });
     fireEvent.mouseUp(window);
 
-    expect(panel).toHaveStyle({ width: "450px" });
+    expect(panel.style.getPropertyValue("--right-panel-width")).toBe("450px");
+  });
+
+  it("헤더 아이콘 버튼(⌘K·우패널 토글·리사이즈 핸들·모바일 햄버거)에 title 툴팁이 존재한다", () => {
+    stubCurrentUserFetch();
+    render(
+      <AppShell
+        sidebar={<div>세션 목록</div>}
+        rightPanel={<div>패널 콘텐츠</div>}
+      >
+        <div>본문</div>
+      </AppShell>,
+    );
+
+    expect(screen.getByTestId("app-shell-cmdk-button")).toHaveAttribute(
+      "title",
+      "검색 (⌘K)",
+    );
+    expect(screen.getByTestId("app-shell-panel-toggle")).toHaveAttribute(
+      "title",
+      "우패널 토글 (⌘\\)",
+    );
+    expect(
+      screen.getByTestId("app-shell-right-panel-resize-handle"),
+    ).toHaveAttribute("title", "우패널 크기 조절");
+    expect(screen.getByLabelText("사이드바 열기")).toHaveAttribute(
+      "title",
+      "사이드바 열기",
+    );
   });
 
   it("나비 레일에 현재 로그인 사용자 아바타를 노출한다", async () => {
     stubCurrentUserFetch();
     render(
-      <AppShell sidebar={<div>세션 목록</div>}>
+      <AppShell
+        sidebar={<div>세션 목록</div>}
+        rightPanel={<div>패널 콘텐츠</div>}
+      >
         <div>본문</div>
       </AppShell>,
     );

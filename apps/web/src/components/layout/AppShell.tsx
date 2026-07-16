@@ -5,10 +5,11 @@
 // +우측 컨텍스트 패널(400px, ⌘\ 토글·드래그 리사이즈) 4분할 셸. 모바일 폭에서 레일·사이드바는
 // 슬라이드오버.
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { Search, PanelRight } from "lucide-react";
+import { Search, PanelRight, PanelLeft, HelpCircle } from "lucide-react";
 import { NavRail } from "./NavRail";
 import { ThemeToggle } from "./ThemeToggle";
 import { ToastContainer } from "./ToastContainer";
+import { ShortcutSheet } from "./ShortcutSheet";
 
 export interface AppShellProps {
   sidebar: React.ReactNode;
@@ -26,6 +27,8 @@ const CMDK_EVENT = "wchat:cmdk";
 
 export function AppShell({ sidebar, rightPanel, children }: AppShellProps) {
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [shortcutSheetOpen, setShortcutSheetOpen] = useState(false);
   const [rightPanelOpen, setRightPanelOpen] = useState(true);
   const [rightPanelWidth, setRightPanelWidth] = useState(
     RIGHT_PANEL_DEFAULT_WIDTH,
@@ -48,6 +51,12 @@ export function AppShell({ sidebar, rightPanel, children }: AppShellProps) {
       } else if (e.key === "\\") {
         e.preventDefault();
         setRightPanelOpen((open) => !open);
+      } else if (e.key === "b" || e.key === "B") {
+        e.preventDefault();
+        setSidebarCollapsed((collapsed) => !collapsed);
+      } else if (e.key === "/") {
+        e.preventDefault();
+        setShortcutSheetOpen(true);
       }
     }
     window.addEventListener("keydown", onKeyDown);
@@ -87,6 +96,7 @@ export function AppShell({ sidebar, rightPanel, children }: AppShellProps) {
         <button
           type="button"
           aria-label="사이드바 닫기"
+          title="사이드바 닫기"
           onClick={() => setMobileSidebarOpen(false)}
           className="fixed inset-0 z-[var(--z-modal)] bg-fg/40 md:hidden"
         />
@@ -99,10 +109,22 @@ export function AppShell({ sidebar, rightPanel, children }: AppShellProps) {
         <button
           type="button"
           aria-label="사이드바 열기"
+          title="사이드바 열기"
           onClick={() => setMobileSidebarOpen(true)}
           className="rounded p-1.5 text-fg-muted hover:bg-surface md:hidden"
         >
           ☰
+        </button>
+        <button
+          type="button"
+          aria-label="사이드바 접기/펼치기 (⌘B)"
+          title="사이드바 접기/펼치기 (⌘B)"
+          aria-pressed={!sidebarCollapsed}
+          onClick={() => setSidebarCollapsed((collapsed) => !collapsed)}
+          data-testid="app-shell-sidebar-toggle"
+          className="hidden h-7 w-7 items-center justify-center rounded-md border border-border text-fg-muted hover:border-primary hover:text-fg md:flex"
+        >
+          <PanelLeft size={14} strokeWidth={1.8} />
         </button>
         <div
           aria-hidden="true"
@@ -122,6 +144,7 @@ export function AppShell({ sidebar, rightPanel, children }: AppShellProps) {
           type="button"
           onClick={openCommandSearch}
           aria-label="검색 (⌘K)"
+          title="검색 (⌘K)"
           data-testid="app-shell-cmdk-button"
           className="flex h-7 items-center gap-1.5 rounded-md border border-border px-2.5 text-xs text-fg-subtle hover:border-primary hover:text-fg-muted"
         >
@@ -134,8 +157,19 @@ export function AppShell({ sidebar, rightPanel, children }: AppShellProps) {
         <ThemeToggle />
         <button
           type="button"
+          onClick={() => setShortcutSheetOpen(true)}
+          aria-label="단축키 도움말 (⌘/)"
+          title="단축키 도움말 (⌘/)"
+          data-testid="app-shell-shortcuts-button"
+          className="flex h-7 w-7 items-center justify-center rounded-md border border-border text-fg-muted hover:border-primary hover:text-fg"
+        >
+          <HelpCircle size={14} strokeWidth={1.8} />
+        </button>
+        <button
+          type="button"
           onClick={() => setRightPanelOpen((open) => !open)}
           aria-label="우패널 토글 (⌘\)"
+          title="우패널 토글 (⌘\)"
           aria-pressed={rightPanelOpen}
           data-testid="app-shell-panel-toggle"
           className={`flex h-7 w-7 items-center justify-center rounded-md border ${
@@ -156,8 +190,13 @@ export function AppShell({ sidebar, rightPanel, children }: AppShellProps) {
         <aside
           data-testid="app-shell-sidebar"
           data-mobile-open={mobileSidebarOpen}
-          className={`fixed inset-y-0 left-0 z-[var(--z-modal)] flex w-[280px] shrink-0 flex-col overflow-y-auto border-r border-border bg-surface transition-transform duration-200 md:static md:z-auto md:translate-x-0 ${
+          data-collapsed={sidebarCollapsed}
+          className={`fixed inset-y-0 left-0 z-[var(--z-modal)] flex w-[280px] shrink-0 flex-col overflow-y-auto border-r border-border bg-surface transition-all duration-200 md:static md:z-auto md:translate-x-0 ${
             mobileSidebarOpen ? "translate-x-0" : "-translate-x-full"
+          } ${
+            sidebarCollapsed
+              ? "md:w-0 md:border-r-0 md:opacity-0 md:pointer-events-none"
+              : "md:w-[280px] md:opacity-100"
           }`}
         >
           {sidebar}
@@ -170,18 +209,21 @@ export function AppShell({ sidebar, rightPanel, children }: AppShellProps) {
           {children}
         </main>
 
-        {rightPanelOpen && (
+        {rightPanel && rightPanelOpen && (
           <aside
             data-testid="app-shell-right-panel"
-            style={{ width: rightPanelWidth }}
-            className="relative hidden shrink-0 border-l border-border bg-surface md:flex"
+            style={{
+              ["--right-panel-width" as string]: `${rightPanelWidth}px`,
+            }}
+            className="fixed inset-0 z-[var(--z-modal)] flex shrink-0 border-l border-border bg-surface md:static md:inset-auto md:z-auto md:h-full md:w-[var(--right-panel-width)]"
           >
             <button
               type="button"
               aria-label="우패널 크기 조절"
+              title="우패널 크기 조절"
               data-testid="app-shell-right-panel-resize-handle"
               onMouseDown={startResize}
-              className="absolute inset-y-0 left-0 z-10 w-1 cursor-col-resize bg-transparent hover:bg-primary/30"
+              className="absolute inset-y-0 left-0 z-10 hidden w-1 cursor-col-resize bg-transparent hover:bg-primary/30 md:block"
             />
             <div className="min-w-0 flex-1 pl-1">{rightPanel}</div>
           </aside>
@@ -189,6 +231,10 @@ export function AppShell({ sidebar, rightPanel, children }: AppShellProps) {
       </div>
 
       <ToastContainer />
+      <ShortcutSheet
+        open={shortcutSheetOpen}
+        onClose={() => setShortcutSheetOpen(false)}
+      />
     </div>
   );
 }

@@ -1222,5 +1222,383 @@
     "team": "T6",
     "passes": true,
     "attempts": 1
+  },
+  {
+    "id": "P14-T1-01",
+    "desc": "org_settings 마이그레이션(0017_org_settings.sql): org_id PK FK organizations ON DELETE CASCADE, settings JSONB DEFAULT '{}', updated_by FK users ON DELETE SET NULL, updated_at + touch 트리거. RLS ENABLE+FORCE: select=같은 org(NULLIF GUC idiom), modify=같은 org AND current_user_is_admin(). 0010_quotas_usage 패턴 참조. files: db/migrations/0017_org_settings.sql(+meta/_journal.json)",
+    "acceptance": "migration-check 통과(nullable-first: 기존 테이블 NOT NULL 추가 없음, settings DEFAULT '{}'; 번호 0017 충돌 없음; rollback=DROP TABLE org_settings). RLS cross-org 격리 테스트: org A admin 은 자기 org 행만 SELECT/UPDATE, org B 행은 불가시/거부; verify-gates green",
+    "phase": "P14",
+    "team": "T1",
+    "passes": true,
+    "attempts": 1
+  },
+  {
+    "id": "P14-T1-03",
+    "desc": "lib/org-settings-schema.ts: LOCAL Zod OrgSettingsSchema(24개 큐레이션 키 모두 optional) + DEFAULT_ORG_SETTINGS(maxTokens 기본 4096) + ResolvedOrgSettings 타입. packages/shared·interfaces 미사용(frozen 회피). files: lib/org-settings-schema.ts",
+    "acceptance": "unit RED→GREEN: 유효 patch 파싱; 범위 밖 maxTokens/temperature 는 issues 로 거부; DEFAULT_ORG_SETTINGS 가 ResolvedOrgSettings 로 타입체크; verify-gates green",
+    "phase": "P14",
+    "team": "T1",
+    "passes": true,
+    "attempts": 1
+  },
+  {
+    "id": "P14-T1-02",
+    "desc": "db/org-settings-data-access.ts: getByOrgId(orgId)->row|null, upsert(orgId,patch,updatedBy) 머지. + auth-data-access.ts 의 organizations.update 확장(allowedModels/allowedTools/defaultTokenBudgetMicros 허용). files: db/org-settings-data-access.ts, db/auth-data-access.ts",
+    "acceptance": "unit RED→GREEN: 부재 행->null; upsert 후 get 이 머지된 JSON 반환; organizations.update 가 allowed_models JSONB round-trip; verify-gates green",
+    "phase": "P14",
+    "team": "T1",
+    "passes": true,
+    "attempts": 1
+  },
+  {
+    "id": "P14-T1-04",
+    "desc": "lib/settings-service.ts: createSettingsService({da}).resolve(orgId) 가 저장 partial 을 DEFAULT_ORG_SETTINGS 위에 deep-merge + per-org TTL(~30s) 캐시; invalidate(orgId). 읽기/파싱 오류 시 logger.warn + DEFAULT 반환(throw·1024 폴백 금지, L2/L5). files: lib/settings-service.ts",
+    "acceptance": "unit: 부재 행->기본값; 2차 호출은 캐시로 DB skip; invalidate 후 재조회; 주입 DB오류->DEFAULT_ORG_SETTINGS+warn 로깅(L2/L5); verify-gates green",
+    "phase": "P14",
+    "team": "T1",
+    "passes": true,
+    "attempts": 1
+  },
+  {
+    "id": "P14-T1-05",
+    "desc": "routes/admin-settings.ts: GET+PUT /api/v1/admin/settings, isAdmin 403 게이트, orgId=auth(body/query 금지), PUT=OrgSettingsSchema.partial 검증(실패 400+issues)+upsert+settingsService.invalidate. app.ts adminApp 에 마운트 + routes-mounted EXPECTED_ROUTES 에 GET·PUT 추가. files: routes/admin-settings.ts, app.ts(마운트), __tests__/routes-mounted.test.ts",
+    "acceptance": "routes-mounted green(GET·PUT 두 항목); createApp 통합테스트: 비admin->403, 잘못된 body->400, admin PUT 후 GET 이 변경 반영, org A PUT 이 org B 무영향(orgId 서버 파생), {data,meta} 엔벨로프; verify-gates green",
+    "phase": "P14",
+    "team": "T1",
+    "passes": true,
+    "attempts": 1
+  },
+  {
+    "id": "P14-T2-01",
+    "desc": "채팅 생성 파라미터 배선(트리거 버그 근본해결): MessageRouteDeps 에 settings resolver 추가, messages.ts:272 의 'deps.maxTokens ?? 1024' 를 resolved.maxTokens(안전기본 4096)로 교체, temperature·systemPrompt(system-tier PromptBlock 를 systemBlocks 앞에)·defaultModel(org.allowedModels 검증 유지) 반영; app.ts createMessageRoutes 가 settingsService.resolve 전달. files: routes/messages.ts, app.ts",
+    "acceptance": "L1 last-mile RED: createApp 채팅 턴에서 org maxTokens=8192 -> runTurn/ChatInput 이 8192 를 실제 수신(1024 아님) 단언; 설정 부재 시 >=4096(1024 아님); SSE 정상 stop 회귀; verify-gates green",
+    "phase": "P14",
+    "team": "T2",
+    "passes": true,
+    "attempts": 1
+  },
+  {
+    "id": "P14-T2-02",
+    "desc": "toolMaxTokens 배선: app.ts:187 assembleBuiltinTools(maxTokens:4096) 및 orchestrator/memory-extractor.ts:68(1024) 를 resolved.toolMaxTokens 로. files: app.ts, orchestrator/memory-extractor.ts",
+    "acceptance": "RED: settings.toolMaxTokens=8000 -> 내장도구+memory-extractor 가 8000 사용; 미설정 시 기본 유지; verify-gates green",
+    "phase": "P14",
+    "team": "T2",
+    "passes": true,
+    "attempts": 1
+  },
+  {
+    "id": "P14-T3-01",
+    "desc": "RAG 검색 설정화: knowledge-search-handler.ts:69-70 의 topK(?? 10)·rrfK(?? 60)·relevanceThreshold 를 invoke 시점 ctx.orgId resolve 로(정적 조립 제약 처리, L1); search-service 에 post-RRF threshold 필터. files: tools/handlers/knowledge-search-handler.ts, knowledge/search-service.ts",
+    "acceptance": "RED: org ragTopK=12 -> hybridSearch 가 topK=12 로 호출(10 아님); threshold 로 저점수 hit 필터; 기본값(10/60) 유지; verify-gates green",
+    "phase": "P14",
+    "team": "T3",
+    "passes": true,
+    "attempts": 1
+  },
+  {
+    "id": "P14-T3-02",
+    "desc": "chunker 설정화: knowledge/chunker.ts:6 의 chunkSizeTokens(800)·overlap 을 index 시 설정(resolved.ragChunkSizeTokens/Overlap)에서. files: knowledge/chunker.ts",
+    "acceptance": "RED: settings ragChunkSizeTokens=1200 -> chunker 가 1200 로 분할; 미설정 시 800 유지; verify-gates green",
+    "phase": "P14",
+    "team": "T3",
+    "passes": true,
+    "attempts": 1
+  },
+  {
+    "id": "P14-T6-01",
+    "desc": "admin 설정 화면 셸: app/admin/settings/page.tsx(AdminGuard 안, admin|owner), AdminSettingsScreen(7탭 셸, GET 로드 via lib/fetch-with-refresh, dirty 추적, sticky Save 바). WIA 시맨틱 토큰만. files: app/admin/settings/**, components/admin/settings/**, app/preview/page.tsx",
+    "acceptance": "탭 렌더/전환; 목 GET 로드; 하드코딩 hex 0(grep 가드); preview 갤러리 등록 + Playwright 라이트/다크 스크린샷(.ralph/screenshots, L2); 신규 탭전환 상호작용 vitest RED→GREEN; verify-gates green",
+    "phase": "P14",
+    "team": "T6",
+    "passes": true,
+    "attempts": 1
+  },
+  {
+    "id": "P14-T6-02",
+    "desc": "Models & Generation 탭(히어로): maxTokens·temperature·topP·defaultModel(select)·systemPrompt(textarea)·allowedModels(multiselect); PUT 저장(검증+낙관적/confirm+toast). topP 는 '아직 미적용' 힌트. files: components/admin/settings/**, e2e/admin-settings.pw.ts",
+    "acceptance": "RED: 저장 흐름(목 fetch)이 PUT patch 전송·성공 toast·오류 롤백; maxTokens/temperature 범위검증이 잘못된 입력 차단; 브라우저 라이트/다크 스크린샷; 하드코딩 hex 0; verify-gates green",
+    "phase": "P14",
+    "team": "T6",
+    "passes": true,
+    "attempts": 1
+  },
+  {
+    "id": "P14-T6-03",
+    "desc": "나머지 탭(General/Branding, Knowledge/RAG, Web Search, Connectors/MCP, Users&Permissions[env 힌트], Quota/Limits)을 같은 설정 모델+PUT 저장에 바인딩. files: components/admin/settings/**, e2e/admin-settings.pw.ts",
+    "acceptance": "각 필드 존재+검증+저장; env-coupled 필드(defaultUserRole/enableSignup)는 '관리됨/미적용' 힌트; 브라우저 라이트/다크 스크린샷; 하드코딩 hex 0; verify-gates green",
+    "phase": "P14",
+    "team": "T6",
+    "passes": true,
+    "attempts": 1
+  },
+  {
+    "id": "P15-T2-01",
+    "desc": "temperature·topP 생성 파라미터 forward: RunTurnInput(orchestrator.ts, non-frozen)에 temperature?/topP? 추가→runTurn 이 ChatInput 으로 forward; llm-provider-anthropic.ts 가 SDK 에 temperature/top_p 전달(현재 미전달), llm-provider-openai.ts 동일; messages.ts 가 resolved.temperature/topP 전달. ChatInput.topP 는 이미 계약에 존재(262b1ab). files: orchestrator/orchestrator.ts, orchestrator/llm-provider-anthropic.ts, orchestrator/llm-provider-openai.ts, routes/messages.ts",
+    "acceptance": "L1 RED: createApp 채팅 턴에서 org temperature=0.2·topP=0.5 → provider.chat 이 받은 ChatInput.temperature===0.2 & topP===0.5 단언; 미설정 org 는 provider 기본 유지(비파괴); verify-gates green",
+    "phase": "P15",
+    "team": "T2",
+    "passes": true,
+    "attempts": 1
+  },
+  {
+    "id": "P15-T2-02",
+    "desc": "동적 org-scoped toolMaxTokens: deep-research-handler 가 invoke 시 ctx.orgId 로 settingsService.resolve 해 toolMaxTokens 사용(정적 4096 조용히 쓰지 않도록, L1); settings resolver 를 도구 deps 로 주입(app.ts). files: tools/assemble-builtin-tools.ts, tools/handlers/deep-research-handler.ts, app.ts",
+    "acceptance": "RED: org toolMaxTokens=8000 → deep_research sub-turn 이 8000 사용(4096 아님); 미설정 시 4096 유지; verify-gates green",
+    "phase": "P15",
+    "team": "T2",
+    "passes": true,
+    "attempts": 1
+  },
+  {
+    "id": "P15-T3-01",
+    "desc": "index 시 chunker 설정 반영: 문서 인덱싱 경로에서 chunkText 호출부를 찾아 ChunkOptions.chunkSizeTokens/overlap 을 해당 org 설정에서 resolve 해 전달(index 시점 org 컨텍스트). ChunkOptions 는 이미 지원. files: knowledge/**(chunkText 호출 서비스), 필요 시 routes/documents.ts",
+    "acceptance": "RED: org ragChunkSizeTokens=1200 → 인덱싱이 1200 로 분할; 미설정 시 800 유지; verify-gates green",
+    "phase": "P15",
+    "team": "T3",
+    "passes": false,
+    "attempts": 1
+  },
+  {
+    "id": "P15-T1-01",
+    "desc": "enableSignup·defaultUserRole 런타임(안전 기본·비파괴): org-settings-schema 의 DEFAULT_ORG_SETTINGS.enableSignup 을 true 로(현행 보존); routes/auth.ts /signup 에서 env allowedDomains 도메인게이트를 하드 전제로 먼저 유지, 그 다음 domain→org 조회→settingsService.resolve→enableSignup=false 면 가입 거부, 생성 role=resolved.defaultUserRole; app.ts 가 auth deps 에 settings resolver 주입. files: routes/auth.ts, lib/org-settings-schema.ts, app.ts",
+    "acceptance": "RED: enableSignup=false→허용 도메인이라도 가입 거부; enableSignup=true(기본)→가입 성공+role===defaultUserRole; 미허용 도메인은 항상 거부(env 게이트 우선); org 는 이메일 도메인으로만 결정(body 지정 불가); verify-gates green",
+    "phase": "P15",
+    "team": "T1",
+    "passes": true,
+    "attempts": 1
+  },
+  {
+    "id": "P15-T6-01",
+    "desc": "admin UI '미적용' 힌트 제거: temperature·topP·enableSignup·defaultUserRole 이 실제 반영되므로 해당 필드의 '아직 미적용/env 관리' 힌트 제거·정확화. 시맨틱 토큰만. files: components/admin/settings/**, app/preview/page.tsx, e2e/admin-settings.pw.ts",
+    "acceptance": "해당 힌트 제거/정확화; 하드코딩 hex 0; preview + Playwright 라이트/다크 스크린샷(.ralph/screenshots); 신규 상호작용 있으면 RED→GREEN; verify-gates green",
+    "phase": "P15",
+    "team": "T6",
+    "passes": true,
+    "attempts": 1
+  },
+  {
+    "id": "P16-T6-01",
+    "desc": "전역 인증 shell(갭2·3 근본수정): 인증 라우트그룹 레이아웃 도입(또는 AppShell 공용화)해 홈·projects·settings·admin 을 NavRail(64px)+SessionList 히스토리 사이드바(280px)+헤더로 감쌈; /login·/signup·/share/* 는 shell 없음 유지. 현재 shell 은 (chat)/layout.tsx:11 에만. files: app/layout.tsx 또는 새 app/(app)/layout.tsx + 라우트 재배치, components/layout/AppShell.tsx",
+    "acceptance": "레이아웃이 NavRail+SessionList 를 포함함을 렌더 단언 + 인증 라우트가 그룹 하위에 위치함을 구조 단언; verify-gates green; ★실제 라우트(홈·admin 에 NavRail·히스토리 등장)는 유닛 불가 → 커밋/PROGRESS 에 'human UAT 필요(TS-03/17/23)' 명시(과장 금지)",
+    "phase": "P16",
+    "team": "T6",
+    "passes": true,
+    "attempts": 1
+  },
+  {
+    "id": "P16-T6-02",
+    "desc": "admin 하위 내비(갭1): /admin 대시보드+하위(users/settings/tool-metrics)에 서브내비(탭/사이드섹션)를 next/link 로 추가; inert 모노스페이스 경로 캡션(AdminDashboard.tsx:82-84 등)을 실제 링크로; 하위 상호 교차링크. files: components/admin/*, 필요 시 app/admin/layout.tsx",
+    "acceptance": "서브내비 링크 렌더 + 클릭 시 라우트 이동(next/link) RED→GREEN; preview 등록; verify-gates green; human UAT(TS-18)",
+    "phase": "P16",
+    "team": "T6",
+    "passes": true,
+    "attempts": 1
+  },
+  {
+    "id": "P16-T6-03",
+    "desc": "아이콘 버튼 툴팁(갭4): aria-label 만 있고 title= 없는 아이콘 전용 버튼에 툴팁(또는 공용 Tooltip): AppShell 헤더(:99-148/:179-185), ThemeToggle(:65-74), SessionCard 액션(:71-101). files: components/layout/{AppShell,ThemeToggle}.tsx, components/sessions/SessionCard.tsx",
+    "acceptance": "각 아이콘 버튼에 title/tooltip 존재 단언 RED→GREEN; 하드코딩 hex 0; preview+Playwright hover 검증; verify-gates green; human UAT(TS-23)",
+    "phase": "P16",
+    "team": "T6",
+    "passes": true,
+    "attempts": 1
+  },
+  {
+    "id": "P16-T6-04",
+    "desc": "설정 인덱스·내비(갭6·9): /settings 인덱스 페이지(또는 settings 레이아웃 서브내비)로 memories/skills/mcp/quota/profile 나열; NavRail '설정'(NavRail.tsx:35 /settings/memories 하드코딩)을 인덱스로 repoint; quota 링크(고아 해소). files: app/settings/page.tsx(신규) 또는 app/settings/layout.tsx, components/layout/NavRail.tsx",
+    "acceptance": "설정 인덱스가 전 섹션 링크 렌더; 라우트 이동 RED→GREEN; 하드코딩 hex 0; verify-gates green; human UAT(TS-20)",
+    "phase": "P16",
+    "team": "T6",
+    "passes": true,
+    "attempts": 1
+  },
+  {
+    "id": "P16-T6-05",
+    "desc": "profile 페이지+agents 링크(갭7·5): app/settings/profile/page.tsx(신규) name+customInstructions 폼을 프로필 엔드포인트에 배선; NavRail 'AGENTS'(/agents 404)를 기존 표면으로 repoint(예 /settings/skills) 또는 최소 안내 페이지; 홈 비링크 '에이전트' 텍스트 동일 처리. files: app/settings/profile/page.tsx(신규), components/layout/NavRail.tsx, components/home/HomeContent.tsx",
+    "acceptance": "profile 폼 렌더+저장 RED→GREEN; agents 링크가 더 이상 404 아님(존재 라우트 이동); 하드코딩 hex 0; verify-gates green; human UAT(TS-20)",
+    "phase": "P16",
+    "team": "T6",
+    "passes": true,
+    "attempts": 1
+  },
+  {
+    "id": "P16-T1-01",
+    "desc": "chunker index-time 설정 반영(P15-T3-01 재수정, 올바른 스코프): 실제 호출부 db/document-service.ts:159 의 chunkText(parsed.markdown)에 org settingsService.resolve(orgId)로 ChunkOptions.chunkSizeTokens/overlap 전달(index 시점). files: apps/server/src/db/document-service.ts, 필요 시 knowledge/*",
+    "acceptance": "RED: org ragChunkSizeTokens=1200 → 인덱싱이 1200 로 분할; 미설정 시 800 유지; verify-gates green",
+    "phase": "P16",
+    "team": "T1",
+    "passes": true,
+    "attempts": 1
+  },
+  {
+    "id": "P17-T1-01",
+    "desc": "메시지 영속(TS-08): messages.ts 가 턴마다 user+assistant 메시지를 messages 테이블에 저장(da.messages 또는 pgPool INSERT). files: routes/messages.ts, db/*(messages data-access)",
+    "acceptance": "RED: createApp 턴 완료 후 messages 테이블에 해당 세션의 user+assistant 행 존재; 스트리밍/취소 경로 모두 영속; verify-gates green",
+    "phase": "P17",
+    "team": "T1",
+    "passes": true,
+    "attempts": 1
+  },
+  {
+    "id": "P17-T1-02",
+    "desc": "세션 목록·히스토리 API(TS-08/10): sessions.ts 에 GET /(내 세션 목록, 최신순+pagination) + GET /:id/messages(tree 순서 히스토리); app.ts 마운트 + routes-mounted EXPECTED 추가. files: routes/sessions.ts, app.ts, __tests__/routes-mounted.test.ts",
+    "acceptance": "RED: GET /api/v1/sessions 가 내 세션 배열 반환(404 아님); GET /:id/messages 히스토리 반환; cross-org 격리(타 org 세션 안 보임); routes-mounted green; verify-gates green",
+    "phase": "P17",
+    "team": "T1",
+    "passes": true,
+    "attempts": 1
+  },
+  {
+    "id": "P17-T1-03",
+    "desc": "세션 rename/delete API(TS-09): PATCH /:id(title) + DELETE /:id(cascade messages/artifacts, 204); pin 영속이 frozen Session 타입 변경 요구 시 pin 서브파트만 격리; 마운트+EXPECTED. files: routes/sessions.ts, db/*, app.ts, routes-mounted.test.ts",
+    "acceptance": "RED: PATCH 후 title 반영, DELETE 후 목록 제거+cascade 확인; cross-org 격리; routes-mounted green; verify-gates green",
+    "phase": "P17",
+    "team": "T1",
+    "passes": true,
+    "attempts": 1
+  },
+  {
+    "id": "P17-T1-04",
+    "desc": "프로필 저장 API(TS-20): auth.ts 에 PATCH /api/v1/auth/me(name+customInstructions); 마운트+EXPECTED. ProfileManager 가 이미 이 경로 호출(현재 서버 GET /me 만). files: routes/auth.ts, app.ts, routes-mounted.test.ts",
+    "acceptance": "RED: PATCH /me 후 GET /me 에 반영; 인증 필요; routes-mounted green; verify-gates green",
+    "phase": "P17",
+    "team": "T1",
+    "passes": true,
+    "attempts": 1
+  },
+  {
+    "id": "P17-T1-05",
+    "desc": "채팅 문서첨부 RAG 배선(TS-14): app.ts 가 attachments dep 를 createMessageRoutes 에 전달(현재 0 매칭)→messages.ts 가 세션 업로드 ephemeral 청크를 RAG 검색에 사용. files: app.ts, routes/messages.ts",
+    "acceptance": "RED: 첨부 있는 createApp 턴이 ephemeral 청크 검색·인용 반영; 첨부 없으면 기존 동작; verify-gates green",
+    "phase": "P17",
+    "team": "T1",
+    "passes": true,
+    "attempts": 1
+  },
+  {
+    "id": "P17-T1-06",
+    "desc": "문서 재시도 route(TS-15): POST /api/v1/documents/:id/retry(실패 문서 재인덱싱); 마운트+EXPECTED. files: routes/documents.ts, app.ts, routes-mounted.test.ts",
+    "acceptance": "RED: 미등록 404 → 200 재인덱싱(indexStatus 갱신); 소유권 격리; routes-mounted green; verify-gates green",
+    "phase": "P17",
+    "team": "T1",
+    "passes": true,
+    "attempts": 1
+  },
+  {
+    "id": "P17-T6-01",
+    "desc": "세션 히스토리 UI 배선(TS-08/09/10): SessionList 가 GET /sessions 로 목록 로드, 세션 열면 GET /:id/messages 로 과거 대화 복원, rename/delete 가 새 API 호출(영속); 오늘/어제/이전7일 그룹. files: hooks/useSessions.ts, hooks/useSessionStream.ts, components/sessions/*",
+    "acceptance": "목록/복원/rename/delete 상호작용 RED→GREEN; 하드코딩 hex 0; ★human UAT 필요(TS-08: 채팅→나갔다 복귀→히스토리 복원) 명시(과장 금지); verify-gates green",
+    "phase": "P17",
+    "team": "T6",
+    "passes": true,
+    "attempts": 1
+  },
+  {
+    "id": "P17-T6-02",
+    "desc": "프로덕션 도구 피커 + Run Rail 클릭(TS-11): 프로덕션 ChatView @mention 피커에 실제 도구/에이전트/커넥터 채움(현재 dev preview 만); Run Rail 눈금 클릭→우패널 활동 탭(onStepClick unwired ChatView.tsx:571). files: components/chat/ChatView.tsx, 피커",
+    "acceptance": "RED: 피커가 실제 도구 목록 렌더; Run Rail 클릭이 활동 탭 오픈; verify-gates green; human UAT(TS-11)",
+    "phase": "P17",
+    "team": "T6",
+    "passes": true,
+    "attempts": 1
+  },
+  {
+    "id": "P17-T6-03",
+    "desc": "재생성=같은턴 형제(TS-06): 재생성이 중복 user+assistant 턴 추가 대신 같은 user 턴의 assistant 형제 생성(편집/분기와 동일 tree 의미) + 형제 페이저. files: components/chat/ChatView.tsx, hooks/useSessionStream.ts",
+    "acceptance": "RED: 재생성 후 같은 user 턴에 assistant 형제 2/2 생성(중복 turn 아님); 페이저 동작; verify-gates green",
+    "phase": "P17",
+    "team": "T6",
+    "passes": true,
+    "attempts": 1
+  },
+  {
+    "id": "P17-T6-04",
+    "desc": "딥리서치 활동 탭 자동 열림(TS-12): deep_research 실행 시 우패널 활동 탭 자동 오픈(현재 artifact/citation 만). files: components/chat/ChatView.tsx",
+    "acceptance": "RED: deep_research tool_use 시 활동 탭 자동 오픈; 다른 도구엔 영향 없음; verify-gates green; human UAT(TS-12)",
+    "phase": "P17",
+    "team": "T6",
+    "passes": true,
+    "attempts": 1
+  },
+  {
+    "id": "P17-T6-05",
+    "desc": "프로젝트 가시성 필터(TS-16): 프로젝트 목록에 visibility 필터(org/team/private) + useProjects 가 ?visibility 전달. files: app/(app)/projects/page.tsx, hooks/useProjects.ts, components/projects/*",
+    "acceptance": "RED: 필터 선택 시 useProjects 가 ?visibility 로 재조회; 하드코딩 hex 0; verify-gates green",
+    "phase": "P17",
+    "team": "T6",
+    "passes": true,
+    "attempts": 1
+  },
+  {
+    "id": "P17-T6-06",
+    "desc": "단축키 ⌘B·⌘/(TS-22): ⌘B 사이드바 접기/펼치기, ⌘/ 단축키 치트시트 오버레이(기존 ⌘K/⌘N/⌘\\ 유지). files: components/layout/AppShell.tsx, 새 ShortcutSheet",
+    "acceptance": "RED: ⌘B 가 사이드바 토글, ⌘/ 가 치트시트 오픈/닫기; 포커스 링·Esc; 하드코딩 hex 0; verify-gates green",
+    "phase": "P17",
+    "team": "T6",
+    "passes": true,
+    "attempts": 1
+  },
+  {
+    "id": "P17-T6-07",
+    "desc": "revoked 공유 페이지(TS-21): 만료(expired)와 취소(revoked)를 구분해 각각 다른 안내(현재 둘 다 동일 410); 서버 410 reason 추가 필요 시 T1 격리. files: app/share/[token]/*, components/share/*",
+    "acceptance": "RED: revoked 토큰과 expired 토큰이 서로 다른 안내 렌더; 하드코딩 hex 0; verify-gates green; human UAT(TS-21)",
+    "phase": "P17",
+    "team": "T6",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P17-T6-08",
+    "desc": "에러 UX(TS-24): 429 시 백오프 카운트다운(mono tabular-nums) + SSE 끊김 시 자동 재연결. files: components/chat/ChatView.tsx, hooks/useSessionStream.ts, 에러 배너",
+    "acceptance": "RED: 429 응답 시 카운트다운 표시; SSE 끊김 시 자동 재연결 시도; 하드코딩 hex 0; verify-gates green",
+    "phase": "P17",
+    "team": "T6",
+    "passes": true,
+    "attempts": 1
+  },
+  {
+    "id": "P17-T6-09",
+    "desc": "모달 a11y(TS-26): ShareDialog·HitlPrompt 에 focus-trap + Esc 닫기 + 닫을 때 트리거로 포커스 복귀. files: components/share/ShareDialog.tsx, components/chat/HitlPrompt.tsx, 공용 useFocusTrap",
+    "acceptance": "RED: 모달 열림 시 포커스 가둠, Esc 닫힘, 닫을 때 트리거 포커스 복귀; verify-gates green; human UAT(TS-26)",
+    "phase": "P17",
+    "team": "T6",
+    "passes": true,
+    "attempts": 1
+  },
+  {
+    "id": "P18-T6-01",
+    "desc": "메시지 인라인 아티팩트 카드: artifact_created 로 생성된 아티팩트를 해당 어시스턴트 메시지 하단에 클릭 카드('📄 {filename} · 열기')로 렌더; 클릭 시 기존 열람 흐름(setActiveArtifactIndex + 우패널 아티팩트 탭, ChatView.tsx:160-174 재사용)으로 오픈. messageId 없으면 세션 단위 폴백(frozen 필요 시 격리). files: components/chat/ChatView.tsx, (신규) components/artifacts/ArtifactCard.tsx",
+    "acceptance": "RED: artifact_created 후 메시지 영역에 카드 렌더 + 클릭 시 active artifact/panel 오픈; 하드코딩 hex 0; preview+Playwright; human UAT(문서 카드 실제 표시); verify-gates green",
+    "phase": "P18",
+    "team": "T6",
+    "passes": true,
+    "attempts": 1
+  },
+  {
+    "id": "P18-T6-02",
+    "desc": "세션 열 때 아티팩트 복원: 세션 진입 시 GET /api/v1/sessions/:id/artifacts(apiFetch)로 세션 아티팩트를 불러와 artifacts 상태·인라인 카드·우패널 재구성(현재 스트림 이벤트로만 채워져 재방문 시 사라짐). files: hooks/useSessionStream.ts(또는 useSessions), components/chat/ChatView.tsx",
+    "acceptance": "RED: 목 GET /:id/artifacts → 마운트 시 artifacts 복원·카드 렌더 단언; human UAT(재방문 시 문서 유지); verify-gates green",
+    "phase": "P18",
+    "team": "T6",
+    "passes": true,
+    "attempts": 1
+  },
+  {
+    "id": "P18-T6-03",
+    "desc": "모바일 아티팩트 뷰: 좁은 뷰포트에서 우패널(400px) 접근 불가 → 인라인 카드 탭/패널 열기 시 바텀시트/전체화면 오버레이로 아티팩트 열기(F17); 데스크톱 md+ 는 기존 우패널 유지, z-index 모달100. files: components/layout/AppShell.tsx, components/artifacts/ArtifactCanvas.tsx, components/chat/ChatView.tsx",
+    "acceptance": "RED: 좁은 뷰포트에서 아티팩트 열기→오버레이 표시(가능 범위); 하드코딩 hex 0; ★human UAT(모바일 폭에서 문서 실제 표시) 필수·과장 금지; verify-gates green",
+    "phase": "P18",
+    "team": "T6",
+    "passes": true,
+    "attempts": 1
+  },
+  {
+    "id": "P18-T1-01",
+    "desc": "기존 '(제목 없음)' 세션 제목 백필: title=null 이고 메시지 있는 세션에 첫 사용자 메시지에서 deriveSessionTitle(lib/session-title.ts 재사용)로 제목 채움. 일회성 스크립트 또는 idempotent migration. files: apps/server/src/scripts/*(신규) 또는 db/migrations/*, lib/session-title.ts",
+    "acceptance": "RED/검증: null 제목+메시지 있는 세션→백필 후 파생 title; 메시지 없는 세션→null 유지; 재실행 idempotent; verify-gates green",
+    "phase": "P18",
+    "team": "T1",
+    "passes": true,
+    "attempts": 1
   }
 ]

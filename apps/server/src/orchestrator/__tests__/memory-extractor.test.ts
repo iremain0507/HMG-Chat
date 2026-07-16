@@ -25,6 +25,29 @@ function fakeLLMProvider(responseText: string): LLMProvider {
   };
 }
 
+// P14-T2-02 — ChatInput 을 캡처해 실제 전달된 maxTokens 를 단언하기 위한 provider.
+function capturingLLMProvider(
+  responseText: string,
+  captured: { input?: ChatInput },
+): LLMProvider {
+  return {
+    name: "fake",
+    models: ["fake-model"],
+    async *chat(
+      input: ChatInput,
+      _signal: AbortSignal,
+    ): AsyncIterable<ChatEvent> {
+      captured.input = input;
+      yield { type: "text_delta", text: responseText };
+      yield {
+        type: "stop",
+        reason: "end_turn",
+        usage: { inputTokens: 1, outputTokens: 1 },
+      };
+    },
+  };
+}
+
 function messages(count: number): LLMMessage[] {
   return Array.from({ length: count }, (_, i) => ({
     role: i % 2 === 0 ? "user" : "assistant",
@@ -147,5 +170,29 @@ describe("memory-extractor.extractMemories", () => {
     );
 
     expect(result).toEqual([]);
+  });
+
+  it("maxTokens 인자를 명시하면 ChatInput.maxTokens 에 그대로 반영된다(P14-T2-02 toolMaxTokens 배선)", async () => {
+    const captured: { input?: ChatInput } = {};
+    const provider = capturingLLMProvider("[]", captured);
+
+    await extractMemories(
+      provider,
+      messages(4),
+      new AbortController().signal,
+      8000,
+    );
+
+    expect(captured.input?.maxTokens).toBe(8000);
+  });
+
+  it("maxTokens 를 지정하지 않으면 안전 기본값 4096 을 사용한다(구 하드코딩 1024 아님, L2/L5)", async () => {
+    const captured: { input?: ChatInput } = {};
+    const provider = capturingLLMProvider("[]", captured);
+
+    await extractMemories(provider, messages(4), new AbortController().signal);
+
+    expect(captured.input?.maxTokens).toBe(4096);
+    expect(captured.input?.maxTokens).not.toBe(1024);
   });
 });

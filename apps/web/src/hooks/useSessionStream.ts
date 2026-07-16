@@ -10,7 +10,7 @@
 // `messages` 는 root→tip 활성경로만 매 렌더 계산해 노출한다. 편집(editMessage)은
 // 대상 user 메시지와 같은 부모를 공유하는 새 형제 노드를 만들어 활성 자식으로 전환하고,
 // switchBranch 는 활성 자식 포인터만 바꿔 이전에 스트리밍된 형제 분기를 그대로 복원한다.
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { showToast } from "../lib/toast";
 import { apiFetch } from "../lib/fetch-with-refresh";
 
@@ -85,12 +85,18 @@ export interface HitlPromptData {
 }
 
 // 14-INTERFACES § ChatEvent.artifact_created 와 1:1 (artifactId/artifactKind/filename/sizeBytes/downloadUrl).
+// messageId 는 서버 wire format 에 없는 클라이언트 전용 필드(P18-T6-01) — 라이브 스트림에서
+// artifact_created 가 도착한 시점의 assistantId 로 채워, 메시지 인라인 카드 귀속에 쓴다.
+// restored 도 클라이언트 전용(P18-T6-02) — GET /:id/artifacts 로 복원된 항목 표시. ChatView 의
+// "새 아티팩트" 자동오픈+토스트가 재방문 시 기존 문서를 새 문서로 오인하지 않도록 구분하는 용도.
 export interface ArtifactSummary {
   artifactId: string;
   artifactKind: string;
   filename: string;
   sizeBytes: number;
   downloadUrl?: string;
+  messageId?: string;
+  restored?: boolean;
 }
 
 // P10-T6-13 — 모델/모드 피커 선택값. 서버 계약(16-API-CONTRACT § POST /sessions/:id/messages)에
@@ -241,7 +247,135 @@ export function useSessionStream(sessionId: string) {
   const [isStreaming, setIsStreaming] = useState(false);
   const [hitlRequest, setHitlRequest] = useState<HitlPromptData | null>(null);
   const [artifacts, setArtifacts] = useState<ArtifactSummary[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const historyLoadedRef = useRef(false);
+  const artifactsLoadedRef = useRef(false);
   const abortRef = useRef<AbortController | null>(null);
+  // iOS 등 백그라운드 서스펜션 대응 — 진행 중 leg 의 reader / 스트리밍 여부 / 마지막 SSE 수신
+  // 시각을 ref 로 들고 있다가, 앱 전환 후 foreground 복귀(visibilitychange) 시 "정말로 멈춘"
+  // 연결만 골라 취소해 resume(재연결→최종답변 복구) 경로를 태운다.
+  //
+  // 주의: 서버는 클라이언트가 연결을 끊으면(=reader.cancel → fetch abort) 진행 중 턴을 즉시
+  // abort 한다(routes/messages.ts, abort.test.ts — 비용 절감 목적). 따라서 살아있는 연결을
+  // 무조건 취소하면 정상 생성 중인 답변이 잘린다. 그래서 취소하지 않고 먼저 지켜본다: 서버는
+  // 10초마다 keep-alive(: ping)를 보내므로, 복귀 후 일정 시간(HEARTBEAT 초과) 동안 어떤
+  // 바이트도 오지 않을 때만 죽은 연결로 보고 취소한다(정상 연결은 곧 ping 이 도착해 취소 안 함).
+  const readerRef = useRef<ReadableStreamDefaultReader<Uint8Array> | null>(
+    null,
+  );
+  const isStreamingRef = useRef(false);
+  const lastActivityRef = useRef(0);
+  const staleWatchdogRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    // 서버 keep-alive 주기(10s)보다 넉넉히 큰 값 — 이보다 오래 무수신이면 죽은 연결로 판정.
+    const STALE_MS = 14_000;
+    function clearWatchdog() {
+      if (staleWatchdogRef.current) {
+        clearTimeout(staleWatchdogRef.current);
+        staleWatchdogRef.current = null;
+      }
+    }
+    function onVisibilityChange() {
+      if (typeof document === "undefined") return;
+      clearWatchdog();
+      if (document.visibilityState !== "visible") return;
+      if (!isStreamingRef.current || !readerRef.current) return;
+      // 복귀 시점의 마지막 활동 시각을 스냅샷. STALE_MS 뒤에도 그대로면(그 사이 어떤 SSE 도
+      // 안 옴 = keep-alive 조차 없음) 연결이 죽은 것 → 현재 leg 을 취소해 resume 으로 넘긴다.
+      const stamp = lastActivityRef.current;
+      staleWatchdogRef.current = setTimeout(() => {
+        staleWatchdogRef.current = null;
+        if (
+          isStreamingRef.current &&
+          readerRef.current &&
+          lastActivityRef.current === stamp
+        ) {
+          readerRef.current.cancel().catch(() => {});
+        }
+      }, STALE_MS);
+    }
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    return () => {
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+      clearWatchdog();
+    };
+  }, []);
+
+  // P17-T6-01(TS-08) — 세션 재진입/새로고침 시 GET /:id/messages 로 과거 대화를 복원한다.
+  // 서버는 각 turn 의 user+assistant 메시지를 생성 시각순으로 반환(P17-T1-01/02) — 편집/재생성으로
+  // 생긴 형제 분기까지는 구분하지 않으므로(parentMessageId 미포함), 단일 선형 체인으로 복원한다.
+  // 이미 로컬에 진행 중인 대화(예: 새 세션에서 첫 메시지를 보낸 직후)가 있으면 덮어쓰지 않는다.
+  const loadHistory = useCallback(async () => {
+    if (historyLoadedRef.current) return;
+    if (Object.keys(treeRef.current.nodes).length > 0) return;
+    historyLoadedRef.current = true;
+    setHistoryLoading(true);
+    try {
+      const res = await apiFetch(`/api/v1/sessions/${sessionId}/messages`, {
+        credentials: "include",
+      });
+      if (!res.ok) return;
+      const body = (await res.json()) as {
+        data: Array<{ id: string; role: string; content: unknown }>;
+      };
+      let parentId: string | null = null;
+      for (const row of body.data) {
+        if (row.role !== "user" && row.role !== "assistant") continue;
+        const content =
+          typeof row.content === "string"
+            ? row.content
+            : row.content == null
+              ? ""
+              : JSON.stringify(row.content);
+        addNode(row.id, parentId, { id: row.id, role: row.role, content });
+        parentId = row.id;
+      }
+    } catch {
+      // fail-soft — 히스토리 복원 실패 시 빈 대화로 시작(L2/L5, 조용한 실패 아닌 정상 폴백).
+    } finally {
+      setHistoryLoading(false);
+    }
+  }, [sessionId, addNode]);
+
+  // P18-T6-02 — 세션 재진입 시 GET /:id/artifacts 로 아티팩트를 복원한다. 지금까지는
+  // artifact_created 라이브 이벤트로만 artifacts state 가 채워져 재방문/새로고침 시
+  // 문서가 사라졌다(P18 증상②). 서버 wire format(id/type)을 클라이언트 ArtifactSummary
+  // (artifactId/artifactKind)로 매핑 — messageId 는 서버에 없어(frozen interfaces) 비워두고,
+  // ChatView 의 기존 orphanArtifacts 폴백(마지막 assistant 메시지 귀속, P18-T6-01)에 맡긴다.
+  // 이미 진행 중인 라이브 아티팩트가 있으면 덮어쓰지 않는다(loadHistory 와 동일한 폴백 원칙).
+  const loadArtifacts = useCallback(async () => {
+    if (artifactsLoadedRef.current) return;
+    artifactsLoadedRef.current = true;
+    try {
+      const res = await apiFetch(`/api/v1/sessions/${sessionId}/artifacts`, {
+        credentials: "include",
+      });
+      if (!res.ok) return;
+      const body = (await res.json()) as {
+        data: Array<{
+          id: string;
+          type: string;
+          filename: string;
+          sizeBytes: number;
+        }>;
+      };
+      if (body.data.length === 0) return;
+      setArtifacts((prev) =>
+        prev.length > 0
+          ? prev
+          : body.data.map((a) => ({
+              artifactId: a.id,
+              artifactKind: a.type,
+              filename: a.filename,
+              sizeBytes: a.sizeBytes,
+              restored: true,
+            })),
+      );
+    } catch {
+      // fail-soft — 복원 실패 시 아티팩트 없이 시작(L2/L5, 조용한 실패 아닌 정상 폴백).
+    }
+  }, [sessionId]);
 
   const messages = useMemo<StreamMessage[]>(() => {
     const t = treeRef.current;
@@ -271,6 +405,7 @@ export function useSessionStream(sessionId: string) {
       options?: SendOptions,
     ) => {
       setIsStreaming(true);
+      isStreamingRef.current = true;
 
       const controller = new AbortController();
       abortRef.current = controller;
@@ -292,6 +427,10 @@ export function useSessionStream(sessionId: string) {
           content: message,
           error: true,
           retryable: true,
+          // P17-T6-08(TS-24) — 오프라인→온라인 복귀 시 ChatView 가 이 카테고리의 재시도
+          // 가능 오류만 골라 자동 재연결(regenerate)한다(rate-limit 등 다른 재시도
+          // 가능 오류까지 무조건 자동 재전송하면 안 되므로 구분 필요).
+          errorCategory: "network",
         });
         showToast("error", message);
         receivedTerminal = true;
@@ -311,14 +450,29 @@ export function useSessionStream(sessionId: string) {
             content: "",
           });
         } else if (event.type === "message_replace" && assistantId) {
-          // resume 스트림의 첫 이벤트 — 지금까지 누적된 content 로 동기화.
-          updateNode(assistantId, (m) => ({
-            ...m,
-            content: event.contentSoFar,
-            parts: event.contentSoFar
+          // resume 스트림의 첫 이벤트 — 지금까지 누적된 content 로 동기화하되, 백그라운드
+          // 복귀 등으로 클라이언트가 이미 렌더한 도구 카드(type:"tool" 파트)는 절대 파괴하지
+          // 않는다. contentSoFar 는 서버가 누적한 텍스트 스냅샷 — 클라이언트가 같거나 더 많은
+          // 텍스트를 이미 들고 있으면(iOS 복귀 등 상태 보존) 그대로 두고, 뒤처졌거나 상태가
+          // 비었을 때만 텍스트를 보정한다(도구 파트는 순서 유지하며 보존).
+          updateNode(assistantId, (m) => {
+            const existing = m.parts ?? [];
+            if (
+              existing.length > 0 &&
+              m.content.length >= event.contentSoFar.length
+            ) {
+              return m;
+            }
+            const toolParts = existing.filter((p) => p.type !== "text");
+            const textParts: MessagePart[] = event.contentSoFar
               ? [{ type: "text", text: event.contentSoFar }]
-              : [],
-          }));
+              : [];
+            return {
+              ...m,
+              content: event.contentSoFar,
+              parts: [...toolParts, ...textParts],
+            };
+          });
         } else if (event.type === "text_delta" && assistantId) {
           updateNode(assistantId, (m) => {
             const parts = m.parts ?? [];
@@ -423,6 +577,7 @@ export function useSessionStream(sessionId: string) {
               ...(event.downloadUrl !== undefined
                 ? { downloadUrl: event.downloadUrl }
                 : {}),
+              ...(assistantId ? { messageId: assistantId } : {}),
             },
           ]);
         } else if (event.type === "hitl_request") {
@@ -472,33 +627,97 @@ export function useSessionStream(sessionId: string) {
       }): Promise<void> {
         const reader = res.body?.getReader();
         if (!reader) return;
+        // visibilitychange 핸들러가 백그라운드 복귀 시 이 reader 를 취소할 수 있도록 노출한다.
+        readerRef.current = reader;
+        // stale 판정 기준점 — leg 시작 시각으로 초기화(첫 바이트 전에도 최근값 유지).
+        lastActivityRef.current = Date.now();
         const decoder = new TextDecoder();
         let buffer = "";
 
-        for (;;) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          buffer += decoder.decode(value, { stream: true });
+        try {
+          for (;;) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            // keep-alive(: ping) 포함 어떤 바이트든 수신 = 연결 살아있음. stale 워치독 리셋용.
+            lastActivityRef.current = Date.now();
+            buffer += decoder.decode(value, { stream: true });
 
-          let sepIndex = buffer.indexOf("\n\n");
-          while (sepIndex !== -1) {
-            const frame = buffer.slice(0, sepIndex);
-            buffer = buffer.slice(sepIndex + 2);
-            const event = parseSseFrame(frame);
-            sepIndex = buffer.indexOf("\n\n");
-            if (!event) continue;
-            processEvent(event);
+            let sepIndex = buffer.indexOf("\n\n");
+            while (sepIndex !== -1) {
+              const frame = buffer.slice(0, sepIndex);
+              buffer = buffer.slice(sepIndex + 2);
+              const event = parseSseFrame(frame);
+              sepIndex = buffer.indexOf("\n\n");
+              if (!event) continue;
+              processEvent(event);
+            }
           }
+        } finally {
+          if (readerRef.current === reader) readerRef.current = null;
         }
       }
 
-      // 마지막 messageId 로 resume endpoint 에 1회 재연결을 시도한다(16-API-CONTRACT §
-      // GET .../messages/:messageId/stream). 재연결도 실패하면 재시도 가능(retryable:true)
-      // 오류로 사용자에게 알린다 — 무한 재시도로 루프하지 않는다.
-      async function attemptReconnect(): Promise<void> {
-        if (!lastServerMessageId) return;
+      // 백그라운드 중 턴이 이미 완료돼 resume 이 410(gone)/404 를 주면, 서버엔 최종 답변이
+      // 이미 영속돼 있다(POST finally 의 assistant insert). GET /:id/messages 의 마지막
+      // assistant 행으로 로컬 placeholder 를 채워 "연결 끊김" 대신 완성된 답변을 보여준다.
+      // 도구 카드(type:"tool" 파트)는 보존하고 텍스트만 최종본으로 보정한다.
+      async function recoverFinalMessage(): Promise<boolean> {
+        if (!assistantId) return false;
         try {
-          const res = await apiFetch(
+          const res = await apiFetch(`/api/v1/sessions/${sessionId}/messages`, {
+            credentials: "include",
+          });
+          if (!("ok" in res) || res.ok === false) return false;
+          const body = (await (
+            res as unknown as { json: () => Promise<unknown> }
+          ).json()) as {
+            data?: Array<{ role: string; content: unknown }>;
+          };
+          const rows = body.data ?? [];
+          let finalContent: string | null = null;
+          for (let i = rows.length - 1; i >= 0; i -= 1) {
+            if (rows[i]?.role !== "assistant") continue;
+            const raw = rows[i]!.content;
+            finalContent =
+              typeof raw === "string"
+                ? raw
+                : raw == null
+                  ? ""
+                  : JSON.stringify(raw);
+            break;
+          }
+          if (!finalContent) return false;
+          const target = assistantId;
+          updateNode(target, (m) => {
+            // 클라이언트가 이미 최종본 이상을 들고 있으면(정상 종단) 덮어쓰지 않는다.
+            if (m.content.length >= finalContent!.length) return m;
+            const toolParts = (m.parts ?? []).filter((p) => p.type !== "text");
+            return {
+              ...m,
+              content: finalContent!,
+              parts: [
+                ...toolParts,
+                { type: "text", text: finalContent! } as MessagePart,
+              ],
+            };
+          });
+          return true;
+        } catch {
+          return false;
+        }
+      }
+
+      // resume leg 1회 — 16-API-CONTRACT § GET .../messages/:messageId/stream.
+      //   "terminal": 정상 종단(더 이상 재시도 불필요)
+      //   "dropped": 종단 없이 leg 이 또 끊김(백그라운드 재전환 등) → 재시도 가능
+      //   "gone": 서버 턴이 이미 종료됨(410/404) → 최종 답변 복구 시도로 이어짐
+      //   "failed": 네트워크 자체 실패 → 재시도 가능 오류로 사용자에게 알림
+      type LegResult = "terminal" | "dropped" | "gone" | "failed";
+      async function resumeLeg(): Promise<LegResult> {
+        if (!lastServerMessageId) return "failed";
+        let res: { ok?: boolean; body?: ReadableStream<Uint8Array> | null };
+        try {
+          res = await apiFetch(
             `/api/v1/sessions/${sessionId}/messages/${lastServerMessageId}/stream`,
             {
               credentials: "include",
@@ -506,17 +725,57 @@ export function useSessionStream(sessionId: string) {
               headers: { Accept: "text/event-stream" },
             },
           );
-          if ("ok" in res && res.ok === false) {
+        } catch (err) {
+          return (err as Error).name === "AbortError" ? "terminal" : "failed";
+        }
+        if ("ok" in res && res.ok === false) return "gone";
+        try {
+          await readFrom(res);
+        } catch (err) {
+          return (err as Error).name === "AbortError" ? "terminal" : "dropped";
+        }
+        if (receivedTerminal || controller.signal.aborted) return "terminal";
+        return "dropped";
+      }
+
+      // 종단 전이면 resume 루프로 이어받는다. 앱 전환을 여러 번 반복하거나 leg 이 반복
+      // 드롭돼도 복구되도록 bounded 재시도(무한 루프 방지). gone(서버 턴 종료)이면 최종 답변을
+      // 복구하고, 그마저 실패하면 재시도 가능 오류로 알린다.
+      async function driveToTerminal(): Promise<void> {
+        let drops = 0;
+        while (
+          !receivedTerminal &&
+          !controller.signal.aborted &&
+          lastServerMessageId
+        ) {
+          const result = await resumeLeg();
+          if (result === "terminal") return;
+          if (result === "gone") {
+            if (await recoverFinalMessage()) {
+              receivedTerminal = true;
+              return;
+            }
             emitConnectionError();
             return;
           }
-          await readFrom(res);
-          if (!receivedTerminal && !controller.signal.aborted) {
+          if (result === "failed") {
+            // 최종 답변이 이미 영속됐을 수 있으니 복구를 먼저 시도(무손실 폴백).
+            if (await recoverFinalMessage()) {
+              receivedTerminal = true;
+              return;
+            }
             emitConnectionError();
+            return;
           }
-        } catch (err) {
-          if ((err as Error).name !== "AbortError") {
+          // "dropped" — 다시 시도. 연속 드롭이 과하면 알리고 중단.
+          drops += 1;
+          if (drops >= 12) {
+            if (await recoverFinalMessage()) {
+              receivedTerminal = true;
+              return;
+            }
             emitConnectionError();
+            return;
           }
         }
       }
@@ -547,19 +806,24 @@ export function useSessionStream(sessionId: string) {
         await readFrom(res);
 
         if (!receivedTerminal && !controller.signal.aborted) {
-          await attemptReconnect();
+          await driveToTerminal();
         }
       } catch (err) {
         if ((err as Error).name !== "AbortError") {
           if (lastServerMessageId && !receivedTerminal) {
-            await attemptReconnect();
+            await driveToTerminal();
           } else {
             setIsStreaming(false);
           }
         }
       } finally {
         setIsStreaming(false);
+        isStreamingRef.current = false;
         abortRef.current = null;
+        if (readerRef.current) {
+          readerRef.current.cancel().catch(() => {});
+          readerRef.current = null;
+        }
       }
     },
     [sessionId, addNode, updateNode],
@@ -596,6 +860,28 @@ export function useSessionStream(sessionId: string) {
     [addNode, streamTurn],
   );
 
+  // P17-T6-03(TS-06) — 재생성은 새 user 턴을 추가하지 않고, 대상 assistant 메시지가
+  // 속한 user 턴을 그대로 재사용해 그 user 노드 아래 새 assistant 형제를 만든다(편집/분기와
+  // 동일한 tree 의미 — addNode 가 형제 목록에 append+활성 자식 전환까지 처리).
+  // error 메시지는 스트리밍 중 만든 빈 assistant placeholder 의 자식으로 추가되므로
+  // (emitConnectionError/error 핸들러가 assistantId ?? userNodeId 를 부모로 씀), 재시도 시엔
+  // 곧바로 위 부모가 user 가 아닐 수 있어 user 노드를 만날 때까지 부모 체인을 거슬러 올라간다.
+  const regenerate = useCallback(
+    async (assistantMessageId: string) => {
+      const t = treeRef.current;
+      let cursor: string | null = t.parentOf[assistantMessageId] ?? null;
+      while (cursor) {
+        const node = t.nodes[cursor];
+        if (node?.role === "user") {
+          await streamTurn(cursor, node.content);
+          return;
+        }
+        cursor = t.parentOf[cursor] ?? null;
+      }
+    },
+    [streamTurn],
+  );
+
   const switchBranch = useCallback(
     (messageId: string, direction: "prev" | "next") => {
       const t = treeRef.current;
@@ -618,6 +904,7 @@ export function useSessionStream(sessionId: string) {
   const stop = useCallback(async () => {
     abortRef.current?.abort();
     setIsStreaming(false);
+    isStreamingRef.current = false;
     const t = treeRef.current;
     const tipId = getTipId(t);
     if (tipId) {
@@ -667,6 +954,10 @@ export function useSessionStream(sessionId: string) {
     respondHitl,
     artifacts,
     editMessage,
+    regenerate,
     switchBranch,
+    historyLoading,
+    loadHistory,
+    loadArtifacts,
   };
 }

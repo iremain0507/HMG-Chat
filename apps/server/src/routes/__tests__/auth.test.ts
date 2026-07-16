@@ -7,7 +7,15 @@ import type {
   User,
 } from "@wchat/interfaces";
 import type { InMemoryEmailSender } from "../../lib/email-sender.js";
-import { createAuthRoutes, type AuthDataAccess } from "../auth.js";
+import {
+  createAuthRoutes,
+  type AuthDataAccess,
+  type AuthSettingsResolverPort,
+} from "../auth.js";
+import {
+  DEFAULT_ORG_SETTINGS,
+  type ResolvedOrgSettings,
+} from "../../lib/org-settings-schema.js";
 
 process.env.JWT_SECRET = "test-only-jwt-secret-32chars-minimum-xxxx";
 process.env.PROJECT_SLUG = "wchat";
@@ -237,6 +245,16 @@ function extractMagicToken(html: string): string {
   return decodeURIComponent(match[1]);
 }
 
+function makeSettingsResolver(
+  overrides: Partial<ResolvedOrgSettings>,
+): AuthSettingsResolverPort {
+  return {
+    async resolve() {
+      return { ...DEFAULT_ORG_SETTINGS, ...overrides };
+    },
+  };
+}
+
 function cookieValue(
   setCookieHeaders: string[],
   name: string,
@@ -417,5 +435,208 @@ describe("routes/auth", () => {
     );
     expect(res.status).toBe(302);
     expect(res.headers.get("location")).toContain("error=expired");
+  });
+
+  it("P15-T1-01: org enableSignup=false → 허용 도메인이라도 가입 거부(403 SIGNUP_DISABLED)", async () => {
+    const gatedApp = createAuthRoutes({
+      da,
+      emailSender,
+      allowedDomains: ["wchat.example.com"],
+      appOrigin: "http://localhost:3000",
+      secureCookies: false,
+      settings: makeSettingsResolver({ enableSignup: false }),
+    });
+    const res = await gatedApp.request("/signup", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        email: "blocked@wchat.example.com",
+        name: "Blocked",
+      }),
+    });
+    expect(res.status).toBe(403);
+    const body = await res.json();
+    expect(body.error.code).toBe("SIGNUP_DISABLED");
+    expect(emailSender.sent).toHaveLength(0);
+  });
+
+  it("P15-T1-01: 허용되지 않은 도메인은 enableSignup=true 여도 항상 거부(env 게이트 우선)", async () => {
+    const openApp = createAuthRoutes({
+      da,
+      emailSender,
+      allowedDomains: ["wchat.example.com"],
+      appOrigin: "http://localhost:3000",
+      secureCookies: false,
+      settings: makeSettingsResolver({ enableSignup: true }),
+    });
+    const res = await openApp.request("/signup", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ email: "someone@gmail.com", name: "Someone" }),
+    });
+    expect(res.status).toBe(403);
+    const body = await res.json();
+    expect(body.error.code).toBe("EMAIL_DOMAIN_FORBIDDEN");
+  });
+
+  it("P15-T1-01: enableSignup=true(기본) + defaultUserRole=admin → 가입 성공 + 생성 유저 role===admin", async () => {
+    const adminRoleApp = createAuthRoutes({
+      da,
+      emailSender,
+      allowedDomains: ["wchat.example.com"],
+      appOrigin: "http://localhost:3000",
+      secureCookies: false,
+      settings: makeSettingsResolver({
+        enableSignup: true,
+        defaultUserRole: "admin",
+      }),
+    });
+    const signupRes = await adminRoleApp.request("/signup", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        email: "future.admin@wchat.example.com",
+        name: "Future Admin",
+      }),
+    });
+    expect(signupRes.status).toBe(200);
+    const rawToken = extractMagicToken(emailSender.sent[0].html);
+
+    const verifyRes = await adminRoleApp.request(
+      `/magic-link/verify?token=${encodeURIComponent(rawToken)}`,
+      { redirect: "manual" },
+    );
+    expect(verifyRes.status).toBe(302);
+
+    const created = (
+      await da.users.list({
+        orgId: org.id,
+        emailEq: "future.admin@wchat.example.com",
+      })
+    ).items[0];
+    expect(created).toBeTruthy();
+    expect(created.role).toBe("admin");
+  });
+
+  it("P15-T1-01: body 에 임의 orgId 를 넣어도 org 는 이메일 도메인으로만 결정된다", async () => {
+    const otherOrg = await da.organizations.insert({
+      name: "Other Org",
+      domain: "other.example.com",
+      plan: "team",
+      allowedModels: [],
+      allowedTools: [],
+      defaultTokenBudgetMicros: null,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+    const res = await app.request("/signup", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        email: "cross.org@wchat.example.com",
+        name: "Cross Org",
+        orgId: otherOrg.id,
+      }),
+    });
+    expect(res.status).toBe(200);
+    const rawToken = extractMagicToken(emailSender.sent[0].html);
+    await app.request(
+      `/magic-link/verify?token=${encodeURIComponent(rawToken)}`,
+      { redirect: "manual" },
+    );
+    const created = (
+      await da.users.list({
+        orgId: org.id,
+        emailEq: "cross.org@wchat.example.com",
+      })
+    ).items[0];
+    expect(created).toBeTruthy();
+    const inOtherOrg = (
+      await da.users.list({
+        orgId: otherOrg.id,
+        emailEq: "cross.org@wchat.example.com",
+      })
+    ).items;
+    expect(inOtherOrg).toHaveLength(0);
+  });
+
+  it("P17-T1-04: PATCH /me — 인증된 유저가 name·customInstructions 수정 → GET /me 에 반영", async () => {
+    const devApp = createAuthRoutes({
+      da,
+      emailSender,
+      allowedDomains: ["wchat.example.com"],
+      appOrigin: "http://localhost:3000",
+      secureCookies: false,
+      devLogin: true,
+    });
+    const loginRes = await devApp.request("/dev-login", {
+      redirect: "manual",
+    });
+    const setCookies = loginRes.headers.getSetCookie
+      ? loginRes.headers.getSetCookie()
+      : [loginRes.headers.get("set-cookie") ?? ""];
+    const accessCookie = cookieValue(setCookies, "wchat_at");
+
+    const patchRes = await devApp.request("/me", {
+      method: "PATCH",
+      headers: {
+        cookie: `wchat_at=${accessCookie}`,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        name: "Updated Name",
+        customInstructions: "항상 한국어로 답해줘",
+      }),
+    });
+    expect(patchRes.status).toBe(200);
+    const patchBody = await patchRes.json();
+    expect(patchBody.data.name).toBe("Updated Name");
+    expect(patchBody.data.customInstructions).toBe("항상 한국어로 답해줘");
+
+    const meRes = await devApp.request("/me", {
+      headers: { cookie: `wchat_at=${accessCookie}` },
+    });
+    const meBody = await meRes.json();
+    expect(meBody.data.user.name).toBe("Updated Name");
+    expect(meBody.data.user.customInstructions).toBe("항상 한국어로 답해줘");
+  });
+
+  it("P17-T1-04: PATCH /me — 인증 없이 호출 → 401", async () => {
+    const res = await app.request("/me", {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ name: "X" }),
+    });
+    expect(res.status).toBe(401);
+  });
+
+  it("P17-T1-04: PATCH /me — name 빈 문자열 → 400 INVALID_INPUT", async () => {
+    const devApp = createAuthRoutes({
+      da,
+      emailSender,
+      allowedDomains: ["wchat.example.com"],
+      appOrigin: "http://localhost:3000",
+      secureCookies: false,
+      devLogin: true,
+    });
+    const loginRes = await devApp.request("/dev-login", {
+      redirect: "manual",
+    });
+    const setCookies = loginRes.headers.getSetCookie
+      ? loginRes.headers.getSetCookie()
+      : [loginRes.headers.get("set-cookie") ?? ""];
+    const accessCookie = cookieValue(setCookies, "wchat_at");
+
+    const res = await devApp.request("/me", {
+      method: "PATCH",
+      headers: {
+        cookie: `wchat_at=${accessCookie}`,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({ name: "" }),
+    });
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.error.code).toBe("INVALID_INPUT");
   });
 });

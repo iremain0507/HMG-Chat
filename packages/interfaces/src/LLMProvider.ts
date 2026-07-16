@@ -18,6 +18,7 @@ export interface ChatInput {
   tools?: AgentToolSpec[];
   maxTokens: number;
   temperature?: number;
+  topP?: number; // nucleus sampling — provider 가 지원 시 forward (미설정 시 provider 기본)
   cacheControl?: "ephemeral"; // Anthropic prompt cache
   toolChoice?: "auto" | "any" | { type: "tool"; name: string };
   parallelToolCalls?: boolean; // default false (v1.0)

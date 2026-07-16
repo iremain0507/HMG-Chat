@@ -1,12 +1,16 @@
-// routes/sessions.ts — 16-API-CONTRACT.md § DELETE /sessions/:id/active-run,
-// POST /sessions/:id/messages/hitl, GET /sessions/:id/hitl/pending 단일 출처.
-// (세션 CRUD 는 이 태스크 acceptance 밖 — P2-T2-04 PROGRESS.md 기록과 동일 사유, 후속 phase 에서 추가)
+// routes/sessions.ts — 16-API-CONTRACT.md § Sessions(GET /, GET/PATCH/DELETE /:id,
+// GET /:id/messages) + DELETE /sessions/:id/active-run, POST /sessions/:id/messages/hitl,
+// GET /sessions/:id/hitl/pending 단일 출처.
 import { randomUUID } from "node:crypto";
 import { Hono } from "hono";
+import type { Message, Session } from "@wchat/interfaces";
 import { abortRun } from "../orchestrator/run-registry.js";
 import { resolveHitl, listPendingHitl } from "../tools/hitl-manager.js";
 import { createPgArtifactDataAccess } from "../db/artifact-data-access.js";
 import type { ArtifactDataAccess } from "../db/artifact-service.js";
+import { createPgSessionDataAccess } from "../db/session-data-access.js";
+import { createPgMessageDataAccess } from "../db/message-data-access.js";
+import type { AuthedVariables } from "../middleware/auth-middleware.js";
 
 function errorJson(code: string, message: string) {
   return {
@@ -14,13 +18,161 @@ function errorJson(code: string, message: string) {
   };
 }
 
-export interface SessionRoutesDeps {
-  artifactDa?: ArtifactDataAccess;
+function parseLimit(
+  raw: string | undefined,
+  fallback: number,
+  max: number,
+): number {
+  const n = raw ? Number(raw) : NaN;
+  if (!Number.isFinite(n) || n <= 0) return fallback;
+  return Math.min(n, max);
 }
 
-export function createSessionRoutes(deps: SessionRoutesDeps = {}): Hono {
+// P17-T1-02 — GET /(세션 목록), GET /:id/messages(히스토리) 가 실제 쓰는 부분만 좁힌 포트
+// (routes/messages.ts MessagesPort 와 동일 패턴). SessionRepo/MessageRepo(14-INTERFACES)
+// 전체 구현(lock 등 미사용 메서드)까지 강제하지 않는다.
+export interface SessionsPort {
+  list(
+    filter: { userId: string },
+    pagination?: { cursor?: string; limit?: number },
+  ): Promise<{ items: Session[]; nextCursor?: string }>;
+  byId(id: string): Promise<Session | null>;
+  // P17-T1-03(TS-09) — ownership 이 쿼리 조건에 직접 포함(WHERE id=.. AND user_id=..)돼 있어
+  // 별도 조회 없이 원자적으로 cross-org/타 사용자 변경을 차단한다.
+  updateForOwner(
+    userId: string,
+    id: string,
+    data: { title?: string | null; archived?: boolean },
+  ): Promise<Session | null>;
+  deleteForOwner(userId: string, id: string): Promise<boolean>;
+}
+
+export interface SessionMessagesPort {
+  list(
+    filter: { sessionId: string },
+    pagination?: { cursor?: string; limit?: number },
+  ): Promise<{ items: Message[]; nextCursor?: string }>;
+}
+
+export interface SessionRoutesDeps {
+  artifactDa?: ArtifactDataAccess;
+  sessions?: SessionsPort;
+  sessionMessages?: SessionMessagesPort;
+}
+
+export function createSessionRoutes(
+  deps: SessionRoutesDeps = {},
+): Hono<{ Variables: AuthedVariables }> {
   const artifactDa = deps.artifactDa ?? createPgArtifactDataAccess();
-  const app = new Hono();
+  const sessions = deps.sessions ?? createPgSessionDataAccess();
+  const sessionMessages = deps.sessionMessages ?? createPgMessageDataAccess();
+  const app = new Hono<{ Variables: AuthedVariables }>();
+
+  // P17-T1-02(TS-08/10) — 내 세션 목록(최신순). userId 는 auth 에서만 파생(body/query 미수신
+  // → cross-org/타 사용자 열람 원천 차단, projects.ts actorOf 와 동일 패턴).
+  app.get("/", async (c) => {
+    const auth = c.get("auth");
+    const cursor = c.req.query("cursor");
+    const limit = parseLimit(c.req.query("limit"), 20, 100);
+    const page = await sessions.list(
+      { userId: auth.sub },
+      { ...(cursor ? { cursor } : {}), limit },
+    );
+    return c.json({
+      data: page.items.map((s) => ({
+        id: s.id,
+        title: s.title,
+        lastMessageAt: s.lastMessageAt ? s.lastMessageAt.toISOString() : null,
+        projectId: s.projectId,
+        archived: s.archivedAt !== null,
+      })),
+      meta: {
+        requestId: randomUUID(),
+        ...(page.nextCursor ? { nextCursor: page.nextCursor } : {}),
+      },
+    });
+  });
+
+  // P17-T1-02(TS-08/10) — 세션 히스토리. 타 사용자 세션은 404(existence-leak 방지,
+  // 16-API-CONTRACT § GET /sessions/:id 와 동일 정책).
+  app.get("/:id/messages", async (c) => {
+    const auth = c.get("auth");
+    const sessionId = c.req.param("id");
+    const session = await sessions.byId(sessionId);
+    if (!session || session.userId !== auth.sub) {
+      return c.json(errorJson("NOT_FOUND", "세션을 찾을 수 없습니다."), 404);
+    }
+    const cursor = c.req.query("cursor");
+    const limit = parseLimit(c.req.query("limit"), 50, 100);
+    const page = await sessionMessages.list(
+      { sessionId },
+      { ...(cursor ? { cursor } : {}), limit },
+    );
+    return c.json({
+      data: page.items.map((m) => ({
+        id: m.id,
+        sessionId: m.sessionId,
+        role: m.role,
+        content: m.content,
+        createdAt: m.createdAt.toISOString(),
+        tokensIn: m.tokensIn,
+        tokensOut: m.tokensOut,
+        costMicros: m.costMicros,
+      })),
+      meta: {
+        requestId: randomUUID(),
+        ...(page.nextCursor ? { nextCursor: page.nextCursor } : {}),
+      },
+    });
+  });
+
+  // P17-T1-03(TS-09) — rename(title). pin 은 GAP CHECK 로 확인된 대로 서버 영속 대상이
+  // 아님(lib/pinnedSessions.ts, localStorage-only 로 UAT 상 의도된 상태) — 이 태스크 범위 밖.
+  app.patch("/:id", async (c) => {
+    const auth = c.get("auth");
+    const sessionId = c.req.param("id");
+    const body = await c.req
+      .json<{ title?: string; archived?: boolean }>()
+      .catch(() => ({}) as { title?: string; archived?: boolean });
+    if (body.title === undefined && body.archived === undefined) {
+      return c.json(
+        errorJson("INVALID_INPUT", "title 또는 archived 가 필요합니다."),
+        400,
+      );
+    }
+    const updated = await sessions.updateForOwner(auth.sub, sessionId, {
+      ...(body.title !== undefined ? { title: body.title } : {}),
+      ...(body.archived !== undefined ? { archived: body.archived } : {}),
+    });
+    if (!updated) {
+      return c.json(errorJson("NOT_FOUND", "세션을 찾을 수 없습니다."), 404);
+    }
+    return c.json({
+      data: {
+        id: updated.id,
+        title: updated.title,
+        lastMessageAt: updated.lastMessageAt
+          ? updated.lastMessageAt.toISOString()
+          : null,
+        projectId: updated.projectId,
+        archived: updated.archivedAt !== null,
+      },
+      meta: { requestId: randomUUID() },
+    });
+  });
+
+  // P17-T1-03(TS-09) — delete. messages/sessions_active_runs 는 FK ON DELETE CASCADE
+  // (0002/0003 migrations), artifacts.session_id 는 ON DELETE SET NULL(보존) — DB 레벨에서
+  // 이미 처리되므로 sessions row 삭제만으로 계약의 cascade 부수효과가 성립한다.
+  app.delete("/:id", async (c) => {
+    const auth = c.get("auth");
+    const sessionId = c.req.param("id");
+    const deleted = await sessions.deleteForOwner(auth.sub, sessionId);
+    if (!deleted) {
+      return c.json(errorJson("NOT_FOUND", "세션을 찾을 수 없습니다."), 404);
+    }
+    return c.body(null, 204);
+  });
 
   app.delete("/:id/active-run", (c) => {
     const sessionId = c.req.param("id");

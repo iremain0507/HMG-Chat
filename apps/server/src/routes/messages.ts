@@ -12,6 +12,7 @@ import {
   type LLMMessage,
   type LLMProvider,
   type Logger,
+  type Message,
   type Organization,
   type PromptBlock,
   type ToolContext,
@@ -27,6 +28,11 @@ import {
 import type { AuthedVariables } from "../middleware/auth-middleware.js";
 import { hitlBridge } from "../tools/hitl-manager.js";
 import { createLogger } from "../lib/logger.js";
+import {
+  DEFAULT_ORG_SETTINGS,
+  type ResolvedOrgSettings,
+} from "../lib/org-settings-schema.js";
+import type { Citation } from "../knowledge/citation-helper.js";
 
 // abort flow (L06) — Stop 클릭(routes/sessions.ts DELETE /:id/active-run) 이 run-registry 를 통해
 // 이 run 의 signal 을 abort() 시킨 뒤, 여기서 sessions_active_runs.status 를 갱신한다.
@@ -54,6 +60,15 @@ export interface AttachmentsPort {
   resolveEphemeralContext(
     uploadId: string,
   ): Promise<{ filename: string } | null>;
+  // P17-T1-05(TS-14) — 첨부 uploadId 들의 ephemeral_chunks 를 실제 hybridSearch 로 검색해
+  // citation 으로 반환한다. 미주입 시(옵셔널) 기존 동작(파일명 안내만) 그대로 유지.
+  // 청크 적재(업로드 시 parse+chunk+embed) 자체는 이 태스크 범위 밖 — 이미 적재된 청크를
+  // "검색해 인용"하는 소비 측만 담당(db/ephemeral-chunk-search.ts).
+  searchEphemeralChunks?(input: {
+    sessionId: string;
+    uploadIds: string[];
+    queryText: string;
+  }): Promise<Citation[]>;
 }
 
 const noopAttachments: AttachmentsPort = {
@@ -61,6 +76,56 @@ const noopAttachments: AttachmentsPort = {
     return null;
   },
 };
+
+// P17-T1-01 — 메시지 영속(TS-08). db/message-data-access.ts(createPgMessageDataAccess,
+// MessageRepo 14-INTERFACES § 구현체)의 insert 만 소비 — turn 마다 user/assistant 메시지를
+// messages 테이블에 저장한다. 미주입 시 no-op(기존 동작 보존).
+export interface MessagesPort {
+  insert(data: {
+    sessionId: string;
+    role: Message["role"];
+    content: unknown;
+    parentMessageId?: string | null;
+    tokensIn?: number | null;
+    tokensOut?: number | null;
+  }): Promise<Message>;
+}
+
+// P14-T2-01 — org 별 maxTokens/temperature(ISOLATE, runtime 미배선)/systemPrompt/defaultModel
+// 을 admin 이 조정한 값으로 조회하는 포트. settings-service.ts(T1)와 동일 계약(resolve)만
+// 의존해 messages.ts 는 org-settings-schema.ts 의 타입만 import 한다(DI, 순환 회피).
+export interface SettingsResolverPort {
+  resolve(orgId: string): Promise<ResolvedOrgSettings>;
+}
+
+// org-settings-schema.ts 의 OrgSettingsSchema 필드는 전부 zod `.optional()` 이라
+// ResolvedOrgSettings(=Required<OrgSettingsPatch>) 로도 `string | undefined` 타입이 남는다
+// (Required<> 는 `?` modifier 만 제거, union 의 `| undefined` 는 유지되는 TS 특성). 아래
+// 안전기본 리터럴(4096)은 그 잔여 `| undefined` 를 좁히기 위한 최종 non-null 보강이며,
+// DEFAULT_ORG_SETTINGS.maxTokens 와 항상 같은 값을 유지해야 한다.
+const SAFE_DEFAULT_MAX_TOKENS = 4096;
+
+// 트리거 버그(messages.ts:272 구 `?? 1024`) 근본해결 — resolve 가 없거나(deps.settings
+// 미주입)/인증이 없거나/조회가 실패(reject)해도 절대 throw 하지 않고 DEFAULT_ORG_SETTINGS
+// (maxTokens=4096)로 fail-soft 한다(21-LOOP-LESSONS.md L2/L5 — 구 1024 폴백 금지).
+async function resolveSettingsSafely(
+  settings: SettingsResolverPort | undefined,
+  orgId: string | undefined,
+  logger: Logger | undefined,
+): Promise<ResolvedOrgSettings> {
+  if (!settings || !orgId) return DEFAULT_ORG_SETTINGS;
+  try {
+    return await settings.resolve(orgId);
+  } catch (error) {
+    logger?.warn({
+      category: "system",
+      msg: "org settings resolve 실패 — DEFAULT_ORG_SETTINGS 로 폴백",
+      orgId,
+      context: { error: String(error) },
+    });
+    return DEFAULT_ORG_SETTINGS;
+  }
+}
 
 // P11-T2-02 — 라우트가 매 요청마다 (필요 시) 조립하는 tool 실행 예산. BudgetClaim
 // (14-INTERFACES.md § 10) 의 최소 in-memory 구현 — 단일 누적 카운터만 유지하며 claim
@@ -110,11 +175,20 @@ export interface MessageRouteDeps {
   // 클라이언트 생성 세션 UUID(/chat/<uuid>)로 바로 메시지를 보내는 흐름에서, 아티팩트
   //   /업로드/active-run 이 참조하는 sessions 행이 없으면 FK 위반이 난다(deep_research 리포트
   //   저장 실패 등). 첫 메시지 시 세션을 보장(upsert)한다. 미주입 시 no-op(기존 동작).
-  ensureSession?: (sessionId: string, userId: string) => Promise<void>;
+  ensureSession?: (
+    sessionId: string,
+    userId: string,
+    firstContent?: string,
+  ) => Promise<void>;
   hitl?: HitlBridge;
   logger?: Logger;
   // P11-T2-13 — 각 tool invoke 계측(tool-metrics 기록 + gen_ai.* span). 미주입 시 계측 생략.
   toolMetrics?: Pick<ToolMetricRepo, "append">;
+  // P14-T2-01 — org-scoped admin 설정(maxTokens/systemPrompt/defaultModel) 조회. 미주입 시
+  // DEFAULT_ORG_SETTINGS 로 fail-soft(기존 동작 보존 + 구 1024 폴백은 여전히 제거됨).
+  settings?: SettingsResolverPort;
+  // P17-T1-01 — 턴마다 user/assistant 메시지를 messages 테이블에 영속. 미주입 시 no-op.
+  messages?: MessagesPort;
 }
 
 function errorJson(code: string, message: string) {
@@ -145,15 +219,29 @@ export function createMessageRoutes(
       );
     // 클라이언트 생성 세션 UUID 를 첫 메시지 시 DB 에 보장(upsert) — 이후 아티팩트/업로드/
     //   active-run 의 sessions FK 를 충족(없으면 deep_research 리포트 저장 등이 FK 위반).
-    const authForSession = c.get("auth");
-    if (authForSession) {
-      await deps.ensureSession?.(c.req.param("id"), authForSession.sub);
+    const auth = c.get("auth");
+    if (auth) {
+      await deps.ensureSession?.(
+        c.req.param("id"),
+        auth.sub,
+        body.content?.trim(),
+      );
     }
 
     const content = body.content?.trim();
     if (!content) {
       return c.json(errorJson("INVALID_INPUT", "content 가 필요합니다."), 400);
     }
+
+    // P14-T2-01 — org-scoped admin 설정 조회(maxTokens/systemPrompt/defaultModel). 인증이
+    // 없거나 deps.settings 미주입/조회 실패 시 DEFAULT_ORG_SETTINGS 로 fail-soft.
+    const resolvedSettings = await resolveSettingsSafely(
+      deps.settings,
+      auth?.org,
+      deps.logger,
+    );
+    const settingsResolved = deps.settings !== undefined && auth !== undefined;
+
     // P10-T2-06 — attachments:[{uploadId}] 를 ephemeral RAG 컨텍스트로 수용
     // (16-API-CONTRACT § POST /sessions/:id/messages 의 Phase 2/4 boundary 조기 해제).
     const attachmentsPort = deps.attachments ?? noopAttachments;
@@ -166,7 +254,12 @@ export function createMessageRoutes(
       .filter((a): a is { filename: string } => a !== null)
       .map((a) => a.filename);
 
-    const systemBlocks = deps.systemBlocks ?? [];
+    // org systemPrompt 를 system-tier PromptBlock 로 기존 systemBlocks 맨 앞에 추가한다
+    // (16-API-CONTRACT 의 tier 우선순위: system > project > user).
+    const orgSystemBlock: PromptBlock[] = resolvedSettings.systemPrompt
+      ? [{ tier: "system", content: resolvedSettings.systemPrompt }]
+      : [];
+    const systemBlocks = [...orgSystemBlock, ...(deps.systemBlocks ?? [])];
     const ephemeralBlock: PromptBlock[] =
       attachmentFilenames.length > 0
         ? [
@@ -182,6 +275,23 @@ export function createMessageRoutes(
 
     const sessionId = c.req.param("id");
 
+    // P17-T1-05(TS-14) — 첨부가 있으면 세션 ephemeral_chunks 를 실제 검색해 citation 으로
+    // 반영한다. 미주입/미첨부 시 빈 배열(기존 동작 보존).
+    const uploadIds = (body.attachments ?? []).map((a) => a.uploadId);
+    const attachmentCitations: Citation[] =
+      uploadIds.length > 0 && attachmentsPort.searchEphemeralChunks
+        ? await attachmentsPort
+            .searchEphemeralChunks({ sessionId, uploadIds, queryText: content })
+            .catch((error) => {
+              deps.logger?.warn({
+                category: "system",
+                msg: "ephemeral chunk 검색 실패",
+                context: { error: String(error) },
+              });
+              return [];
+            })
+        : [];
+
     // P11-T2-02 — 내장 handler+MCP 툴을 AgentTool[] 로 조립해 runTurn 에 tools+toolContext
     // 주입 + body.model 을 org.allowedModels 화이트리스트로 검증해 실 turn model 로 반영.
     // 기존 테스트(auth/tools/model 미사용)는 이 분기에 전혀 들어오지 않아 그대로 통과한다.
@@ -189,12 +299,17 @@ export function createMessageRoutes(
     const staticTools = deps.tools ?? [];
     const needsToolContext =
       staticTools.length > 0 || deps.mcpTools !== undefined;
-    let model = deps.model;
+    // P14-T2-01 — org defaultModel 은 body.model 이 없을 때만, 실제 org 설정이 조회됐을 때만
+    // (settingsResolved) deps.model(서버 기본 모델)을 대체한다 — settings 미주입 환경(기존
+    // 테스트/배선)은 deps.model 그대로 유지.
+    let model =
+      requestedModel === undefined && settingsResolved
+        ? (resolvedSettings.defaultModel ?? deps.model)
+        : deps.model;
     let tools: AgentTool[] = staticTools;
     let toolContext: Omit<ToolContext, "signal"> | undefined;
 
     if (requestedModel !== undefined || needsToolContext) {
-      const auth = c.get("auth");
       if (!auth) {
         return c.json(errorJson("UNAUTHENTICATED", "인증이 필요합니다."), 401);
       }
@@ -236,6 +351,18 @@ export function createMessageRoutes(
       }
     }
 
+    // P17-T1-01 — user 메시지를 messages 테이블에 영속(best-effort — 실패해도 turn 은 계속).
+    const userMessage = await deps.messages
+      ?.insert({ sessionId, role: "user", content })
+      .catch((error) => {
+        deps.logger?.warn({
+          category: "system",
+          msg: "user message 영속 실패",
+          context: { error: String(error) },
+        });
+        return undefined;
+      });
+
     const jobId = randomUUID();
     const activeRuns = deps.activeRuns ?? noopActiveRuns;
     const handle = registerRun(sessionId, jobId);
@@ -263,14 +390,30 @@ export function createMessageRoutes(
       // 재호출로 leg 가 여러 개 생기면 그때마다 message_start 가 새 messageId 를 발급하므로
       // currentMessageId 도 그에 맞춰 갱신된다.
       let currentMessageId: string | undefined;
+      let assistantText = "";
+      let assistantUsage:
+        { inputTokens: number; outputTokens: number } | undefined;
       try {
         const events = runTurn({
           provider: deps.provider,
           model,
           systemBlocks: [...systemBlocks, ...ephemeralBlock],
           messages,
-          maxTokens: deps.maxTokens ?? 1024,
+          maxTokens:
+            deps.maxTokens ??
+            resolvedSettings.maxTokens ??
+            SAFE_DEFAULT_MAX_TOKENS,
           signal: handle.controller.signal,
+          // org 가 admin 설정에서 DEFAULT_ORG_SETTINGS 값(0.7/0.9)을 바꾼 경우에만 forward —
+          // 미조정 org 는 provider SDK 기본값을 그대로 유지한다(비파괴, P15-T2-01).
+          ...(resolvedSettings.temperature !== undefined &&
+          resolvedSettings.temperature !== DEFAULT_ORG_SETTINGS.temperature
+            ? { temperature: resolvedSettings.temperature }
+            : {}),
+          ...(resolvedSettings.topP !== undefined &&
+          resolvedSettings.topP !== DEFAULT_ORG_SETTINGS.topP
+            ? { topP: resolvedSettings.topP }
+            : {}),
           ...(tools.length > 0 ? { tools, parallelToolCalls: true } : {}),
           ...(toolContext ? { toolContext } : {}),
           ...(deps.toolMetrics ? { toolMetrics: deps.toolMetrics } : {}),
@@ -279,8 +422,23 @@ export function createMessageRoutes(
           if (event.type === "message_start") {
             currentMessageId = event.messageId;
             startMessageRun(event.messageId, sessionId);
+            // P17-T1-05(TS-14) — 첨부 ephemeral 청크 검색 결과를 이 turn 의 citation 이벤트로
+            // 방출(모델의 tool_use 여부와 무관하게 결정적으로 반영).
+            for (const citation of attachmentCitations) {
+              const citationEvent = { type: "citation" as const, ...citation };
+              recordMessageRunEvent(currentMessageId, citationEvent);
+              await stream.writeSSE({
+                event: "citation",
+                data: JSON.stringify(citation),
+              });
+            }
           } else if (currentMessageId) {
             recordMessageRunEvent(currentMessageId, event);
+          }
+          if (event.type === "text_delta") {
+            assistantText += event.text;
+          } else if (event.type === "stop") {
+            assistantUsage = event.usage;
           }
           const { type, ...payload } = event;
           await stream.writeSSE({ event: type, data: JSON.stringify(payload) });
@@ -318,6 +476,26 @@ export function createMessageRoutes(
       } finally {
         clearInterval(heartbeat);
         unregisterRun(sessionId, jobId);
+        // P17-T1-01 — assistant 메시지 영속(정상 종료·취소·에러 경로 모두 finally 에서 1회).
+        // message_start 가 한 번도 없었으면(예: 초기 검증 실패) 빈 행을 남기지 않는다.
+        if (currentMessageId) {
+          await deps.messages
+            ?.insert({
+              sessionId,
+              role: "assistant",
+              content: assistantText,
+              parentMessageId: userMessage?.id ?? null,
+              tokensIn: assistantUsage?.inputTokens ?? null,
+              tokensOut: assistantUsage?.outputTokens ?? null,
+            })
+            .catch((error) => {
+              deps.logger?.warn({
+                category: "system",
+                msg: "assistant message 영속 실패",
+                context: { error: String(error) },
+              });
+            });
+        }
       }
     });
   });

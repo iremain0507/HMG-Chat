@@ -404,6 +404,109 @@ describe("createDeepResearchTool", () => {
     expect(storedText).not.toContain("[99]");
   });
 
+  it("P15-T2-02: org settings.resolve 의 toolMaxTokens 가 설정되면 sub-turn 이 정적 deps.maxTokens 대신 그 값을 사용한다", async () => {
+    const capturedMaxTokens: number[] = [];
+    const capturingWorkerProvider: LLMProvider = {
+      name: "fake-worker",
+      models: ["fake-worker-model"],
+      async *chat(input) {
+        capturedMaxTokens.push(input.maxTokens);
+        yield {
+          type: "message_start",
+          messageId: "msg-w",
+          meta: { provider: "fake-worker", model: "fake-worker-model" },
+        };
+        yield { type: "text_delta", text: "핵심 사실 확인됨" };
+        yield {
+          type: "stop",
+          reason: "end_turn",
+          usage: { inputTokens: 1, outputTokens: 1 },
+        };
+      },
+    };
+    const tool = createDeepResearchTool({
+      leadProvider: fakeLeadProvider({
+        plannerResponse: "- 질문 A",
+        synthesisResponse: () => "리포트",
+        gapCheckResponse: () => "COMPLETE",
+      }),
+      leadModel: "fake-lead-model",
+      workerProvider: capturingWorkerProvider,
+      workerModel: "fake-worker-model",
+      workerTools: [],
+      maxTokens: 4096,
+      da: fakeArtifactDa(),
+      settings: {
+        async resolve(orgId: string) {
+          expect(orgId).toBe("org-1");
+          return { toolMaxTokens: 8000 };
+        },
+      },
+    });
+
+    await tool.invoke({
+      toolCallId: "call-tokens",
+      args: { query: "리서치 목표" },
+      ctx: fakeToolContext(),
+    });
+
+    expect(capturedMaxTokens.length).toBeGreaterThan(0);
+    for (const mt of capturedMaxTokens) {
+      expect(mt).toBe(8000);
+    }
+  });
+
+  it("P15-T2-02: org settings 에 toolMaxTokens 가 없으면(미설정) 정적 deps.maxTokens(4096)를 그대로 사용한다(비파괴)", async () => {
+    const capturedMaxTokens: number[] = [];
+    const capturingWorkerProvider: LLMProvider = {
+      name: "fake-worker",
+      models: ["fake-worker-model"],
+      async *chat(input) {
+        capturedMaxTokens.push(input.maxTokens);
+        yield {
+          type: "message_start",
+          messageId: "msg-w",
+          meta: { provider: "fake-worker", model: "fake-worker-model" },
+        };
+        yield { type: "text_delta", text: "핵심 사실 확인됨" };
+        yield {
+          type: "stop",
+          reason: "end_turn",
+          usage: { inputTokens: 1, outputTokens: 1 },
+        };
+      },
+    };
+    const tool = createDeepResearchTool({
+      leadProvider: fakeLeadProvider({
+        plannerResponse: "- 질문 A",
+        synthesisResponse: () => "리포트",
+        gapCheckResponse: () => "COMPLETE",
+      }),
+      leadModel: "fake-lead-model",
+      workerProvider: capturingWorkerProvider,
+      workerModel: "fake-worker-model",
+      workerTools: [],
+      maxTokens: 4096,
+      da: fakeArtifactDa(),
+      settings: {
+        async resolve() {
+          return { toolMaxTokens: 4096 };
+        },
+      },
+    });
+
+    await tool.invoke({
+      toolCallId: "call-tokens-default",
+      args: { query: "리서치 목표" },
+      ctx: fakeToolContext(),
+    });
+
+    expect(capturedMaxTokens.length).toBeGreaterThan(0);
+    for (const mt of capturedMaxTokens) {
+      expect(mt).toBe(4096);
+    }
+  });
+
   it("gapCheck 가 계속 GAP 을 반환해도 maxGapIterations hard cap 에서 무한루프 없이 종료한다(MAST 종료조건)", async () => {
     const da = fakeArtifactDa();
     let gapCheckCalls = 0;

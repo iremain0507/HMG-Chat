@@ -428,12 +428,15 @@ describe("useSessionStream", () => {
       await result.current.send("보고서 만들어줘");
     });
 
+    // messageId(P18-T6-01) — 라이브 스트림에서 artifact_created 가 도착한 시점의
+    // assistantId 로 채워져 메시지 인라인 카드 귀속에 쓰인다.
     expect(result.current.artifacts).toEqual([
       {
         artifactId: "artifact-1",
         artifactKind: "markdown",
         filename: "report.md",
         sizeBytes: 120,
+        messageId: expect.any(String),
       },
       {
         artifactId: "artifact-2",
@@ -441,8 +444,12 @@ describe("useSessionStream", () => {
         filename: "report.pdf",
         sizeBytes: 4096,
         downloadUrl: "https://s3.example.com/artifact-2",
+        messageId: expect.any(String),
       },
     ]);
+    expect(result.current.artifacts[0]?.messageId).toEqual(
+      result.current.artifacts[1]?.messageId,
+    );
   });
 
   it("hitl_request 이벤트를 받으면 hitlRequest 상태를 채우고, hitl_resolved 로 같은 toolCallId 가 도착하면 비운다", async () => {
@@ -611,6 +618,64 @@ describe("useSessionStream", () => {
       (m) => m.role === "assistant",
     );
     expect(assistantMessage?.content).toBe("편집된 응답");
+  });
+
+  it("regenerate 는 같은 user 턴 아래 assistant 형제를 새로 만들고, user 턴은 중복되지 않는다 (P17-T6-03, TS-06)", async () => {
+    const fetchMock = vi.fn(async () => ({
+      body: sseBody([
+        sseFrame("message_start", { messageId: "msg-1" }),
+        sseFrame("text_delta", { text: "첫 응답" }),
+        sseFrame("stop", { reason: "end_turn" }),
+      ]),
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { result } = renderHook(() => useSessionStream("session-1"));
+
+    await act(async () => {
+      await result.current.send("원본 질문");
+    });
+
+    const assistantMessage = result.current.messages.find(
+      (m) => m.role === "assistant",
+    );
+    expect(assistantMessage).toBeDefined();
+
+    fetchMock.mockImplementationOnce(async () => ({
+      body: sseBody([
+        sseFrame("message_start", { messageId: "msg-2" }),
+        sseFrame("text_delta", { text: "대안 응답" }),
+        sseFrame("stop", { reason: "end_turn" }),
+      ]),
+    }));
+
+    await act(async () => {
+      await result.current.regenerate(assistantMessage!.id);
+    });
+
+    // 재생성은 새 user 턴을 추가하지 않는다 — user 메시지는 여전히 1개.
+    const userMessages = result.current.messages.filter(
+      (m) => m.role === "user",
+    );
+    expect(userMessages).toHaveLength(1);
+    expect(userMessages[0]?.content).toBe("원본 질문");
+    expect(userMessages[0]?.branch).toBeUndefined();
+
+    // 같은 user 턴 아래 assistant 형제 2/2 가 생기고 활성경로는 새 형제로 전환된다.
+    const activeAssistant = result.current.messages.find(
+      (m) => m.role === "assistant",
+    );
+    expect(activeAssistant?.content).toBe("대안 응답");
+    expect(activeAssistant?.branch).toEqual({ index: 2, count: 2 });
+
+    // regenerate 요청도 동일 엔드포인트로 전송됨(새 세션 경로 아님).
+    expect(fetchMock).toHaveBeenLastCalledWith(
+      "/api/v1/sessions/session-1/messages",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({ content: "원본 질문" }),
+      }),
+    );
   });
 
   it("switchBranch 로 형제 분기를 전환하면 활성경로가 해당 분기의 이전에 스트리밍된 내용으로 복원된다 (P10-T6-15)", async () => {
@@ -788,5 +853,250 @@ describe("useSessionStream", () => {
     const errorMessage = result.current.messages.find((m) => m.error);
     expect(errorMessage).toBeDefined();
     expect(errorMessage?.retryable).toBe(true);
+    // P17-T6-08(TS-24) — ChatView 가 오프라인→온라인 복귀 시 이 카테고리만 골라
+    // 자동 재연결하므로, rate-limit 등 다른 재시도 가능 오류와 구분돼야 한다.
+    expect(errorMessage?.errorCategory).toBe("network");
+  });
+
+  // iOS 등 백그라운드 서스펜션 후 foreground 복귀 — 진행 중 turn 이 드롭됐다가 resume 될 때
+  // (a) 이미 렌더된 도구 카드가 유지되고 (b) 백그라운드 중 턴이 끝났으면 최종 답변을 복구한다.
+  it("resume 의 message_replace 는 이미 렌더된 도구 카드(tool 파트)를 파괴하지 않는다 (iOS 백그라운드 복귀)", async () => {
+    const fetchMock = vi.fn(async (url: unknown) => {
+      if (typeof url === "string" && url.endsWith("/stream")) {
+        return {
+          ok: true,
+          body: sseBody([
+            sseFrame("message_replace", {
+              messageId: "msg-1",
+              contentSoFar: "부분",
+            }),
+            sseFrame("text_delta", { text: "완성" }),
+            sseFrame("stop", { reason: "end_turn" }),
+          ]),
+        };
+      }
+      // 최초 POST leg: 도구 호출 카드 + 부분 텍스트까지 스트리밍 후 (종단 없이) 드롭.
+      return {
+        ok: true,
+        body: sseBody([
+          sseFrame("message_start", { messageId: "msg-1" }),
+          sseFrame("tool_use", {
+            toolCallId: "t1",
+            name: "deep_research",
+            args: {},
+          }),
+          sseFrame("text_delta", { text: "부분" }),
+        ]),
+      };
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { result } = renderHook(() => useSessionStream("session-1"));
+    await act(async () => {
+      await result.current.send("hi");
+    });
+
+    const assistant = result.current.messages.find(
+      (m) => m.role === "assistant",
+    );
+    // 과거엔 message_replace 가 parts 를 텍스트 전용으로 덮어써 도구 카드가 사라졌다.
+    expect(
+      assistant?.parts?.some((p) => p.type === "tool" && p.toolCallId === "t1"),
+    ).toBe(true);
+    expect(assistant?.content).toBe("부분완성");
+  });
+
+  it("백그라운드 중 턴이 끝나 resume 이 410(gone)을 주면 최종 답변을 복구하고 '연결 끊김' 오류를 띄우지 않는다", async () => {
+    const fetchMock = vi.fn(async (url: unknown, init?: unknown) => {
+      if (typeof url === "string" && url.endsWith("/stream")) {
+        // 서버 턴이 이미 종료됨 → 410 gone.
+        return { ok: false, status: 410 };
+      }
+      if (
+        typeof url === "string" &&
+        url.endsWith("/messages") &&
+        (init as { method?: string } | undefined)?.method === "POST"
+      ) {
+        // 최초 POST leg: 부분 텍스트까지 스트리밍 후 (종단 없이) 드롭.
+        return {
+          ok: true,
+          body: sseBody([
+            sseFrame("message_start", { messageId: "msg-1" }),
+            sseFrame("text_delta", { text: "부분 답변" }),
+          ]),
+        };
+      }
+      // GET /:id/messages — 영속된 최종 답변(POST finally 의 assistant insert).
+      return {
+        ok: true,
+        json: async () => ({
+          data: [
+            { id: "u1", role: "user", content: "hi" },
+            {
+              id: "a1",
+              role: "assistant",
+              content: "부분 답변 그리고 끝까지 완성된 최종 답변",
+            },
+          ],
+        }),
+      };
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { result } = renderHook(() => useSessionStream("session-1"));
+    await act(async () => {
+      await result.current.send("hi");
+    });
+
+    // 과거엔 410 을 res.ok===false 로 보고 "연결이 끊어졌습니다" 오류를 띄웠다.
+    expect(result.current.messages.some((m) => m.error)).toBe(false);
+    const assistant = result.current.messages.find(
+      (m) => m.role === "assistant" && !m.error,
+    );
+    expect(assistant?.content).toBe("부분 답변 그리고 끝까지 완성된 최종 답변");
+  });
+
+  describe("loadHistory (P17-T6-01, TS-08)", () => {
+    it("GET /:id/messages 응답을 시간순 선형 체인으로 복원한다", async () => {
+      const fetchMock = vi.fn(async () => ({
+        ok: true,
+        json: async () => ({
+          data: [
+            {
+              id: "m-1",
+              sessionId: "session-1",
+              role: "user",
+              content: "안녕",
+            },
+            {
+              id: "m-2",
+              sessionId: "session-1",
+              role: "assistant",
+              content: "반갑습니다",
+            },
+          ],
+        }),
+      }));
+      vi.stubGlobal("fetch", fetchMock);
+
+      const { result } = renderHook(() => useSessionStream("session-1"));
+      await act(async () => {
+        await result.current.loadHistory();
+      });
+
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/v1/sessions/session-1/messages",
+        expect.objectContaining({ credentials: "include" }),
+      );
+      expect(result.current.messages.map((m) => [m.role, m.content])).toEqual([
+        ["user", "안녕"],
+        ["assistant", "반갑습니다"],
+      ]);
+      expect(result.current.historyLoading).toBe(false);
+    });
+
+    it("응답 실패 시 조용히 빈 대화로 폴백한다(fail-soft)", async () => {
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async () => ({ ok: false })),
+      );
+
+      const { result } = renderHook(() => useSessionStream("session-1"));
+      await act(async () => {
+        await result.current.loadHistory();
+      });
+
+      expect(result.current.messages).toEqual([]);
+      expect(result.current.historyLoading).toBe(false);
+    });
+
+    it("이미 진행 중인 로컬 대화가 있으면 히스토리 복원으로 덮어쓰지 않는다", async () => {
+      const fetchMock = vi.fn(async () => ({
+        body: sseBody([
+          sseFrame("message_start", { messageId: "msg-1" }),
+          sseFrame("text_delta", { text: "hello" }),
+          sseFrame("stop", { reason: "end_turn" }),
+        ]),
+        ok: true,
+        json: async () => ({
+          data: [
+            {
+              id: "m-1",
+              sessionId: "session-1",
+              role: "user",
+              content: "이전 대화",
+            },
+          ],
+        }),
+      }));
+      vi.stubGlobal("fetch", fetchMock);
+
+      const { result } = renderHook(() => useSessionStream("session-1"));
+      await act(async () => {
+        await result.current.send("hi");
+      });
+      await act(async () => {
+        await result.current.loadHistory();
+      });
+
+      expect(
+        result.current.messages.some((m) => m.content === "이전 대화"),
+      ).toBe(false);
+    });
+  });
+
+  describe("loadArtifacts (P18-T6-02)", () => {
+    it("GET /:id/artifacts 응답으로 artifacts 상태를 복원한다", async () => {
+      const fetchMock = vi.fn(async () => ({
+        ok: true,
+        json: async () => ({
+          data: [
+            {
+              id: "artifact-1",
+              sessionId: "session-1",
+              type: "markdown",
+              filename: "report.md",
+              sizeBytes: 120,
+              storageKind: "inline",
+              createdAt: "2026-07-01T00:00:00.000Z",
+            },
+          ],
+        }),
+      }));
+      vi.stubGlobal("fetch", fetchMock);
+
+      const { result } = renderHook(() => useSessionStream("session-1"));
+      await act(async () => {
+        await result.current.loadArtifacts();
+      });
+
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/v1/sessions/session-1/artifacts",
+        expect.objectContaining({ credentials: "include" }),
+      );
+      expect(result.current.artifacts).toEqual([
+        {
+          artifactId: "artifact-1",
+          artifactKind: "markdown",
+          filename: "report.md",
+          sizeBytes: 120,
+          restored: true,
+        },
+      ]);
+    });
+
+    it("응답 실패 시 조용히 빈 목록으로 폴백한다(fail-soft)", async () => {
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async () => ({ ok: false })),
+      );
+
+      const { result } = renderHook(() => useSessionStream("session-1"));
+      await act(async () => {
+        await result.current.loadArtifacts();
+      });
+
+      expect(result.current.artifacts).toEqual([]);
+    });
   });
 });
