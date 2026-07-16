@@ -1,9 +1,28 @@
 // @vitest-environment jsdom
 import React from "react";
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { render, screen, cleanup, waitFor } from "@testing-library/react";
+import {
+  render,
+  screen,
+  cleanup,
+  waitFor,
+  fireEvent,
+} from "@testing-library/react";
 import "@testing-library/jest-dom/vitest";
 import { AdminSettingsScreen } from "../AdminSettingsScreen";
+import { subscribeToasts, __resetToastsForTest } from "../../../../lib/toast";
+
+const ORG = {
+  id: "org-1",
+  name: "Acme",
+  domain: "acme.test",
+  plan: "pro",
+  allowedModels: ["claude-sonnet-5", "claude-opus-4-8"],
+  allowedTools: [],
+  defaultTokenBudgetMicros: null,
+  createdAt: "2026-01-01T00:00:00Z",
+  updatedAt: "2026-01-01T00:00:00Z",
+};
 
 const SETTINGS = {
   maxTokens: 4096,
@@ -40,10 +59,36 @@ function stubFetchOnce() {
   );
 }
 
+function stubFetch(opts: { putOk?: boolean } = {}) {
+  const putOk = opts.putOk ?? true;
+  const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
+    if (url.includes("/auth/me")) {
+      return {
+        ok: true,
+        json: async () => ({ data: { user: {}, org: ORG } }),
+      };
+    }
+    if (init?.method === "PUT") {
+      if (!putOk) {
+        return { ok: false, json: async () => ({ error: {} }) };
+      }
+      const patch = JSON.parse(init.body as string);
+      return {
+        ok: true,
+        json: async () => ({ data: { ...SETTINGS, ...patch } }),
+      };
+    }
+    return { ok: true, json: async () => ({ data: SETTINGS }) };
+  });
+  vi.stubGlobal("fetch", fetchMock);
+  return fetchMock;
+}
+
 describe("AdminSettingsScreen", () => {
   afterEach(() => {
     cleanup();
     vi.unstubAllGlobals();
+    __resetToastsForTest();
   });
 
   it("GET 로 불러온 뒤 7개 탭을 렌더한다", async () => {
@@ -97,5 +142,129 @@ describe("AdminSettingsScreen", () => {
     expect(
       screen.queryByTestId("admin-settings-save-bar"),
     ).not.toBeInTheDocument();
+  });
+
+  it("maxTokens 를 범위 밖으로 바꾸면 저장 버튼이 비활성화되고 오류가 표시된다", async () => {
+    stubFetch();
+    render(<AdminSettingsScreen />);
+    await waitFor(() => {
+      expect(screen.getByRole("tablist")).toBeInTheDocument();
+    });
+
+    fireEvent.change(screen.getByTestId("admin-settings-maxTokens"), {
+      target: { value: "999999" },
+    });
+
+    expect(
+      await screen.findByTestId("admin-settings-maxTokens-error"),
+    ).toBeInTheDocument();
+    expect(screen.getByTestId("admin-settings-save-button")).toBeDisabled();
+  });
+
+  it("유효한 변경을 저장하면 PUT 패치 전송 후 성공 토스트를 띄운다", async () => {
+    const fetchMock = stubFetch();
+    render(<AdminSettingsScreen />);
+    await waitFor(() => {
+      expect(screen.getByRole("tablist")).toBeInTheDocument();
+    });
+
+    const received: unknown[][] = [];
+    subscribeToasts((toasts) => received.push(toasts));
+
+    fireEvent.change(screen.getByTestId("admin-settings-temperature"), {
+      target: { value: "0.4" },
+    });
+    fireEvent.click(screen.getByTestId("admin-settings-save-button"));
+
+    await waitFor(() => {
+      expect(
+        received.some((snapshot) =>
+          snapshot.some((t) => (t as { kind: string }).kind === "success"),
+        ),
+      ).toBe(true);
+    });
+
+    const putCall = fetchMock.mock.calls.find(
+      ([, init]) => (init as RequestInit | undefined)?.method === "PUT",
+    );
+    expect(putCall).toBeDefined();
+    const body = JSON.parse((putCall![1] as RequestInit).body as string);
+    expect(body.temperature).toBe(0.4);
+  });
+
+  it("저장이 실패하면 draft 를 이전 값으로 롤백하고 오류 토스트를 띄운다", async () => {
+    stubFetch({ putOk: false });
+    render(<AdminSettingsScreen />);
+    await waitFor(() => {
+      expect(screen.getByRole("tablist")).toBeInTheDocument();
+    });
+
+    const received: unknown[][] = [];
+    subscribeToasts((toasts) => received.push(toasts));
+
+    fireEvent.change(screen.getByTestId("admin-settings-temperature"), {
+      target: { value: "0.4" },
+    });
+    fireEvent.click(screen.getByTestId("admin-settings-save-button"));
+
+    await waitFor(() => {
+      expect(
+        received.some((snapshot) =>
+          snapshot.some((t) => (t as { kind: string }).kind === "error"),
+        ),
+      ).toBe(true);
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId("admin-settings-temperature")).toHaveValue(0.7);
+    });
+  });
+
+  it("maxTokens 를 낮추면(하향) 저장 전 확인 다이얼로그를 띄운다", async () => {
+    const fetchMock = stubFetch();
+    render(<AdminSettingsScreen />);
+    await waitFor(() => {
+      expect(screen.getByRole("tablist")).toBeInTheDocument();
+    });
+
+    fireEvent.change(screen.getByTestId("admin-settings-maxTokens"), {
+      target: { value: "1000" },
+    });
+    fireEvent.click(screen.getByTestId("admin-settings-save-button"));
+
+    const confirmDialog = await screen.findByTestId(
+      "admin-settings-downgrade-confirm",
+    );
+    expect(confirmDialog).toBeInTheDocument();
+    expect(
+      fetchMock.mock.calls.some(
+        ([, init]) => (init as RequestInit | undefined)?.method === "PUT",
+      ),
+    ).toBe(false);
+
+    fireEvent.click(
+      screen.getByTestId("admin-settings-downgrade-confirm-accept"),
+    );
+
+    await waitFor(() => {
+      expect(
+        fetchMock.mock.calls.some(
+          ([, init]) => (init as RequestInit | undefined)?.method === "PUT",
+        ),
+      ).toBe(true);
+    });
+  });
+
+  it("defaultModel select 는 org.allowedModels 를 옵션으로 보여준다", async () => {
+    stubFetch();
+    render(<AdminSettingsScreen />);
+    await waitFor(() => {
+      expect(screen.getByRole("tablist")).toBeInTheDocument();
+    });
+
+    const select = await screen.findByTestId("admin-settings-defaultModel");
+    await waitFor(() => {
+      expect(select.querySelectorAll("option")).toHaveLength(2);
+    });
   });
 });

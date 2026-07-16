@@ -1319,8 +1319,8 @@
     "acceptance": "RED: 저장 흐름(목 fetch)이 PUT patch 전송·성공 toast·오류 롤백; maxTokens/temperature 범위검증이 잘못된 입력 차단; 브라우저 라이트/다크 스크린샷; 하드코딩 hex 0; verify-gates green",
     "phase": "P14",
     "team": "T6",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P14-T6-03",

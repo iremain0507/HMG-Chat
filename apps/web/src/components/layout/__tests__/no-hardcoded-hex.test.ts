@@ -51,6 +51,7 @@ const FILES = [
   "../../../app/(auth)/signup/page.tsx",
   "../../../app/share/[token]/page.tsx",
   "../../admin/settings/AdminSettingsScreen.tsx",
+  "../../admin/settings/ModelsGenerationTab.tsx",
   "../../../app/admin/settings/page.tsx",
 ];
 

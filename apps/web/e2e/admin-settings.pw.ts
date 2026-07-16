@@ -36,6 +36,36 @@ async function mockBackend(page: import("@playwright/test").Page) {
       body: JSON.stringify({ data: SETTINGS }),
     }),
   );
+  await page.route("**/api/v1/auth/me", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        data: {
+          user: {
+            id: "user-1",
+            email: "admin@example.com",
+            name: "관리자",
+            orgId: "org-1",
+            role: "admin",
+            customInstructions: null,
+            createdAt: "2026-01-01T00:00:00Z",
+          },
+          org: {
+            id: "org-1",
+            name: "Acme",
+            domain: "acme.test",
+            plan: "pro",
+            allowedModels: ["claude-sonnet-5", "claude-opus-4-8"],
+            allowedTools: [],
+            defaultTokenBudgetMicros: null,
+            createdAt: "2026-01-01T00:00:00Z",
+            updatedAt: "2026-01-01T00:00:00Z",
+          },
+        },
+      }),
+    }),
+  );
 }
 
 test.describe("P14 preview — 관리자 설정(P14-T6-01) 핸드오프 정렬", () => {
@@ -54,6 +84,23 @@ test.describe("P14 preview — 관리자 설정(P14-T6-01) 핸드오프 정렬",
     ).toHaveAttribute("aria-selected", "true");
     await expect(
       settingsScreen.getByTestId("admin-settings-panel-models"),
+    ).toBeVisible();
+    await expect(
+      settingsScreen.getByTestId("admin-settings-maxTokens"),
+    ).toHaveValue("4096");
+    await expect(
+      settingsScreen.getByTestId("admin-settings-defaultModel"),
+    ).toHaveValue("claude-sonnet-5");
+    await expect(
+      settingsScreen.getByTestId("admin-settings-topP-hint"),
+    ).toContainText("아직 미적용");
+    await expect(
+      settingsScreen.getByTestId("admin-settings-allowedModels-list"),
+    ).toContainText("claude-opus-4-8");
+
+    await settingsScreen.getByTestId("admin-settings-maxTokens").fill("8192");
+    await expect(
+      settingsScreen.getByTestId("admin-settings-save-bar"),
     ).toBeVisible();
 
     await settingsScreen.getByRole("tab", { name: "Knowledge/RAG" }).click();

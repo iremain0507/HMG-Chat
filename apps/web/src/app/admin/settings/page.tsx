@@ -1,6 +1,7 @@
 import React from "react";
 import { AdminGuard } from "../../../components/admin/AdminGuard";
 import { AdminSettingsScreen } from "../../../components/admin/settings/AdminSettingsScreen";
+import { ToastContainer } from "../../../components/layout/ToastContainer";
 
 export default function AdminSettingsPage() {
   return (
@@ -8,6 +9,7 @@ export default function AdminSettingsPage() {
       <AdminGuard>
         <AdminSettingsScreen />
       </AdminGuard>
+      <ToastContainer />
     </main>
   );
 }
