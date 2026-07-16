@@ -119,6 +119,15 @@ export function createApp(env: Env) {
 
   const appOrigin = env.APP_ORIGIN ?? "http://localhost:3000";
 
+  // P14-T2-01/P15-T1-01 — routes/messages.ts·routes/auth.ts 가 org-scoped 설정(maxTokens 등·
+  // enableSignup/defaultUserRole)을 실제 요청에 반영하도록 admin-settings 라우트(§ 아래)와
+  // 동일 인스턴스를 공유한다(per-org TTL 캐시가 admin PUT 이후 invalidate 와 일관되도록).
+  const orgSettingsDa = createPgOrgSettingsDataAccess();
+  const settingsService = createSettingsService({
+    da: orgSettingsDa,
+    logger: createLogger(),
+  });
+
   const authDa = createPgAuthDataAccess();
   app.route(
     "/api/v1/auth",
@@ -130,6 +139,9 @@ export function createApp(env: Env) {
       secureCookies: env.NODE_ENV === "production",
       // dev/test 에서만 /api/v1/auth/dev-login 활성(production 은 404). SSO 도입 전 로컬 편의.
       devLogin: env.NODE_ENV !== "production",
+      // enableSignup=false 인 org 는 허용 도메인이라도 가입 거부, 생성 유저 role 은
+      // defaultUserRole 로 반영(P15-T1-01). 미조회/실패 시 DEFAULT_ORG_SETTINGS 로 fail-soft.
+      settings: settingsService,
     }),
   );
 
@@ -158,15 +170,6 @@ export function createApp(env: Env) {
     nodeEnv: env.NODE_ENV,
   });
   const mcpBridge = createMcpBridge({ pool: mcpClientPool });
-
-  // P14-T2-01 — routes/messages.ts 가 org-scoped maxTokens/systemPrompt/defaultModel 을
-  // 실제 turn 에 반영하도록 admin-settings 라우트(§ 아래)와 동일 인스턴스를 공유한다
-  // (createSettingsService 의 per-org TTL 캐시가 admin PUT 이후 invalidate 와 일관되도록).
-  const orgSettingsDa = createPgOrgSettingsDataAccess();
-  const settingsService = createSettingsService({
-    da: orgSettingsDa,
-    logger: createLogger(),
-  });
 
   const sessionsApp = new Hono<{ Variables: AuthedVariables }>();
   sessionsApp.use("*", authMiddleware);

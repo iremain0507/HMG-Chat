@@ -86,7 +86,8 @@ describe("OrgSettingsSchema", () => {
     expect(settings.banner).toBe("");
     expect(settings.responseWatermark).toBe("");
     expect(settings.defaultUserRole).toBe("member");
-    expect(settings.enableSignup).toBe(false);
+    // P15-T1-01: 현행 "허용 도메인이면 가입 가능" 동작을 미조정 org 에서 보존하기 위해 true.
+    expect(settings.enableSignup).toBe(true);
     expect(settings.maxUploadSizeMb).toBe(25);
     expect(settings.maxUploadCount).toBe(10);
   });

@@ -34,7 +34,7 @@ export const OrgSettingsSchema = z.object({
   banner: z.string().max(2000).optional(),
   responseWatermark: z.string().max(200).optional(),
 
-  // Users & Permissions (런타임 미배선 — env/ALLOWED_DOMAINS 결합, ISOLATE)
+  // Users & Permissions — env/ALLOWED_DOMAINS 도메인 게이트와 결합해 routes/auth.ts 가 반영(P15-T1-01)
   defaultUserRole: z.enum(["member", "admin", "owner"]).optional(),
   enableSignup: z.boolean().optional(),
 
@@ -71,7 +71,9 @@ export const DEFAULT_ORG_SETTINGS: ResolvedOrgSettings = {
   responseWatermark: "",
 
   defaultUserRole: "member",
-  enableSignup: false,
+  // 현행 "허용 도메인이면 가입 가능"(routes/auth.ts 의 env allowedDomains 게이트) 동작을
+  // 미조정 org 에서 그대로 보존하기 위한 기본값(P15-T1-01, 비파괴).
+  enableSignup: true,
 
   maxUploadSizeMb: 25,
   maxUploadCount: 10,

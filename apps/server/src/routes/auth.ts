@@ -13,6 +13,30 @@ import {
   verifyRefreshToken,
   type RefreshTokenPayload,
 } from "../middleware/jwt.js";
+import {
+  DEFAULT_ORG_SETTINGS,
+  type ResolvedOrgSettings,
+} from "../lib/org-settings-schema.js";
+
+// P15-T1-01 — org-scoped enableSignup/defaultUserRole 조회 포트. settings-service.ts(T1)와
+// 동일 계약(resolve)만 의존해 순환을 피한다(messages.ts SettingsResolverPort 와 동일 idiom).
+export interface AuthSettingsResolverPort {
+  resolve(orgId: string): Promise<ResolvedOrgSettings>;
+}
+
+// resolve 미주입/조회 실패 시 절대 throw 하지 않고 DEFAULT_ORG_SETTINGS 로 fail-soft
+// (21-LOOP-LESSONS.md L2 — 현재 도메인 게이트만으로 가입 가능하던 기존 동작 보존).
+async function resolveAuthSettingsSafely(
+  settings: AuthSettingsResolverPort | undefined,
+  orgId: string,
+): Promise<ResolvedOrgSettings> {
+  if (!settings) return DEFAULT_ORG_SETTINGS;
+  try {
+    return await settings.resolve(orgId);
+  } catch {
+    return DEFAULT_ORG_SETTINGS;
+  }
+}
 
 export type AuthDataAccess = Pick<
   DataAccess,
@@ -33,6 +57,9 @@ export interface AuthRouteDeps {
   secureCookies?: boolean; // default true (dev/test 에선 false)
   // dev 전용 즉시 로그인(magic-link 없이). production 에선 반드시 false — SSO 도입 전까지 로컬 테스트 편의.
   devLogin?: boolean;
+  // P15-T1-01 — org-scoped enableSignup/defaultUserRole 런타임 조회. 미주입 시 DEFAULT_ORG_SETTINGS
+  // (enableSignup=true/defaultUserRole=member)로 fail-soft — 기존 동작 보존.
+  settings?: AuthSettingsResolverPort;
 }
 
 const ACCESS_TTL_SECONDS = 15 * 60;
@@ -162,6 +189,16 @@ export function createAuthRoutes(deps: AuthRouteDeps): Hono {
       );
     }
 
+    // org 는 오직 이메일 도메인으로만 결정된다(body 로 지정 불가) — enableSignup 도
+    // 이 org 기준으로만 조회한다.
+    const resolved = await resolveAuthSettingsSafely(deps.settings, org.id);
+    if (!resolved.enableSignup) {
+      return c.json(
+        errorJson("SIGNUP_DISABLED", "이 조직은 가입이 비활성화되어 있습니다."),
+        403,
+      );
+    }
+
     const rawToken = randomBytes(32).toString("base64url");
     await deps.da.magicLinkTokens.insert({
       tokenHash: hashToken(rawToken),
@@ -237,11 +274,17 @@ export function createAuthRoutes(deps: AuthRouteDeps): Hono {
 
     let userId = record.userId;
     if (record.intent === "signup" && !userId) {
+      const resolved = await resolveAuthSettingsSafely(
+        deps.settings,
+        record.orgId,
+      );
       const user = await deps.da.users.insert({
         orgId: record.orgId,
         email: record.email,
         name: record.signupName,
-        role: "member",
+        // exactOptionalPropertyTypes: ResolvedOrgSettings 필드는 zod `.optional()` 유래
+        // `| undefined` 가 Required<> 에도 남는다(messages.ts SAFE_DEFAULT_MAX_TOKENS 와 동일 사유).
+        role: resolved.defaultUserRole ?? "member",
         customInstructions: null,
         status: "active",
         lastLoginAt: new Date(),

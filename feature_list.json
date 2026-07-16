@@ -1356,7 +1356,7 @@
     "phase": "P15",
     "team": "T3",
     "passes": false,
-    "attempts": 0
+    "attempts": 1
   },
   {
     "id": "P15-T1-01",
@@ -1364,8 +1364,8 @@
     "acceptance": "RED: enableSignup=false→허용 도메인이라도 가입 거부; enableSignup=true(기본)→가입 성공+role===defaultUserRole; 미허용 도메인은 항상 거부(env 게이트 우선); org 는 이메일 도메인으로만 결정(body 지정 불가); verify-gates green",
     "phase": "P15",
     "team": "T1",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P15-T6-01",
