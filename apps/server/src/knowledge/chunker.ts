@@ -15,8 +15,8 @@ const DEFAULT_OVERLAP_TOKENS =
   DEFAULT_ORG_SETTINGS.ragChunkOverlapTokens ?? 100;
 
 export interface ChunkOptions {
-  chunkSizeTokens?: number;
-  overlapTokens?: number;
+  chunkSizeTokens?: number | undefined;
+  overlapTokens?: number | undefined;
 }
 
 export interface TextChunk {

@@ -14,12 +14,14 @@ import type {
 import {
   createDocumentService,
   DocumentServiceError,
+  type ChunkSettingsResolverPort,
   type DocumentDataAccess,
 } from "../document-service.js";
 import type { ProjectActor } from "../project-service.js";
 import { createInMemoryObjectStore } from "../../lib/object-store.js";
 import type { ParserPipeline } from "../../knowledge/parser-types.js";
 import { ParserPipelineError } from "../../knowledge/parser-pipeline.js";
+import { chunkText } from "../../knowledge/chunker.js";
 
 function makeInMemoryDocumentDataAccess(): DocumentDataAccess & {
   __setOrgUnits(userId: string, unitIds: string[]): void;
@@ -190,6 +192,15 @@ const fakeParserPipeline: ParserPipeline = {
   supports: () => true,
   async parse() {
     return { format: "docx", markdown: "hello world content" };
+  },
+};
+
+const LONG_TEXT = "word ".repeat(3000).trim();
+
+const longParserPipeline: ParserPipeline = {
+  supports: () => true,
+  async parse() {
+    return { format: "docx", markdown: LONG_TEXT };
   },
 };
 
@@ -434,5 +445,77 @@ describe("document-service indexDocument (P4-T3-08) — 업로드→파싱→청
     ).rejects.toBeInstanceOf(ParserPipelineError);
     const failed = [...da.__chunks.values()];
     expect(failed).toHaveLength(0);
+  });
+
+  it("P16-T1-01: settings 미주입 시 chunkText 기본값(800)으로 청킹한다", async () => {
+    const svcNoSettings = createDocumentService(
+      da,
+      createInMemoryObjectStore(),
+      {
+        parserPipeline: longParserPipeline,
+        embeddingProvider: fakeEmbeddingProvider,
+      },
+    );
+    const doc = await svcNoSettings.indexDocument(owner, project.id, {
+      filename: "long.docx",
+      mimeType:
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      data: Buffer.from("long docx bytes"),
+    });
+    expect(doc.chunkCount).toBe(chunkText(LONG_TEXT).length);
+  });
+
+  it("P16-T1-01: org ragChunkSizeTokens=1200 이면 1200 기준으로 청킹한다(index 시점 org 컨텍스트)", async () => {
+    const settingsResolver: ChunkSettingsResolverPort = {
+      async resolve() {
+        return { ragChunkSizeTokens: 1200, ragChunkOverlapTokens: 100 };
+      },
+    };
+    const svcWithSettings = createDocumentService(
+      da,
+      createInMemoryObjectStore(),
+      {
+        parserPipeline: longParserPipeline,
+        embeddingProvider: fakeEmbeddingProvider,
+        settings: settingsResolver,
+      },
+    );
+    const doc = await svcWithSettings.indexDocument(owner, project.id, {
+      filename: "long-1200.docx",
+      mimeType:
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      data: Buffer.from("long docx bytes 1200"),
+    });
+    const expected = chunkText(LONG_TEXT, {
+      chunkSizeTokens: 1200,
+      overlapTokens: 100,
+    }).length;
+    expect(doc.chunkCount).toBe(expected);
+    expect(doc.chunkCount).not.toBe(chunkText(LONG_TEXT).length);
+  });
+
+  it("P16-T1-01: settings.resolve 가 실패해도 인덱싱은 기본값(800)으로 fail-soft 한다", async () => {
+    const failingResolver: ChunkSettingsResolverPort = {
+      async resolve() {
+        throw new Error("settings unavailable");
+      },
+    };
+    const svcFailingSettings = createDocumentService(
+      da,
+      createInMemoryObjectStore(),
+      {
+        parserPipeline: longParserPipeline,
+        embeddingProvider: fakeEmbeddingProvider,
+        settings: failingResolver,
+      },
+    );
+    const doc = await svcFailingSettings.indexDocument(owner, project.id, {
+      filename: "long-failsoft.docx",
+      mimeType:
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      data: Buffer.from("long docx bytes failsoft"),
+    });
+    expect(doc.indexStatus).toBe("indexed");
+    expect(doc.chunkCount).toBe(chunkText(LONG_TEXT).length);
   });
 });

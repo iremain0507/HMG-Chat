@@ -1427,7 +1427,7 @@
     "acceptance": "RED: org ragChunkSizeTokens=1200 → 인덱싱이 1200 로 분할; 미설정 시 800 유지; verify-gates green",
     "phase": "P16",
     "team": "T1",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   }
 ]

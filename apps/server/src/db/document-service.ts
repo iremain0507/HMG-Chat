@@ -18,15 +18,31 @@ import {
 import type { ObjectStore } from "../lib/object-store.js";
 import type { ParserPipeline } from "../knowledge/parser-types.js";
 import { chunkText } from "../knowledge/chunker.js";
+import type { ResolvedOrgSettings } from "../lib/org-settings-schema.js";
 
 export type DocumentDataAccess = Pick<DataAccess, "projectDocuments"> &
   ProjectDataAccess & {
     documentChunks: Pick<DocumentChunkRepo, "insert" | "bulkInsert">;
   };
 
+// P16-T1-01 — index 시점 org-scoped 청크 설정 조회 포트. deep-research-handler.ts 의
+// ToolSettingsResolverPort 와 동일하게 SettingsService.resolve 와 구조적으로만 호환되는
+// 최소 계약(DI, 순환 회피).
+export interface ChunkSettingsResolverPort {
+  resolve(
+    orgId: string,
+  ): Promise<
+    Pick<ResolvedOrgSettings, "ragChunkSizeTokens" | "ragChunkOverlapTokens">
+  >;
+}
+
 export interface DocumentIndexingDeps {
   parserPipeline: ParserPipeline;
   embeddingProvider: EmbeddingProvider;
+  // 주입 시 index 시점에 actor.orgId 로 org 설정을 조회해 chunkText 에 반영.
+  // 미주입/조회 실패 시 chunkText 기본값(DEFAULT_ORG_SETTINGS 800/100)으로 fail-soft
+  // (21-LOOP-LESSONS.md L2 — settings 조회 실패로 인덱싱 자체가 죽어선 안 됨).
+  settings?: ChunkSettingsResolverPort;
 }
 
 export interface IndexDocumentInput {
@@ -41,6 +57,25 @@ export class DocumentServiceError extends Error {
   constructor(code: DocumentServiceError["code"], message: string) {
     super(message);
     this.code = code;
+  }
+}
+
+async function resolveChunkOptions(
+  settings: ChunkSettingsResolverPort | undefined,
+  orgId: string,
+): Promise<{
+  chunkSizeTokens?: number | undefined;
+  overlapTokens?: number | undefined;
+}> {
+  if (!settings) return {};
+  try {
+    const resolved = await settings.resolve(orgId);
+    return {
+      chunkSizeTokens: resolved.ragChunkSizeTokens,
+      overlapTokens: resolved.ragChunkOverlapTokens,
+    };
+  } catch {
+    return {};
   }
 }
 
@@ -156,7 +191,11 @@ export function createDocumentService(
         mimeType: input.mimeType,
         filename: input.filename,
       });
-      const chunks = chunkText(parsed.markdown);
+      const chunkOptions = await resolveChunkOptions(
+        indexing.settings,
+        actor.orgId,
+      );
+      const chunks = chunkText(parsed.markdown, chunkOptions);
       const embeddings = chunks.length
         ? await indexing.embeddingProvider.embed(chunks.map((c) => c.content))
         : [];
