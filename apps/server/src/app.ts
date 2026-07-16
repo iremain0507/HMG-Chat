@@ -43,6 +43,7 @@ import { createPgHealthHistoryDataAccess } from "./db/health-history-data-access
 import { createPgAdminDataAccess } from "./db/admin-data-access.js";
 import { createPgOrgSettingsDataAccess } from "./db/org-settings-data-access.js";
 import { createSettingsService } from "./lib/settings-service.js";
+import { deriveSessionTitle } from "./lib/session-title.js";
 import { DEFAULT_ORG_SETTINGS } from "./lib/org-settings-schema.js";
 import { createSkillRegistry } from "./tools/skills-engine.js";
 import { assembleBuiltinTools } from "./tools/assemble-builtin-tools.js";
@@ -201,11 +202,14 @@ export function createApp(env: Env) {
       // 클라이언트 생성 세션 UUID(/chat/<uuid>)를 첫 메시지 시 upsert — 아티팩트/업로드/
       //   active-run 의 sessions FK 충족(deep_research 리포트 저장 FK 위반 해소). best-effort:
       //   잘못된 id 형식 등은 무시(RLS 는 pgPool 롤이 bypass, FK 만 필요).
-      ensureSession: async (id, userId) => {
+      ensureSession: async (id, userId, firstContent) => {
         try {
+          // 첫 메시지에서 세션 제목 파생 — ON CONFLICT DO NOTHING 이라 최초 생성 시 1회만 설정,
+          //   이후 메시지는 기존 제목 보존. 제목 없으면 히스토리가 "(제목 없음)" 으로만 보임.
+          const title = deriveSessionTitle(firstContent);
           await pgPool.query(
-            `INSERT INTO sessions (id, user_id) VALUES ($1, $2) ON CONFLICT (id) DO NOTHING`,
-            [id, userId],
+            `INSERT INTO sessions (id, user_id, title) VALUES ($1, $2, $3) ON CONFLICT (id) DO NOTHING`,
+            [id, userId, title],
           );
         } catch {
           /* best-effort — 세션 보장 실패해도 메시지 흐름은 계속 */
