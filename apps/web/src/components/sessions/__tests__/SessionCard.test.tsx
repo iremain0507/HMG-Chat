@@ -16,6 +16,7 @@ const session: SessionListItemDto = {
   projectId: null,
   archived: false,
   pinned: false,
+  folderId: null,
 };
 
 describe("SessionCard 툴팁", () => {
@@ -26,10 +27,12 @@ describe("SessionCard 툴팁", () => {
       <SessionCard
         session={session}
         pinned={false}
+        folders={[]}
         onOpen={vi.fn()}
         onRename={vi.fn()}
         onDelete={vi.fn()}
         onTogglePin={vi.fn()}
+        onAssignFolder={vi.fn()}
       />,
     );
 
@@ -47,10 +50,12 @@ describe("SessionCard 툴팁", () => {
       <SessionCard
         session={session}
         pinned
+        folders={[]}
         onOpen={vi.fn()}
         onRename={vi.fn()}
         onDelete={vi.fn()}
         onTogglePin={vi.fn()}
+        onAssignFolder={vi.fn()}
       />,
     );
 
