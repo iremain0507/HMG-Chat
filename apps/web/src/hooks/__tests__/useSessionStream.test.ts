@@ -858,6 +858,104 @@ describe("useSessionStream", () => {
     expect(errorMessage?.errorCategory).toBe("network");
   });
 
+  // iOS 등 백그라운드 서스펜션 후 foreground 복귀 — 진행 중 turn 이 드롭됐다가 resume 될 때
+  // (a) 이미 렌더된 도구 카드가 유지되고 (b) 백그라운드 중 턴이 끝났으면 최종 답변을 복구한다.
+  it("resume 의 message_replace 는 이미 렌더된 도구 카드(tool 파트)를 파괴하지 않는다 (iOS 백그라운드 복귀)", async () => {
+    const fetchMock = vi.fn(async (url: unknown) => {
+      if (typeof url === "string" && url.endsWith("/stream")) {
+        return {
+          ok: true,
+          body: sseBody([
+            sseFrame("message_replace", {
+              messageId: "msg-1",
+              contentSoFar: "부분",
+            }),
+            sseFrame("text_delta", { text: "완성" }),
+            sseFrame("stop", { reason: "end_turn" }),
+          ]),
+        };
+      }
+      // 최초 POST leg: 도구 호출 카드 + 부분 텍스트까지 스트리밍 후 (종단 없이) 드롭.
+      return {
+        ok: true,
+        body: sseBody([
+          sseFrame("message_start", { messageId: "msg-1" }),
+          sseFrame("tool_use", {
+            toolCallId: "t1",
+            name: "deep_research",
+            args: {},
+          }),
+          sseFrame("text_delta", { text: "부분" }),
+        ]),
+      };
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { result } = renderHook(() => useSessionStream("session-1"));
+    await act(async () => {
+      await result.current.send("hi");
+    });
+
+    const assistant = result.current.messages.find(
+      (m) => m.role === "assistant",
+    );
+    // 과거엔 message_replace 가 parts 를 텍스트 전용으로 덮어써 도구 카드가 사라졌다.
+    expect(
+      assistant?.parts?.some((p) => p.type === "tool" && p.toolCallId === "t1"),
+    ).toBe(true);
+    expect(assistant?.content).toBe("부분완성");
+  });
+
+  it("백그라운드 중 턴이 끝나 resume 이 410(gone)을 주면 최종 답변을 복구하고 '연결 끊김' 오류를 띄우지 않는다", async () => {
+    const fetchMock = vi.fn(async (url: unknown, init?: unknown) => {
+      if (typeof url === "string" && url.endsWith("/stream")) {
+        // 서버 턴이 이미 종료됨 → 410 gone.
+        return { ok: false, status: 410 };
+      }
+      if (
+        typeof url === "string" &&
+        url.endsWith("/messages") &&
+        (init as { method?: string } | undefined)?.method === "POST"
+      ) {
+        // 최초 POST leg: 부분 텍스트까지 스트리밍 후 (종단 없이) 드롭.
+        return {
+          ok: true,
+          body: sseBody([
+            sseFrame("message_start", { messageId: "msg-1" }),
+            sseFrame("text_delta", { text: "부분 답변" }),
+          ]),
+        };
+      }
+      // GET /:id/messages — 영속된 최종 답변(POST finally 의 assistant insert).
+      return {
+        ok: true,
+        json: async () => ({
+          data: [
+            { id: "u1", role: "user", content: "hi" },
+            {
+              id: "a1",
+              role: "assistant",
+              content: "부분 답변 그리고 끝까지 완성된 최종 답변",
+            },
+          ],
+        }),
+      };
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { result } = renderHook(() => useSessionStream("session-1"));
+    await act(async () => {
+      await result.current.send("hi");
+    });
+
+    // 과거엔 410 을 res.ok===false 로 보고 "연결이 끊어졌습니다" 오류를 띄웠다.
+    expect(result.current.messages.some((m) => m.error)).toBe(false);
+    const assistant = result.current.messages.find(
+      (m) => m.role === "assistant" && !m.error,
+    );
+    expect(assistant?.content).toBe("부분 답변 그리고 끝까지 완성된 최종 답변");
+  });
+
   describe("loadHistory (P17-T6-01, TS-08)", () => {
     it("GET /:id/messages 응답을 시간순 선형 체인으로 복원한다", async () => {
       const fetchMock = vi.fn(async () => ({
