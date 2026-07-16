@@ -61,6 +61,13 @@ export interface SessionsDataAccess {
     userId: string,
     id: string,
   ): Promise<SessionWithPin | null>;
+  // P19-T1-06 — 제목+메시지 내용 검색(GET /sessions/search?q=). ownership 은 list() 와 동일하게
+  // userId 로 쿼리에 내장(cross-org/타 사용자 세션은 결과에 노출 불가).
+  search(
+    userId: string,
+    query: string,
+    limit?: number,
+  ): Promise<SessionWithPin[]>;
 }
 
 export function createPgSessionDataAccess(): SessionsDataAccess {
@@ -146,6 +153,30 @@ export function createPgSessionDataAccess(): SessionsDataAccess {
         [id, userId],
       );
       return res.rows[0] ? toSession(res.rows[0]) : null;
+    },
+    async search(userId, query, limit = 20) {
+      // ILIKE 와일드카드(%, _, \) 는 리터럴로 매치되도록 이스케이프한다(0022 GIN trgm 인덱스 활용).
+      const escaped = query.replace(/([\\%_])/g, "\\$1");
+      const pattern = `%${escaped}%`;
+      const res = await pgPool.query(
+        `SELECT s.*, COALESCE(
+           (SELECT array_agg(t.tag ORDER BY t.tag) FROM session_tags t WHERE t.session_id = s.id),
+           '{}'
+         ) AS tags
+         FROM sessions s
+         WHERE s.user_id = $1
+           AND (
+             s.title ILIKE $2 ESCAPE '\\'
+             OR EXISTS (
+               SELECT 1 FROM messages m
+               WHERE m.session_id = s.id AND m.content::text ILIKE $2 ESCAPE '\\'
+             )
+           )
+         ORDER BY COALESCE(s.last_message_at, s.created_at) DESC
+         LIMIT $3`,
+        [userId, pattern, limit],
+      );
+      return res.rows.map(toSession);
     },
   };
 }

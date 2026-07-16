@@ -1715,8 +1715,8 @@
     "acceptance": "RED: createApp 실HTTP 본문 매칭 세션 반환 + cross-org 미노출 단언. verify-gates green",
     "phase": "P19",
     "team": "T1",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P19-T6-06",

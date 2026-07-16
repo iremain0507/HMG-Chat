@@ -69,6 +69,12 @@ export interface SessionsPort {
     userId: string,
     id: string,
   ): Promise<SessionWithPin | null>;
+  // P19-T1-06 — 제목+메시지 내용 검색(GET /search?q=).
+  search(
+    userId: string,
+    query: string,
+    limit?: number,
+  ): Promise<SessionWithPin[]>;
 }
 
 export interface SessionMessagesPort {
@@ -133,6 +139,32 @@ export function createSessionRoutes(
         requestId: randomUUID(),
         ...(page.nextCursor ? { nextCursor: page.nextCursor } : {}),
       },
+    });
+  });
+
+  // P19-T1-06 — 제목+메시지 내용 검색. userId 는 auth 에서만 파생(body/query 미수신 →
+  // cross-org/타 사용자 세션 노출 불가, GET / 목록과 동일 정책). 정적 경로라 "/:id/..." 계열보다
+  // 먼저 매칭돼도/나중에 매칭돼도 충돌 없음(단일 세그먼트 GET /:id 라우트 자체가 없음).
+  app.get("/search", async (c) => {
+    const auth = c.get("auth");
+    const q = c.req.query("q")?.trim();
+    if (!q) {
+      return c.json(errorJson("INVALID_INPUT", "q 가 필요합니다."), 400);
+    }
+    const limit = parseLimit(c.req.query("limit"), 20, 100);
+    const results = await sessions.search(auth.sub, q, limit);
+    return c.json({
+      data: results.map((s) => ({
+        id: s.id,
+        title: s.title,
+        lastMessageAt: s.lastMessageAt ? s.lastMessageAt.toISOString() : null,
+        projectId: s.projectId,
+        archived: s.archivedAt !== null,
+        pinned: s.pinnedAt !== null,
+        folderId: s.folderId,
+        tags: s.tags,
+      })),
+      meta: { requestId: randomUUID() },
     });
   });
 

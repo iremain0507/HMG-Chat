@@ -148,6 +148,13 @@
       "when": 1783890300000,
       "tag": "0021_session_archive",
       "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1783890400000,
+      "tag": "0022_session_search_index",
+      "breakpoints": true
     }
   ]
 }
