@@ -1445,8 +1445,8 @@
     "acceptance": "RED: GET /api/v1/sessions 가 내 세션 배열 반환(404 아님); GET /:id/messages 히스토리 반환; cross-org 격리(타 org 세션 안 보임); routes-mounted green; verify-gates green",
     "phase": "P17",
     "team": "T1",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P17-T1-03",

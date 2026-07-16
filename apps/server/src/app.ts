@@ -16,6 +16,7 @@ import { createPgDocumentDataAccess } from "./db/project-document-data-access.js
 import { createArtifactRoutes } from "./routes/artifacts.js";
 import { createPgArtifactDataAccess } from "./db/artifact-data-access.js";
 import { createPgMessageDataAccess } from "./db/message-data-access.js";
+import { createPgSessionDataAccess } from "./db/session-data-access.js";
 import { pgPool } from "./db/client.js";
 import { createArtifactShareRoutes } from "./routes/artifact-shares.js";
 import { createPgArtifactShareDataAccess } from "./db/artifact-share-data-access.js";
@@ -172,9 +173,19 @@ export function createApp(env: Env) {
   });
   const mcpBridge = createMcpBridge({ pool: mcpClientPool });
 
+  // P17-T1-02 — createSessionRoutes(GET /, GET /:id/messages)와 createMessageRoutes(메시지
+  // 영속, P17-T1-01)가 같은 messages 테이블 데이터 접근 인스턴스를 공유.
+  const messageDa = createPgMessageDataAccess();
+
   const sessionsApp = new Hono<{ Variables: AuthedVariables }>();
   sessionsApp.use("*", authMiddleware);
-  sessionsApp.route("/", createSessionRoutes());
+  sessionsApp.route(
+    "/",
+    createSessionRoutes({
+      sessions: createPgSessionDataAccess(),
+      sessionMessages: messageDa,
+    }),
+  );
   sessionsApp.route(
     "/",
     createMessageRoutes({
@@ -221,7 +232,7 @@ export function createApp(env: Env) {
       hitl: hitlBridge,
       logger: createLogger(),
       // P17-T1-01 — 턴마다 user/assistant 메시지를 messages 테이블에 영속.
-      messages: createPgMessageDataAccess(),
+      messages: messageDa,
     }),
   );
   app.route("/api/v1/sessions", sessionsApp);
