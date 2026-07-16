@@ -43,6 +43,7 @@ const FILES = [
   "../../admin/AdminDashboard.tsx",
   "../../admin/ToolMetricsTable.tsx",
   "../../admin/AdminUsersManager.tsx",
+  "../../admin/AdminSubNav.tsx",
   "../../chat/ShareExportMenu.tsx",
   "../../share/SharePublicView.tsx",
   "../../auth/LoginForm.tsx",

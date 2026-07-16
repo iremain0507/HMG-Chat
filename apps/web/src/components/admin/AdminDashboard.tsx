@@ -7,7 +7,9 @@
 // 요약은 전용 라우트(/admin/tool-metrics · ToolMetricsTable)로 이어지는 밀도 낮은
 // 한 줄 스트립으로 축약.
 import React from "react";
+import Link from "next/link";
 import { useAdminDashboard } from "../../hooks/useAdminDashboard";
+import { AdminSubNav } from "./AdminSubNav";
 
 export function AdminDashboard() {
   const { summary, loading, error } = useAdminDashboard();
@@ -18,6 +20,8 @@ export function AdminDashboard() {
         <h2 className="text-xl font-bold text-fg">관리</h2>
         <span className="font-mono text-[11px] text-fg-subtle">/admin</span>
       </div>
+
+      <AdminSubNav />
 
       {error && <p className="mt-3 text-sm text-accent">{error}</p>}
 
@@ -79,9 +83,12 @@ export function AdminDashboard() {
             <span className="font-mono tabular-nums">
               p50 {summary.tools.p50LatencyMs}ms
             </span>
-            <span className="ml-auto font-mono text-fg-subtle">
+            <Link
+              href="/admin/tool-metrics"
+              className="ml-auto font-mono text-fg-subtle hover:text-primary hover:underline"
+            >
               /admin/tool-metrics
-            </span>
+            </Link>
           </div>
         </>
       ) : null}

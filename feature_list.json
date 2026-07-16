@@ -1391,8 +1391,8 @@
     "acceptance": "서브내비 링크 렌더 + 클릭 시 라우트 이동(next/link) RED→GREEN; preview 등록; verify-gates green; human UAT(TS-18)",
     "phase": "P16",
     "team": "T6",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P16-T6-03",

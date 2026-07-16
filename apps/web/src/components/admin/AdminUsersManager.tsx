@@ -6,6 +6,7 @@
 // acceptance 범위 밖, 기존 결정 유지).
 import React from "react";
 import { useAdminUsers, type AdminUserDto } from "../../hooks/useAdminUsers";
+import { AdminSubNav } from "./AdminSubNav";
 
 const ROLES: AdminUserDto["role"][] = ["member", "admin", "owner"];
 
@@ -42,6 +43,8 @@ export function AdminUsersManager() {
           /admin/users
         </span>
       </div>
+
+      <AdminSubNav />
 
       {error && <p className="mt-3 text-sm text-accent">{error}</p>}
 

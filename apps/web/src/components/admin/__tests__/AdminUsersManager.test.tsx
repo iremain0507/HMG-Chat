@@ -11,6 +11,11 @@ import {
   fireEvent,
 } from "@testing-library/react";
 import "@testing-library/jest-dom/vitest";
+
+vi.mock("next/navigation", () => ({
+  usePathname: () => "/admin/users",
+}));
+
 import { AdminUsersManager } from "../AdminUsersManager";
 
 const USER_1 = {
@@ -118,5 +123,22 @@ describe("AdminUsersManager", () => {
     await waitFor(() => {
       expect(screen.getByText("suspended")).toBeInTheDocument();
     });
+  });
+
+  it("대시보드/도구 지표/설정으로 가는 서브내비를 렌더한다", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({ ok: true, json: async () => ({ data: [USER_1] }) })),
+    );
+
+    render(<AdminUsersManager />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("admin-sub-nav")).toBeInTheDocument();
+    });
+    expect(screen.getByTestId("admin-sub-nav-dashboard")).toHaveAttribute(
+      "href",
+      "/admin",
+    );
   });
 });

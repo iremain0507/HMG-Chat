@@ -9,6 +9,11 @@ import {
   fireEvent,
 } from "@testing-library/react";
 import "@testing-library/jest-dom/vitest";
+
+vi.mock("next/navigation", () => ({
+  usePathname: () => "/admin/settings",
+}));
+
 import { AdminSettingsScreen } from "../AdminSettingsScreen";
 import { subscribeToasts, __resetToastsForTest } from "../../../../lib/toast";
 
@@ -102,6 +107,19 @@ describe("AdminSettingsScreen", () => {
     expect(fetch).toHaveBeenCalledWith(
       "/api/v1/admin/settings",
       expect.objectContaining({ credentials: "include" }),
+    );
+  });
+
+  it("대시보드/사용자/도구 지표로 가는 서브내비를 렌더한다", async () => {
+    stubFetchOnce();
+    render(<AdminSettingsScreen />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("admin-sub-nav")).toBeInTheDocument();
+    });
+    expect(screen.getByTestId("admin-sub-nav-settings")).toHaveAttribute(
+      "aria-current",
+      "page",
     );
   });
 

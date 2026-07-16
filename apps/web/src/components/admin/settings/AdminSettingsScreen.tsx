@@ -17,6 +17,7 @@ import { ConnectorsTab } from "./ConnectorsTab";
 import { BrandingTab, type BrandingErrors } from "./BrandingTab";
 import { PermissionsTab } from "./PermissionsTab";
 import { QuotaTab, type QuotaErrors } from "./QuotaTab";
+import { AdminSubNav } from "../AdminSubNav";
 
 interface TabDef {
   id: string;
@@ -190,6 +191,8 @@ export function AdminSettingsScreen() {
           /admin/settings
         </span>
       </div>
+
+      <AdminSubNav />
 
       {error && <p className="mt-3 text-sm text-accent">{error}</p>}
       {saveError && <p className="mt-3 text-sm text-accent">{saveError}</p>}
