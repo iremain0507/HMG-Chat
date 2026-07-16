@@ -15,6 +15,7 @@ import {
 import { useCurrentUser } from "../../hooks/useCurrentUser";
 import { randomUUID } from "../../lib/uuid";
 import { showToast } from "../../lib/toast";
+import { apiFetch } from "../../lib/fetch-with-refresh";
 import { useOnlineStatus } from "../../hooks/useOnlineStatus";
 import { useProjects } from "../../hooks/useProjects";
 import { useSessionProject } from "../../hooks/useSessionProject";
@@ -62,6 +63,24 @@ const SUGGESTIONS = [
   "이 코드 리뷰해줘",
 ];
 
+// P19-T6-09 — 후속질문 칩: 턴 완료 후 서버(P19-T2-04 POST /:id/followups)에서 받은
+// 3개 질문을 렌더한다. dev-stub/조회 실패 시 orchestrator/followups.ts 가 파생 폴백을
+// 항상 반환하지만, 네트워크 오류까지는 이 클라이언트가 fail-soft 로 흡수한다(빈 배열,
+// L2/L5 — 칩이 안 보일 뿐 조용히 죽지 않음).
+async function fetchFollowups(sessionId: string): Promise<string[]> {
+  try {
+    const res = await apiFetch(`/api/v1/sessions/${sessionId}/followups`, {
+      method: "POST",
+      credentials: "include",
+    });
+    if (!res.ok) return [];
+    const body = (await res.json()) as { data: { followups: string[] } };
+    return body.data.followups ?? [];
+  } catch {
+    return [];
+  }
+}
+
 export function ChatView({ sessionId }: { sessionId: string }) {
   const router = useRouter();
   const {
@@ -86,6 +105,7 @@ export function ChatView({ sessionId }: { sessionId: string }) {
   const { projectId, setProject } = useSessionProject(sessionId);
   const [autoFollow, setAutoFollow] = useState(true);
   const [announceText, setAnnounceText] = useState("");
+  const [followups, setFollowups] = useState<string[]>([]);
   const [artifactPanelOpen, setArtifactPanelOpen] = useState(false);
   const [activeArtifactIndex, setActiveArtifactIndex] = useState(0);
   const [memoryPanelOpen, setMemoryPanelOpen] = useState(false);
@@ -315,6 +335,25 @@ export function ChatView({ sessionId }: { sessionId: string }) {
     return () => clearTimeout(timer);
   }, [lastAssistantContent]);
 
+  // P19-T6-09 — 턴 완료(스트리밍 true→false 전환) 시 마지막 메시지가 정상 assistant
+  // 응답이면 후속질문을 조회한다. wasStreamingRef 는 위 포커스 복귀 효과에서도 갱신되므로
+  // 이 효과 전용 ref 로 분리해 "직전 렌더의 스트리밍 여부"를 독립적으로 추적한다.
+  const prevStreamingForFollowupsRef = useRef(isStreaming);
+  useEffect(() => {
+    const wasStreaming = prevStreamingForFollowupsRef.current;
+    prevStreamingForFollowupsRef.current = isStreaming;
+    if (!wasStreaming || isStreaming) return;
+    const last = messages[messages.length - 1];
+    if (!last || last.role !== "assistant" || last.error) return;
+    let cancelled = false;
+    void fetchFollowups(sessionId).then((items) => {
+      if (!cancelled) setFollowups(items);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [isStreaming, messages, sessionId]);
+
   // Stop 버튼이 사라지며(또는 disabled 전송 버튼으로 대체되며) 포커스가 유실된
   // 경우에만 입력창으로 복귀시킨다 — 사용자가 다른 요소에 의도적으로 포커스했다면
   // 그대로 둔다 (그것이야말로 "새 turn 이 포커스를 탈취"하지 않는다는 뜻이다).
@@ -481,6 +520,18 @@ export function ChatView({ sessionId }: { sessionId: string }) {
                             onContinue: () => void continueMessage(m.id),
                           }
                         : {})}
+                      {...(canRegenerate &&
+                      i === messages.length - 1 &&
+                      followups.length > 0
+                        ? {
+                            // P19-T6-09 — 마지막 assistant 턴에만 후속질문 칩을 붙인다.
+                            followups,
+                            onFollowupClick: (question: string) => {
+                              setFollowups([]);
+                              void send(question);
+                            },
+                          }
+                        : {})}
                       {...(m.role === "user"
                         ? {
                             onEditSubmit: (nextContent: string) =>
@@ -619,6 +670,8 @@ export function MessageItem({
   artifacts,
   onRegenerate,
   onContinue,
+  followups,
+  onFollowupClick,
   onEditSubmit,
   onSwitchBranch,
   onCitationFocus,
@@ -640,6 +693,8 @@ export function MessageItem({
   artifacts?: ArtifactSummary[];
   onRegenerate?: () => void;
   onContinue?: () => void;
+  followups?: string[];
+  onFollowupClick?: (question: string) => void;
   onEditSubmit?: (nextContent: string) => void;
   onSwitchBranch?: (direction: "prev" | "next") => void;
   onCitationFocus?: (index: number) => void;
@@ -929,6 +984,20 @@ export function MessageItem({
                 />
               </div>
             )}
+          </div>
+        )}
+        {!streaming && followups && followups.length > 0 && (
+          <div className="mt-2 flex flex-wrap gap-2" aria-label="후속질문 제안">
+            {followups.map((q) => (
+              <button
+                key={q}
+                type="button"
+                onClick={() => onFollowupClick?.(q)}
+                className="rounded-full border border-border bg-surface px-3 py-1.5 text-xs text-fg-muted hover:border-primary hover:text-fg"
+              >
+                {q}
+              </button>
+            ))}
           </div>
         )}
       </div>

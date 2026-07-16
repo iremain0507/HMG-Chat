@@ -1995,4 +1995,72 @@ describe("ChatView", () => {
       ).not.toBeInTheDocument();
     });
   });
+
+  it("턴 완료 후 서버 POST .../followups 의 후속질문이 칩으로 렌더되고, 클릭 시 해당 질문을 전송한다 (P19-T6-09)", async () => {
+    const encoder = new TextEncoder();
+    const fetchMock = vi.fn(async (url: string) => {
+      if (typeof url === "string" && url.includes("/followups")) {
+        return {
+          ok: true,
+          json: async () => ({
+            data: { followups: ["후속질문A", "후속질문B", "후속질문C"] },
+          }),
+        };
+      }
+      return {
+        body: new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.enqueue(
+              encoder.encode(sseFrame("message_start", { messageId: "msg-1" })),
+            );
+            controller.enqueue(
+              encoder.encode(sseFrame("text_delta", { text: "답변" })),
+            );
+            controller.enqueue(
+              encoder.encode(sseFrame("stop", { reason: "end_turn" })),
+            );
+            controller.close();
+          },
+        }),
+      };
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<ChatView sessionId="session-1" />);
+    fireEvent.change(screen.getByLabelText("메시지 입력"), {
+      target: { value: "질문" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "전송" }));
+
+    await waitFor(() => {
+      expect(screen.getByText("답변")).toBeInTheDocument();
+    });
+
+    const chip = await screen.findByRole("button", { name: "후속질문A" });
+    expect(
+      screen.getByRole("button", { name: "후속질문B" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "후속질문C" }),
+    ).toBeInTheDocument();
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/v1/sessions/session-1/followups",
+      expect.objectContaining({ method: "POST" }),
+    );
+
+    fetchMock.mockClear();
+    fireEvent.click(chip);
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/v1/sessions/session-1/messages",
+        expect.objectContaining({ method: "POST" }),
+      );
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("후속질문A")).toBeInTheDocument();
+    });
+  });
 });
