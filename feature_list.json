@@ -1904,8 +1904,8 @@
     "acceptance": "RED: org webSearchProvider=X→핸들러가 X provider 로 호출됨 단언(L1 last-mile), 미설정→dev-stub 폴백. verify-gates green",
     "phase": "P19",
     "team": "T1",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P19-T6-17",

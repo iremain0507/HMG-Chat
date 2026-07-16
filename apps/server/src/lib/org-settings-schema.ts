@@ -41,6 +41,12 @@ export const OrgSettingsSchema = z.object({
   // Web Search
   webSearchEnabled: z.boolean().optional(),
   webSearchResultCount: z.number().int().min(1).max(20).optional(),
+  // P19-T1-12: web_search 핸들러가 invoke 시점에 이 값으로 실 provider 를 선택한다
+  // (미설정/"dev-stub"→dev-stub 폴백). webSearchApiKeyRef 는 실제 비밀이 아니라 서버가
+  // 아는 고정 env ref 이름(예: "TAVILY_API_KEY")만 가리킨다 — 임의 값은 조회 거부(보안).
+  webSearchProvider: z.enum(["dev-stub", "tavily"]).optional(),
+  webSearchEndpoint: z.string().max(500).optional(),
+  webSearchApiKeyRef: z.string().max(200).optional(),
 
   // Connectors/MCP
   enableDirectConnections: z.boolean().optional(),
@@ -87,6 +93,9 @@ export const DEFAULT_ORG_SETTINGS: ResolvedOrgSettings = {
 
   webSearchEnabled: false,
   webSearchResultCount: 3,
+  webSearchProvider: "dev-stub",
+  webSearchEndpoint: "",
+  webSearchApiKeyRef: "",
 
   enableDirectConnections: false,
 

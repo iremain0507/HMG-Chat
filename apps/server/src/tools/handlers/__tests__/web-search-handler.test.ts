@@ -235,4 +235,157 @@ describe("createWebSearchTool", () => {
       }),
     ).rejects.toThrow();
   });
+
+  describe("P19-T1-12: org 설정 provider 동적 resolve", () => {
+    const fallbackPort: WebSearchPort = {
+      async search(query) {
+        return [
+          {
+            title: `fallback:${query}`,
+            url: "https://fallback.example.com",
+            content: "fallback",
+          },
+        ];
+      },
+    };
+    const orgPort: WebSearchPort = {
+      async search(query) {
+        return [
+          {
+            title: `org-provider:${query}`,
+            url: "https://org.example.com",
+            content: "org",
+          },
+        ];
+      },
+    };
+
+    it("org settings.webSearchProvider=X 이면 resolveProvider 가 만든 provider(X) 로 검색한다(L1 last-mile)", async () => {
+      const tool = createWebSearchTool({
+        port: fallbackPort,
+        settings: {
+          async resolve(orgId: string) {
+            expect(orgId).toBe("org-1");
+            return {
+              webSearchProvider: "tavily",
+              webSearchEndpoint: "",
+              webSearchApiKeyRef: "TAVILY_API_KEY",
+            };
+          },
+        },
+        resolveProvider(input) {
+          expect(input).toEqual({
+            provider: "tavily",
+            endpoint: "",
+            apiKeyRef: "TAVILY_API_KEY",
+          });
+          return orgPort;
+        },
+      });
+
+      const result = await tool.invoke({
+        toolCallId: "call-provider-1",
+        args: { query: "wchat" },
+        ctx: fakeToolContext(),
+      });
+
+      expect(result.content.kind).toBe("json");
+      if (result.content.kind === "json") {
+        expect(result.content.data.results).toEqual([
+          {
+            title: "org-provider:wchat",
+            url: "https://org.example.com",
+            content: "org",
+          },
+        ]);
+      }
+    });
+
+    it("org settings.webSearchProvider='dev-stub'(미설정)이면 resolveProvider 가 undefined 반환 → deps.port(폴백)로 검색한다", async () => {
+      const tool = createWebSearchTool({
+        port: fallbackPort,
+        settings: {
+          async resolve() {
+            return {
+              webSearchProvider: "dev-stub",
+              webSearchEndpoint: "",
+              webSearchApiKeyRef: "",
+            };
+          },
+        },
+        resolveProvider() {
+          return undefined;
+        },
+      });
+
+      const result = await tool.invoke({
+        toolCallId: "call-provider-2",
+        args: { query: "wchat" },
+        ctx: fakeToolContext(),
+      });
+
+      expect(result.content.kind).toBe("json");
+      if (result.content.kind === "json") {
+        expect(result.content.data.results).toEqual([
+          {
+            title: "fallback:wchat",
+            url: "https://fallback.example.com",
+            content: "fallback",
+          },
+        ]);
+      }
+    });
+
+    it("settings.resolve 가 실패하면 throw 하지 않고 deps.port(폴백)로 검색한다(L2/L5 fail-soft)", async () => {
+      const tool = createWebSearchTool({
+        port: fallbackPort,
+        settings: {
+          async resolve() {
+            throw new Error("settings service down");
+          },
+        },
+        resolveProvider() {
+          return orgPort;
+        },
+      });
+
+      const result = await tool.invoke({
+        toolCallId: "call-provider-3",
+        args: { query: "wchat" },
+        ctx: fakeToolContext(),
+      });
+
+      expect(result.content.kind).toBe("json");
+      if (result.content.kind === "json") {
+        expect(result.content.data.results).toEqual([
+          {
+            title: "fallback:wchat",
+            url: "https://fallback.example.com",
+            content: "fallback",
+          },
+        ]);
+      }
+    });
+
+    it("settings/resolveProvider 가 미주입이면(비파괴) 기존처럼 deps.port 로 검색한다", async () => {
+      const tool = createWebSearchTool({ port: fallbackPort });
+
+      const result = await tool.invoke({
+        toolCallId: "call-provider-4",
+        args: { query: "wchat" },
+        ctx: fakeToolContext(),
+      });
+
+      expect(result.content.kind).toBe("json");
+      if (result.content.kind === "json") {
+        expect(result.content.data.results).toEqual([
+          {
+            title: "fallback:wchat",
+            url: "https://fallback.example.com",
+            content: "fallback",
+          },
+        ]);
+      }
+    });
+  });
 });

@@ -81,6 +81,9 @@ describe("OrgSettingsSchema", () => {
     expect(settings.ragRelevanceThreshold).toBe(0.0);
     expect(settings.webSearchEnabled).toBe(false);
     expect(settings.webSearchResultCount).toBe(3);
+    expect(settings.webSearchProvider).toBe("dev-stub");
+    expect(settings.webSearchEndpoint).toBe("");
+    expect(settings.webSearchApiKeyRef).toBe("");
     expect(settings.enableDirectConnections).toBe(false);
     expect(settings.instanceName).toBe("WChat");
     expect(settings.banner).toEqual([]);
@@ -90,6 +93,25 @@ describe("OrgSettingsSchema", () => {
     expect(settings.enableSignup).toBe(true);
     expect(settings.maxUploadSizeMb).toBe(25);
     expect(settings.maxUploadCount).toBe(10);
+  });
+
+  it("webSearchProvider 는 dev-stub/tavily 만 허용하고 그 외 값은 거부한다", () => {
+    const valid = OrgSettingsSchema.safeParse({
+      webSearchProvider: "tavily",
+      webSearchEndpoint: "https://tavily.internal",
+      webSearchApiKeyRef: "TAVILY_API_KEY",
+    });
+    expect(valid.success).toBe(true);
+    if (valid.success) {
+      expect(valid.data.webSearchProvider).toBe("tavily");
+      expect(valid.data.webSearchEndpoint).toBe("https://tavily.internal");
+      expect(valid.data.webSearchApiKeyRef).toBe("TAVILY_API_KEY");
+    }
+
+    const invalid = OrgSettingsSchema.safeParse({
+      webSearchProvider: "google",
+    });
+    expect(invalid.success).toBe(false);
   });
 
   it("DEFAULT_ORG_SETTINGS 는 OrgSettingsSchema 검증을 통과한다", () => {
