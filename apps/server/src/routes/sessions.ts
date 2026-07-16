@@ -21,6 +21,10 @@ import {
   createPgSessionTagDataAccess,
   type SessionTagDataAccess,
 } from "../db/session-tag-data-access.js";
+import {
+  createPgMessageFeedbackDataAccess,
+  type MessageFeedbackDataAccess,
+} from "../db/message-feedback-data-access.js";
 import type { AuthedVariables } from "../middleware/auth-middleware.js";
 
 function errorJson(code: string, message: string) {
@@ -82,6 +86,8 @@ export interface SessionMessagesPort {
     filter: { sessionId: string },
     pagination?: { cursor?: string; limit?: number },
   ): Promise<{ items: Message[]; nextCursor?: string }>;
+  // P19-T1-07 — 메시지 평가 전 ownership 검증(message.sessionId === 요청 sessionId)에 사용.
+  byId(id: string): Promise<Message | null>;
 }
 
 export interface SessionRoutesDeps {
@@ -94,6 +100,8 @@ export interface SessionRoutesDeps {
   folders?: SessionFolderDataAccess;
   // P19-T1-04 — 태그 추가/제거(POST/DELETE /:id/tags).
   tags?: SessionTagDataAccess;
+  // P19-T1-07 — 메시지 평가(POST/GET /:id/messages/:messageId/feedback).
+  feedback?: MessageFeedbackDataAccess;
 }
 
 export function createSessionRoutes(
@@ -104,6 +112,7 @@ export function createSessionRoutes(
   const sessionMessages = deps.sessionMessages ?? createPgMessageDataAccess();
   const folders = deps.folders ?? createPgSessionFolderDataAccess();
   const tags = deps.tags ?? createPgSessionTagDataAccess();
+  const feedback = deps.feedback ?? createPgMessageFeedbackDataAccess();
   const app = new Hono<{ Variables: AuthedVariables }>();
 
   // P17-T1-02(TS-08/10) — 내 세션 목록(최신순). userId 는 auth 에서만 파생(body/query 미수신
@@ -272,6 +281,74 @@ export function createSessionRoutes(
         requestId: randomUUID(),
         ...(page.nextCursor ? { nextCursor: page.nextCursor } : {}),
       },
+    });
+  });
+
+  // P19-T1-07 — 메시지 평가 ownership 검증 헬퍼: 세션 소유자 확인 + 메시지가 해당 세션 소속인지
+  // 확인(existence-leak 방지, 태그/폴더와 동일 패턴 — 타 사용자/조직 메시지는 404).
+  async function verifyOwnedMessage(
+    userId: string,
+    sessionId: string,
+    messageId: string,
+  ): Promise<boolean> {
+    const session = await sessions.byId(sessionId);
+    if (!session || session.userId !== userId) return false;
+    const message = await sessionMessages.byId(messageId);
+    if (!message || message.sessionId !== sessionId) return false;
+    return true;
+  }
+
+  // P19-T1-07 — 평가 upsert/토글 취소. 같은 rating 을 다시 보내면 취소(삭제)한다(👍/👎 클릭 토글 UX).
+  app.post("/:id/messages/:messageId/feedback", async (c) => {
+    const auth = c.get("auth");
+    const sessionId = c.req.param("id");
+    const messageId = c.req.param("messageId");
+    const owned = await verifyOwnedMessage(auth.sub, sessionId, messageId);
+    if (!owned) {
+      return c.json(errorJson("NOT_FOUND", "메시지를 찾을 수 없습니다."), 404);
+    }
+    const body = await c.req
+      .json<{ rating?: number }>()
+      .catch(() => ({}) as { rating?: number });
+    if (body.rating !== 1 && body.rating !== -1) {
+      return c.json(
+        errorJson("INVALID_INPUT", "rating 은 1 또는 -1 이어야 합니다."),
+        400,
+      );
+    }
+    const existing = await feedback.get(auth.org, messageId, auth.sub);
+    if (existing && existing.rating === body.rating) {
+      await feedback.remove(auth.org, messageId, auth.sub);
+      return c.json({
+        data: { messageId, rating: null },
+        meta: { requestId: randomUUID() },
+      });
+    }
+    const saved = await feedback.upsert(
+      auth.org,
+      messageId,
+      auth.sub,
+      body.rating,
+    );
+    return c.json({
+      data: { messageId, rating: saved.rating },
+      meta: { requestId: randomUUID() },
+    });
+  });
+
+  // P19-T1-07 — 현재 사용자의 평가 조회(미평가 시 rating:null).
+  app.get("/:id/messages/:messageId/feedback", async (c) => {
+    const auth = c.get("auth");
+    const sessionId = c.req.param("id");
+    const messageId = c.req.param("messageId");
+    const owned = await verifyOwnedMessage(auth.sub, sessionId, messageId);
+    if (!owned) {
+      return c.json(errorJson("NOT_FOUND", "메시지를 찾을 수 없습니다."), 404);
+    }
+    const existing = await feedback.get(auth.org, messageId, auth.sub);
+    return c.json({
+      data: { messageId, rating: existing?.rating ?? null },
+      meta: { requestId: randomUUID() },
     });
   });
 
