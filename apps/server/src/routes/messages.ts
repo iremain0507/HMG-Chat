@@ -209,6 +209,7 @@ export function createMessageRoutes(
         attachments?: Array<{ uploadId: string }>;
         model?: string;
         webSearch?: boolean;
+        mode?: "agent" | "chat";
       }>()
       .catch(
         () =>
@@ -217,6 +218,7 @@ export function createMessageRoutes(
             attachments?: Array<{ uploadId: string }>;
             model?: string;
             webSearch?: boolean;
+            mode?: "agent" | "chat";
           },
       );
     // 클라이언트 생성 세션 UUID 를 첫 메시지 시 DB 에 보장(upsert) — 이후 아티팩트/업로드/
@@ -361,6 +363,12 @@ export function createMessageRoutes(
       resolvedSettings.webSearchEnabled === true && body.webSearch === true;
     if (!includeWebSearch) {
       tools = tools.filter((t) => t.spec.name !== "web_search");
+    }
+
+    // P19-T2-02 — 모드(agent/chat) 실동작: mode='chat' 은 순수 대화로, 도구 없이(tools=[])
+    // runTurn 을 호출한다. 'agent'(기본, 미지정 포함)는 기존 도구 배선을 그대로 유지한다.
+    if (body.mode === "chat") {
+      tools = [];
     }
 
     // P17-T1-01 — user 메시지를 messages 테이블에 영속(best-effort — 실패해도 turn 은 계속).

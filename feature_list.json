@@ -1616,8 +1616,8 @@
     "acceptance": "RED: createApp 턴에서 mode='chat'→runTurn tools 비어있음, mode='agent'→tools 존재 단언(L1). verify-gates green",
     "phase": "P19",
     "team": "T2",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P19-T1-01",
