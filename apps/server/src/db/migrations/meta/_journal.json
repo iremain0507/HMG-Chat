@@ -120,6 +120,13 @@
       "when": 1783889900000,
       "tag": "0017_org_settings",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1783890000000,
+      "tag": "0018_session_pin",
+      "breakpoints": true
     }
   ]
 }

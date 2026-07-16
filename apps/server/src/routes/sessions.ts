@@ -3,12 +3,15 @@
 // GET /sessions/:id/hitl/pending 단일 출처.
 import { randomUUID } from "node:crypto";
 import { Hono } from "hono";
-import type { Message, Session } from "@wchat/interfaces";
+import type { Message } from "@wchat/interfaces";
 import { abortRun } from "../orchestrator/run-registry.js";
 import { resolveHitl, listPendingHitl } from "../tools/hitl-manager.js";
 import { createPgArtifactDataAccess } from "../db/artifact-data-access.js";
 import type { ArtifactDataAccess } from "../db/artifact-service.js";
-import { createPgSessionDataAccess } from "../db/session-data-access.js";
+import {
+  createPgSessionDataAccess,
+  type SessionWithPin,
+} from "../db/session-data-access.js";
 import { createPgMessageDataAccess } from "../db/message-data-access.js";
 import type { AuthedVariables } from "../middleware/auth-middleware.js";
 
@@ -35,16 +38,18 @@ export interface SessionsPort {
   list(
     filter: { userId: string },
     pagination?: { cursor?: string; limit?: number },
-  ): Promise<{ items: Session[]; nextCursor?: string }>;
-  byId(id: string): Promise<Session | null>;
+  ): Promise<{ items: SessionWithPin[]; nextCursor?: string }>;
+  byId(id: string): Promise<SessionWithPin | null>;
   // P17-T1-03(TS-09) — ownership 이 쿼리 조건에 직접 포함(WHERE id=.. AND user_id=..)돼 있어
   // 별도 조회 없이 원자적으로 cross-org/타 사용자 변경을 차단한다.
   updateForOwner(
     userId: string,
     id: string,
     data: { title?: string | null; archived?: boolean },
-  ): Promise<Session | null>;
+  ): Promise<SessionWithPin | null>;
   deleteForOwner(userId: string, id: string): Promise<boolean>;
+  // P19-T1-02 — 핀 토글(같은 ownership-in-query 원자성 패턴).
+  togglePinForOwner(userId: string, id: string): Promise<SessionWithPin | null>;
 }
 
 export interface SessionMessagesPort {
@@ -85,11 +90,27 @@ export function createSessionRoutes(
         lastMessageAt: s.lastMessageAt ? s.lastMessageAt.toISOString() : null,
         projectId: s.projectId,
         archived: s.archivedAt !== null,
+        pinned: s.pinnedAt !== null,
       })),
       meta: {
         requestId: randomUUID(),
         ...(page.nextCursor ? { nextCursor: page.nextCursor } : {}),
       },
+    });
+  });
+
+  // P19-T1-02 — 핀 토글. ownership 은 togglePinForOwner 쿼리에 내장(TS-09 원자성 패턴,
+  // updateForOwner/deleteForOwner 와 동일) — 타 사용자/조직 세션은 404(existence-leak 방지).
+  app.patch("/:id/pin", async (c) => {
+    const auth = c.get("auth");
+    const sessionId = c.req.param("id");
+    const updated = await sessions.togglePinForOwner(auth.sub, sessionId);
+    if (!updated) {
+      return c.json(errorJson("NOT_FOUND", "세션을 찾을 수 없습니다."), 404);
+    }
+    return c.json({
+      data: { id: updated.id, pinned: updated.pinnedAt !== null },
+      meta: { requestId: randomUUID() },
     });
   });
 
@@ -127,8 +148,8 @@ export function createSessionRoutes(
     });
   });
 
-  // P17-T1-03(TS-09) — rename(title). pin 은 GAP CHECK 로 확인된 대로 서버 영속 대상이
-  // 아님(lib/pinnedSessions.ts, localStorage-only 로 UAT 상 의도된 상태) — 이 태스크 범위 밖.
+  // P17-T1-03(TS-09) — rename(title)/archived. pin 토글은 별도 PATCH /:id/pin(P19-T1-02) 참조
+  // (기존 lib/pinnedSessions.ts localStorage-only 를 서버 영속으로 승격).
   app.patch("/:id", async (c) => {
     const auth = c.get("auth");
     const sessionId = c.req.param("id");

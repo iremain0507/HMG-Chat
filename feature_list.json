@@ -1643,8 +1643,8 @@
     "acceptance": "RED: createApp 실HTTP pin/unpin→목록 pinned 반영 + cross-org 차단(403/404) + 마운트 가드 green. verify-gates green",
     "phase": "P19",
     "team": "T1",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P19-T6-02",

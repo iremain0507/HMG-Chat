@@ -5,13 +5,20 @@
 import type { Session } from "@wchat/interfaces";
 import { pgPool } from "./client.js";
 
-function toSession(row: Record<string, unknown>): Session {
+// P19-T1-02 — sessions.pinned_at(migration 0018)은 frozen Session(14-INTERFACES)에 없는 신규
+// 컬럼이라, packages/interfaces 를 건드리지 않고 로컬 교집합 타입으로 확장한다(org-settings-schema.ts
+// 의 "LOCAL 타입, frozen 회피" 컨벤션과 동일 사유 — 이 포트는 애초에 SessionRepo 전체가 아니라
+// routes/sessions.ts 가 실제 쓰는 부분만 좁힌 로컬 포트, P17-T1-02 주석 참조).
+export type SessionWithPin = Session & { pinnedAt: Date | null };
+
+function toSession(row: Record<string, unknown>): SessionWithPin {
   return {
     id: row.id as string,
     userId: row.user_id as string,
     projectId: (row.project_id as string | null) ?? null,
     title: (row.title as string | null) ?? null,
     archivedAt: (row.archived_at as Date | null) ?? null,
+    pinnedAt: (row.pinned_at as Date | null) ?? null,
     lastMessageAt: (row.last_message_at as Date | null) ?? null,
     createdAt: row.created_at as Date,
   };
@@ -21,14 +28,17 @@ export interface SessionsDataAccess {
   list(
     filter: { userId: string },
     pagination?: { cursor?: string; limit?: number },
-  ): Promise<{ items: Session[]; nextCursor?: string }>;
-  byId(id: string): Promise<Session | null>;
+  ): Promise<{ items: SessionWithPin[]; nextCursor?: string }>;
+  byId(id: string): Promise<SessionWithPin | null>;
   updateForOwner(
     userId: string,
     id: string,
     data: { title?: string | null; archived?: boolean },
-  ): Promise<Session | null>;
+  ): Promise<SessionWithPin | null>;
   deleteForOwner(userId: string, id: string): Promise<boolean>;
+  // 토글: 현재 pinned_at 이 NULL 이면 NOW() 로, 아니면 NULL 로 — 원자적 단일 UPDATE
+  // (read-then-write race 방지). ownership 은 WHERE id=.. AND user_id=.. 로 쿼리에 내장(TS-09 패턴).
+  togglePinForOwner(userId: string, id: string): Promise<SessionWithPin | null>;
 }
 
 export function createPgSessionDataAccess(): SessionsDataAccess {
@@ -77,6 +87,16 @@ export function createPgSessionDataAccess(): SessionsDataAccess {
         [id, userId],
       );
       return (res.rowCount ?? 0) > 0;
+    },
+    async togglePinForOwner(userId, id) {
+      const res = await pgPool.query(
+        `UPDATE sessions
+         SET pinned_at = CASE WHEN pinned_at IS NULL THEN NOW() ELSE NULL END
+         WHERE id = $1 AND user_id = $2
+         RETURNING *`,
+        [id, userId],
+      );
+      return res.rows[0] ? toSession(res.rows[0]) : null;
     },
   };
 }
