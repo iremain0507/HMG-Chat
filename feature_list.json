@@ -1814,8 +1814,8 @@
     "acceptance": "RED: 목 Notification→hidden+완료 시 1회 호출, visible 상태엔 미호출 단언. verify-gates green",
     "phase": "P19",
     "team": "T6",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P19-T1-08",

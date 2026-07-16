@@ -134,6 +134,68 @@ describe("useSessionStream", () => {
     );
   });
 
+  it("탭이 hidden 상태에서 턴이 완료되면 Notification 을 1회 호출한다 (P19-T6-12)", async () => {
+    Object.defineProperty(document, "hidden", {
+      configurable: true,
+      get: () => true,
+    });
+    const NotificationMock = vi.fn();
+    (NotificationMock as unknown as { permission: string }).permission =
+      "granted";
+    vi.stubGlobal("Notification", NotificationMock);
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({
+        body: sseBody([
+          sseFrame("message_start", { messageId: "msg-1" }),
+          sseFrame("text_delta", { text: "hello" }),
+          sseFrame("stop", { reason: "end_turn" }),
+        ]),
+      })),
+    );
+
+    const { result } = renderHook(() => useSessionStream("session-1"));
+
+    await act(async () => {
+      await result.current.send("hello");
+    });
+
+    expect(NotificationMock).toHaveBeenCalledTimes(1);
+    Object.defineProperty(document, "hidden", {
+      configurable: true,
+      get: () => false,
+    });
+  });
+
+  it("탭이 visible 상태에서는 턴이 완료돼도 Notification 을 호출하지 않는다 (P19-T6-12)", async () => {
+    Object.defineProperty(document, "hidden", {
+      configurable: true,
+      get: () => false,
+    });
+    const NotificationMock = vi.fn();
+    (NotificationMock as unknown as { permission: string }).permission =
+      "granted";
+    vi.stubGlobal("Notification", NotificationMock);
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({
+        body: sseBody([
+          sseFrame("message_start", { messageId: "msg-1" }),
+          sseFrame("text_delta", { text: "hello" }),
+          sseFrame("stop", { reason: "end_turn" }),
+        ]),
+      })),
+    );
+
+    const { result } = renderHook(() => useSessionStream("session-1"));
+
+    await act(async () => {
+      await result.current.send("hello");
+    });
+
+    expect(NotificationMock).not.toHaveBeenCalled();
+  });
+
   it("stop() 호출 시 즉시 isStreaming 이 false 가 되고 DELETE /active-run 을 호출한다 (Stop 클릭 시 즉시 중단)", async () => {
     let releaseStream: (() => void) | undefined;
     const encoder = new TextEncoder();

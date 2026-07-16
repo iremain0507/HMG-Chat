@@ -172,6 +172,28 @@ function isErrorToolResult(content: unknown): boolean {
   return typeof content === "object" && content !== null && "error" in content;
 }
 
+// P19-T6-12 — 완료 알림: 탭이 백그라운드(document.hidden)일 때만 턴 종단 1회 알림.
+// 보이는 탭에서는 방해가 되므로 발생시키지 않고, 권한이 아직 결정 안 됐으면(default)
+// 요청 후 승인 시에만 실제로 띄운다(거부 상태는 재요청하지 않음).
+function notifyTurnComplete(): void {
+  if (typeof document === "undefined" || !document.hidden) return;
+  if (typeof Notification === "undefined") return;
+  const fire = () => {
+    try {
+      new Notification("응답이 완료되었습니다");
+    } catch {
+      // Notification 생성자 실패(권한 취소 등)는 best-effort 알림이라 무시.
+    }
+  };
+  if (Notification.permission === "granted") {
+    fire();
+  } else if (Notification.permission === "default") {
+    void Notification.requestPermission().then((permission) => {
+      if (permission === "granted") fire();
+    });
+  }
+}
+
 function parseSseFrame(frame: string): ChatStreamEvent | null {
   let eventName: string | null = null;
   let data = "";
@@ -619,6 +641,7 @@ export function useSessionStream(sessionId: string) {
           if (event.reason !== "tool_use") {
             receivedTerminal = true;
             setIsStreaming(false);
+            notifyTurnComplete();
           }
           // P19-T6-08 — max_tokens 로 끊긴 응답은 truncated 로 표시해 이어쓰기 버튼을 노출한다.
           if (event.reason === "max_tokens" && assistantId) {
@@ -962,6 +985,7 @@ export function useSessionStream(sessionId: string) {
               });
             } else if (event.type === "stop") {
               setIsStreaming(false);
+              notifyTurnComplete();
             } else if (event.type === "error") {
               setIsStreaming(false);
               showToast("error", event.error?.message ?? "알 수 없는 오류");
