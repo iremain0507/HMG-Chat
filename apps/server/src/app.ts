@@ -53,6 +53,8 @@ import { createAdminModelsRoutes } from "./routes/admin-models.js";
 import { createAdminGroupsRoutes } from "./routes/admin-groups.js";
 import { createAdminGrantsRoutes } from "./routes/admin-grants.js";
 import { createPgResourceGrantsDataAccess } from "./db/resource-grants-data-access.js";
+import { createAdminAnalyticsRoutes } from "./routes/admin-analytics.js";
+import { createPgAdminAnalyticsDataAccess } from "./db/admin-analytics-data-access.js";
 import { createConfigRoutes } from "./routes/config.js";
 import { createPgHealthHistoryDataAccess } from "./db/health-history-data-access.js";
 import { createPgAdminDataAccess } from "./db/admin-data-access.js";
@@ -507,6 +509,12 @@ export function createApp(env: Env) {
   adminApp.route(
     "/grants",
     createAdminGrantsRoutes({ grants: resourceGrantsDa }),
+  );
+  adminApp.route(
+    "/analytics",
+    createAdminAnalyticsRoutes({
+      analyticsDa: createPgAdminAnalyticsDataAccess(),
+    }),
   );
   app.route("/api/v1/admin", adminApp);
 

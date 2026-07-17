@@ -19,7 +19,7 @@ describe("AdminSubNav", () => {
     mockPathname = "/admin";
   });
 
-  it("대시보드/사용자/그룹/접근 권한/도구 지표/설정 6개 링크를 렌더한다", () => {
+  it("대시보드/사용자/그룹/접근 권한/사용량 분석/도구 지표/설정 7개 링크를 렌더한다", () => {
     render(<AdminSubNav />);
 
     expect(screen.getByTestId("admin-sub-nav-dashboard")).toHaveAttribute(
@@ -37,6 +37,10 @@ describe("AdminSubNav", () => {
     expect(screen.getByTestId("admin-sub-nav-grants")).toHaveAttribute(
       "href",
       "/admin/grants",
+    );
+    expect(screen.getByTestId("admin-sub-nav-analytics")).toHaveAttribute(
+      "href",
+      "/admin/analytics",
     );
     expect(screen.getByTestId("admin-sub-nav-tool-metrics")).toHaveAttribute(
       "href",

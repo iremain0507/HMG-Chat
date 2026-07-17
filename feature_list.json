@@ -2228,8 +2228,8 @@
     "acceptance": "RED: routes-mounted.test.ts에 GET /api/v1/admin/analytics 추가 → 미마운트로 실패. 집계 정확성 테스트(usage_logs seed→모델별 합계·버킷 카운트 기대값). cross-org: 타 org 데이터 미노출. L1: admin 아닌 유저 403. needsBrowser=true: 실앱 Playwright E2E(dev-login admin→Analytics 탭→테이블/차트에 seed 데이터 실렌더) 또는 watchdog 브라우저 UAT로 무데이터·무렌더 아님 확인.",
     "phase": "P20",
     "team": "T1",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P20-T1-16",

@@ -145,6 +145,7 @@ const EXPECTED_ROUTES: Array<{ method: string; path: string; phase: string }> =
       path: `/api/v1/admin/grants?resourceType=prompt&resourceId=${randomUUID()}&subjectType=user&subjectId=${randomUUID()}&access=read`,
       phase: "P20",
     },
+    { method: "GET", path: "/api/v1/admin/analytics", phase: "P20" },
     {
       method: "POST",
       path: `/api/v1/sessions/${sid}/share-snapshot`,

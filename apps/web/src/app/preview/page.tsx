@@ -35,6 +35,7 @@ import { ToolMetricsTable } from "../../components/admin/ToolMetricsTable";
 import { AdminUsersManager } from "../../components/admin/AdminUsersManager";
 import { GroupsManager } from "../../components/admin/GroupsManager";
 import { GrantsManager } from "../../components/admin/GrantsManager";
+import { AnalyticsDashboard } from "../../components/admin/AnalyticsDashboard";
 import { AdminSettingsScreen } from "../../components/admin/settings/AdminSettingsScreen";
 import { ToastContainer } from "../../components/layout/ToastContainer";
 import {
@@ -315,6 +316,22 @@ function GrantsManagerPreview() {
       className="rounded-md border border-border px-3 py-1.5 text-sm text-fg-muted hover:border-primary hover:text-fg"
     >
       접근 권한 관리 열기
+    </button>
+  );
+}
+
+function AnalyticsDashboardPreview() {
+  const [open, setOpen] = useState(false);
+  return open ? (
+    <AnalyticsDashboard />
+  ) : (
+    <button
+      type="button"
+      data-testid="analytics-dashboard-preview-trigger"
+      onClick={() => setOpen(true)}
+      className="rounded-md border border-border px-3 py-1.5 text-sm text-fg-muted hover:border-primary hover:text-fg"
+    >
+      사용량 분석 열기
     </button>
   );
 }
@@ -1043,6 +1060,10 @@ export default function PreviewGallery() {
 
       <Section name="grants-manager">
         <GrantsManagerPreview />
+      </Section>
+
+      <Section name="admin-analytics">
+        <AnalyticsDashboardPreview />
       </Section>
 
       <Section name="admin-settings-screen">
