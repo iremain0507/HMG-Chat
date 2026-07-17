@@ -290,6 +290,70 @@ describe("SessionList", () => {
     expect(screen.getByText("오늘")).toBeInTheDocument();
   });
 
+  it("폴더 프롬프트 편집 버튼으로 systemPrompt 를 PATCH 한다(P20-T1-03)", async () => {
+    const fetchMock = vi.fn(
+      async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        if (
+          url === "/api/v1/folders" &&
+          (!init?.method || init.method === "GET")
+        ) {
+          return {
+            ok: true,
+            status: 200,
+            json: async () => ({
+              data: [
+                {
+                  id: "folder-1",
+                  name: "업무",
+                  systemPrompt: null,
+                  createdAt: "2026-07-14T00:00:00Z",
+                },
+              ],
+            }),
+          };
+        }
+        if (url === "/api/v1/folders/folder-1" && init?.method === "PATCH") {
+          return {
+            ok: true,
+            status: 200,
+            json: async () => ({
+              data: {
+                id: "folder-1",
+                name: "업무",
+                systemPrompt: "너는 코드리뷰어다",
+                createdAt: "2026-07-14T00:00:00Z",
+              },
+            }),
+          };
+        }
+        return { ok: true, status: 200, json: async () => ({ data: [] }) };
+      },
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<SessionList now={new Date("2026-07-14T12:00:00Z")} />);
+
+    await waitFor(() => {
+      expect(screen.getByText("업무")).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByLabelText("폴더 프롬프트 편집: 업무"));
+    const textarea = screen.getByLabelText("폴더 시스템 프롬프트: 업무");
+    fireEvent.change(textarea, { target: { value: "너는 코드리뷰어다" } });
+    fireEvent.blur(textarea);
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/v1/folders/folder-1",
+        expect.objectContaining({
+          method: "PATCH",
+          body: JSON.stringify({ systemPrompt: "너는 코드리뷰어다" }),
+        }),
+      );
+    });
+  });
+
   it("세션을 폴더에 할당하면 PATCH /sessions/:id 를 folderId 와 함께 호출한다", async () => {
     const fetchMock = vi.fn(
       async (input: RequestInfo | URL, init?: RequestInit) => {

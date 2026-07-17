@@ -2003,8 +2003,8 @@
     "acceptance": "RED: messages 통합테스트가 '폴더에 속한 세션 + 폴더 system_prompt 설정 시 buildSystemPrompt 산출물에 폴더 텍스트 포함'을 단언(현재 미상속으로 실패). migration-check 스킬: nullable-first/롤백 경로/RLS 무변경 확인. L1 last-mile: 폴더 프롬프트가 DB 저장에 그치지 않고 실제 turn 의 system prompt 문자열까지 도달(무동작 방지). needsBrowser=true(폴더 프롬프트 편집 UI 실반영) → 실앱 Playwright E2E(dev-login→폴더 프롬프트 설정→그 폴더에 새 채팅→응답이 프롬프트 영향받는지) 또는 watchdog UAT.",
     "phase": "P20",
     "team": "T1",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P20-T2-01",

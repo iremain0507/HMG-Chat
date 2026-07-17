@@ -7,6 +7,7 @@ import { createEmailSender } from "./lib/email-sender.js";
 import { createAuthRoutes } from "./routes/auth.js";
 import { createSessionRoutes } from "./routes/sessions.js";
 import { createFolderRoutes } from "./routes/folders.js";
+import { createPgSessionFolderDataAccess } from "./db/session-folder-data-access.js";
 import { createPromptRoutes } from "./routes/prompts.js";
 import { createApiKeyRoutes } from "./routes/api-keys.js";
 import { createMessageRoutes } from "./routes/messages.js";
@@ -262,6 +263,9 @@ export function createApp(env: Env) {
       attachments: createPgAttachmentsPort({
         embeddingProvider: createDevStubEmbeddingProvider(),
       }),
+      // P20-T1-03 — 폴더 스코프 시스템 프롬프트 상속(routes/folders.ts 와 동일 pg 구현 재사용,
+      // 구조적 타이핑상 FolderSystemPromptPort 를 그대로 만족).
+      folders: createPgSessionFolderDataAccess(),
     }),
   );
   app.route("/api/v1/sessions", sessionsApp);

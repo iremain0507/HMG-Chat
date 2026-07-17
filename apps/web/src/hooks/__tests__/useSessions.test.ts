@@ -352,6 +352,68 @@ describe("useSessions", () => {
     expect(result.current.folders[0]?.name).toBe("new");
   });
 
+  it("updateFolderSystemPrompt 가 PATCH /api/v1/folders/:id 를 systemPrompt 와 함께 호출한다(P20-T1-03)", async () => {
+    const fetchMock = vi.fn(
+      async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        if (
+          url === "/api/v1/folders" &&
+          (!init?.method || init.method === "GET")
+        ) {
+          return {
+            ok: true,
+            status: 200,
+            json: async () => ({
+              data: [
+                {
+                  id: "folder-1",
+                  name: "업무",
+                  systemPrompt: null,
+                  createdAt: "2026-07-14T00:00:00Z",
+                },
+              ],
+            }),
+          };
+        }
+        if (url === "/api/v1/folders/folder-1" && init?.method === "PATCH") {
+          return {
+            ok: true,
+            status: 200,
+            json: async () => ({
+              data: {
+                id: "folder-1",
+                name: "업무",
+                systemPrompt: "너는 코드리뷰어다",
+                createdAt: "2026-07-14T00:00:00Z",
+              },
+            }),
+          };
+        }
+        return { ok: true, status: 200, json: async () => ({ data: [] }) };
+      },
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { result } = renderHook(() => useSessions());
+    await waitFor(() => expect(result.current.folders).toHaveLength(1));
+
+    await act(async () => {
+      await result.current.updateFolderSystemPrompt(
+        "folder-1",
+        "너는 코드리뷰어다",
+      );
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/v1/folders/folder-1",
+      expect.objectContaining({
+        method: "PATCH",
+        body: JSON.stringify({ systemPrompt: "너는 코드리뷰어다" }),
+      }),
+    );
+    expect(result.current.folders[0]?.systemPrompt).toBe("너는 코드리뷰어다");
+  });
+
   it("deleteFolder 가 DELETE /api/v1/folders/:id 를 호출하고 목록·세션 folderId 를 정리한다", async () => {
     const fetchMock = vi.fn(
       async (input: RequestInfo | URL, init?: RequestInit) => {

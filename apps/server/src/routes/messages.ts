@@ -113,7 +113,11 @@ export interface MessagesPort {
 // ownership 검증(session.userId !== auth.sub → 404)이 반드시 필요하다 — 없으면 sessionId 를
 // 아는 타 사용자/조직이 이 엔드포인트로 남의 대화 내용을 읽어낼 수 있다(cross-org 정보 노출).
 export interface FollowupsSessionsPort {
-  byId(id: string): Promise<{ userId: string } | null>;
+  // P20-T1-03 — folderId 는 폴더 스코프 시스템 프롬프트 상속에도 재사용(optional 이라
+  // 구조적 타이핑상 SessionWithPin(folderId: string | null, 필수)도 그대로 만족).
+  byId(
+    id: string,
+  ): Promise<{ userId: string; folderId?: string | null } | null>;
   // P19-T2-06 — 첫 턴 완료 후 LLM 제목 반영에 재사용(구조적 타이핑 — app.ts 가 이미 주입 중인
   // createPgSessionDataAccess() 의 full SessionsDataAccess 가 updateForOwner 를 구현하므로
   // app.ts 변경 없이 충족). 옵셔널 — 미주입/미구현 시 제목 반영을 건너뛴다(L2 fail-soft).
@@ -128,6 +132,17 @@ export interface FollowupsSessionsPort {
 // db/session-tag-data-access.ts SessionTagDataAccess 의 add 만 필요(구조적 타이핑).
 export interface SessionTagsPort {
   add(orgId: string, sessionId: string, tag: string): Promise<unknown>;
+}
+
+// P20-T1-03 — 폴더 스코프 시스템 프롬프트 조회 포트(db/session-folder-data-access.ts
+// SessionFolderDataAccess.byIdForOwner 와 구조적으로 호환 — SessionFolder 가 systemPrompt
+// 를 포함하므로 app.ts 변경 없이 그대로 주입 가능).
+export interface FolderSystemPromptPort {
+  byIdForOwner(
+    orgId: string,
+    userId: string,
+    id: string,
+  ): Promise<{ systemPrompt: string | null } | null>;
 }
 
 // P14-T2-01 — org 별 maxTokens/temperature(ISOLATE, runtime 미배선)/systemPrompt/defaultModel
@@ -232,6 +247,9 @@ export interface MessageRouteDeps {
   messages?: MessagesPort;
   // P19-T2-06 — 첫 턴 완료 후 session_tags 에 생성된 태그를 반영. 미주입 시 태그 반영 생략.
   tags?: SessionTagsPort;
+  // P20-T1-03 — 폴더 스코프 시스템 프롬프트 상속(Open WebUI Folder System Prompt 참고).
+  // 미주입 시 상속 생략(기존 동작 보존, L2).
+  folders?: FolderSystemPromptPort;
 }
 
 function errorJson(code: string, message: string) {
@@ -312,7 +330,34 @@ export function createMessageRoutes(
     const orgSystemBlock: PromptBlock[] = resolvedSettings.systemPrompt
       ? [{ tier: "system", content: resolvedSettings.systemPrompt }]
       : [];
-    const systemBlocks = [...orgSystemBlock, ...(deps.systemBlocks ?? [])];
+
+    // P20-T1-03 — 폴더 스코프 시스템 프롬프트 상속(Open WebUI Folder System Prompt 참고):
+    // 세션이 속한 폴더에 system_prompt 가 설정돼 있으면 project-tier PromptBlock 로 반영한다
+    // (tier 우선순위 system>project>user 유지 — buildSystemPrompt 가 최종 정렬).
+    // 미인증/deps.sessions·deps.folders 미주입/폴더 미배정/미설정 시 조회를 건너뛴다
+    // (L2 fail-soft, 기존 동작 보존).
+    let folderSystemPrompt: string | null = null;
+    if (auth && deps.sessions && deps.folders) {
+      const session = await deps.sessions
+        .byId(c.req.param("id"))
+        .catch(() => null);
+      const folderId = session?.folderId ?? null;
+      if (folderId) {
+        const folder = await deps.folders
+          .byIdForOwner(auth.org, auth.sub, folderId)
+          .catch(() => null);
+        folderSystemPrompt = folder?.systemPrompt ?? null;
+      }
+    }
+    const folderSystemBlock: PromptBlock[] = folderSystemPrompt
+      ? [{ tier: "project", content: folderSystemPrompt }]
+      : [];
+
+    const systemBlocks = [
+      ...orgSystemBlock,
+      ...folderSystemBlock,
+      ...(deps.systemBlocks ?? []),
+    ];
     const ephemeralBlock: PromptBlock[] =
       attachmentFilenames.length > 0
         ? [

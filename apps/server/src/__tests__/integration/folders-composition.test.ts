@@ -229,6 +229,46 @@ describe("routes/folders.ts + sessions.ts folderId 할당(app.ts 실 조립) —
     expect(unassignJson.data.folderId).toBeNull();
   });
 
+  it("POST 로 systemPrompt 를 함께 생성하고, PATCH 로 이름변경 없이 systemPrompt 만 갱신할 수 있다(P20-T1-03)", async () => {
+    const createRes = await app.request("/api/v1/folders", {
+      method: "POST",
+      headers: {
+        Cookie: cookieFor(userA, orgA),
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        name: "프롬프트폴더",
+        systemPrompt: "너는 친절한 비서다",
+      }),
+    });
+    expect(createRes.status).toBe(201);
+    const created = (await createRes.json()) as {
+      data: { id: string; systemPrompt: string | null };
+    };
+    expect(created.data.systemPrompt).toBe("너는 친절한 비서다");
+
+    const patchRes = await app.request(`/api/v1/folders/${created.data.id}`, {
+      method: "PATCH",
+      headers: {
+        Cookie: cookieFor(userA, orgA),
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({ systemPrompt: "너는 엄격한 코드리뷰어다" }),
+    });
+    expect(patchRes.status).toBe(200);
+    const patched = (await patchRes.json()) as {
+      data: { name: string; systemPrompt: string | null };
+    };
+    expect(patched.data.name).toBe("프롬프트폴더");
+    expect(patched.data.systemPrompt).toBe("너는 엄격한 코드리뷰어다");
+
+    const row = await pgPool.query(
+      "SELECT system_prompt FROM session_folders WHERE id = $1",
+      [created.data.id],
+    );
+    expect(row.rows[0].system_prompt).toBe("너는 엄격한 코드리뷰어다");
+  });
+
   it("cross-org — B 는 자기 세션에 A 의 폴더를 할당할 수 없다(400)", async () => {
     const folderRes = await app.request("/api/v1/folders", {
       method: "POST",

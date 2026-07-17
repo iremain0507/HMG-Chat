@@ -11,6 +11,7 @@ import {
   deleteFolder as deleteFolderApi,
   listFolders,
   renameFolder as renameFolderApi,
+  updateFolderSystemPrompt as updateFolderSystemPromptApi,
   type SessionFolder,
 } from "../lib/sessionFolders";
 import { addSessionTag, removeSessionTag } from "../lib/sessionTags";
@@ -42,6 +43,10 @@ interface UseSessionsResult {
   folders: SessionFolder[];
   createFolder: (name: string) => Promise<SessionFolder | null>;
   renameFolder: (id: string, name: string) => Promise<void>;
+  updateFolderSystemPrompt: (
+    id: string,
+    systemPrompt: string | null,
+  ) => Promise<void>;
   deleteFolder: (id: string) => Promise<void>;
   assignFolder: (id: string, folderId: string | null) => Promise<void>;
   addTag: (id: string, tag: string) => Promise<void>;
@@ -244,6 +249,15 @@ export function useSessions(): UseSessionsResult {
     setFolders((prev) => prev.map((f) => (f.id === id ? updated : f)));
   }, []);
 
+  const updateFolderSystemPrompt = useCallback(
+    async (id: string, systemPrompt: string | null) => {
+      const updated = await updateFolderSystemPromptApi(id, systemPrompt);
+      if (!updated) return;
+      setFolders((prev) => prev.map((f) => (f.id === id ? updated : f)));
+    },
+    [],
+  );
+
   const deleteFolder = useCallback(async (id: string) => {
     const ok = await deleteFolderApi(id);
     if (!ok) return;
@@ -322,6 +336,7 @@ export function useSessions(): UseSessionsResult {
     folders,
     createFolder,
     renameFolder,
+    updateFolderSystemPrompt,
     deleteFolder,
     assignFolder,
     addTag,

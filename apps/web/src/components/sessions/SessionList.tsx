@@ -9,6 +9,7 @@ import {
   Archive,
   ChevronDown,
   ChevronRight,
+  MessageSquareText,
   Pencil,
   Trash2,
 } from "lucide-react";
@@ -99,22 +100,36 @@ function FolderGroupHeader({
   collapsed,
   onToggleCollapse,
   onRename,
+  onEditSystemPrompt,
   onDelete,
 }: {
   folder: SessionFolder;
   collapsed: boolean;
   onToggleCollapse: () => void;
   onRename: (name: string) => void;
+  onEditSystemPrompt: (systemPrompt: string | null) => void;
   onDelete: () => void;
 }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(folder.name);
+  // P20-T1-03 — 폴더 스코프 시스템 프롬프트 편집(Open WebUI Folder System Prompt 참고).
+  const [editingPrompt, setEditingPrompt] = useState(false);
+  const [promptDraft, setPromptDraft] = useState(folder.systemPrompt ?? "");
 
   function submitEdit(e: React.FormEvent) {
     e.preventDefault();
     const name = draft.trim();
     if (name && name !== folder.name) onRename(name);
     setEditing(false);
+  }
+
+  function submitPromptEdit() {
+    const value = promptDraft.trim();
+    const normalized = value.length > 0 ? value : null;
+    if (normalized !== (folder.systemPrompt ?? null)) {
+      onEditSystemPrompt(normalized);
+    }
+    setEditingPrompt(false);
   }
 
   if (editing) {
@@ -131,6 +146,26 @@ function FolderGroupHeader({
           className="w-full rounded-md border border-primary bg-bg px-2 py-1 text-sm text-fg outline-none"
         />
       </form>
+    );
+  }
+
+  if (editingPrompt) {
+    return (
+      <div className="px-2 py-1">
+        <textarea
+          autoFocus
+          aria-label={`폴더 시스템 프롬프트: ${folder.name}`}
+          value={promptDraft}
+          onChange={(e) => setPromptDraft(e.target.value)}
+          onBlur={submitPromptEdit}
+          onKeyDown={(e) => {
+            if (e.key === "Escape") setEditingPrompt(false);
+          }}
+          placeholder="이 폴더의 모든 채팅에 적용할 시스템 프롬프트"
+          rows={3}
+          className="w-full resize-none rounded-md border border-primary bg-bg px-2 py-1 text-sm text-fg outline-none"
+        />
+      </div>
     );
   }
 
@@ -165,6 +200,22 @@ function FolderGroupHeader({
       </button>
       <button
         type="button"
+        aria-label={`폴더 프롬프트 편집: ${folder.name}`}
+        title={`폴더 프롬프트 편집: ${folder.name}`}
+        onClick={() => {
+          setPromptDraft(folder.systemPrompt ?? "");
+          setEditingPrompt(true);
+        }}
+        className={`hidden shrink-0 rounded p-1 text-xs group-hover:block ${
+          folder.systemPrompt
+            ? "text-primary hover:text-primary"
+            : "text-fg-muted hover:text-fg"
+        }`}
+      >
+        <MessageSquareText size={12} strokeWidth={1.8} />
+      </button>
+      <button
+        type="button"
         aria-label={`폴더 삭제: ${folder.name}`}
         title={`폴더 삭제: ${folder.name}`}
         onClick={onDelete}
@@ -190,6 +241,7 @@ export function SessionList({ now }: { now?: Date } = {}) {
     folders,
     createFolder,
     renameFolder,
+    updateFolderSystemPrompt,
     deleteFolder,
     assignFolder,
     addTag,
@@ -482,6 +534,9 @@ export function SessionList({ now }: { now?: Date } = {}) {
                     collapsed={collapsed}
                     onToggleCollapse={() => toggleFolderCollapse(folder.id)}
                     onRename={(name) => void renameFolder(folder.id, name)}
+                    onEditSystemPrompt={(systemPrompt) =>
+                      void updateFolderSystemPrompt(folder.id, systemPrompt)
+                    }
                     onDelete={() => void deleteFolder(folder.id)}
                   />
                   {!collapsed && items.map(renderSessionCard)}

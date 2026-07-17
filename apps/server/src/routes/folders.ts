@@ -20,6 +20,7 @@ function toWire(folder: SessionFolder) {
   return {
     id: folder.id,
     name: folder.name,
+    systemPrompt: folder.systemPrompt,
     createdAt: folder.createdAt.toISOString(),
   };
 }
@@ -37,13 +38,18 @@ export function createFolderRoutes(
   app.post("/", async (c) => {
     const auth = c.get("auth");
     const body = await c.req
-      .json<{ name?: string }>()
-      .catch(() => ({}) as { name?: string });
+      .json<{ name?: string; systemPrompt?: string | null }>()
+      .catch(() => ({}) as { name?: string; systemPrompt?: string | null });
     const name = body.name?.trim();
     if (!name) {
       return c.json(errorJson("INVALID_INPUT", "name 이 필요합니다."), 400);
     }
-    const folder = await folders.create(auth.org, auth.sub, name);
+    const folder = await folders.create(
+      auth.org,
+      auth.sub,
+      name,
+      body.systemPrompt,
+    );
     return c.json(
       { data: toWire(folder), meta: { requestId: randomUUID() } },
       201,
@@ -63,13 +69,20 @@ export function createFolderRoutes(
     const auth = c.get("auth");
     const id = c.req.param("id");
     const body = await c.req
-      .json<{ name?: string }>()
-      .catch(() => ({}) as { name?: string });
+      .json<{ name?: string; systemPrompt?: string | null }>()
+      .catch(() => ({}) as { name?: string; systemPrompt?: string | null });
     const name = body.name?.trim();
-    if (!name) {
-      return c.json(errorJson("INVALID_INPUT", "name 이 필요합니다."), 400);
+    const hasSystemPrompt = body.systemPrompt !== undefined;
+    if (!name && !hasSystemPrompt) {
+      return c.json(
+        errorJson("INVALID_INPUT", "name 또는 systemPrompt 가 필요합니다."),
+        400,
+      );
     }
-    const updated = await folders.renameForOwner(auth.org, auth.sub, id, name);
+    const updated = await folders.updateForOwner(auth.org, auth.sub, id, {
+      ...(name ? { name } : {}),
+      ...(hasSystemPrompt ? { systemPrompt: body.systemPrompt } : {}),
+    });
     if (!updated) {
       return c.json(errorJson("NOT_FOUND", "폴더를 찾을 수 없습니다."), 404);
     }
