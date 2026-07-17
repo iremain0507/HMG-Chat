@@ -66,7 +66,7 @@ describe("AuditLogTable", () => {
   });
 
   it("action 필터 입력 변경 시 쿼리스트링에 반영해 재조회한다", async () => {
-    const fetchMock = vi.fn(async () => ({
+    const fetchMock = vi.fn(async (..._args: unknown[]) => ({
       ok: true,
       json: async () => ({ data: ENTRIES }),
     }));
@@ -84,8 +84,10 @@ describe("AuditLogTable", () => {
     fireEvent.change(input, { target: { value: "admin.grant.created" } });
 
     await waitFor(() => {
-      const lastCall = fetchMock.mock.calls[fetchMock.mock.calls.length - 1];
-      expect(String(lastCall[0])).toContain("action=admin.grant.created");
+      const calls = fetchMock.mock.calls;
+      const lastCall = calls[calls.length - 1];
+      expect(lastCall).toBeDefined();
+      expect(String(lastCall?.[0])).toContain("action=admin.grant.created");
     });
   });
 
