@@ -62,6 +62,8 @@ export interface StreamMessage {
   role: "user" | "assistant";
   content: string;
   parts?: MessagePart[];
+  // P20-T2-03 — 사고(reasoning) 스트림 누적. 최종 답변(content)과 별개, 접이식 표시.
+  reasoning?: string;
   truncated?: boolean;
   error?: boolean;
   // P10-T6-17 — SerializedError(§14-INTERFACES) 의 retryable/category 를 그대로 반영.
@@ -132,6 +134,8 @@ type ChatStreamEvent =
   // 현재까지 누적된 content 를 동기화(16-API-CONTRACT § resume endpoint).
   | { type: "message_replace"; messageId: string; contentSoFar: string }
   | { type: "text_delta"; text: string }
+  // P20-T2-03 — 사고(extended thinking) 스트림. 최종 답변과 별개 채널, 접이식 표시.
+  | { type: "reasoning_delta"; text: string }
   | { type: "tool_use"; toolCallId: string; name: string; args: unknown }
   | { type: "tool_result"; toolCallId: string; content: string | unknown }
   | ({ type: "tool_progress"; toolCallId: string } & ToolProgressState)
@@ -535,6 +539,12 @@ export function useSessionStream(sessionId: string) {
               parts: [...toolParts, ...textParts],
             };
           });
+        } else if (event.type === "reasoning_delta" && assistantId) {
+          // P20-T2-03 — 사고 스트림을 content 와 분리해 message.reasoning 에 누적(접이식 표시).
+          updateNode(assistantId, (m) => ({
+            ...m,
+            reasoning: (m.reasoning ?? "") + event.text,
+          }));
         } else if (event.type === "text_delta" && assistantId) {
           updateNode(assistantId, (m) => {
             const parts = m.parts ?? [];

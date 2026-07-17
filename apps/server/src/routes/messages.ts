@@ -289,6 +289,7 @@ export function createMessageRoutes(
         webSearch?: boolean;
         mode?: "agent" | "chat";
         temporary?: boolean;
+        reasoningEffort?: "low" | "medium" | "high";
       }>()
       .catch(
         () =>
@@ -299,6 +300,7 @@ export function createMessageRoutes(
             webSearch?: boolean;
             mode?: "agent" | "chat";
             temporary?: boolean;
+            reasoningEffort?: "low" | "medium" | "high";
           },
       );
     // P19-T2-05 — 임시 채팅: body.temporary=true 면 세션 upsert(ensureSession)와
@@ -604,6 +606,10 @@ export function createMessageRoutes(
           ...(resolvedSettings.topP !== undefined &&
           resolvedSettings.topP !== DEFAULT_ORG_SETTINGS.topP
             ? { topP: resolvedSettings.topP }
+            : {}),
+          // P20-T2-02 — reasoningEffort: 클라 body → runTurn → provider.chat 실전달(no-op 해소).
+          ...(body.reasoningEffort
+            ? { reasoningEffort: body.reasoningEffort }
             : {}),
           ...(tools.length > 0 ? { tools, parallelToolCalls: true } : {}),
           ...(toolContext ? { toolContext } : {}),

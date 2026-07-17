@@ -694,6 +694,9 @@ export type ChatEvent =
     }
   | { type: "message_replace"; messageId: string; contentSoFar: string }
   | { type: "text_delta"; text: string }
+  // 모델의 사고(extended thinking) 스트림(P20-T2-03, human-gate 로 frozen 해제). 최종 답변
+  //   text_delta 와 별개 채널 — 소비측(웹)은 접이식 추론 블록으로 표시. reasoningEffort 설정 시 방출.
+  | { type: "reasoning_delta"; text: string }
   | { type: "tool_use"; toolCallId: string; name: string; args: unknown }
   | { type: "tool_result"; toolCallId: string; content: string | unknown }
   // 특정 toolCallId 의 실행 중 진행 상태(비종단, 여러 번). ToolContext.emitProgress →

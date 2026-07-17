@@ -36,6 +36,7 @@ import { MemoryPanel } from "./MemoryPanel";
 import { MessageActions } from "./MessageActions";
 import { ProjectPicker } from "./ProjectPicker";
 import { RunRail, type RunRailStep } from "./RunRail";
+import { Reasoning } from "./Reasoning";
 import { ShareExportMenu } from "./ShareExportMenu";
 import { ToolCallRenderer } from "./ToolCallRenderer";
 import { ArrowDown } from "lucide-react";
@@ -530,6 +531,7 @@ export function ChatView({ sessionId }: { sessionId: string }) {
                       sessionId={sessionId}
                       messageId={m.id}
                       {...(m.parts ? { parts: m.parts } : {})}
+                      {...(m.reasoning ? { reasoning: m.reasoning } : {})}
                       {...(m.citations ? { citations: m.citations } : {})}
                       {...(m.branch ? { branch: m.branch } : {})}
                       {...(m.truncated ? { truncated: m.truncated } : {})}
@@ -715,6 +717,7 @@ export function MessageItem({
   sessionId,
   messageId,
   parts,
+  reasoning,
   citations,
   branch,
   truncated,
@@ -740,6 +743,7 @@ export function MessageItem({
   sessionId?: string;
   messageId?: string;
   parts?: MessagePart[];
+  reasoning?: string;
   citations?: Citation[];
   branch?: MessageBranch;
   truncated?: boolean;
@@ -908,6 +912,13 @@ export function MessageItem({
         <RunRail steps={runRailSteps} onStepClick={() => onActivityFocus?.()} />
       )}
       <div className="min-w-0 flex-1">
+        {reasoning && (
+          <Reasoning
+            content={reasoning}
+            streaming={streaming}
+            durationSec={0}
+          />
+        )}
         {hasToolParts ? (
           <div className="space-y-3">
             {(parts ?? []).map((part, idx) =>

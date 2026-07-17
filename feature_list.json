@@ -2075,8 +2075,8 @@
     "acceptance": "RED: messages/orchestrator 통합테스트가 reasoningEffort='high' 전송 시 provider.chat 이 해당 thinking budget 파라미터로 호출됨을 spy 로 단언하나 미전달 실패. L1 last-mile: 클라 전송값→서버 파싱→provider 인자까지 end-to-end 전달(중간 drop 없음) 단언. frozenRisk: packages/interfaces(ChatInput/RunTurnInput) 편집 필요 시 즉시 .ralph/blocked_tasks 격리(human gate). 검증: pnpm test(격리 시 사유 기록).",
     "phase": "P20",
     "team": "T2",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P20-T2-03",
@@ -2084,8 +2084,8 @@
     "acceptance": "RED: orchestrator 테스트가 thinking 지원 provider 스텁의 reasoning delta 를 reasoning_delta ChatEvent 로 방출함을 단언하나 미구현 실패. UI: Reasoning.tsx 가 스트림을 접이식으로 렌더+히스토리 재로드 시 보존. frozenRisk: packages/interfaces ChatEvent 확장 필요 → 즉시 .ralph/blocked_tasks 격리(신규 SSE 이벤트, human gate). 검증: 승인 후에만 pnpm test, 그 전엔 격리 사유+설계 기록.",
     "phase": "P20",
     "team": "T2",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P20-T6-07",

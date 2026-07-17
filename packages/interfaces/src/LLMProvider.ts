@@ -19,6 +19,9 @@ export interface ChatInput {
   maxTokens: number;
   temperature?: number;
   topP?: number; // nucleus sampling — provider 가 지원 시 forward (미설정 시 provider 기본)
+  // 추론 강도(P20-T2-02, human-gate 로 frozen 해제). provider 가 지원 시 extended thinking
+  //   budget 으로 매핑(미설정 시 thinking 비활성). Anthropic thinking / OpenAI reasoning_effort.
+  reasoningEffort?: "low" | "medium" | "high";
   cacheControl?: "ephemeral"; // Anthropic prompt cache
   toolChoice?: "auto" | "any" | { type: "tool"; name: string };
   parallelToolCalls?: boolean; // default false (v1.0)

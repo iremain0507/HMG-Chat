@@ -1163,6 +1163,36 @@ describe("useSessionStream", () => {
     expect(assistant?.content).toBe("부분 답변 그리고 끝까지 완성된 최종 답변");
   });
 
+  it("reasoning_delta 이벤트를 message.reasoning 에 누적하고 최종 답변(content)과 분리한다 (P20-T2-03)", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({
+        body: sseBody([
+          sseFrame("message_start", { messageId: "msg-1" }),
+          sseFrame("reasoning_delta", { text: "먼저 " }),
+          sseFrame("reasoning_delta", { text: "생각해본다." }),
+          sseFrame("text_delta", { text: "최종답변" }),
+          sseFrame("stop", { reason: "end_turn" }),
+        ]),
+      })),
+    );
+
+    const { result } = renderHook(() => useSessionStream("session-1"));
+    await act(async () => {
+      await result.current.send("추론해줘", undefined, {
+        reasoningEffort: "high",
+      });
+    });
+
+    const assistant = result.current.messages.find(
+      (m) => m.role === "assistant",
+    );
+    // 사고 스트림은 reasoning 에 누적(과거엔 reasoning 이벤트 자체가 없어 미표시).
+    expect(assistant?.reasoning).toBe("먼저 생각해본다.");
+    // 최종 답변은 content 로 분리 유지(사고가 답변에 섞이지 않음).
+    expect(assistant?.content).toBe("최종답변");
+  });
+
   describe("loadHistory (P17-T6-01, TS-08)", () => {
     it("GET /:id/messages 응답을 시간순 선형 체인으로 복원한다", async () => {
       const fetchMock = vi.fn(async () => ({
