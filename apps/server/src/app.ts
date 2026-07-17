@@ -265,6 +265,9 @@ export function createApp(env: Env) {
         // 재주입(구조적 타이핑으로 SessionsSearchPort/ViewChatMessagesPort 충족, 신규 DA 불필요).
         sessions: sessionDa,
         sessionMessages: messageDa,
+        // P20-T1-10 — add_memory/search_memories: memoriesApp(CRUD)/P20-T1-09(런타임 회상)와
+        // 같은 userMemoryDa 싱글톤을 재주입(신규 DA 불필요, 구조적 타이핑으로 MemoryToolsPort 충족).
+        memories: userMemoryDa,
       }),
       mcpTools: assembleOrgMcpTools(mcpServerDa, mcpBridge, mcpClientPool),
       hitl: hitlBridge,

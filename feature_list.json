@@ -2147,8 +2147,8 @@
     "acceptance": "RED: (a) memory-tool-handler.test — add_memory invoke 후 DB 에 actor 소유 row 가 생성되고, search_memories 가 그 항목을 반환함을 단언(구현 전 실패). (b) assemble-builtin-tools.test — 반환 배열에 add_memory·search_memories spec 존재 단언(실패). L1 last-mile: runTurn tools 배열에 실제 노출되어 모델 tool_use→DB 반영까지 도달. cross-actor 격리: add_memory 가 다른 사용자 소유로 쓰이지 않음 단언. needsBrowser=true: 실앱 Playwright/watchdog UAT — 대화에서 '이거 기억해줘' → 이후 새 대화 조회 시 반영 여부로 실사용 확인. verify-gates exit 0.",
     "phase": "P20",
     "team": "T1",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P20-T6-09",

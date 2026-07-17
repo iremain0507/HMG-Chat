@@ -56,6 +56,19 @@ function fakeSessionMessages() {
   };
 }
 
+function fakeMemories() {
+  return {
+    userMemories: {
+      async insert(data: Record<string, unknown>) {
+        return { id: "mem-1", ...data };
+      },
+      async list() {
+        return { items: [] };
+      },
+    },
+  };
+}
+
 function base() {
   return {
     provider: fakeProvider(),
@@ -65,6 +78,7 @@ function base() {
     objectStore: fakeObjectStore(),
     sessions: fakeSessions(),
     sessionMessages: fakeSessionMessages(),
+    memories: fakeMemories(),
   };
 }
 
@@ -87,15 +101,17 @@ function fakeRetrieval(): KnowledgeRetrievalPort {
 }
 
 describe("tools/assembleBuiltinTools", () => {
-  it("내장 도구 6종을 조립한다(artifact_create/web_search/code_interpreter/deep_research/search_chats/view_chat)", () => {
+  it("내장 도구 8종을 조립한다(artifact_create/web_search/code_interpreter/deep_research/search_chats/view_chat/add_memory/search_memories)", () => {
     const names = assembleBuiltinTools(base())
       .map((t) => t.spec.name)
       .sort();
     expect(names).toEqual([
+      "add_memory",
       "artifact_create",
       "code_interpreter",
       "deep_research",
       "search_chats",
+      "search_memories",
       "view_chat",
       "web_search",
     ]);
@@ -105,6 +121,12 @@ describe("tools/assembleBuiltinTools", () => {
     const names = assembleBuiltinTools(base()).map((t) => t.spec.name);
     expect(names).toContain("search_chats");
     expect(names).toContain("view_chat");
+  });
+
+  it("add_memory/search_memories 는 memories 주입만으로 항상 조립된다(P20-T1-10 L1 last-mile)", () => {
+    const names = assembleBuiltinTools(base()).map((t) => t.spec.name);
+    expect(names).toContain("add_memory");
+    expect(names).toContain("search_memories");
   });
 
   it("TAVILY_API_KEY 유무와 무관하게 web_search 를 포함(키 있으면 실 Tavily, 없으면 dev-stub 폴백)", () => {
@@ -119,7 +141,7 @@ describe("tools/assembleBuiltinTools", () => {
     expect(tools.some((t) => t.spec.name === "code_interpreter")).toBe(true);
   });
 
-  it("retrieval+embeddingProvider 주입 시 knowledge_search 를 포함해 5종 도구를 조립한다(P20-T1-02)", () => {
+  it("retrieval+embeddingProvider 주입 시 knowledge_search 를 포함해 9종 도구를 조립한다(P20-T1-02)", () => {
     const names = assembleBuiltinTools({
       ...base(),
       embeddingProvider: fakeEmbeddingProvider(),
@@ -128,11 +150,13 @@ describe("tools/assembleBuiltinTools", () => {
       .map((t) => t.spec.name)
       .sort();
     expect(names).toEqual([
+      "add_memory",
       "artifact_create",
       "code_interpreter",
       "deep_research",
       "knowledge_search",
       "search_chats",
+      "search_memories",
       "view_chat",
       "web_search",
     ]);

@@ -33,6 +33,11 @@ import {
   type SessionsSearchPort,
   type ViewChatMessagesPort,
 } from "./handlers/search-chats-handler.js";
+import {
+  createAddMemoryTool,
+  createSearchMemoriesTool,
+  type MemoryToolsPort,
+} from "./handlers/memory-tool-handler.js";
 import { createTavilyWebSearchProvider } from "./web-search-provider-tavily.js";
 import { createDevStubWebSearchProvider } from "./web-search-provider-dev-stub.js";
 import { createE2BSandboxTransport } from "./sandbox/sandbox-transport-e2b.js";
@@ -64,6 +69,9 @@ export interface AssembleBuiltinToolsDeps {
   // 게이트가 불필요 — 구조적 타이핑으로 SessionsDataAccess/MessageRepo 그대로 만족).
   sessions: SessionsSearchPort;
   sessionMessages: ViewChatMessagesPort;
+  // P20-T1-10 — add_memory/search_memories: 항상 조립(search_chats 와 동일하게 optional 게이트
+  // 없음 — app.ts 가 이미 memories 라우트/런타임 회상(P20-T1-09)과 공유하는 싱글톤을 그대로 재주입).
+  memories: MemoryToolsPort;
 }
 
 // P19-T1-12 — org_settings.webSearchProvider 로 invoke 시점에 실 provider 를 구성.
@@ -123,6 +131,10 @@ export function assembleBuiltinTools(
     sessions: deps.sessions,
     messages: deps.sessionMessages,
   });
+  const addMemoryTool = createAddMemoryTool({ memories: deps.memories });
+  const searchMemoriesTool = createSearchMemoriesTool({
+    memories: deps.memories,
+  });
 
   return [
     createArtifactCreateTool({ da: deps.artifactDa }),
@@ -133,6 +145,8 @@ export function assembleBuiltinTools(
     }),
     searchChatsTool,
     viewChatTool,
+    addMemoryTool,
+    searchMemoriesTool,
     createDeepResearchTool({
       leadProvider: deps.provider,
       leadModel: deps.model,
