@@ -23,6 +23,7 @@ export function ApiKeysManager() {
   const [name, setName] = useState("");
   const [saving, setSaving] = useState(false);
   const [createdKey, setCreatedKey] = useState<string | null>(null);
+  const [revokingIds, setRevokingIds] = useState<Set<string>>(new Set());
   const dialogRef = useRef<HTMLDivElement>(null);
 
   const closeModal = useCallback(() => setShowModal(false), []);
@@ -59,8 +60,18 @@ export function ApiKeysManager() {
   }
 
   async function handleRevoke(id: string) {
-    const ok = await revokeApiKey(id);
-    if (ok) setKeys((prev) => prev.filter((k) => k.id !== id));
+    if (revokingIds.has(id)) return;
+    setRevokingIds((prev) => new Set(prev).add(id));
+    try {
+      const ok = await revokeApiKey(id);
+      if (ok) setKeys((prev) => prev.filter((k) => k.id !== id));
+    } finally {
+      setRevokingIds((prev) => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
+    }
   }
 
   return (
@@ -133,7 +144,8 @@ export function ApiKeysManager() {
               <button
                 type="button"
                 onClick={() => void handleRevoke(k.id)}
-                className={`mt-3 h-7 rounded-md px-2.5 text-xs text-fg-muted ${FOCUS_RING}`}
+                disabled={revokingIds.has(k.id)}
+                className={`mt-3 h-7 rounded-md px-2.5 text-xs text-fg-muted disabled:opacity-60 ${FOCUS_RING}`}
               >
                 폐기
               </button>

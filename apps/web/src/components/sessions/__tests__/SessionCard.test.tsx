@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 // components/sessions/SessionCard.tsx — P16-T6-03 갭4: 아이콘 전용 액션 버튼(고정/이름변경/삭제)에
 // aria-label 만 있고 title 이 없어 마우스 사용자에게 툴팁이 뜨지 않던 문제.
+// P21-T6-15: 보관/삭제는 비동기·비낙관적 mutation이라 응답 전 재클릭하면 중복 요청이 발생한다(UX-17).
 import React from "react";
 import { describe, it, expect, afterEach, vi } from "vitest";
 import {
@@ -8,6 +9,7 @@ import {
   screen,
   cleanup,
   fireEvent,
+  waitFor,
   within,
 } from "@testing-library/react";
 import "@testing-library/jest-dom/vitest";
@@ -438,5 +440,76 @@ describe("SessionCard 컨텍스트 메뉴 dismiss 계약 (P21-T6-03, UX-01~05)",
     const menu = screen.getByTestId("context-menu-sess-1");
     fireEvent.keyDown(menu, { key: "Tab" });
     expect(screen.queryByTestId("context-menu-sess-1")).not.toBeInTheDocument();
+  });
+});
+
+describe("SessionCard 이중 제출 가드 (P21-T6-15, UX-17)", () => {
+  afterEach(() => cleanup());
+
+  const baseProps = {
+    pinned: false,
+    folders: [],
+    onOpen: vi.fn(),
+    onRename: vi.fn(),
+    onTogglePin: vi.fn(),
+    onAssignFolder: vi.fn(),
+    onAddTag: vi.fn(),
+    onRemoveTag: vi.fn(),
+  };
+
+  it("삭제 버튼은 onDelete 응답 대기 중 disabled 상태이며 재클릭해도 한 번만 호출된다", async () => {
+    let resolveDelete: (() => void) | undefined;
+    const onDelete = vi.fn(
+      () =>
+        new Promise<void>((res) => {
+          resolveDelete = res;
+        }),
+    );
+    render(
+      <SessionCard
+        {...baseProps}
+        session={session}
+        onDelete={onDelete}
+        onArchive={vi.fn()}
+      />,
+    );
+
+    const deleteButton = screen.getByLabelText("삭제: 테스트 세션");
+    fireEvent.click(deleteButton);
+    expect(deleteButton).toBeDisabled();
+
+    fireEvent.click(deleteButton);
+    expect(onDelete).toHaveBeenCalledTimes(1);
+
+    resolveDelete!();
+    await waitFor(() => expect(deleteButton).not.toBeDisabled());
+  });
+
+  it("보관 버튼은 onArchive 응답 대기 중 disabled 상태이며 재클릭해도 한 번만 호출된다", async () => {
+    let resolveArchive: (() => void) | undefined;
+    const onArchive = vi.fn(
+      () =>
+        new Promise<void>((res) => {
+          resolveArchive = res;
+        }),
+    );
+    render(
+      <SessionCard
+        {...baseProps}
+        session={session}
+        onDelete={vi.fn()}
+        onArchive={onArchive}
+      />,
+    );
+
+    const archiveButton = screen.getByLabelText("보관: 테스트 세션");
+    fireEvent.click(archiveButton);
+    expect(archiveButton).toBeDisabled();
+
+    fireEvent.click(archiveButton);
+    expect(onArchive).toHaveBeenCalledTimes(1);
+
+    resolveArchive!();
+    await waitFor(() => expect(archiveButton).not.toBeDisabled());
   });
 });

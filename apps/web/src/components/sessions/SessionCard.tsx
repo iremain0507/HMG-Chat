@@ -64,12 +64,12 @@ export interface SessionCardProps {
   folders: SessionFolder[];
   onOpen: (id: string) => void;
   onRename: (id: string, title: string) => void;
-  onDelete: (id: string) => void;
+  onDelete: (id: string) => void | Promise<void>;
   onTogglePin: (id: string) => void;
   onAssignFolder: (id: string, folderId: string | null) => void;
   onAddTag: (id: string, tag: string) => void;
   onRemoveTag: (id: string, tag: string) => void;
-  onArchive: (id: string) => void;
+  onArchive: (id: string) => void | Promise<void>;
   selectionMode?: boolean;
   selected?: boolean;
   onToggleSelect?: (id: string) => void;
@@ -94,7 +94,37 @@ export function SessionCard({
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(session.title ?? "");
   const [tagDraft, setTagDraft] = useState("");
+  const [deleting, setDeleting] = useState(false);
+  const [archiving, setArchiving] = useState(false);
   const label = session.title ?? "(제목 없음)";
+
+  const mountedRef = useRef(true);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
+
+  async function handleDelete() {
+    if (deleting) return;
+    setDeleting(true);
+    try {
+      await onDelete(session.id);
+    } finally {
+      if (mountedRef.current) setDeleting(false);
+    }
+  }
+
+  async function handleArchive() {
+    if (archiving) return;
+    setArchiving(true);
+    try {
+      await onArchive(session.id);
+    } finally {
+      if (mountedRef.current) setArchiving(false);
+    }
+  }
 
   const cardRef = useRef<HTMLDivElement>(null);
   const contextMenuRef = useRef<HTMLDivElement>(null);
@@ -278,8 +308,9 @@ export function SessionCard({
           type="button"
           aria-label={session.archived ? `복원: ${label}` : `보관: ${label}`}
           title={session.archived ? `복원: ${label}` : `보관: ${label}`}
-          onClick={() => onArchive(session.id)}
-          className="hidden shrink-0 rounded p-1 text-xs text-fg-muted hover:text-fg group-hover:block"
+          onClick={handleArchive}
+          disabled={archiving}
+          className="hidden shrink-0 rounded p-1 text-xs text-fg-muted hover:text-fg group-hover:block disabled:opacity-50"
         >
           {session.archived ? (
             <ArchiveRestore size={12} strokeWidth={1.8} />
@@ -291,8 +322,9 @@ export function SessionCard({
           type="button"
           aria-label={`삭제: ${label}`}
           title={`삭제: ${label}`}
-          onClick={() => onDelete(session.id)}
-          className="hidden shrink-0 rounded p-1 text-xs text-fg-muted hover:text-accent group-hover:block"
+          onClick={handleDelete}
+          disabled={deleting}
+          className="hidden shrink-0 rounded p-1 text-xs text-fg-muted hover:text-accent group-hover:block disabled:opacity-50"
         >
           <Trash2 size={12} strokeWidth={1.8} />
         </button>
@@ -420,22 +452,24 @@ export function SessionCard({
           <button
             type="button"
             role="menuitem"
+            disabled={archiving}
             onClick={() => {
-              onArchive(session.id);
+              void handleArchive();
               contextMenu.close();
             }}
-            className="block w-full rounded-md px-2 py-1.5 text-left text-sm text-fg hover:bg-bg"
+            className="block w-full rounded-md px-2 py-1.5 text-left text-sm text-fg hover:bg-bg disabled:opacity-50"
           >
             {session.archived ? "복원" : "보관"}
           </button>
           <button
             type="button"
             role="menuitem"
+            disabled={deleting}
             onClick={() => {
-              onDelete(session.id);
+              void handleDelete();
               contextMenu.close();
             }}
-            className="block w-full rounded-md px-2 py-1.5 text-left text-sm text-fg hover:text-accent hover:bg-bg"
+            className="block w-full rounded-md px-2 py-1.5 text-left text-sm text-fg hover:text-accent hover:bg-bg disabled:opacity-50"
           >
             삭제
           </button>

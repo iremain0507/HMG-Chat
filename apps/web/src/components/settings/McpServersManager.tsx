@@ -75,7 +75,22 @@ export function McpServersManager() {
     useState<McpServerDto["transport"]>("streamable_http");
   const [scope, setScope] = useState<"personal" | "project" | "org">("org");
   const [hoveredId, setHoveredId] = useState<string | null>(null);
+  const [removingIds, setRemovingIds] = useState<Set<string>>(new Set());
   const dialogRef = useRef<HTMLDivElement>(null);
+
+  async function handleRemove(id: string) {
+    if (removingIds.has(id)) return;
+    setRemovingIds((prev) => new Set(prev).add(id));
+    try {
+      await remove(id);
+    } finally {
+      setRemovingIds((prev) => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
+    }
+  }
 
   function openModal() {
     setStep("info");
@@ -220,8 +235,9 @@ export function McpServersManager() {
                 )}
                 <button
                   type="button"
-                  onClick={() => remove(s.id)}
-                  className={`h-7 rounded-md px-2.5 text-xs text-fg-muted ${FOCUS_RING}`}
+                  onClick={() => void handleRemove(s.id)}
+                  disabled={removingIds.has(s.id)}
+                  className={`h-7 rounded-md px-2.5 text-xs text-fg-muted disabled:opacity-50 ${FOCUS_RING}`}
                 >
                   비활성화
                 </button>

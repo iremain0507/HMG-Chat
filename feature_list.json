@@ -2381,8 +2381,8 @@
     "acceptance": "RED: 각 테스트가 뮤테이션 in-flight 중 버튼 disabled(더블클릭 시 요청 1회)를 단언 — 현재 미가드로 2회 발행(실패, UX-17). RTL(비동기 resolve 지연 목킹).",
     "phase": "P21",
     "team": "T6",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P21-T6-16",

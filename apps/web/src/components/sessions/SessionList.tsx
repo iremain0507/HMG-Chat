@@ -508,12 +508,12 @@ export function SessionList({ now }: { now?: Date } = {}) {
         folders={folders}
         onOpen={(id) => router.push(`/chat/${id}`)}
         onRename={(id, title) => void renameSession(id, title)}
-        onDelete={(id) => void deleteSession(id)}
+        onDelete={(id) => deleteSession(id)}
         onTogglePin={handleTogglePin}
         onAssignFolder={(id, folderId) => void assignFolder(id, folderId)}
         onAddTag={(id, tag) => void addTag(id, tag)}
         onRemoveTag={(id, tag) => void removeTag(id, tag)}
-        onArchive={(id) => void archiveSession(id)}
+        onArchive={(id) => archiveSession(id)}
         selectionMode={selectionMode}
         selected={selectedIds.has(session.id)}
         onToggleSelect={toggleSelect}

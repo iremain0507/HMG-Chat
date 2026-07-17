@@ -309,4 +309,51 @@ describe("McpServersManager", () => {
       expect(screen.getByText("등록된 커넥터가 없습니다.")).toBeInTheDocument();
     });
   });
+
+  it("비활성화 클릭 중 재클릭해도 DELETE 요청이 한 번만 나가고, 진행 중 버튼은 비활성화된다(UX-17)", async () => {
+    let resolveRemove: (() => void) | undefined;
+    const fetchMock = vi.fn(
+      async (_input: RequestInfo | URL, init?: RequestInit) => {
+        if (init?.method === "DELETE") {
+          await new Promise<void>((res) => {
+            resolveRemove = res;
+          });
+          return { ok: true, status: 204, json: async () => ({}) };
+        }
+        const deleted = fetchMock.mock.calls.some(
+          ([, i]) => (i as RequestInit | undefined)?.method === "DELETE",
+        );
+        return {
+          ok: true,
+          json: async () => ({ data: deleted ? [] : [SERVER_1] }),
+        };
+      },
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<McpServersManager />);
+    await waitFor(() => screen.getByText("내부 도구 서버"));
+
+    const removeButton = screen.getByRole("button", { name: "비활성화" });
+    fireEvent.click(removeButton);
+
+    await waitFor(() => {
+      expect(removeButton).toBeDisabled();
+    });
+
+    fireEvent.click(removeButton);
+
+    const deleteCallCount = () =>
+      fetchMock.mock.calls.filter(
+        ([, init]) => (init as RequestInit | undefined)?.method === "DELETE",
+      ).length;
+    expect(deleteCallCount()).toBe(1);
+
+    resolveRemove?.();
+
+    await waitFor(() => {
+      expect(screen.getByText("등록된 커넥터가 없습니다.")).toBeInTheDocument();
+    });
+    expect(deleteCallCount()).toBe(1);
+  });
 });

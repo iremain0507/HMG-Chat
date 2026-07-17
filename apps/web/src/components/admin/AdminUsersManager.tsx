@@ -4,7 +4,7 @@
 // (P13-T6-13). §3.9 이중 밀도 테이블 + 역할 select/정지 토글은 기존 동작(useAdminUsers)
 // 그대로 — 재현은 외형·상태 배지뿐. suspend 사유는 window.prompt 최소 입력(별도 모달은
 // acceptance 범위 밖, 기존 결정 유지).
-import React from "react";
+import React, { useState } from "react";
 import { useAdminUsers, type AdminUserDto } from "../../hooks/useAdminUsers";
 import { useCurrentUser } from "../../hooks/useCurrentUser";
 import { AdminSubNav } from "./AdminSubNav";
@@ -51,15 +51,52 @@ export function AdminUsersManager() {
   const { users, loading, error, changeRole, suspend, unsuspend, deleteUser } =
     useAdminUsers();
   const { user: currentUser } = useCurrentUser();
+  // P21-T6-15 — 역할 변경 select 와 정지/정지 해제 버튼은 같은 행에서 동일한 사용자를
+  // 대상으로 하는 뮤테이션이므로, 한쪽이 진행 중이면(UX-17 이중 제출 방지) 같은 행의
+  // 두 컨트롤을 모두 disabled 처리하고 핸들러 자체도 재진입을 막는다(다른 행은 영향 없음).
+  const [pendingIds, setPendingIds] = useState<Set<string>>(new Set());
 
   async function handleSuspendToggle(u: AdminUserDto) {
-    if (u.status === "suspended") {
-      await unsuspend(u.id);
+    if (pendingIds.has(u.id)) return;
+    if (u.status !== "suspended") {
+      const reason = window.prompt("정지 사유를 입력하세요.");
+      if (!reason) return;
+      setPendingIds((prev) => new Set(prev).add(u.id));
+      try {
+        await suspend(u.id, reason);
+      } finally {
+        setPendingIds((prev) => {
+          const next = new Set(prev);
+          next.delete(u.id);
+          return next;
+        });
+      }
       return;
     }
-    const reason = window.prompt("정지 사유를 입력하세요.");
-    if (!reason) return;
-    await suspend(u.id, reason);
+    setPendingIds((prev) => new Set(prev).add(u.id));
+    try {
+      await unsuspend(u.id);
+    } finally {
+      setPendingIds((prev) => {
+        const next = new Set(prev);
+        next.delete(u.id);
+        return next;
+      });
+    }
+  }
+
+  async function handleRoleChange(u: AdminUserDto, role: AdminUserDto["role"]) {
+    if (pendingIds.has(u.id)) return;
+    setPendingIds((prev) => new Set(prev).add(u.id));
+    try {
+      await changeRole(u.id, role);
+    } finally {
+      setPendingIds((prev) => {
+        const next = new Set(prev);
+        next.delete(u.id);
+        return next;
+      });
+    }
   }
 
   async function handleDelete(u: AdminUserDto) {
@@ -126,10 +163,14 @@ export function AdminUsersManager() {
                     <select
                       aria-label={`역할 (${u.email})`}
                       value={u.role}
+                      disabled={pendingIds.has(u.id)}
                       onChange={(e) =>
-                        changeRole(u.id, e.target.value as AdminUserDto["role"])
+                        handleRoleChange(
+                          u,
+                          e.target.value as AdminUserDto["role"],
+                        )
                       }
-                      className={`rounded-md border border-border bg-bg px-2 py-1 text-xs text-fg ${FOCUS_RING}`}
+                      className={`rounded-md border border-border bg-bg px-2 py-1 text-xs text-fg disabled:cursor-not-allowed disabled:opacity-60 ${FOCUS_RING}`}
                     >
                       {ROLES.map((r) => (
                         <option key={r} value={r}>
@@ -153,7 +194,8 @@ export function AdminUsersManager() {
                   <td className={`${rowBorder} px-2.5 py-[6px] text-right`}>
                     <button
                       type="button"
-                      className={`text-xs font-medium text-accent ${FOCUS_RING}`}
+                      disabled={pendingIds.has(u.id)}
+                      className={`text-xs font-medium text-accent disabled:cursor-not-allowed disabled:text-fg-subtle disabled:opacity-60 ${FOCUS_RING}`}
                       aria-label={`${u.status === "suspended" ? "정지 해제" : "정지"} (${u.email})`}
                       onClick={() => handleSuspendToggle(u)}
                     >

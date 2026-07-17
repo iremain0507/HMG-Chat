@@ -279,6 +279,108 @@ describe("AdminUsersManager", () => {
     );
   });
 
+  it("정지 버튼 연속 클릭 시 요청이 한 번만 발생하고 처리 중에는 정지 버튼과 역할 select 가 비활성화된다", async () => {
+    let resolveSuspend: (() => void) | undefined;
+    let suspendCallCount = 0;
+    const fetchMock = vi.fn(
+      async (input: RequestInfo | URL, init?: RequestInit) => {
+        if (String(input).endsWith("/suspend") && init?.method === "POST") {
+          suspendCallCount += 1;
+          await new Promise<void>((res) => {
+            resolveSuspend = res;
+          });
+          return {
+            ok: true,
+            json: async () => ({ data: { ok: true, sessionsRevoked: 1 } }),
+          };
+        }
+        return { ok: true, json: async () => ({ data: [USER_1] }) };
+      },
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    vi.stubGlobal(
+      "prompt",
+      vi.fn(() => "정책 위반"),
+    );
+
+    render(<AdminUsersManager />);
+    await waitFor(() => {
+      expect(screen.getByText("a@example.com")).toBeInTheDocument();
+    });
+
+    const suspendButton = screen.getByLabelText("정지 (a@example.com)");
+    const roleSelect = screen.getByLabelText("역할 (a@example.com)");
+
+    fireEvent.click(suspendButton);
+
+    await waitFor(() => {
+      expect(suspendButton).toBeDisabled();
+    });
+    expect(roleSelect).toBeDisabled();
+
+    // 처리 중 재클릭 — 이미 pending 이므로 no-op 이어야 한다.
+    fireEvent.click(suspendButton);
+
+    expect(suspendCallCount).toBe(1);
+
+    resolveSuspend?.();
+
+    await waitFor(() => {
+      expect(suspendButton).not.toBeDisabled();
+    });
+    expect(roleSelect).not.toBeDisabled();
+  });
+
+  it("역할 변경 처리 중에는 select 와 정지 버튼이 비활성화되고 PATCH 요청이 한 번만 발생한다", async () => {
+    let resolvePatch: (() => void) | undefined;
+    let patchCallCount = 0;
+    const fetchMock = vi.fn(
+      async (_input: RequestInfo | URL, init?: RequestInit) => {
+        if (init?.method === "PATCH") {
+          patchCallCount += 1;
+          await new Promise<void>((res) => {
+            resolvePatch = res;
+          });
+          return {
+            ok: true,
+            json: async () => ({ data: { ...USER_1, role: "admin" } }),
+          };
+        }
+        return { ok: true, json: async () => ({ data: [USER_1] }) };
+      },
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<AdminUsersManager />);
+    await waitFor(() => {
+      expect(screen.getByText("a@example.com")).toBeInTheDocument();
+    });
+
+    const roleSelect = screen.getByLabelText(
+      "역할 (a@example.com)",
+    ) as HTMLSelectElement;
+    const suspendButton = screen.getByLabelText("정지 (a@example.com)");
+
+    fireEvent.change(roleSelect, { target: { value: "admin" } });
+
+    await waitFor(() => {
+      expect(roleSelect).toBeDisabled();
+    });
+    expect(suspendButton).toBeDisabled();
+
+    // 처리 중 재변경 — 이미 pending 이므로 두 번째 PATCH 는 발생하지 않아야 한다.
+    fireEvent.change(roleSelect, { target: { value: "owner" } });
+
+    expect(patchCallCount).toBe(1);
+
+    resolvePatch?.();
+
+    await waitFor(() => {
+      expect(roleSelect).not.toBeDisabled();
+    });
+    expect(suspendButton).not.toBeDisabled();
+  });
+
   it("대시보드/도구 지표/설정으로 가는 서브내비를 렌더한다", async () => {
     vi.stubGlobal(
       "fetch",

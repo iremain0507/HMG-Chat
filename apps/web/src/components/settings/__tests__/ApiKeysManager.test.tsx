@@ -108,6 +108,50 @@ describe("ApiKeysManager", () => {
     expect(screen.queryByText("CI 키")).not.toBeInTheDocument();
   });
 
+  it("폐기 버튼 연속 클릭(더블클릭) 시 DELETE 요청은 한 번만 전송된다(UX-17)", async () => {
+    let resolveDelete: (() => void) | undefined;
+    const fetchMock = vi.fn(async (_url: string, opts?: RequestInit) => {
+      if (opts?.method === "DELETE") {
+        await new Promise<void>((res) => {
+          resolveDelete = res;
+        });
+        return { ok: true, json: async () => ({}) };
+      }
+      return { ok: true, json: async () => ({ data: [KEY_1] }) };
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<ApiKeysManager />);
+
+    await waitFor(() => {
+      expect(screen.getByText("CI 키")).toBeInTheDocument();
+    });
+
+    const revokeButton = screen.getByRole("button", { name: "폐기" });
+    fireEvent.click(revokeButton);
+
+    await waitFor(() => {
+      expect(revokeButton).toBeDisabled();
+    });
+
+    fireEvent.click(revokeButton);
+
+    const deleteCalls = fetchMock.mock.calls.filter(
+      ([, opts]) => (opts as RequestInit | undefined)?.method === "DELETE",
+    );
+    expect(deleteCalls).toHaveLength(1);
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/v1/api-keys/key-1",
+      expect.objectContaining({ method: "DELETE" }),
+    );
+
+    resolveDelete!();
+
+    await waitFor(() => {
+      expect(screen.queryByText("CI 키")).not.toBeInTheDocument();
+    });
+  });
+
   describe("포커스 트랩(useFocusTrap)", () => {
     function stubEmptyList() {
       vi.stubGlobal(

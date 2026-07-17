@@ -35,13 +35,33 @@ export function MemoryManager() {
   const [newContent, setNewContent] = useState("");
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editContent, setEditContent] = useState("");
+  const [creating, setCreating] = useState(false);
+  const [pendingIds, setPendingIds] = useState<Set<string>>(new Set());
+
+  function markPending(id: string) {
+    setPendingIds((prev) => new Set(prev).add(id));
+  }
+
+  function clearPending(id: string) {
+    setPendingIds((prev) => {
+      const next = new Set(prev);
+      next.delete(id);
+      return next;
+    });
+  }
 
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault();
+    if (creating) return;
     const content = newContent.trim();
     if (!content) return;
-    await create({ category: newCategory, content });
-    setNewContent("");
+    setCreating(true);
+    try {
+      await create({ category: newCategory, content });
+      setNewContent("");
+    } finally {
+      setCreating(false);
+    }
   }
 
   function startEdit(memory: UserMemoryDto) {
@@ -50,8 +70,34 @@ export function MemoryManager() {
   }
 
   async function handleEditSave(id: string) {
-    await update(id, { content: editContent });
-    setEditingId(null);
+    if (pendingIds.has(id)) return;
+    markPending(id);
+    try {
+      await update(id, { content: editContent });
+      setEditingId(null);
+    } finally {
+      clearPending(id);
+    }
+  }
+
+  async function handlePinToggle(memory: UserMemoryDto) {
+    if (pendingIds.has(memory.id)) return;
+    markPending(memory.id);
+    try {
+      await update(memory.id, { pinned: !memory.pinned });
+    } finally {
+      clearPending(memory.id);
+    }
+  }
+
+  async function handleDelete(id: string) {
+    if (pendingIds.has(id)) return;
+    markPending(id);
+    try {
+      await remove(id);
+    } finally {
+      clearPending(id);
+    }
   }
 
   return (
@@ -129,7 +175,8 @@ export function MemoryManager() {
         />
         <button
           type="submit"
-          className={`h-8 rounded-md bg-primary px-3 text-[12.5px] font-semibold text-primary-fg ${FOCUS_RING}`}
+          disabled={creating}
+          className={`h-8 rounded-md bg-primary px-3 text-[12.5px] font-semibold text-primary-fg disabled:opacity-60 ${FOCUS_RING}`}
         >
           + 추가
         </button>
@@ -143,93 +190,101 @@ export function MemoryManager() {
         <p className="mt-4 text-sm text-fg-muted">저장된 메모리가 없습니다.</p>
       ) : (
         <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {memories.map((m) => (
-            <div
-              key={m.id}
-              className="rounded-[10px] border border-border bg-bg p-3.5"
-            >
-              <div className="flex items-center gap-1.5">
-                {m.pinned ? (
+          {memories.map((m) => {
+            const isPending = pendingIds.has(m.id);
+            return (
+              <div
+                key={m.id}
+                className="rounded-[10px] border border-border bg-bg p-3.5"
+              >
+                <div className="flex items-center gap-1.5">
+                  {m.pinned ? (
+                    <>
+                      <Pin
+                        aria-hidden="true"
+                        className="h-3 w-3 flex-none text-primary"
+                      />
+                      <span className="text-[11px] font-semibold text-primary">
+                        고정됨
+                      </span>
+                    </>
+                  ) : (
+                    <span className="text-[11px] text-placeholder">일반</span>
+                  )}
+                  <span className="ml-auto rounded-full border border-border bg-surface px-2 py-0.5 text-[11px] text-fg-muted">
+                    {CATEGORY_LABEL[m.category]}
+                  </span>
+                </div>
+
+                {editingId === m.id ? (
                   <>
-                    <Pin
-                      aria-hidden="true"
-                      className="h-3 w-3 flex-none text-primary"
+                    <textarea
+                      aria-label={`${m.id} 편집 내용`}
+                      value={editContent}
+                      onChange={(e) => setEditContent(e.target.value)}
+                      className={`mt-2 w-full rounded-md border border-border p-2 text-[13.5px] leading-relaxed text-fg ${FOCUS_RING}`}
                     />
-                    <span className="text-[11px] font-semibold text-primary">
-                      고정됨
-                    </span>
+                    <div className="mt-2 flex gap-1.5">
+                      <button
+                        type="button"
+                        disabled={isPending}
+                        onClick={() => handleEditSave(m.id)}
+                        className={`h-[26px] rounded-md bg-primary px-2.5 text-xs font-semibold text-primary-fg disabled:opacity-60 ${FOCUS_RING}`}
+                      >
+                        저장
+                      </button>
+                      <button
+                        type="button"
+                        disabled={isPending}
+                        onClick={() => setEditingId(null)}
+                        className={`h-[26px] rounded-md border border-border px-2.5 text-xs text-fg disabled:opacity-60 ${FOCUS_RING}`}
+                      >
+                        취소
+                      </button>
+                    </div>
                   </>
                 ) : (
-                  <span className="text-[11px] text-placeholder">일반</span>
+                  <>
+                    <p className="mt-2 text-[13.5px] leading-relaxed text-fg">
+                      {m.content}
+                    </p>
+                    <div className="mt-2 text-[11.5px] text-placeholder">
+                      {SOURCE_LABEL[m.source]} ·{" "}
+                      <span className="font-mono">
+                        {m.createdAt.slice(0, 10)}
+                      </span>
+                    </div>
+                    <div className="mt-2.5 flex gap-1.5">
+                      <button
+                        type="button"
+                        disabled={isPending}
+                        onClick={() => handlePinToggle(m)}
+                        className={`h-[26px] rounded-md border border-border px-2.5 text-xs text-fg disabled:opacity-60 ${FOCUS_RING}`}
+                      >
+                        {m.pinned ? "핀 해제" : "고정"}
+                      </button>
+                      <button
+                        type="button"
+                        disabled={isPending}
+                        onClick={() => startEdit(m)}
+                        className={`h-[26px] rounded-md border border-border px-2.5 text-xs text-fg disabled:opacity-60 ${FOCUS_RING}`}
+                      >
+                        편집
+                      </button>
+                      <button
+                        type="button"
+                        disabled={isPending}
+                        onClick={() => handleDelete(m.id)}
+                        className={`h-[26px] rounded-md px-2.5 text-xs text-accent disabled:opacity-60 ${FOCUS_RING}`}
+                      >
+                        삭제
+                      </button>
+                    </div>
+                  </>
                 )}
-                <span className="ml-auto rounded-full border border-border bg-surface px-2 py-0.5 text-[11px] text-fg-muted">
-                  {CATEGORY_LABEL[m.category]}
-                </span>
               </div>
-
-              {editingId === m.id ? (
-                <>
-                  <textarea
-                    aria-label={`${m.id} 편집 내용`}
-                    value={editContent}
-                    onChange={(e) => setEditContent(e.target.value)}
-                    className={`mt-2 w-full rounded-md border border-border p-2 text-[13.5px] leading-relaxed text-fg ${FOCUS_RING}`}
-                  />
-                  <div className="mt-2 flex gap-1.5">
-                    <button
-                      type="button"
-                      onClick={() => handleEditSave(m.id)}
-                      className={`h-[26px] rounded-md bg-primary px-2.5 text-xs font-semibold text-primary-fg ${FOCUS_RING}`}
-                    >
-                      저장
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setEditingId(null)}
-                      className={`h-[26px] rounded-md border border-border px-2.5 text-xs text-fg ${FOCUS_RING}`}
-                    >
-                      취소
-                    </button>
-                  </div>
-                </>
-              ) : (
-                <>
-                  <p className="mt-2 text-[13.5px] leading-relaxed text-fg">
-                    {m.content}
-                  </p>
-                  <div className="mt-2 text-[11.5px] text-placeholder">
-                    {SOURCE_LABEL[m.source]} ·{" "}
-                    <span className="font-mono">
-                      {m.createdAt.slice(0, 10)}
-                    </span>
-                  </div>
-                  <div className="mt-2.5 flex gap-1.5">
-                    <button
-                      type="button"
-                      onClick={() => update(m.id, { pinned: !m.pinned })}
-                      className={`h-[26px] rounded-md border border-border px-2.5 text-xs text-fg ${FOCUS_RING}`}
-                    >
-                      {m.pinned ? "핀 해제" : "고정"}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => startEdit(m)}
-                      className={`h-[26px] rounded-md border border-border px-2.5 text-xs text-fg ${FOCUS_RING}`}
-                    >
-                      편집
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => remove(m.id)}
-                      className={`h-[26px] rounded-md px-2.5 text-xs text-accent ${FOCUS_RING}`}
-                    >
-                      삭제
-                    </button>
-                  </div>
-                </>
-              )}
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
     </section>
