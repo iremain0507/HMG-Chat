@@ -265,7 +265,7 @@ describe("AppShell", () => {
     expect(screen.getByTestId("shortcut-sheet")).toBeInTheDocument();
     expect(screen.getByTestId("shortcut-sheet")).toHaveTextContent("⌘B");
 
-    fireEvent.keyDown(window, { key: "Escape" });
+    fireEvent.keyDown(document, { key: "Escape" });
     expect(screen.queryByTestId("shortcut-sheet")).not.toBeInTheDocument();
   });
 

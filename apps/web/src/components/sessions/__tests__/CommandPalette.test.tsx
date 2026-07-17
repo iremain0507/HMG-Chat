@@ -165,7 +165,7 @@ describe("CommandPalette", () => {
   it("Escape 키로 닫힌다", () => {
     const onClose = vi.fn();
     render(<CommandPalette open={true} onClose={onClose} />);
-    fireEvent.keyDown(window, { key: "Escape" });
+    fireEvent.keyDown(document, { key: "Escape" });
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
@@ -174,5 +174,44 @@ describe("CommandPalette", () => {
     render(<CommandPalette open={true} onClose={onClose} />);
     fireEvent.click(screen.getByTestId("command-palette-backdrop"));
     expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  // P21-T6-10 — useFocusTrap 이식: Tab 트랩 + 닫을 때 트리거(⌘K 버튼) 포커스 복귀.
+  it("Shift+Tab 은 다이얼로그 밖으로 벗어나지 않고 마지막 힌트칩으로 순환한다", () => {
+    render(<CommandPalette open={true} onClose={vi.fn()} />);
+    const input = screen.getByTestId("command-palette-input");
+    expect(input).toHaveFocus();
+
+    fireEvent.keyDown(document, { key: "Tab", shiftKey: true });
+
+    expect(document.activeElement).toBe(
+      screen.getByTestId("command-palette-hint-archived"),
+    );
+  });
+
+  it("닫힐 때(Escape) 트리거 요소로 포커스가 복귀한다", () => {
+    function Wrapper() {
+      const [open, setOpen] = React.useState(false);
+      return (
+        <div>
+          <button data-testid="trigger" onClick={() => setOpen(true)}>
+            검색
+          </button>
+          {open && (
+            <CommandPalette open={open} onClose={() => setOpen(false)} />
+          )}
+        </div>
+      );
+    }
+    render(<Wrapper />);
+    const trigger = screen.getByTestId("trigger");
+    trigger.focus();
+    fireEvent.click(trigger);
+
+    expect(screen.getByTestId("command-palette")).toBeInTheDocument();
+
+    fireEvent.keyDown(document, { key: "Escape" });
+
+    expect(trigger).toHaveFocus();
   });
 });

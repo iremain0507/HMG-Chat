@@ -46,6 +46,7 @@ export function AppShell({ sidebar, rightPanel, children }: AppShellProps) {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [shortcutSheetOpen, setShortcutSheetOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
+  const cmdkButtonRef = useRef<HTMLButtonElement>(null);
   const [rightPanelOpen, setRightPanelOpen] = useState(true);
   const [rightPanelWidth, setRightPanelWidth] = useState(
     RIGHT_PANEL_DEFAULT_WIDTH,
@@ -178,6 +179,7 @@ export function AppShell({ sidebar, rightPanel, children }: AppShellProps) {
         </span>
         <div className="flex-1" />
         <button
+          ref={cmdkButtonRef}
           type="button"
           onClick={openCommandSearch}
           aria-label="검색 (⌘K)"
@@ -281,6 +283,7 @@ export function AppShell({ sidebar, rightPanel, children }: AppShellProps) {
       <CommandPalette
         open={paletteOpen}
         onClose={() => setPaletteOpen(false)}
+        triggerRef={cmdkButtonRef}
       />
     </div>
   );

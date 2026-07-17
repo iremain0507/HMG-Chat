@@ -10,6 +10,7 @@ import {
   searchSessions,
   type SessionSearchResultDto,
 } from "../../lib/sessionSearch";
+import { useFocusTrap } from "../../hooks/useFocusTrap";
 
 // P20-T1-07 — 검색 접두어(tag:/folder:/pinned:/archived:) 힌트칩. 클릭하면 입력창에 접두어를
 // 삽입한다(자유텍스트 결합은 db/session-data-access.ts#search 가 서버측에서 파싱).
@@ -23,23 +24,27 @@ const SEARCH_PREFIX_HINTS = [
 export function CommandPalette({
   open,
   onClose,
+  triggerRef,
 }: {
   open: boolean;
   onClose: () => void;
+  // P21-T6-10 — 헤더 ⌘K 버튼의 onClick 은 wchat:cmdk 이벤트를 동기 발행해 SessionList
+  // 사이드바 검색창으로 포커스를 옮긴다(기존 동작, 유지). 그 side-effect 가 이 컴포넌트의
+  // 마운트 effect 보다 먼저 실행돼 암시적 document.activeElement 캡처가 그 검색창을 잘못
+  // 잡으므로, 실제 트리거를 명시적으로 넘겨 닫을 때 포커스 복귀 대상을 고정한다.
+  triggerRef?: React.RefObject<HTMLElement | null>;
 }) {
   const router = useRouter();
+  const dialogRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<SessionSearchResultDto[] | null>(null);
 
-  useEffect(() => {
-    if (!open) return;
-    function onKeyDown(e: KeyboardEvent) {
-      if (e.key === "Escape") onClose();
-    }
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [open, onClose]);
+  useFocusTrap(dialogRef, {
+    active: open,
+    onClose,
+    restoreFocusRef: triggerRef,
+  });
 
   useEffect(() => {
     if (!open) return;
@@ -85,6 +90,7 @@ export function CommandPalette({
       onClick={onClose}
     >
       <div
+        ref={dialogRef}
         role="dialog"
         aria-modal="true"
         aria-label="검색"
