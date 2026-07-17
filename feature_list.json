@@ -2345,8 +2345,8 @@
     "acceptance": "RED: ChatView.test 가 편집 모드 Escape 시 취소(원문 복원) + 진입 시 textarea 포커스를 단언 — 현재 실패(UX-03 inline). RTL 충분.",
     "phase": "P21",
     "team": "T6",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P21-T6-12",

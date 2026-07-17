@@ -767,6 +767,14 @@ export function MessageItem({
   const [focusedCitation, setFocusedCitation] = useState<number | null>(null);
   const [isEditing, setIsEditing] = useState(false);
   const [draft, setDraft] = useState(content);
+  const editTextareaRef = useRef<HTMLTextAreaElement>(null);
+  useEffect(() => {
+    if (!isEditing) return;
+    const el = editTextareaRef.current;
+    if (!el) return;
+    el.focus();
+    el.setSelectionRange(el.value.length, el.value.length);
+  }, [isEditing]);
   const onCitationClick = (index: number) => {
     setFocusedCitation(index);
     const el = document.getElementById(`citation-ref-${index}`);
@@ -823,9 +831,13 @@ export function MessageItem({
           <div className="w-full max-w-[80%]">
             <div className="flex flex-col gap-2 rounded-2xl border border-primary bg-surface p-2">
               <textarea
+                ref={editTextareaRef}
                 aria-label="메시지 편집"
                 value={draft}
                 onChange={(e) => setDraft(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Escape") setIsEditing(false);
+                }}
                 className="min-h-[60px] w-full resize-none bg-transparent px-1 py-1 text-sm text-fg outline-none"
               />
               <div className="flex justify-end gap-2 text-xs">

@@ -2013,6 +2013,52 @@ describe("ChatView", () => {
     );
   });
 
+  it("user 메시지 편집 진입 시 textarea 에 autofocus 되고, Escape 로 취소하면 원문이 복원된다 (P21-T6-11, UX-03)", async () => {
+    const encoder = new TextEncoder();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({
+        body: new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.enqueue(
+              encoder.encode(sseFrame("message_start", { messageId: "msg-1" })),
+            );
+            controller.enqueue(
+              encoder.encode(sseFrame("text_delta", { text: "첫 응답" })),
+            );
+            controller.enqueue(
+              encoder.encode(sseFrame("stop", { reason: "end_turn" })),
+            );
+            controller.close();
+          },
+        }),
+      })),
+    );
+
+    render(<ChatView sessionId="session-1" />);
+    fireEvent.change(screen.getByLabelText("메시지 입력"), {
+      target: { value: "원본 질문" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "전송" }));
+
+    await waitFor(() => {
+      expect(screen.getByText("첫 응답")).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "편집" }));
+    const editTextarea = screen.getByLabelText("메시지 편집");
+    expect(editTextarea).toHaveFocus();
+
+    fireEvent.change(editTextarea, {
+      target: { value: "취소될 편집" },
+    });
+    fireEvent.keyDown(editTextarea, { key: "Escape" });
+
+    expect(screen.queryByLabelText("메시지 편집")).not.toBeInTheDocument();
+    expect(screen.getByText("원본 질문")).toBeInTheDocument();
+    expect(screen.queryByText("취소될 편집")).not.toBeInTheDocument();
+  });
+
   it("세션을 열면 GET /:id/messages 로 과거 대화를 복원한다 (P17-T6-01, TS-08)", async () => {
     const fetchMock = vi.fn(async (url: string) => {
       const u = String(url);
