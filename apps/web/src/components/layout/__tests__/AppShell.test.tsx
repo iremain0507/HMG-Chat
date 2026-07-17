@@ -18,26 +18,48 @@ vi.mock("next/navigation", () => ({
 
 import { AppShell } from "../AppShell";
 
-function stubCurrentUserFetch() {
+function stubCurrentUserFetch(
+  banner: Array<{
+    type: string;
+    title?: string;
+    content: string;
+    dismissible: boolean;
+  }> = [],
+) {
   vi.stubGlobal(
     "fetch",
-    vi.fn(async () => ({
-      ok: true,
-      json: async () => ({
-        data: {
-          user: {
-            id: "user-1",
-            email: "a@b.com",
-            name: "김민수",
-            orgId: "org-1",
-            role: "member",
-            customInstructions: null,
-            createdAt: "2026-01-01T00:00:00Z",
+    vi.fn(async (url: string) => {
+      if (url.includes("/api/v1/config")) {
+        return {
+          ok: true,
+          json: async () => ({
+            data: {
+              availableModels: [],
+              availableTools: [],
+              features: {},
+              banner,
+            },
+          }),
+        };
+      }
+      return {
+        ok: true,
+        json: async () => ({
+          data: {
+            user: {
+              id: "user-1",
+              email: "a@b.com",
+              name: "김민수",
+              orgId: "org-1",
+              role: "member",
+              customInstructions: null,
+              createdAt: "2026-01-01T00:00:00Z",
+            },
+            org: null,
           },
-          org: null,
-        },
-      }),
-    })),
+        }),
+      };
+    }),
   );
 }
 
@@ -48,8 +70,9 @@ describe("AppShell", () => {
     vi.unstubAllGlobals();
     try {
       window.localStorage.clear();
+      window.sessionStorage.clear();
     } catch {
-      // localStorage 미가용 테스트 환경 — data-theme 초기화만으로 충분.
+      // localStorage/sessionStorage 미가용 테스트 환경 — data-theme 초기화만으로 충분.
     }
   });
 
@@ -349,5 +372,80 @@ describe("AppShell", () => {
     await waitFor(() => {
       expect(screen.getByTestId("nav-rail-avatar")).toHaveTextContent("김");
     });
+  });
+
+  it("P19-T6-15: org 배너(typed)를 상단에 type 별 스타일로 표시한다", async () => {
+    stubCurrentUserFetch([
+      { type: "warning", content: "점검 예정입니다", dismissible: true },
+    ]);
+    render(
+      <AppShell
+        sidebar={<div>세션 목록</div>}
+        rightPanel={<div>패널 콘텐츠</div>}
+      >
+        <div>본문</div>
+      </AppShell>,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId("app-banner")).toHaveTextContent(
+        "점검 예정입니다",
+      );
+    });
+    expect(screen.getByTestId("app-banner")).toHaveAttribute(
+      "data-banner-type",
+      "warning",
+    );
+  });
+
+  it("P19-T6-15: 배너를 닫으면 사라지고, 세션(sessionStorage) 동안 재노출되지 않는다", async () => {
+    stubCurrentUserFetch([
+      { type: "info", content: "안내 메시지", dismissible: true },
+    ]);
+    const { unmount } = render(
+      <AppShell
+        sidebar={<div>세션 목록</div>}
+        rightPanel={<div>패널 콘텐츠</div>}
+      >
+        <div>본문</div>
+      </AppShell>,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId("app-banner")).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByLabelText("배너 닫기"));
+    expect(screen.queryByTestId("app-banner")).not.toBeInTheDocument();
+
+    unmount();
+    render(
+      <AppShell
+        sidebar={<div>세션 목록</div>}
+        rightPanel={<div>패널 콘텐츠</div>}
+      >
+        <div>본문</div>
+      </AppShell>,
+    );
+    await waitFor(() => {
+      expect(fetch).toHaveBeenCalled();
+    });
+    expect(screen.queryByTestId("app-banner")).not.toBeInTheDocument();
+  });
+
+  it("P19-T6-15: 배너가 없으면 배너 영역을 렌더하지 않는다", async () => {
+    stubCurrentUserFetch([]);
+    render(
+      <AppShell
+        sidebar={<div>세션 목록</div>}
+        rightPanel={<div>패널 콘텐츠</div>}
+      >
+        <div>본문</div>
+      </AppShell>,
+    );
+
+    await waitFor(() => {
+      expect(fetch).toHaveBeenCalled();
+    });
+    expect(screen.queryByTestId("app-banner-list")).not.toBeInTheDocument();
   });
 });

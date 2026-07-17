@@ -21,6 +21,8 @@ function baseProps() {
     webSearchAvailable: true,
     webSearch: false,
     onWebSearchChange: vi.fn(),
+    temporary: false,
+    onTemporaryChange: vi.fn(),
   };
 }
 
@@ -101,5 +103,27 @@ describe("ModelModePicker", () => {
 
     fireEvent.click(chatTab);
     expect(onModeChange).toHaveBeenCalledWith("chat");
+  });
+
+  // P19-T6-11 — 임시 채팅(비저장) 토글: 웹검색 토글과 동일 패턴으로 항상 노출.
+  it("임시 채팅 토글을 클릭하면 onTemporaryChange 가 반전된 값으로 호출된다", () => {
+    const onTemporaryChange = vi.fn();
+    render(
+      <ModelModePicker
+        {...baseProps()}
+        temporary={false}
+        onTemporaryChange={onTemporaryChange}
+      />,
+    );
+    fireEvent.click(screen.getByTestId("model-picker-temporary"));
+    expect(onTemporaryChange).toHaveBeenCalledWith(true);
+  });
+
+  it("임시 채팅이 켜지면 토글이 aria-pressed=true 로 표시된다", () => {
+    render(<ModelModePicker {...baseProps()} temporary={true} />);
+    expect(screen.getByTestId("model-picker-temporary")).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
   });
 });

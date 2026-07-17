@@ -1,0 +1,91 @@
+// routes/admin-models.ts — P19-T1-09: allowedModels 편집. organizations.allowed_models
+// (기존 컬럼, auth-data-access.ts organizations.update 가 이미 지원) 을 재사용 — 신규 테이블/컬럼
+// 없음. orgId 는 auth(JWT)에서만 파생 — body/query 로 받지 않아 cross-org 불가.
+// frozen Organization 타입 미수정: 여기서 쓰는 organizations dep 은 hand-rolled 최소 인터페이스.
+import { randomUUID } from "node:crypto";
+import { Hono } from "hono";
+import { z } from "zod";
+import type { AuthedVariables } from "../middleware/auth-middleware.js";
+import type { Organization } from "@wchat/interfaces";
+
+const AllowedModelsSchema = z.object({
+  allowedModels: z.array(z.string().min(1)),
+});
+
+function errorJson(code: string, message: string, details?: unknown) {
+  return {
+    error: {
+      code,
+      category: "http" as const,
+      message,
+      retryable: false,
+      ...(details !== undefined ? { details } : {}),
+    },
+  };
+}
+
+function isAdmin(role: string): boolean {
+  return role === "admin" || role === "owner";
+}
+
+export interface AdminModelsRouteDeps {
+  organizations: {
+    byId(id: string): Promise<Organization | null>;
+    update(
+      id: string,
+      data: { allowedModels: string[] },
+    ): Promise<Organization>;
+  };
+}
+
+export function createAdminModelsRoutes(
+  deps: AdminModelsRouteDeps,
+): Hono<{ Variables: AuthedVariables }> {
+  const app = new Hono<{ Variables: AuthedVariables }>();
+
+  app.get("/", async (c) => {
+    const auth = c.get("auth");
+    if (!isAdmin(auth.role)) {
+      return c.json(errorJson("FORBIDDEN", "admin 권한이 필요합니다."), 403);
+    }
+    const org = await deps.organizations.byId(auth.org);
+    return c.json({
+      data: { allowedModels: org?.allowedModels ?? [] },
+      meta: { requestId: randomUUID() },
+    });
+  });
+
+  app.put("/", async (c) => {
+    const auth = c.get("auth");
+    if (!isAdmin(auth.role)) {
+      return c.json(errorJson("FORBIDDEN", "admin 권한이 필요합니다."), 403);
+    }
+    const body = await c.req.json().catch(() => null);
+    if (body === null || typeof body !== "object") {
+      return c.json(
+        errorJson("INVALID_INPUT", "요청 본문이 올바르지 않습니다."),
+        400,
+      );
+    }
+    const parsed = AllowedModelsSchema.safeParse(body);
+    if (!parsed.success) {
+      return c.json(
+        errorJson(
+          "INVALID_INPUT",
+          "allowedModels 가 올바르지 않습니다.",
+          parsed.error.issues,
+        ),
+        400,
+      );
+    }
+    const updated = await deps.organizations.update(auth.org, {
+      allowedModels: parsed.data.allowedModels,
+    });
+    return c.json({
+      data: { allowedModels: updated.allowedModels },
+      meta: { requestId: randomUUID() },
+    });
+  });
+
+  return app;
+}

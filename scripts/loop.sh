@@ -13,7 +13,7 @@ NOTIFY_CMD="${NOTIFY_CMD:-}"
 SENTINEL_ALL="<ALL_TASKS_COMPLETE>"
 FP_LIMIT=3
 PLAN_DIR="rebuild_plan"
-PHASE_ORDER=(P0 P0.5 P1 P2 P3 P4 P5 P6 P7 P8 P9 P10 P11 P12 P13 P14 P15 P16 P17 P18)
+PHASE_ORDER=(P0 P0.5 P1 P2 P3 P4 P5 P6 P7 P8 P9 P10 P11 P12 P13 P14 P15 P16 P17 P18 P19)
 mkdir -p .ralph/logs .ralph/reports
 touch PROGRESS.md .ralph/blocked_tasks
 rm -f .ralph/BLOCKED .ralph/PHASE_DONE .ralph/fingerprints
@@ -53,7 +53,15 @@ for ((i=1; i<=MAX_ITERS; i++)); do
   if bash scripts/verify-gates.sh > .ralph/gates.out 2>&1; then
     rm -f .ralph/last_fail.txt .ralph/fingerprints
   else
-    tail -n 40 .ralph/gates.out > .ralph/last_fail.txt
+    # 실제 실패 신호(typecheck TS 에러·test 실패·게이트 마커)를 우선 캡처한다.
+    # (과거: tail -40 이 coverage 표만 담아 다음 iteration 이 진짜 에러를 못 보고 thrash)
+    {
+      echo "== 실패 핵심(gate/error) =="
+      grep -nE "gate:|❌|error TS[0-9]|ELIFECYCLE|exited \(1\)|FAIL |✘|✗|AssertionError|Expected |Received |Cannot find|is not|not found|SyntaxError|TypeError" .ralph/gates.out \
+        | grep -viE "0 failed|errorRate|✅|[0-9]+ passed" | head -40
+      echo "== gates.out 말미 =="
+      tail -n 12 .ralph/gates.out
+    } > .ralph/last_fail.txt
     FP=$(grep '❌' .ralph/gates.out | md5sum | cut -d' ' -f1)
     echo "$FP" >> .ralph/fingerprints
     if [ "$(tail -n $FP_LIMIT .ralph/fingerprints | wc -l)" -ge "$FP_LIMIT" ] && \

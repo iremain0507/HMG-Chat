@@ -58,9 +58,13 @@ describe("routes/sessions.ts 세션 목록·히스토리(app.ts 실 조립) — 
       "INSERT INTO sessions (id, user_id, title) VALUES ($1, $2, 'sesshist-A')",
       [sessionAId, userA.id],
     );
+    const userMsgRes = await pgPool.query(
+      "INSERT INTO messages (session_id, role, content) VALUES ($1, 'user', $2) RETURNING id",
+      [sessionAId, JSON.stringify("hi from A")],
+    );
     await pgPool.query(
-      "INSERT INTO messages (session_id, role, content) VALUES ($1, 'user', $2), ($1, 'assistant', $3)",
-      [sessionAId, JSON.stringify("hi from A"), JSON.stringify("hello A")],
+      "INSERT INTO messages (session_id, role, content, parent_message_id) VALUES ($1, 'assistant', $2, $3)",
+      [sessionAId, JSON.stringify("hello A"), userMsgRes.rows[0].id as string],
     );
   });
 
@@ -129,5 +133,22 @@ describe("routes/sessions.ts 세션 목록·히스토리(app.ts 실 조립) — 
       headers: { Cookie: cookieFor(userB, orgB) },
     });
     expect(res.status).toBe(404);
+  });
+
+  it("GET /sessions/:id/messages 응답 각 항목은 parentMessageId 를 포함한다(P19-T1-01 — 분기 재생성/편집 트리 복원용)", async () => {
+    const res = await app.request(`/api/v1/sessions/${sessionAId}/messages`, {
+      headers: { Cookie: cookieFor(userA, orgA) },
+    });
+    expect(res.status).toBe(200);
+    const json = (await res.json()) as {
+      data: Array<{
+        id: string;
+        parentMessageId: string | null;
+      }>;
+    };
+    const userMsg = json.data[0];
+    const assistantMsg = json.data[1];
+    expect(userMsg.parentMessageId).toBe(null);
+    expect(assistantMsg.parentMessageId).toBe(userMsg.id);
   });
 });

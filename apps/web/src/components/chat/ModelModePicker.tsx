@@ -34,6 +34,8 @@ export interface ModelModePickerProps {
   webSearchAvailable: boolean;
   webSearch: boolean;
   onWebSearchChange: (webSearch: boolean) => void;
+  temporary: boolean;
+  onTemporaryChange: (temporary: boolean) => void;
 }
 
 const CHIP_CLASSNAME =
@@ -50,6 +52,8 @@ export function ModelModePicker({
   webSearchAvailable,
   webSearch,
   onWebSearchChange,
+  temporary,
+  onTemporaryChange,
 }: ModelModePickerProps) {
   if (models.length === 0) return null;
 
@@ -129,6 +133,16 @@ export function ModelModePicker({
           🌐 웹검색
         </button>
       )}
+      <button
+        type="button"
+        aria-label="임시 채팅 토글"
+        aria-pressed={temporary}
+        data-testid="model-picker-temporary"
+        onClick={() => onTemporaryChange(!temporary)}
+        className="inline-flex h-7 items-center gap-1.5 rounded-md border border-border px-2 text-xs text-fg-muted transition hover:text-fg aria-pressed:border-primary-200 aria-pressed:bg-primary-50 aria-pressed:text-primary"
+      >
+        🕶️ 임시
+      </button>
     </div>
   );
 }

@@ -1742,6 +1742,72 @@ describe("ChatView", () => {
     expect(screen.queryByTestId("memory-panel")).not.toBeInTheDocument();
   });
 
+  it("'/' 로 프롬프트 라이브러리 명령을 자동완성·삽입하면 변수({{today}}·{{user}})가 치환된다 (P19-T6-13)", async () => {
+    const fetchMock = vi.fn(async (url: string) => {
+      const u = String(url);
+      if (u.startsWith("/api/v1/prompts")) {
+        return {
+          ok: true,
+          json: async () => ({
+            data: [
+              {
+                id: "prompt-1",
+                command: "/greet",
+                title: "인사",
+                content: "안녕하세요 {{user}}, 오늘은 {{today}} 입니다",
+                access: "private",
+                ownerId: "user-1",
+                createdAt: "2026-04-01T00:00:00Z",
+                updatedAt: "2026-04-01T00:00:00Z",
+              },
+            ],
+          }),
+        };
+      }
+      if (u.startsWith("/api/v1/auth/me")) {
+        return {
+          ok: true,
+          json: async () => ({
+            data: {
+              user: {
+                id: "user-1",
+                email: "kim@example.com",
+                name: "김철수",
+                orgId: "org-1",
+                role: "member",
+                customInstructions: null,
+                createdAt: "2026-01-01T00:00:00Z",
+              },
+              org: null,
+            },
+          }),
+        };
+      }
+      return {
+        body: new ReadableStream<Uint8Array>({ start: (c) => c.close() }),
+      };
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<ChatView sessionId="session-1" />);
+
+    fireEvent.change(screen.getByLabelText("메시지 입력"), {
+      target: { value: "/greet" },
+    });
+
+    const item = await screen.findByTestId(
+      "composer-popover-item-prompt:prompt-1",
+    );
+    fireEvent.click(item);
+
+    const today = new Date().toLocaleDateString("ko-KR");
+    await waitFor(() => {
+      expect(screen.getByLabelText("메시지 입력")).toHaveValue(
+        `안녕하세요 김철수, 오늘은 ${today} 입니다`,
+      );
+    });
+  });
+
   it("user 메시지를 편집하면 새 분기로 전환되고, 페이저로 형제 분기 사이를 오갈 수 있다 (P10-T6-15)", async () => {
     const encoder = new TextEncoder();
     const fetchMock = vi.fn(async () => ({
@@ -1921,6 +1987,146 @@ describe("ChatView", () => {
         "artifact-card",
       );
       expect(card).toHaveTextContent("restored.md");
+    });
+  });
+
+  it("응답이 max_tokens 로 잘리면 이어쓰기 버튼이 보이고, 클릭 시 POST .../continue 를 호출해 이어진 텍스트를 병합한다 (P19-T6-08)", async () => {
+    const encoder = new TextEncoder();
+    const fetchMock = vi.fn(async () => ({
+      body: new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.enqueue(
+            encoder.encode(sseFrame("message_start", { messageId: "msg-1" })),
+          );
+          controller.enqueue(
+            encoder.encode(sseFrame("text_delta", { text: "긴 답변 앞부분" })),
+          );
+          controller.enqueue(
+            encoder.encode(sseFrame("stop", { reason: "max_tokens" })),
+          );
+          controller.close();
+        },
+      }),
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<ChatView sessionId="session-1" />);
+    fireEvent.change(screen.getByLabelText("메시지 입력"), {
+      target: { value: "긴 글 써줘" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "전송" }));
+
+    await waitFor(() => {
+      expect(screen.getByText("긴 답변 앞부분")).toBeInTheDocument();
+    });
+
+    const continueButton = await screen.findByRole("button", {
+      name: "이어쓰기",
+    });
+
+    fetchMock.mockClear();
+    fetchMock.mockImplementationOnce(async () => ({
+      body: new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.enqueue(
+            encoder.encode(sseFrame("text_delta", { text: " 뒷부분" })),
+          );
+          controller.enqueue(
+            encoder.encode(sseFrame("stop", { reason: "end_turn" })),
+          );
+          controller.close();
+        },
+      }),
+    }));
+
+    fireEvent.click(continueButton);
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        expect.stringMatching(
+          /^\/api\/v1\/sessions\/session-1\/messages\/.+\/continue$/,
+        ),
+        expect.objectContaining({ method: "POST" }),
+      );
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("긴 답변 앞부분 뒷부분")).toBeInTheDocument();
+    });
+
+    // 이어쓰기가 끝나면 더 이상 잘린 상태가 아니므로 버튼이 사라진다.
+    await waitFor(() => {
+      expect(
+        screen.queryByRole("button", { name: "이어쓰기" }),
+      ).not.toBeInTheDocument();
+    });
+  });
+
+  it("턴 완료 후 서버 POST .../followups 의 후속질문이 칩으로 렌더되고, 클릭 시 해당 질문을 전송한다 (P19-T6-09)", async () => {
+    const encoder = new TextEncoder();
+    const fetchMock = vi.fn(async (url: string) => {
+      if (typeof url === "string" && url.includes("/followups")) {
+        return {
+          ok: true,
+          json: async () => ({
+            data: { followups: ["후속질문A", "후속질문B", "후속질문C"] },
+          }),
+        };
+      }
+      return {
+        body: new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.enqueue(
+              encoder.encode(sseFrame("message_start", { messageId: "msg-1" })),
+            );
+            controller.enqueue(
+              encoder.encode(sseFrame("text_delta", { text: "답변" })),
+            );
+            controller.enqueue(
+              encoder.encode(sseFrame("stop", { reason: "end_turn" })),
+            );
+            controller.close();
+          },
+        }),
+      };
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<ChatView sessionId="session-1" />);
+    fireEvent.change(screen.getByLabelText("메시지 입력"), {
+      target: { value: "질문" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "전송" }));
+
+    await waitFor(() => {
+      expect(screen.getByText("답변")).toBeInTheDocument();
+    });
+
+    const chip = await screen.findByRole("button", { name: "후속질문A" });
+    expect(
+      screen.getByRole("button", { name: "후속질문B" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "후속질문C" }),
+    ).toBeInTheDocument();
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/v1/sessions/session-1/followups",
+      expect.objectContaining({ method: "POST" }),
+    );
+
+    fetchMock.mockClear();
+    fireEvent.click(chip);
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/v1/sessions/session-1/messages",
+        expect.objectContaining({ method: "POST" }),
+      );
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("후속질문A")).toBeInTheDocument();
     });
   });
 });

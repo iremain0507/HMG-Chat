@@ -191,3 +191,23 @@ body {
   background: var(--color-bg);
   color: var(--color-fg);
 }
+
+/* ShareExportMenu.tsx PDF 내보내기 — 화면에서는 숨기고, 인쇄 시에만 대화 전체를 단독 노출한다. */
+.chat-print-view {
+  display: none;
+}
+
+@media print {
+  body * {
+    visibility: hidden;
+  }
+  .chat-print-view,
+  .chat-print-view * {
+    visibility: visible;
+  }
+  .chat-print-view {
+    display: block;
+    position: absolute;
+    inset: 0;
+  }
+}

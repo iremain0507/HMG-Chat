@@ -19,6 +19,11 @@ type MenuState = "closed" | "menu" | "confirm" | "share-dialog";
 const FOCUS_RING =
   "outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--focus-ring)] focus-visible:outline-offset-2";
 
+const PRINT_ROLE_LABEL: Record<ExportMessage["role"], string> = {
+  user: "사용자",
+  assistant: "어시스턴트",
+};
+
 export function ShareExportMenu({
   title,
   messages,
@@ -29,6 +34,7 @@ export function ShareExportMenu({
   artifacts: ArtifactSummary[];
 }) {
   const [state, setState] = useState<MenuState>("closed");
+  const [printRequested, setPrintRequested] = useState(false);
   const latestArtifact = artifacts[artifacts.length - 1] ?? null;
 
   function exportMarkdown() {
@@ -49,8 +55,25 @@ export function ShareExportMenu({
     setState("closed");
   }
 
+  function exportPdf() {
+    setState("closed");
+    setPrintRequested(true);
+    window.print();
+  }
+
   return (
     <div className="relative">
+      {printRequested && (
+        <div data-testid="chat-print-view" className="chat-print-view">
+          <h1>{title}</h1>
+          {messages.map((m, i) => (
+            <section key={i}>
+              <h2>{PRINT_ROLE_LABEL[m.role]}</h2>
+              <p>{m.content}</p>
+            </section>
+          ))}
+        </div>
+      )}
       <button
         type="button"
         data-testid="share-export-trigger"
@@ -81,6 +104,13 @@ export function ShareExportMenu({
             className={`block w-full rounded-md px-2 py-1.5 text-left text-sm text-fg hover:bg-bg ${FOCUS_RING}`}
           >
             JSON으로 내보내기
+          </button>
+          <button
+            type="button"
+            onClick={exportPdf}
+            className={`block w-full rounded-md px-2 py-1.5 text-left text-sm text-fg hover:bg-bg ${FOCUS_RING}`}
+          >
+            PDF로 내보내기
           </button>
           <div className="my-1 border-t border-border" />
           <button

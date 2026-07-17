@@ -1,38 +1,14 @@
-// lib/pinnedSessions.ts — 세션 사이드바 "고정" 그룹(design-reference README §Screens/AppShell).
-//   Session 인터페이스(14-INTERFACES.md)에 pinned 필드가 없어(백엔드 미정의) 브라우저 로컬
-//   상태로만 관리한다 — 기기 간 동기화는 없음, 서버 계약 변경 없이 프레임 상호작용만 재현.
-const STORAGE_KEY = "wchat-pinned-sessions";
+// lib/pinnedSessions.ts — 세션 고정 서버 영속 클라이언트 헬퍼(P19-T1-02 PATCH /:id/pin 소비).
+//   이전 버전은 localStorage 전용(기기 간 미동기화)이었으나, sessions.pinned_at 컬럼이
+//   추가돼 서버가 단일 출처가 됐다 — 토글 요청 후 서버가 반환한 최신 pinned 값을 그대로 쓴다.
+import { apiFetch } from "./fetch-with-refresh";
 
-function readAll(): Set<string> {
-  try {
-    const raw = window.localStorage.getItem(STORAGE_KEY);
-    if (!raw) return new Set();
-    const parsed: unknown = JSON.parse(raw);
-    return Array.isArray(parsed)
-      ? new Set(parsed.filter((x) => typeof x === "string"))
-      : new Set();
-  } catch {
-    return new Set();
-  }
-}
-
-function writeAll(ids: Set<string>): void {
-  try {
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify([...ids]));
-  } catch {
-    // 프라이빗 브라우징 등 localStorage 미가용 — 세션 내 상태만 유지(호출부가 별도 관리).
-  }
-}
-
-export function getPinnedSessionIds(): Set<string> {
-  if (typeof window === "undefined") return new Set();
-  return readAll();
-}
-
-export function toggleSessionPinned(id: string): Set<string> {
-  const ids = readAll();
-  if (ids.has(id)) ids.delete(id);
-  else ids.add(id);
-  writeAll(ids);
-  return ids;
+export async function toggleSessionPin(id: string): Promise<boolean | null> {
+  const res = await apiFetch(`/api/v1/sessions/${id}/pin`, {
+    method: "PATCH",
+    credentials: "include",
+  });
+  if (!res.ok) return null;
+  const body = (await res.json()) as { data: { id: string; pinned: boolean } };
+  return body.data.pinned;
 }

@@ -3,6 +3,19 @@
 // hooks/useSessions.ts — 16-API-CONTRACT § GET/POST/PATCH/DELETE /sessions 소비.
 import { useCallback, useEffect, useState } from "react";
 import { apiFetch } from "../lib/fetch-with-refresh";
+import { toggleSessionArchive } from "../lib/archivedSessions";
+import { toggleSessionPin } from "../lib/pinnedSessions";
+import {
+  assignSessionFolder,
+  createFolder as createFolderApi,
+  deleteFolder as deleteFolderApi,
+  listFolders,
+  renameFolder as renameFolderApi,
+  type SessionFolder,
+} from "../lib/sessionFolders";
+import { addSessionTag, removeSessionTag } from "../lib/sessionTags";
+
+export type { SessionFolder } from "../lib/sessionFolders";
 
 export interface SessionListItemDto {
   id: string;
@@ -10,6 +23,9 @@ export interface SessionListItemDto {
   lastMessageAt: string | null;
   projectId: string | null;
   archived: boolean;
+  pinned: boolean;
+  folderId: string | null;
+  tags: string[];
 }
 
 interface UseSessionsResult {
@@ -19,33 +35,68 @@ interface UseSessionsResult {
   createSession: () => Promise<SessionListItemDto | null>;
   renameSession: (id: string, title: string) => Promise<void>;
   deleteSession: (id: string) => Promise<void>;
+  togglePin: (id: string) => Promise<void>;
   reload: () => Promise<void>;
+  folders: SessionFolder[];
+  createFolder: (name: string) => Promise<SessionFolder | null>;
+  renameFolder: (id: string, name: string) => Promise<void>;
+  deleteFolder: (id: string) => Promise<void>;
+  assignFolder: (id: string, folderId: string | null) => Promise<void>;
+  addTag: (id: string, tag: string) => Promise<void>;
+  removeTag: (id: string, tag: string) => Promise<void>;
+  archivedSessions: SessionListItemDto[];
+  archivedLoading: boolean;
+  loadArchived: () => Promise<void>;
+  archiveSession: (id: string) => Promise<void>;
 }
 
 export function useSessions(): UseSessionsResult {
   const [sessions, setSessions] = useState<SessionListItemDto[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [folders, setFolders] = useState<SessionFolder[]>([]);
+  const [archivedSessions, setArchivedSessions] = useState<
+    SessionListItemDto[]
+  >([]);
+  const [archivedLoading, setArchivedLoading] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const res = await apiFetch("/api/v1/sessions", { credentials: "include" });
+      const res = await apiFetch("/api/v1/sessions", {
+        credentials: "include",
+      });
       if (!res.ok) {
         setError("세션 목록을 불러오지 못했습니다.");
         return;
       }
-      const body = (await res.json()) as { data: SessionListItemDto[] };
-      setSessions(body.data);
+      const body = (await res.json()) as {
+        data: Array<
+          SessionListItemDto & { folderId?: string | null; tags?: string[] }
+        >;
+      };
+      setSessions(
+        body.data.map((s) => ({
+          ...s,
+          folderId: s.folderId ?? null,
+          tags: s.tags ?? [],
+        })),
+      );
     } finally {
       setLoading(false);
     }
   }, []);
 
+  const loadFolders = useCallback(async () => {
+    const list = await listFolders();
+    if (list) setFolders(list);
+  }, []);
+
   useEffect(() => {
     void load();
-  }, [load]);
+    void loadFolders();
+  }, [load, loadFolders]);
 
   const createSession = useCallback(async () => {
     const res = await apiFetch("/api/v1/sessions", {
@@ -69,6 +120,9 @@ export function useSessions(): UseSessionsResult {
       projectId: body.data.projectId,
       lastMessageAt: body.data.createdAt,
       archived: false,
+      pinned: false,
+      folderId: null,
+      tags: [],
     };
     setSessions((prev) => [created, ...prev]);
     return created;
@@ -92,6 +146,134 @@ export function useSessions(): UseSessionsResult {
     });
     if (!res.ok && res.status !== 204) return;
     setSessions((prev) => prev.filter((s) => s.id !== id));
+    setArchivedSessions((prev) => prev.filter((s) => s.id !== id));
+  }, []);
+
+  const loadArchived = useCallback(async () => {
+    setArchivedLoading(true);
+    try {
+      const res = await apiFetch("/api/v1/sessions?archived=true", {
+        credentials: "include",
+      });
+      if (!res.ok) return;
+      const body = (await res.json()) as {
+        data: Array<
+          SessionListItemDto & { folderId?: string | null; tags?: string[] }
+        >;
+      };
+      setArchivedSessions(
+        body.data.map((s) => ({
+          ...s,
+          folderId: s.folderId ?? null,
+          tags: s.tags ?? [],
+        })),
+      );
+    } finally {
+      setArchivedLoading(false);
+    }
+  }, []);
+
+  const archiveSession = useCallback(async (id: string) => {
+    const archived = await toggleSessionArchive(id);
+    if (archived === null) return;
+    if (archived) {
+      setSessions((prev) => prev.filter((s) => s.id !== id));
+    } else {
+      setArchivedSessions((prev) => prev.filter((s) => s.id !== id));
+    }
+  }, []);
+
+  const togglePin = useCallback(async (id: string) => {
+    let previous = false;
+    setSessions((prev) =>
+      prev.map((s) => {
+        if (s.id !== id) return s;
+        previous = s.pinned;
+        return { ...s, pinned: !s.pinned };
+      }),
+    );
+    const result = await toggleSessionPin(id);
+    setSessions((prev) =>
+      prev.map((s) =>
+        s.id === id ? { ...s, pinned: result === null ? previous : result } : s,
+      ),
+    );
+  }, []);
+
+  const createFolder = useCallback(async (name: string) => {
+    const created = await createFolderApi(name);
+    if (created) setFolders((prev) => [...prev, created]);
+    return created;
+  }, []);
+
+  const renameFolder = useCallback(async (id: string, name: string) => {
+    const updated = await renameFolderApi(id, name);
+    if (!updated) return;
+    setFolders((prev) => prev.map((f) => (f.id === id ? updated : f)));
+  }, []);
+
+  const deleteFolder = useCallback(async (id: string) => {
+    const ok = await deleteFolderApi(id);
+    if (!ok) return;
+    setFolders((prev) => prev.filter((f) => f.id !== id));
+    setSessions((prev) =>
+      prev.map((s) => (s.folderId === id ? { ...s, folderId: null } : s)),
+    );
+  }, []);
+
+  const assignFolder = useCallback(
+    async (id: string, folderId: string | null) => {
+      let previous: string | null = null;
+      setSessions((prev) =>
+        prev.map((s) => {
+          if (s.id !== id) return s;
+          previous = s.folderId;
+          return { ...s, folderId };
+        }),
+      );
+      const result = await assignSessionFolder(id, folderId);
+      if (result === undefined) {
+        setSessions((prev) =>
+          prev.map((s) => (s.id === id ? { ...s, folderId: previous } : s)),
+        );
+      }
+    },
+    [],
+  );
+
+  const addTag = useCallback(async (id: string, tag: string) => {
+    setSessions((prev) =>
+      prev.map((s) =>
+        s.id === id && !s.tags.includes(tag)
+          ? { ...s, tags: [...s.tags, tag] }
+          : s,
+      ),
+    );
+    const result = await addSessionTag(id, tag);
+    if (result === undefined) {
+      setSessions((prev) =>
+        prev.map((s) =>
+          s.id === id ? { ...s, tags: s.tags.filter((t) => t !== tag) } : s,
+        ),
+      );
+    }
+  }, []);
+
+  const removeTag = useCallback(async (id: string, tag: string) => {
+    let previous: string[] = [];
+    setSessions((prev) =>
+      prev.map((s) => {
+        if (s.id !== id) return s;
+        previous = s.tags;
+        return { ...s, tags: s.tags.filter((t) => t !== tag) };
+      }),
+    );
+    const ok = await removeSessionTag(id, tag);
+    if (!ok) {
+      setSessions((prev) =>
+        prev.map((s) => (s.id === id ? { ...s, tags: previous } : s)),
+      );
+    }
   }, []);
 
   return {
@@ -101,6 +283,18 @@ export function useSessions(): UseSessionsResult {
     createSession,
     renameSession,
     deleteSession,
+    togglePin,
     reload: load,
+    folders,
+    createFolder,
+    renameFolder,
+    deleteFolder,
+    assignFolder,
+    addTag,
+    removeTag,
+    archivedSessions,
+    archivedLoading,
+    loadArchived,
+    archiveSession,
   };
 }

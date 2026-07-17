@@ -39,6 +39,33 @@ const EXPECTED_ROUTES: Array<{ method: string; path: string; phase: string }> =
     { method: "GET", path: `/api/v1/sessions/${sid}/messages`, phase: "P17" },
     { method: "PATCH", path: `/api/v1/sessions/${sid}`, phase: "P17" },
     { method: "DELETE", path: `/api/v1/sessions/${sid}`, phase: "P17" },
+    { method: "PATCH", path: `/api/v1/sessions/${sid}/pin`, phase: "P19" },
+    { method: "PATCH", path: `/api/v1/sessions/${sid}/archive`, phase: "P19" },
+    { method: "GET", path: "/api/v1/sessions/search?q=x", phase: "P19" },
+    { method: "GET", path: "/api/v1/folders", phase: "P19" },
+    { method: "POST", path: "/api/v1/folders", phase: "P19" },
+    { method: "GET", path: "/api/v1/prompts", phase: "P19" },
+    { method: "POST", path: "/api/v1/prompts", phase: "P19" },
+    {
+      method: "POST",
+      path: `/api/v1/sessions/${sid}/messages/${randomUUID()}/feedback`,
+      phase: "P19",
+    },
+    {
+      method: "GET",
+      path: `/api/v1/sessions/${sid}/messages/${randomUUID()}/feedback`,
+      phase: "P19",
+    },
+    {
+      method: "POST",
+      path: `/api/v1/sessions/${sid}/messages/${randomUUID()}/continue`,
+      phase: "P19",
+    },
+    {
+      method: "POST",
+      path: `/api/v1/sessions/${sid}/followups`,
+      phase: "P19",
+    },
     { method: "POST", path: `/api/v1/sessions/${sid}/messages`, phase: "P2" },
     {
       method: "DELETE",
@@ -91,6 +118,12 @@ const EXPECTED_ROUTES: Array<{ method: string; path: string; phase: string }> =
     { method: "GET", path: "/api/v1/config", phase: "P11" },
     { method: "GET", path: "/api/v1/admin/settings", phase: "P14" },
     { method: "PUT", path: "/api/v1/admin/settings", phase: "P14" },
+    { method: "GET", path: "/api/v1/admin/models", phase: "P19" },
+    { method: "PUT", path: "/api/v1/admin/models", phase: "P19" },
+    { method: "GET", path: "/api/v1/api-keys", phase: "P19" },
+    { method: "POST", path: "/api/v1/api-keys", phase: "P19" },
+    { method: "GET", path: "/api/v1/admin/groups", phase: "P19" },
+    { method: "POST", path: "/api/v1/admin/groups", phase: "P19" },
     // GET /api/v1/share/:token 은 authMiddleware 밖(인증 우회) 이라 "미마운트 404" 와
     // "유효하지 않은 토큰 → 계약상 404 NOT_FOUND"(16-API-CONTRACT § 8) 를 상태코드로 구분할 수
     // 없어 이 가드에서 제외 — 실 마운트 검증은 routes/__tests__/public-share.test.ts(유효 토큰

@@ -13,8 +13,11 @@ import {
   type ArtifactSummary,
 } from "../../hooks/useSessionStream";
 import { useCurrentUser } from "../../hooks/useCurrentUser";
+import { usePrompts } from "../../hooks/usePrompts";
 import { randomUUID } from "../../lib/uuid";
 import { showToast } from "../../lib/toast";
+import { apiFetch } from "../../lib/fetch-with-refresh";
+import { substitutePromptVariables } from "../../lib/promptVariables";
 import { useOnlineStatus } from "../../hooks/useOnlineStatus";
 import { useProjects } from "../../hooks/useProjects";
 import { useSessionProject } from "../../hooks/useSessionProject";
@@ -62,6 +65,24 @@ const SUGGESTIONS = [
   "이 코드 리뷰해줘",
 ];
 
+// P19-T6-09 — 후속질문 칩: 턴 완료 후 서버(P19-T2-04 POST /:id/followups)에서 받은
+// 3개 질문을 렌더한다. dev-stub/조회 실패 시 orchestrator/followups.ts 가 파생 폴백을
+// 항상 반환하지만, 네트워크 오류까지는 이 클라이언트가 fail-soft 로 흡수한다(빈 배열,
+// L2/L5 — 칩이 안 보일 뿐 조용히 죽지 않음).
+async function fetchFollowups(sessionId: string): Promise<string[]> {
+  try {
+    const res = await apiFetch(`/api/v1/sessions/${sessionId}/followups`, {
+      method: "POST",
+      credentials: "include",
+    });
+    if (!res.ok) return [];
+    const body = (await res.json()) as { data: { followups: string[] } };
+    return body.data.followups ?? [];
+  } catch {
+    return [];
+  }
+}
+
 export function ChatView({ sessionId }: { sessionId: string }) {
   const router = useRouter();
   const {
@@ -74,17 +95,20 @@ export function ChatView({ sessionId }: { sessionId: string }) {
     artifacts,
     editMessage,
     regenerate,
+    continueMessage,
     switchBranch,
     historyLoading,
     loadHistory,
     loadArtifacts,
   } = useSessionStream(sessionId);
-  const { org } = useCurrentUser();
+  const { user, org } = useCurrentUser();
+  const { prompts } = usePrompts();
   const online = useOnlineStatus();
   const { projects } = useProjects();
   const { projectId, setProject } = useSessionProject(sessionId);
   const [autoFollow, setAutoFollow] = useState(true);
   const [announceText, setAnnounceText] = useState("");
+  const [followups, setFollowups] = useState<string[]>([]);
   const [artifactPanelOpen, setArtifactPanelOpen] = useState(false);
   const [activeArtifactIndex, setActiveArtifactIndex] = useState(0);
   const [memoryPanelOpen, setMemoryPanelOpen] = useState(false);
@@ -162,6 +186,45 @@ export function ChatView({ sessionId }: { sessionId: string }) {
       }),
     [org?.allowedTools],
   );
+
+  // P19-T6-13 — 프롬프트 라이브러리(/api/v1/prompts)를 '/' 자동완성 목록에 합류. id 는
+  // "prompt:<promptId>" 로 감싸 정적 SLASH_COMMANDS(memories 등)와 충돌하지 않게 한다.
+  const promptSlashCommands = useMemo<SlashCommand[]>(
+    () =>
+      prompts.map((p) => ({
+        id: `prompt:${p.id}`,
+        label: p.command.replace(/^\//, ""),
+        description: p.title,
+      })),
+    [prompts],
+  );
+  const slashCommands = useMemo<SlashCommand[]>(
+    () => [...SLASH_COMMANDS, ...promptSlashCommands],
+    [promptSlashCommands],
+  );
+
+  // P19-T6-13 — 선택된 프롬프트 본문의 {{today}}/{{user}}/{{clipboard}} 를 삽입 직전 치환.
+  // 클립보드 접근이 거부/미지원이어도(L2) throw 없이 빈 문자열로 대체한다.
+  async function insertPromptContent(content: string) {
+    let clipboardText: string | undefined;
+    if (
+      content.includes("{{clipboard}}") &&
+      typeof navigator !== "undefined" &&
+      navigator.clipboard?.readText
+    ) {
+      try {
+        clipboardText = await navigator.clipboard.readText();
+      } catch {
+        clipboardText = "";
+      }
+    }
+    const substituted = substitutePromptVariables(content, {
+      ...(user?.name !== undefined ? { userName: user.name } : {}),
+      ...(clipboardText !== undefined ? { clipboardText } : {}),
+    });
+    chatInputRef.current?.setValue(substituted);
+    chatInputRef.current?.focus();
+  }
 
   // 원문 하이라이트(primary-100)는 2초 후 페이드아웃 — design-reference §6:
   // "클릭: 우패널 '출처' 탭 활성 + 해당 원문 블록 하이라이트(primary-100 배경 2초 페이드)".
@@ -314,6 +377,25 @@ export function ChatView({ sessionId }: { sessionId: string }) {
     return () => clearTimeout(timer);
   }, [lastAssistantContent]);
 
+  // P19-T6-09 — 턴 완료(스트리밍 true→false 전환) 시 마지막 메시지가 정상 assistant
+  // 응답이면 후속질문을 조회한다. wasStreamingRef 는 위 포커스 복귀 효과에서도 갱신되므로
+  // 이 효과 전용 ref 로 분리해 "직전 렌더의 스트리밍 여부"를 독립적으로 추적한다.
+  const prevStreamingForFollowupsRef = useRef(isStreaming);
+  useEffect(() => {
+    const wasStreaming = prevStreamingForFollowupsRef.current;
+    prevStreamingForFollowupsRef.current = isStreaming;
+    if (!wasStreaming || isStreaming) return;
+    const last = messages[messages.length - 1];
+    if (!last || last.role !== "assistant" || last.error) return;
+    let cancelled = false;
+    void fetchFollowups(sessionId).then((items) => {
+      if (!cancelled) setFollowups(items);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [isStreaming, messages, sessionId]);
+
   // Stop 버튼이 사라지며(또는 disabled 전송 버튼으로 대체되며) 포커스가 유실된
   // 경우에만 입력창으로 복귀시킨다 — 사용자가 다른 요소에 의도적으로 포커스했다면
   // 그대로 둔다 (그것이야말로 "새 turn 이 포커스를 탈취"하지 않는다는 뜻이다).
@@ -442,9 +524,12 @@ export function ChatView({ sessionId }: { sessionId: string }) {
                       key={m.id}
                       role={m.role}
                       content={m.content}
+                      sessionId={sessionId}
+                      messageId={m.id}
                       {...(m.parts ? { parts: m.parts } : {})}
                       {...(m.citations ? { citations: m.citations } : {})}
                       {...(m.branch ? { branch: m.branch } : {})}
+                      {...(m.truncated ? { truncated: m.truncated } : {})}
                       error={m.error ?? false}
                       {...(m.retryable !== undefined
                         ? { retryable: m.retryable }
@@ -468,6 +553,25 @@ export function ChatView({ sessionId }: { sessionId: string }) {
                             // P17-T6-03(TS-06) — 재생성은 같은 user 턴 아래 새 assistant
                             // 형제를 만든다(중복 turn 아님, editMessage 와 동일 tree 의미).
                             onRegenerate: () => void regenerate(m.id),
+                          }
+                        : {})}
+                      {...(canRegenerate && m.truncated
+                        ? {
+                            // P19-T6-08 — 이어쓰기: max_tokens 등으로 잘린 assistant 응답을
+                            // 서버 continue 로 이어받아 같은 노드에 병합(새 턴 아님).
+                            onContinue: () => void continueMessage(m.id),
+                          }
+                        : {})}
+                      {...(canRegenerate &&
+                      i === messages.length - 1 &&
+                      followups.length > 0
+                        ? {
+                            // P19-T6-09 — 마지막 assistant 턴에만 후속질문 칩을 붙인다.
+                            followups,
+                            onFollowupClick: (question: string) => {
+                              setFollowups([]);
+                              void send(question);
+                            },
                           }
                         : {})}
                       {...(m.role === "user"
@@ -528,9 +632,17 @@ export function ChatView({ sessionId }: { sessionId: string }) {
             onSend={(content, attachments, options) =>
               send(content, attachments, options)
             }
-            slashCommands={SLASH_COMMANDS}
+            slashCommands={slashCommands}
             onSlashCommand={(command) => {
-              if (command.id === "memories") setMemoryPanelOpen(true);
+              if (command.id === "memories") {
+                setMemoryPanelOpen(true);
+                return;
+              }
+              if (command.id.startsWith("prompt:")) {
+                const promptId = command.id.slice("prompt:".length);
+                const prompt = prompts.find((p) => p.id === promptId);
+                if (prompt) void insertPromptContent(prompt.content);
+              }
             }}
             mentionEntities={mentionEntities}
             availableModels={org?.allowedModels ?? []}
@@ -595,15 +707,21 @@ function useRateLimitCountdown(active: boolean, onExpire: () => void): number {
 export function MessageItem({
   role,
   content,
+  sessionId,
+  messageId,
   parts,
   citations,
   branch,
+  truncated,
   streaming,
   error,
   retryable,
   errorCategory,
   artifacts,
   onRegenerate,
+  onContinue,
+  followups,
+  onFollowupClick,
   onEditSubmit,
   onSwitchBranch,
   onCitationFocus,
@@ -612,15 +730,21 @@ export function MessageItem({
 }: {
   role: "user" | "assistant";
   content: string;
+  sessionId?: string;
+  messageId?: string;
   parts?: MessagePart[];
   citations?: Citation[];
   branch?: MessageBranch;
+  truncated?: boolean;
   streaming: boolean;
   error?: boolean;
   retryable?: boolean;
   errorCategory?: string;
   artifacts?: ArtifactSummary[];
   onRegenerate?: () => void;
+  onContinue?: () => void;
+  followups?: string[];
+  onFollowupClick?: (question: string) => void;
   onEditSubmit?: (nextContent: string) => void;
   onSwitchBranch?: (direction: "prev" | "next") => void;
   onCitationFocus?: (index: number) => void;
@@ -891,15 +1015,39 @@ export function MessageItem({
                 </button>
               </div>
             )}
+            {!streaming && truncated && onContinue && (
+              <button
+                type="button"
+                onClick={onContinue}
+                className="rounded-full border border-primary/40 px-2.5 py-0.5 text-xs text-primary hover:bg-primary/10"
+              >
+                이어쓰기
+              </button>
+            )}
             {!streaming && (
               <div className="opacity-0 transition-opacity group-hover:opacity-100">
                 <MessageActions
                   role="assistant"
                   content={content}
+                  {...(sessionId && messageId ? { sessionId, messageId } : {})}
                   {...(onRegenerate ? { onRegenerate } : {})}
                 />
               </div>
             )}
+          </div>
+        )}
+        {!streaming && followups && followups.length > 0 && (
+          <div className="mt-2 flex flex-wrap gap-2" aria-label="후속질문 제안">
+            {followups.map((q) => (
+              <button
+                key={q}
+                type="button"
+                onClick={() => onFollowupClick?.(q)}
+                className="rounded-full border border-border bg-surface px-3 py-1.5 text-xs text-fg-muted hover:border-primary hover:text-fg"
+              >
+                {q}
+              </button>
+            ))}
           </div>
         )}
       </div>

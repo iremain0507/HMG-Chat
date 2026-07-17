@@ -81,9 +81,12 @@ describe("OrgSettingsSchema", () => {
     expect(settings.ragRelevanceThreshold).toBe(0.0);
     expect(settings.webSearchEnabled).toBe(false);
     expect(settings.webSearchResultCount).toBe(3);
+    expect(settings.webSearchProvider).toBe("dev-stub");
+    expect(settings.webSearchEndpoint).toBe("");
+    expect(settings.webSearchApiKeyRef).toBe("");
     expect(settings.enableDirectConnections).toBe(false);
     expect(settings.instanceName).toBe("WChat");
-    expect(settings.banner).toBe("");
+    expect(settings.banner).toEqual([]);
     expect(settings.responseWatermark).toBe("");
     expect(settings.defaultUserRole).toBe("member");
     // P15-T1-01: 현행 "허용 도메인이면 가입 가능" 동작을 미조정 org 에서 보존하기 위해 true.
@@ -92,8 +95,101 @@ describe("OrgSettingsSchema", () => {
     expect(settings.maxUploadCount).toBe(10);
   });
 
+  it("webSearchProvider 는 dev-stub/tavily 만 허용하고 그 외 값은 거부한다", () => {
+    const valid = OrgSettingsSchema.safeParse({
+      webSearchProvider: "tavily",
+      webSearchEndpoint: "https://tavily.internal",
+      webSearchApiKeyRef: "TAVILY_API_KEY",
+    });
+    expect(valid.success).toBe(true);
+    if (valid.success) {
+      expect(valid.data.webSearchProvider).toBe("tavily");
+      expect(valid.data.webSearchEndpoint).toBe("https://tavily.internal");
+      expect(valid.data.webSearchApiKeyRef).toBe("TAVILY_API_KEY");
+    }
+
+    const invalid = OrgSettingsSchema.safeParse({
+      webSearchProvider: "google",
+    });
+    expect(invalid.success).toBe(false);
+  });
+
   it("DEFAULT_ORG_SETTINGS 는 OrgSettingsSchema 검증을 통과한다", () => {
     const result = OrgSettingsSchema.safeParse(DEFAULT_ORG_SETTINGS);
     expect(result.success).toBe(true);
+  });
+
+  describe("banner (typed)", () => {
+    it("typed 배너 목록을 파싱한다(type/title/content/dismissible)", () => {
+      const result = OrgSettingsSchema.safeParse({
+        banner: [
+          {
+            type: "warning",
+            title: "점검 안내",
+            content: "오늘 밤 시스템 점검이 있습니다.",
+            dismissible: false,
+          },
+        ],
+      });
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.banner).toEqual([
+          {
+            type: "warning",
+            title: "점검 안내",
+            content: "오늘 밤 시스템 점검이 있습니다.",
+            dismissible: false,
+          },
+        ]);
+      }
+    });
+
+    it("불량 배너(잘못된 type, content 누락)는 거부한다", () => {
+      const badType = OrgSettingsSchema.safeParse({
+        banner: [{ type: "danger", content: "x" }],
+      });
+      expect(badType.success).toBe(false);
+
+      const missingContent = OrgSettingsSchema.safeParse({
+        banner: [{ type: "info" }],
+      });
+      expect(missingContent.success).toBe(false);
+    });
+
+    it("배너 title/dismissible 은 optional 이며 기본값이 채워진다", () => {
+      const result = OrgSettingsSchema.safeParse({
+        banner: [{ type: "info", content: "안내문" }],
+      });
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.banner).toEqual([
+          { type: "info", content: "안내문", dismissible: true },
+        ]);
+      }
+    });
+
+    it("기존 문자열 banner 값은 typed 배너 1건으로 폴백 변환한다(L2 하위호환)", () => {
+      const result = OrgSettingsSchema.safeParse({
+        banner: "레거시 공지 문자열",
+      });
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.banner).toEqual([
+          { type: "info", content: "레거시 공지 문자열", dismissible: true },
+        ]);
+      }
+    });
+
+    it("기존 빈 문자열 banner 값은 빈 배열로 폴백 변환한다", () => {
+      const result = OrgSettingsSchema.safeParse({ banner: "" });
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.banner).toEqual([]);
+      }
+    });
+
+    it("DEFAULT_ORG_SETTINGS.banner 는 빈 배열이다", () => {
+      expect(DEFAULT_ORG_SETTINGS.banner).toEqual([]);
+    });
   });
 });

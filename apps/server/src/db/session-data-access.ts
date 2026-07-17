@@ -5,13 +5,30 @@
 import type { Session } from "@wchat/interfaces";
 import { pgPool } from "./client.js";
 
-function toSession(row: Record<string, unknown>): Session {
+// P19-T1-02 — sessions.pinned_at(migration 0018)은 frozen Session(14-INTERFACES)에 없는 신규
+// 컬럼이라, packages/interfaces 를 건드리지 않고 로컬 교집합 타입으로 확장한다(org-settings-schema.ts
+// 의 "LOCAL 타입, frozen 회피" 컨벤션과 동일 사유 — 이 포트는 애초에 SessionRepo 전체가 아니라
+// routes/sessions.ts 가 실제 쓰는 부분만 좁힌 로컬 포트, P17-T1-02 주석 참조).
+// P19-T1-03 — sessions.folder_id(migration 0019)도 frozen Session 에 없는 신규 컬럼이라
+// pinnedAt 과 동일 사유로 로컬 교집합 타입에 확장한다.
+// P19-T1-04 — tags 는 session_tags(migration 0020) 조인 집계(컬럼 아님) — 동일 사유로
+// 로컬 교집합 타입에 확장한다.
+export type SessionWithPin = Session & {
+  pinnedAt: Date | null;
+  folderId: string | null;
+  tags: string[];
+};
+
+function toSession(row: Record<string, unknown>): SessionWithPin {
   return {
     id: row.id as string,
     userId: row.user_id as string,
     projectId: (row.project_id as string | null) ?? null,
     title: (row.title as string | null) ?? null,
     archivedAt: (row.archived_at as Date | null) ?? null,
+    pinnedAt: (row.pinned_at as Date | null) ?? null,
+    folderId: (row.folder_id as string | null) ?? null,
+    tags: (row.tags as string[] | null) ?? [],
     lastMessageAt: (row.last_message_at as Date | null) ?? null,
     createdAt: row.created_at as Date,
   };
@@ -19,16 +36,38 @@ function toSession(row: Record<string, unknown>): Session {
 
 export interface SessionsDataAccess {
   list(
-    filter: { userId: string },
+    // P19-T1-04 — tag 필터(GET /sessions?tag=). 미지정 시 전체(기존 동작 무변경).
+    // P19-T1-05 — archived 필터: true 면 아카이브된 세션만, 미지정/false 면 기본값대로
+    // 아카이브 제외(archived_at IS NULL) — 16-API-CONTRACT GET /sessions?...&archived.
+    filter: { userId: string; tag?: string; archived?: boolean },
     pagination?: { cursor?: string; limit?: number },
-  ): Promise<{ items: Session[]; nextCursor?: string }>;
-  byId(id: string): Promise<Session | null>;
+  ): Promise<{ items: SessionWithPin[]; nextCursor?: string }>;
+  byId(id: string): Promise<SessionWithPin | null>;
   updateForOwner(
     userId: string,
     id: string,
-    data: { title?: string | null; archived?: boolean },
-  ): Promise<Session | null>;
+    data: {
+      title?: string | null;
+      archived?: boolean;
+      folderId?: string | null;
+    },
+  ): Promise<SessionWithPin | null>;
   deleteForOwner(userId: string, id: string): Promise<boolean>;
+  // 토글: 현재 pinned_at 이 NULL 이면 NOW() 로, 아니면 NULL 로 — 원자적 단일 UPDATE
+  // (read-then-write race 방지). ownership 은 WHERE id=.. AND user_id=.. 로 쿼리에 내장(TS-09 패턴).
+  togglePinForOwner(userId: string, id: string): Promise<SessionWithPin | null>;
+  // P19-T1-05 — 아카이브 토글(togglePinForOwner 와 동일 원자적 CASE 패턴).
+  toggleArchiveForOwner(
+    userId: string,
+    id: string,
+  ): Promise<SessionWithPin | null>;
+  // P19-T1-06 — 제목+메시지 내용 검색(GET /sessions/search?q=). ownership 은 list() 와 동일하게
+  // userId 로 쿼리에 내장(cross-org/타 사용자 세션은 결과에 노출 불가).
+  search(
+    userId: string,
+    query: string,
+    limit?: number,
+  ): Promise<SessionWithPin[]>;
 }
 
 export function createPgSessionDataAccess(): SessionsDataAccess {
@@ -36,9 +75,21 @@ export function createPgSessionDataAccess(): SessionsDataAccess {
     async list(filter, pagination) {
       const limit = pagination?.limit ?? 20;
       const res = await pgPool.query(
-        `SELECT * FROM sessions WHERE user_id = $1
-         ORDER BY COALESCE(last_message_at, created_at) DESC LIMIT $2`,
-        [filter.userId, limit],
+        `SELECT s.*, COALESCE(
+           (SELECT array_agg(t.tag ORDER BY t.tag) FROM session_tags t WHERE t.session_id = s.id),
+           '{}'
+         ) AS tags
+         FROM sessions s
+         WHERE s.user_id = $1
+           AND ($2::text IS NULL OR EXISTS (
+             SELECT 1 FROM session_tags t WHERE t.session_id = s.id AND t.tag = $2
+           ))
+           AND (
+             ($3::boolean IS TRUE AND s.archived_at IS NOT NULL)
+             OR ($3::boolean IS NOT TRUE AND s.archived_at IS NULL)
+           )
+         ORDER BY COALESCE(s.last_message_at, s.created_at) DESC LIMIT $4`,
+        [filter.userId, filter.tag ?? null, filter.archived ?? null, limit],
       );
       return { items: res.rows.map(toSession) };
     },
@@ -62,6 +113,11 @@ export function createPgSessionDataAccess(): SessionsDataAccess {
         values.push(data.archived ? new Date() : null);
         i++;
       }
+      if (data.folderId !== undefined) {
+        fields.push(`folder_id = $${i}`);
+        values.push(data.folderId);
+        i++;
+      }
       if (fields.length === 0) return this.byId(id);
       values.push(id, userId);
       const res = await pgPool.query(
@@ -77,6 +133,50 @@ export function createPgSessionDataAccess(): SessionsDataAccess {
         [id, userId],
       );
       return (res.rowCount ?? 0) > 0;
+    },
+    async togglePinForOwner(userId, id) {
+      const res = await pgPool.query(
+        `UPDATE sessions
+         SET pinned_at = CASE WHEN pinned_at IS NULL THEN NOW() ELSE NULL END
+         WHERE id = $1 AND user_id = $2
+         RETURNING *`,
+        [id, userId],
+      );
+      return res.rows[0] ? toSession(res.rows[0]) : null;
+    },
+    async toggleArchiveForOwner(userId, id) {
+      const res = await pgPool.query(
+        `UPDATE sessions
+         SET archived_at = CASE WHEN archived_at IS NULL THEN NOW() ELSE NULL END
+         WHERE id = $1 AND user_id = $2
+         RETURNING *`,
+        [id, userId],
+      );
+      return res.rows[0] ? toSession(res.rows[0]) : null;
+    },
+    async search(userId, query, limit = 20) {
+      // ILIKE 와일드카드(%, _, \) 는 리터럴로 매치되도록 이스케이프한다(0022 GIN trgm 인덱스 활용).
+      const escaped = query.replace(/([\\%_])/g, "\\$1");
+      const pattern = `%${escaped}%`;
+      const res = await pgPool.query(
+        `SELECT s.*, COALESCE(
+           (SELECT array_agg(t.tag ORDER BY t.tag) FROM session_tags t WHERE t.session_id = s.id),
+           '{}'
+         ) AS tags
+         FROM sessions s
+         WHERE s.user_id = $1
+           AND (
+             s.title ILIKE $2 ESCAPE '\\'
+             OR EXISTS (
+               SELECT 1 FROM messages m
+               WHERE m.session_id = s.id AND m.content::text ILIKE $2 ESCAPE '\\'
+             )
+           )
+         ORDER BY COALESCE(s.last_message_at, s.created_at) DESC
+         LIMIT $3`,
+        [userId, pattern, limit],
+      );
+      return res.rows.map(toSession);
     },
   };
 }

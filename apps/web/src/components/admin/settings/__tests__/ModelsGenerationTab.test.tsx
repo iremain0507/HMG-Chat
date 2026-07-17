@@ -1,9 +1,18 @@
 // @vitest-environment jsdom
 import React from "react";
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { render, screen, cleanup, fireEvent } from "@testing-library/react";
+import {
+  render,
+  screen,
+  cleanup,
+  fireEvent,
+  waitFor,
+} from "@testing-library/react";
 import "@testing-library/jest-dom/vitest";
 import { ModelsGenerationTab } from "../ModelsGenerationTab";
+
+vi.mock("../../../../lib/fetch-with-refresh", () => ({ apiFetch: vi.fn() }));
+import { apiFetch } from "../../../../lib/fetch-with-refresh";
 
 const VALUE = {
   maxTokens: 4096,
@@ -20,6 +29,9 @@ const VALUE = {
   ragRelevanceThreshold: 0,
   webSearchEnabled: false,
   webSearchResultCount: 3,
+  webSearchProvider: "dev-stub" as const,
+  webSearchEndpoint: "",
+  webSearchApiKeyRef: "",
   enableDirectConnections: false,
   instanceName: "WChat",
   banner: "",
@@ -31,7 +43,10 @@ const VALUE = {
 };
 
 describe("ModelsGenerationTab", () => {
-  afterEach(() => cleanup());
+  afterEach(() => {
+    cleanup();
+    vi.mocked(apiFetch).mockReset();
+  });
 
   it("maxTokens/temperature/topP/defaultModel/systemPrompt/toolMaxTokens 필드를 렌더한다", () => {
     render(
@@ -69,7 +84,7 @@ describe("ModelsGenerationTab", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("allowedModels 는 읽기 전용 칩 목록 + 별도 관리 힌트로 노출한다(편집 저장 엔드포인트 부재)", () => {
+  it("allowedModels 를 칩 목록으로 노출하고 입력값을 추가하면 새 칩이 생긴다", () => {
     render(
       <ModelsGenerationTab
         value={VALUE}
@@ -81,12 +96,86 @@ describe("ModelsGenerationTab", () => {
     const list = screen.getByTestId("admin-settings-allowedModels-list");
     expect(list).toHaveTextContent("claude-sonnet-5");
     expect(list).toHaveTextContent("claude-opus-4-8");
-    expect(
-      screen.queryByRole("checkbox", { name: /claude/ }),
-    ).not.toBeInTheDocument();
-    expect(
-      screen.getByTestId("admin-settings-allowedModels-hint"),
-    ).toHaveTextContent("읽기 전용");
+
+    fireEvent.change(screen.getByTestId("admin-settings-allowedModels-input"), {
+      target: { value: "claude-haiku-4-5" },
+    });
+    fireEvent.click(screen.getByTestId("admin-settings-allowedModels-add"));
+
+    expect(list).toHaveTextContent("claude-haiku-4-5");
+  });
+
+  it("칩의 제거 버튼을 누르면 목록에서 빠진다", () => {
+    render(
+      <ModelsGenerationTab
+        value={VALUE}
+        errors={{}}
+        orgAllowedModels={["claude-sonnet-5", "claude-opus-4-8"]}
+        onChange={() => {}}
+      />,
+    );
+    fireEvent.click(
+      screen.getByTestId("admin-settings-allowedModels-remove-claude-opus-4-8"),
+    );
+    const list = screen.getByTestId("admin-settings-allowedModels-list");
+    expect(list).not.toHaveTextContent("claude-opus-4-8");
+    expect(list).toHaveTextContent("claude-sonnet-5");
+  });
+
+  it("저장 버튼 클릭 시 PUT /api/v1/admin/models 로 편집된 목록을 전송한다", async () => {
+    vi.mocked(apiFetch).mockResolvedValue({
+      ok: true,
+      json: () =>
+        Promise.resolve({
+          data: { allowedModels: ["claude-sonnet-5"] },
+        }),
+    } as unknown as Response);
+
+    render(
+      <ModelsGenerationTab
+        value={VALUE}
+        errors={{}}
+        orgAllowedModels={["claude-sonnet-5", "claude-opus-4-8"]}
+        onChange={() => {}}
+      />,
+    );
+    fireEvent.click(
+      screen.getByTestId("admin-settings-allowedModels-remove-claude-opus-4-8"),
+    );
+    fireEvent.click(screen.getByTestId("admin-settings-allowedModels-save"));
+
+    await waitFor(() => expect(apiFetch).toHaveBeenCalledTimes(1));
+    expect(apiFetch).toHaveBeenCalledWith(
+      "/api/v1/admin/models",
+      expect.objectContaining({
+        method: "PUT",
+        body: JSON.stringify({ allowedModels: ["claude-sonnet-5"] }),
+      }),
+    );
+  });
+
+  it("저장 실패 시 편집을 롤백한다", async () => {
+    vi.mocked(apiFetch).mockResolvedValue({
+      ok: false,
+      json: () => Promise.resolve({}),
+    } as unknown as Response);
+
+    render(
+      <ModelsGenerationTab
+        value={VALUE}
+        errors={{}}
+        orgAllowedModels={["claude-sonnet-5", "claude-opus-4-8"]}
+        onChange={() => {}}
+      />,
+    );
+    fireEvent.click(
+      screen.getByTestId("admin-settings-allowedModels-remove-claude-opus-4-8"),
+    );
+    fireEvent.click(screen.getByTestId("admin-settings-allowedModels-save"));
+
+    await waitFor(() => expect(apiFetch).toHaveBeenCalledTimes(1));
+    const list = screen.getByTestId("admin-settings-allowedModels-list");
+    await waitFor(() => expect(list).toHaveTextContent("claude-opus-4-8"));
   });
 
   it("입력을 변경하면 onChange 에 patch 를 전달한다", () => {

@@ -6,6 +6,9 @@ import { createPgAuthDataAccess } from "./db/auth-data-access.js";
 import { createEmailSender } from "./lib/email-sender.js";
 import { createAuthRoutes } from "./routes/auth.js";
 import { createSessionRoutes } from "./routes/sessions.js";
+import { createFolderRoutes } from "./routes/folders.js";
+import { createPromptRoutes } from "./routes/prompts.js";
+import { createApiKeyRoutes } from "./routes/api-keys.js";
 import { createMessageRoutes } from "./routes/messages.js";
 import { createProjectRoutes } from "./routes/projects.js";
 import { createPgProjectDataAccess } from "./db/project-data-access.js";
@@ -17,6 +20,7 @@ import { createArtifactRoutes } from "./routes/artifacts.js";
 import { createPgArtifactDataAccess } from "./db/artifact-data-access.js";
 import { createPgMessageDataAccess } from "./db/message-data-access.js";
 import { createPgSessionDataAccess } from "./db/session-data-access.js";
+import { createPgSessionTagDataAccess } from "./db/session-tag-data-access.js";
 import { pgPool } from "./db/client.js";
 import { createArtifactShareRoutes } from "./routes/artifact-shares.js";
 import { createPgArtifactShareDataAccess } from "./db/artifact-share-data-access.js";
@@ -38,6 +42,8 @@ import { createErrorRoutes } from "./routes/errors.js";
 import { createPgErrorLogDataAccess } from "./db/error-log-data-access.js";
 import { createAdminRoutes } from "./routes/admin.js";
 import { createAdminSettingsRoutes } from "./routes/admin-settings.js";
+import { createAdminModelsRoutes } from "./routes/admin-models.js";
+import { createAdminGroupsRoutes } from "./routes/admin-groups.js";
 import { createConfigRoutes } from "./routes/config.js";
 import { createPgHealthHistoryDataAccess } from "./db/health-history-data-access.js";
 import { createPgAdminDataAccess } from "./db/admin-data-access.js";
@@ -178,13 +184,17 @@ export function createApp(env: Env) {
   // P17-T1-02 — createSessionRoutes(GET /, GET /:id/messages)와 createMessageRoutes(메시지
   // 영속, P17-T1-01)가 같은 messages 테이블 데이터 접근 인스턴스를 공유.
   const messageDa = createPgMessageDataAccess();
+  // P19-T2-04 — followups ownership 검증(session.userId !== auth.sub)에도 재사용.
+  const sessionDa = createPgSessionDataAccess();
+  // P19-T2-06 — 첫 턴 완료 후 생성된 세션 태그를 session_tags(0020)에 반영.
+  const sessionTagDa = createPgSessionTagDataAccess();
 
   const sessionsApp = new Hono<{ Variables: AuthedVariables }>();
   sessionsApp.use("*", authMiddleware);
   sessionsApp.route(
     "/",
     createSessionRoutes({
-      sessions: createPgSessionDataAccess(),
+      sessions: sessionDa,
       sessionMessages: messageDa,
     }),
   );
@@ -197,6 +207,8 @@ export function createApp(env: Env) {
       // 대체한다 — settings resolve 실패/미설정 시 이 값 그대로 fail-soft.
       model: env.LLM_MODEL,
       activeRuns: { setActiveRun },
+      sessions: sessionDa,
+      tags: sessionTagDa,
       organizations: authDa.organizations,
       settings: settingsService,
       // 클라이언트 생성 세션 UUID(/chat/<uuid>)를 첫 메시지 시 upsert — 아티팩트/업로드/
@@ -246,6 +258,18 @@ export function createApp(env: Env) {
     }),
   );
   app.route("/api/v1/sessions", sessionsApp);
+
+  // P19-T1-03 — 세션 폴더 CRUD(migration 0019 session_folders).
+  const foldersApp = new Hono<{ Variables: AuthedVariables }>();
+  foldersApp.use("*", authMiddleware);
+  foldersApp.route("/", createFolderRoutes());
+  app.route("/api/v1/folders", foldersApp);
+
+  // P19-T1-08 — 프롬프트 라이브러리 CRUD(migration 0024 prompts).
+  const promptsApp = new Hono<{ Variables: AuthedVariables }>();
+  promptsApp.use("*", authMiddleware);
+  promptsApp.route("/", createPromptRoutes());
+  app.route("/api/v1/prompts", promptsApp);
 
   const projectsApp = new Hono<{ Variables: AuthedVariables }>();
   projectsApp.use("*", authMiddleware);
@@ -386,6 +410,13 @@ export function createApp(env: Env) {
       settingsService,
     }),
   );
+  adminApp.route(
+    "/models",
+    createAdminModelsRoutes({
+      organizations: authDa.organizations,
+    }),
+  );
+  adminApp.route("/groups", createAdminGroupsRoutes());
   app.route("/api/v1/admin", adminApp);
 
   const configApp = new Hono<{ Variables: AuthedVariables }>();
@@ -395,9 +426,16 @@ export function createApp(env: Env) {
     createConfigRoutes({
       organizations: authDa.organizations,
       models: provider.models,
+      settings: settingsService,
     }),
   );
   app.route("/api/v1/config", configApp);
+
+  // P19-T1-11 — API 키 발급/목록/폐기(self-service, migration 0025 api_keys).
+  const apiKeysApp = new Hono<{ Variables: AuthedVariables }>();
+  apiKeysApp.use("*", authMiddleware);
+  apiKeysApp.route("/", createApiKeyRoutes());
+  app.route("/api/v1/api-keys", apiKeysApp);
 
   return app;
 }

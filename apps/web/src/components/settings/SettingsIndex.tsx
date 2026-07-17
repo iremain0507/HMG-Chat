@@ -34,6 +34,18 @@ const SETTINGS_SECTIONS: SettingsSectionItem[] = [
     href: "/settings/mcp",
   },
   {
+    key: "prompts",
+    label: "프롬프트",
+    description: "자주 쓰는 프롬프트를 저장하고 /명령으로 불러옵니다.",
+    href: "/settings/prompts",
+  },
+  {
+    key: "api-keys",
+    label: "API 키",
+    description: "API 키를 발급·폐기해 외부 클라이언트 인증에 사용합니다.",
+    href: "/settings/api-keys",
+  },
+  {
     key: "quota",
     label: "사용량",
     description: "이번 달 예산 사용량과 일별 추이를 확인합니다.",

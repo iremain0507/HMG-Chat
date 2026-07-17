@@ -107,6 +107,8 @@ export interface SendOptions {
   mode?: "agent" | "chat";
   reasoningEffort?: "low" | "medium" | "high";
   webSearch?: boolean;
+  // P19-T2-05/T6-11 — 임시 채팅: true 면 서버가 세션 upsert·메시지 영속을 스킵(미영속).
+  temporary?: boolean;
 }
 
 type ChatStreamEvent =
@@ -168,6 +170,28 @@ type ChatStreamEvent =
 // 감싸 emit(orchestrator.ts toToolResultContent) — 그 shape 을 client 에서 재검출.
 function isErrorToolResult(content: unknown): boolean {
   return typeof content === "object" && content !== null && "error" in content;
+}
+
+// P19-T6-12 — 완료 알림: 탭이 백그라운드(document.hidden)일 때만 턴 종단 1회 알림.
+// 보이는 탭에서는 방해가 되므로 발생시키지 않고, 권한이 아직 결정 안 됐으면(default)
+// 요청 후 승인 시에만 실제로 띄운다(거부 상태는 재요청하지 않음).
+function notifyTurnComplete(): void {
+  if (typeof document === "undefined" || !document.hidden) return;
+  if (typeof Notification === "undefined") return;
+  const fire = () => {
+    try {
+      new Notification("응답이 완료되었습니다");
+    } catch {
+      // Notification 생성자 실패(권한 취소 등)는 best-effort 알림이라 무시.
+    }
+  };
+  if (Notification.permission === "granted") {
+    fire();
+  } else if (Notification.permission === "default") {
+    void Notification.requestPermission().then((permission) => {
+      if (permission === "granted") fire();
+    });
+  }
 }
 
 function parseSseFrame(frame: string): ChatStreamEvent | null {
@@ -303,8 +327,10 @@ export function useSessionStream(sessionId: string) {
   }, []);
 
   // P17-T6-01(TS-08) — 세션 재진입/새로고침 시 GET /:id/messages 로 과거 대화를 복원한다.
-  // 서버는 각 turn 의 user+assistant 메시지를 생성 시각순으로 반환(P17-T1-01/02) — 편집/재생성으로
-  // 생긴 형제 분기까지는 구분하지 않으므로(parentMessageId 미포함), 단일 선형 체인으로 복원한다.
+  // P19-T6-01 — 서버가 각 메시지의 parentMessageId(P19-T1-01)를 반환하므로, 편집/재생성으로
+  // 생긴 형제 분기를 그대로 트리에 복원한다(addNode 가 시간순 addNode 호출마다 activeChildOf 를
+  // 최신 형제로 갱신하므로, 마지막에 추가된 형제가 자연히 활성 경로가 된다 — 라이브 스트리밍과 동일 규칙).
+  // parentMessageId 가 없는 과거 데이터(레거시 응답)는 root 의 자식으로 취급해 선형 체인으로 복원된다.
   // 이미 로컬에 진행 중인 대화(예: 새 세션에서 첫 메시지를 보낸 직후)가 있으면 덮어쓰지 않는다.
   const loadHistory = useCallback(async () => {
     if (historyLoadedRef.current) return;
@@ -317,9 +343,14 @@ export function useSessionStream(sessionId: string) {
       });
       if (!res.ok) return;
       const body = (await res.json()) as {
-        data: Array<{ id: string; role: string; content: unknown }>;
+        data: Array<{
+          id: string;
+          role: string;
+          content: unknown;
+          parentMessageId?: string | null;
+        }>;
       };
-      let parentId: string | null = null;
+      let previousId: string | null = null;
       for (const row of body.data) {
         if (row.role !== "user" && row.role !== "assistant") continue;
         const content =
@@ -328,8 +359,16 @@ export function useSessionStream(sessionId: string) {
             : row.content == null
               ? ""
               : JSON.stringify(row.content);
+        // parentMessageId 필드 자체가 없는 레거시 응답은 이전 메시지를 부모로 삼아 선형 체인으로
+        // 복원한다(하위호환) — 필드가 있으면(null 포함) 서버가 준 실제 부모 포인터를 그대로 쓴다.
+        const parentId = Object.prototype.hasOwnProperty.call(
+          row,
+          "parentMessageId",
+        )
+          ? (row.parentMessageId ?? null)
+          : previousId;
         addNode(row.id, parentId, { id: row.id, role: row.role, content });
-        parentId = row.id;
+        previousId = row.id;
       }
     } catch {
       // fail-soft — 히스토리 복원 실패 시 빈 대화로 시작(L2/L5, 조용한 실패 아닌 정상 폴백).
@@ -602,6 +641,11 @@ export function useSessionStream(sessionId: string) {
           if (event.reason !== "tool_use") {
             receivedTerminal = true;
             setIsStreaming(false);
+            notifyTurnComplete();
+          }
+          // P19-T6-08 — max_tokens 로 끊긴 응답은 truncated 로 표시해 이어쓰기 버튼을 노출한다.
+          if (event.reason === "max_tokens" && assistantId) {
+            updateNode(assistantId, (m) => ({ ...m, truncated: true }));
           }
         } else if (event.type === "error") {
           receivedTerminal = true;
@@ -800,6 +844,7 @@ export function useSessionStream(sessionId: string) {
             ...(options?.webSearch !== undefined
               ? { webSearch: options.webSearch }
               : {}),
+            ...(options?.temporary ? { temporary: true } : {}),
           }),
         });
 
@@ -882,6 +927,84 @@ export function useSessionStream(sessionId: string) {
     [streamTurn],
   );
 
+  // P19-T6-08 — 응답 이어쓰기: 잘린(truncated) assistant 메시지를 대상으로 서버
+  // continue 엔드포인트(P19-T2-03)를 호출해, 기존 SSE 파이프(text_delta/stop)를 그대로
+  // 재사용하면서 새로 온 text_delta 만 대상 노드의 content 뒤에 이어붙인다(새 노드 생성 X).
+  const continueMessage = useCallback(
+    async (assistantMessageId: string) => {
+      const target = treeRef.current.nodes[assistantMessageId];
+      if (!target || target.role !== "assistant") return;
+
+      setIsStreaming(true);
+      isStreamingRef.current = true;
+      const controller = new AbortController();
+      abortRef.current = controller;
+
+      try {
+        const res = await apiFetch(
+          `/api/v1/sessions/${sessionId}/messages/${assistantMessageId}/continue`,
+          {
+            method: "POST",
+            credentials: "include",
+            signal: controller.signal,
+            headers: { Accept: "text/event-stream" },
+          },
+        );
+        const reader = res.body?.getReader();
+        if (!reader) return;
+        const decoder = new TextDecoder();
+        let buffer = "";
+        for (;;) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+          let sepIndex = buffer.indexOf("\n\n");
+          while (sepIndex !== -1) {
+            const frame = buffer.slice(0, sepIndex);
+            buffer = buffer.slice(sepIndex + 2);
+            const event = parseSseFrame(frame);
+            sepIndex = buffer.indexOf("\n\n");
+            if (!event) continue;
+            if (event.type === "text_delta") {
+              updateNode(assistantMessageId, (m) => {
+                const parts = m.parts ?? [];
+                const last = parts.at(-1);
+                const nextParts: MessagePart[] =
+                  last?.type === "text"
+                    ? [
+                        ...parts.slice(0, -1),
+                        { type: "text", text: last.text + event.text },
+                      ]
+                    : [...parts, { type: "text", text: event.text }];
+                return {
+                  ...m,
+                  content: m.content + event.text,
+                  parts: nextParts,
+                  truncated: false,
+                };
+              });
+            } else if (event.type === "stop") {
+              setIsStreaming(false);
+              notifyTurnComplete();
+            } else if (event.type === "error") {
+              setIsStreaming(false);
+              showToast("error", event.error?.message ?? "알 수 없는 오류");
+            }
+          }
+        }
+      } catch (err) {
+        if ((err as Error).name !== "AbortError") {
+          showToast("error", "연결이 끊어졌습니다. 다시 시도해주세요.");
+        }
+      } finally {
+        setIsStreaming(false);
+        isStreamingRef.current = false;
+        abortRef.current = null;
+      }
+    },
+    [sessionId, updateNode],
+  );
+
   const switchBranch = useCallback(
     (messageId: string, direction: "prev" | "next") => {
       const t = treeRef.current;
@@ -955,6 +1078,7 @@ export function useSessionStream(sessionId: string) {
     artifacts,
     editMessage,
     regenerate,
+    continueMessage,
     switchBranch,
     historyLoading,
     loadHistory,

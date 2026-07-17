@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
-// components/admin/AdminSubNav.tsx — P16-T6-02(갭1) admin 하위 내비: 4개 라우트 링크 + 활성 탭 강조.
+// components/admin/AdminSubNav.tsx — P16-T6-02(갭1) admin 하위 내비: 라우트 링크 + 활성 탭 강조.
+//   P19-T6-18 에서 그룹 관리 링크 추가.
 import React from "react";
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { render, screen, cleanup } from "@testing-library/react";
@@ -18,7 +19,7 @@ describe("AdminSubNav", () => {
     mockPathname = "/admin";
   });
 
-  it("대시보드/사용자/도구 지표/설정 4개 링크를 렌더한다", () => {
+  it("대시보드/사용자/그룹/도구 지표/설정 5개 링크를 렌더한다", () => {
     render(<AdminSubNav />);
 
     expect(screen.getByTestId("admin-sub-nav-dashboard")).toHaveAttribute(
@@ -28,6 +29,10 @@ describe("AdminSubNav", () => {
     expect(screen.getByTestId("admin-sub-nav-users")).toHaveAttribute(
       "href",
       "/admin/users",
+    );
+    expect(screen.getByTestId("admin-sub-nav-groups")).toHaveAttribute(
+      "href",
+      "/admin/groups",
     );
     expect(screen.getByTestId("admin-sub-nav-tool-metrics")).toHaveAttribute(
       "href",

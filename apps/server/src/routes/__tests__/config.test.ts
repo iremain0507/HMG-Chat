@@ -8,6 +8,7 @@ import type { Organization } from "@wchat/interfaces";
 import type { AuthedVariables } from "../../middleware/auth-middleware.js";
 import { Hono } from "hono";
 import { createConfigRoutes } from "../config.js";
+import { DEFAULT_ORG_SETTINGS } from "../../lib/org-settings-schema.js";
 
 function makeOrgDa(seed: Organization[] = []) {
   const rows = [...seed];
@@ -33,12 +34,21 @@ function makeOrg(overrides: Partial<Organization> = {}): Organization {
   };
 }
 
+function makeSettings(banner: unknown[] = []) {
+  return {
+    async resolve() {
+      return { ...DEFAULT_ORG_SETTINGS, banner };
+    },
+  };
+}
+
 function appWith(
   organizations: ReturnType<typeof makeOrgDa>,
   models: string[],
   actor: { userId: string; orgId: string },
+  settings: ReturnType<typeof makeSettings> = makeSettings(),
 ) {
-  const routes = createConfigRoutes({ organizations, models });
+  const routes = createConfigRoutes({ organizations, models, settings });
   const app = new Hono<{ Variables: AuthedVariables }>();
   app.use("*", async (c, next) => {
     c.set("auth", {
@@ -138,5 +148,35 @@ describe("createConfigRoutes", () => {
     };
     expect(body.data.availableModels).toEqual([]);
     expect(body.data.availableTools).toEqual([]);
+  });
+
+  // P19-T6-15: GET /api/v1/admin/settings 는 isAdmin 게이트라 일반 멤버는 못 본다 —
+  // banner 는 이 authMiddleware-only 부트스트랩 경로로 노출해야 role 무관하게 실제로 뜬다.
+  it("GET / — org_settings 의 typed 배너 목록을 role 무관하게 반환한다(member)", async () => {
+    const org = makeOrg();
+    const da = makeOrgDa([org]);
+    const settings = makeSettings([
+      { type: "warning", content: "점검 예정", dismissible: true },
+    ]);
+    const app = appWith(da, [], { userId, orgId: org.id }, settings);
+
+    const res = await app.request("/");
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      data: { banner: Array<{ type: string; content: string }> };
+    };
+    expect(body.data.banner).toEqual([
+      { type: "warning", content: "점검 예정", dismissible: true },
+    ]);
+  });
+
+  it("GET / — 배너 미설정 시 빈 배열을 반환한다", async () => {
+    const org = makeOrg();
+    const da = makeOrgDa([org]);
+    const app = appWith(da, [], { userId, orgId: org.id });
+
+    const res = await app.request("/");
+    const body = (await res.json()) as { data: { banner: unknown[] } };
+    expect(body.data.banner).toEqual([]);
   });
 });

@@ -39,4 +39,22 @@ describe("SettingsIndex", () => {
       "/settings/profile",
     );
   });
+
+  it("프롬프트 섹션 링크를 렌더한다 (P19-T6-13)", () => {
+    render(<SettingsIndex />);
+
+    expect(screen.getByTestId("settings-index-prompts")).toHaveAttribute(
+      "href",
+      "/settings/prompts",
+    );
+  });
+
+  it("API 키 섹션 링크를 렌더한다 (P19-T6-16)", () => {
+    render(<SettingsIndex />);
+
+    expect(screen.getByTestId("settings-index-api-keys")).toHaveAttribute(
+      "href",
+      "/settings/api-keys",
+    );
+  });
 });

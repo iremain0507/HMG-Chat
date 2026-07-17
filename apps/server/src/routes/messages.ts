@@ -19,6 +19,8 @@ import {
   type ToolMetricRepo,
 } from "@wchat/interfaces";
 import { runTurn } from "../orchestrator/orchestrator.js";
+import { generateFollowups } from "../orchestrator/followups.js";
+import { generateSessionTitleAndTags } from "../orchestrator/session-title-tags.js";
 import { registerRun, unregisterRun } from "../orchestrator/run-registry.js";
 import {
   startMessageRun,
@@ -89,6 +91,43 @@ export interface MessagesPort {
     tokensIn?: number | null;
     tokensOut?: number | null;
   }): Promise<Message>;
+  // P19-T2-03 — 응답 이어쓰기(continue)가 대상 메시지를 조회/갱신하는 데 쓴다. 둘 다
+  // 옵셔널 — 미주입 환경(기존 테스트/배선)은 continue 라우트가 항상 404 로 fail-soft.
+  byId?(id: string): Promise<Message | null>;
+  update?(
+    id: string,
+    data: { content?: unknown; tokensOut?: number | null },
+  ): Promise<Message>;
+  // P19-T2-04 — 후속질문 제안이 마지막 턴(직전 user/assistant) 텍스트를 조회하는 데 쓴다.
+  // 옵셔널 — 미주입 시 빈 컨텍스트로 orchestrator/followups.ts 의 파생 폴백만 반환(L2/L5).
+  // app.ts 는 이미 createPgMessageDataAccess() 의 full MessageRepo(list 기 구현)를 주입 중이라
+  // 구조적 타이핑으로 충족(app.ts 변경 불필요, P19-T2-03 byId/update 와 동일 패턴).
+  list?(
+    filter: { sessionId: string },
+    pagination?: { cursor?: string; limit?: number },
+  ): Promise<{ items: Message[]; nextCursor?: string }>;
+}
+
+// P19-T2-04 — 후속질문이 세션 메시지 내용을 읽어 응답에 반영하므로(deriveFollowups 는 마지막
+// 턴 텍스트 일부를 그대로 응답에 splice), routes/sessions.ts GET /:id/messages 와 동일한
+// ownership 검증(session.userId !== auth.sub → 404)이 반드시 필요하다 — 없으면 sessionId 를
+// 아는 타 사용자/조직이 이 엔드포인트로 남의 대화 내용을 읽어낼 수 있다(cross-org 정보 노출).
+export interface FollowupsSessionsPort {
+  byId(id: string): Promise<{ userId: string } | null>;
+  // P19-T2-06 — 첫 턴 완료 후 LLM 제목 반영에 재사용(구조적 타이핑 — app.ts 가 이미 주입 중인
+  // createPgSessionDataAccess() 의 full SessionsDataAccess 가 updateForOwner 를 구현하므로
+  // app.ts 변경 없이 충족). 옵셔널 — 미주입/미구현 시 제목 반영을 건너뛴다(L2 fail-soft).
+  updateForOwner?(
+    userId: string,
+    id: string,
+    data: { title?: string | null },
+  ): Promise<unknown>;
+}
+
+// P19-T2-06 — 첫 턴 완료 후 생성한 태그를 session_tags(migration 0020)에 반영하는 포트.
+// db/session-tag-data-access.ts SessionTagDataAccess 의 add 만 필요(구조적 타이핑).
+export interface SessionTagsPort {
+  add(orgId: string, sessionId: string, tag: string): Promise<unknown>;
 }
 
 // P14-T2-01 — org 별 maxTokens/temperature(ISOLATE, runtime 미배선)/systemPrompt/defaultModel
@@ -165,6 +204,8 @@ export interface MessageRouteDeps {
   systemBlocks?: PromptBlock[];
   maxTokens?: number;
   activeRuns?: ActiveRunsPort;
+  // P19-T2-04 — followups ownership 검증 전용(FollowupsSessionsPort 참고).
+  sessions?: FollowupsSessionsPort;
   attachments?: AttachmentsPort;
   // P11-T2-02 — 내장 handler 로 조립된 정적 AgentTool[](artifact_create 등, app.ts 조립).
   tools?: AgentTool[];
@@ -189,6 +230,8 @@ export interface MessageRouteDeps {
   settings?: SettingsResolverPort;
   // P17-T1-01 — 턴마다 user/assistant 메시지를 messages 테이블에 영속. 미주입 시 no-op.
   messages?: MessagesPort;
+  // P19-T2-06 — 첫 턴 완료 후 session_tags 에 생성된 태그를 반영. 미주입 시 태그 반영 생략.
+  tags?: SessionTagsPort;
 }
 
 function errorJson(code: string, message: string) {
@@ -208,6 +251,9 @@ export function createMessageRoutes(
         content?: string;
         attachments?: Array<{ uploadId: string }>;
         model?: string;
+        webSearch?: boolean;
+        mode?: "agent" | "chat";
+        temporary?: boolean;
       }>()
       .catch(
         () =>
@@ -215,12 +261,19 @@ export function createMessageRoutes(
             content?: string;
             attachments?: Array<{ uploadId: string }>;
             model?: string;
+            webSearch?: boolean;
+            mode?: "agent" | "chat";
+            temporary?: boolean;
           },
       );
+    // P19-T2-05 — 임시 채팅: body.temporary=true 면 세션 upsert(ensureSession)와
+    //   user/assistant 메시지 영속(messages.insert)을 모두 스킵한다(미영속, 스트림만 반환).
+    const isTemporary = body.temporary === true;
+
     // 클라이언트 생성 세션 UUID 를 첫 메시지 시 DB 에 보장(upsert) — 이후 아티팩트/업로드/
     //   active-run 의 sessions FK 를 충족(없으면 deep_research 리포트 저장 등이 FK 위반).
     const auth = c.get("auth");
-    if (auth) {
+    if (auth && !isTemporary) {
       await deps.ensureSession?.(
         c.req.param("id"),
         auth.sub,
@@ -351,17 +404,48 @@ export function createMessageRoutes(
       }
     }
 
+    // P19-T2-01 — 웹검색 토글: admin org_settings.webSearchEnabled(허용 게이트) + 요청
+    // body.webSearch(사용자 의도) 둘 다 true 일 때만 web_search 를 tool set 에 포함한다.
+    // admin off 면 요청과 무관하게 강제 제외, settings 미조회(fail-soft) 시 DEFAULT
+    // false 로 안전 기본(L2). 클라가 payload 로만 보내던 webSearch 를 여기서 처음 소비한다.
+    const includeWebSearch =
+      resolvedSettings.webSearchEnabled === true && body.webSearch === true;
+    if (!includeWebSearch) {
+      tools = tools.filter((t) => t.spec.name !== "web_search");
+    }
+
+    // P19-T2-02 — 모드(agent/chat) 실동작: mode='chat' 은 순수 대화로, 도구 없이(tools=[])
+    // runTurn 을 호출한다. 'agent'(기본, 미지정 포함)는 기존 도구 배선을 그대로 유지한다.
+    if (body.mode === "chat") {
+      tools = [];
+    }
+
     // P17-T1-01 — user 메시지를 messages 테이블에 영속(best-effort — 실패해도 turn 은 계속).
-    const userMessage = await deps.messages
-      ?.insert({ sessionId, role: "user", content })
-      .catch((error) => {
-        deps.logger?.warn({
-          category: "system",
-          msg: "user message 영속 실패",
-          context: { error: String(error) },
-        });
-        return undefined;
-      });
+    // P19-T2-05 — temporary 턴은 영속 자체를 스킵한다.
+    const userMessage = isTemporary
+      ? undefined
+      : await deps.messages
+          ?.insert({ sessionId, role: "user", content })
+          .catch((error) => {
+            deps.logger?.warn({
+              category: "system",
+              msg: "user message 영속 실패",
+              context: { error: String(error) },
+            });
+            return undefined;
+          });
+
+    // P19-T2-06 — 첫 턴(세션 최초 user 메시지) 여부: 방금 삽입한 이 user 메시지 하나뿐이면
+    // 최초 턴이다(LLM 제목/태그 생성은 이때만 트리거). deps.messages.list 미주입/조회 실패
+    // 시 실행하지 않는다(L2 fail-soft) — messages-followups-composition.test.ts 의
+    // list?.() 옵셔널 재사용 패턴과 동일.
+    const isFirstTurn =
+      !isTemporary && userMessage !== undefined && deps.messages?.list
+        ? await deps.messages
+            .list({ sessionId }, { limit: 2 })
+            .then((r) => r.items.length <= 1)
+            .catch(() => false)
+        : false;
 
     const jobId = randomUUID();
     const activeRuns = deps.activeRuns ?? noopActiveRuns;
@@ -478,7 +562,8 @@ export function createMessageRoutes(
         unregisterRun(sessionId, jobId);
         // P17-T1-01 — assistant 메시지 영속(정상 종료·취소·에러 경로 모두 finally 에서 1회).
         // message_start 가 한 번도 없었으면(예: 초기 검증 실패) 빈 행을 남기지 않는다.
-        if (currentMessageId) {
+        // P19-T2-05 — temporary 턴은 영속 자체를 스킵한다.
+        if (currentMessageId && !isTemporary) {
           await deps.messages
             ?.insert({
               sessionId,
@@ -496,7 +581,233 @@ export function createMessageRoutes(
               });
             });
         }
+        // P19-T2-06 — 첫 턴 완료 후 세션 제목·태그를 LLM 으로 생성(provider 부재/파싱 실패 시
+        // deriveSessionTitle 파생 폴백 — L5). 취소된 턴(사용자 Stop)은 건너뛴다.
+        if (
+          isFirstTurn &&
+          currentMessageId &&
+          auth &&
+          !handle.controller.signal.aborted
+        ) {
+          await generateSessionTitleAndTags({
+            provider: deps.provider,
+            model,
+            userText: content,
+            assistantText,
+            signal: handle.controller.signal,
+            ...(resolvedSettings.maxTokens !== undefined
+              ? { maxTokens: resolvedSettings.maxTokens }
+              : {}),
+          })
+            .then(async ({ title, tags }) => {
+              if (title) {
+                await deps.sessions?.updateForOwner?.(auth.sub, sessionId, {
+                  title,
+                });
+              }
+              if (tags.length > 0 && deps.tags) {
+                for (const tag of tags) {
+                  await deps.tags.add(auth.org, sessionId, tag);
+                }
+              }
+            })
+            .catch((error) => {
+              deps.logger?.warn({
+                category: "system",
+                msg: "세션 제목/태그 생성 실패",
+                context: { error: String(error) },
+              });
+            });
+        }
       }
+    });
+  });
+
+  // P19-T2-03 — 응답 이어쓰기(continue): 직전 assistant 텍스트를 prefix 로 이어서, 기존
+  // SSE 파이프(text_delta/stop, 신규 이벤트 금지)를 그대로 재사용해 스트리밍한다. 새로 emit
+  // 하는 text_delta 는 이어지는 내용만(클라가 이미 표시 중인 prefix 를 중복 emit 하지
+  // 않음) — 완료 시 원본 assistant 메시지 행(mid)을 prefix+새텍스트로 update 한다(새 행
+  // 생성 아님). deps.messages.byId/update 미주입 시 404/no-op(L2 fail-soft).
+  app.post("/:id/messages/:mid/continue", async (c) => {
+    const sessionId = c.req.param("id");
+    const messageId = c.req.param("mid");
+    const auth = c.get("auth");
+
+    if (!deps.messages?.byId) {
+      return c.json(errorJson("NOT_FOUND", "메시지를 찾을 수 없습니다."), 404);
+    }
+    const prior = await deps.messages.byId(messageId).catch(() => null);
+    if (!prior || prior.sessionId !== sessionId) {
+      return c.json(errorJson("NOT_FOUND", "메시지를 찾을 수 없습니다."), 404);
+    }
+    if (prior.role !== "assistant") {
+      return c.json(
+        errorJson("INVALID_INPUT", "assistant 메시지만 이어쓸 수 있습니다."),
+        400,
+      );
+    }
+    const priorText = typeof prior.content === "string" ? prior.content : "";
+
+    const resolvedSettings = await resolveSettingsSafely(
+      deps.settings,
+      auth?.org,
+      deps.logger,
+    );
+
+    const continueMessages: LLMMessage[] = [
+      { role: "assistant", content: priorText },
+      {
+        role: "user",
+        content: "이전 답변에 자연스럽게 이어서 계속 작성해줘.",
+      },
+    ];
+
+    const jobId = randomUUID();
+    const activeRuns = deps.activeRuns ?? noopActiveRuns;
+    const handle = registerRun(sessionId, jobId);
+    const requestSignal = c.req.raw.signal;
+    if (requestSignal.aborted) {
+      handle.controller.abort();
+    } else {
+      requestSignal.addEventListener("abort", () => handle.controller.abort(), {
+        once: true,
+      });
+    }
+
+    c.header("X-Accel-Buffering", "no");
+    return streamSSE(c, async (stream) => {
+      const heartbeat = setInterval(() => {
+        void stream.write(": ping\n\n").catch(() => {});
+      }, 10_000);
+      let currentMessageId: string | undefined;
+      let continuedText = "";
+      let assistantUsage:
+        { inputTokens: number; outputTokens: number } | undefined;
+      try {
+        const events = runTurn({
+          provider: deps.provider,
+          model: deps.model,
+          systemBlocks: deps.systemBlocks ?? [],
+          messages: continueMessages,
+          maxTokens:
+            deps.maxTokens ??
+            resolvedSettings.maxTokens ??
+            SAFE_DEFAULT_MAX_TOKENS,
+          signal: handle.controller.signal,
+        });
+        for await (const event of events) {
+          if (event.type === "message_start") {
+            currentMessageId = event.messageId;
+            startMessageRun(event.messageId, sessionId);
+          } else if (currentMessageId) {
+            recordMessageRunEvent(currentMessageId, event);
+          }
+          if (event.type === "text_delta") {
+            continuedText += event.text;
+          } else if (event.type === "stop") {
+            assistantUsage = event.usage;
+          }
+          const { type, ...payload } = event;
+          await stream.writeSSE({ event: type, data: JSON.stringify(payload) });
+        }
+        await activeRuns.setActiveRun(
+          sessionId,
+          jobId,
+          handle.controller.signal.aborted ? "cancelled" : "completed",
+        );
+      } catch (err) {
+        const message =
+          err instanceof Error
+            ? err.message
+            : "턴 처리 중 오류가 발생했습니다.";
+        await stream
+          .writeSSE({
+            event: "error",
+            data: JSON.stringify({
+              error: {
+                code: "TURN_FAILED",
+                category: "orchestrator",
+                message,
+                retryable: true,
+              },
+            }),
+          })
+          .catch(() => {});
+        try {
+          await activeRuns.setActiveRun(sessionId, jobId, "cancelled");
+        } catch {
+          /* best-effort */
+        }
+      } finally {
+        clearInterval(heartbeat);
+        unregisterRun(sessionId, jobId);
+        if (continuedText.length > 0) {
+          await deps.messages
+            ?.update?.(messageId, {
+              content: priorText + continuedText,
+              tokensOut: assistantUsage?.outputTokens ?? prior.tokensOut,
+            })
+            .catch((error) => {
+              deps.logger?.warn({
+                category: "system",
+                msg: "continue 메시지 영속 실패",
+                context: { error: String(error) },
+              });
+            });
+        }
+      }
+    });
+  });
+
+  // P19-T2-04 — 후속질문 제안: 마지막 턴(직전 user/assistant) 텍스트를 orchestrator/
+  // followups.ts 에 넘겨 LLM 에게 3개 질문을 요청한다. SSE 아님(frozen ChatEvent 확장 회피,
+  // §1 REST 규칙) — 단일 JSON 응답. deps.messages.list 미주입/조회 실패 시 빈 컨텍스트로도
+  // generateFollowups 가 항상 3개(파생 폴백)를 반환하므로 조용한 실패가 없다(L5).
+  app.post("/:id/followups", async (c) => {
+    const sessionId = c.req.param("id");
+    const auth = c.get("auth");
+
+    // routes/sessions.ts GET /:id/messages 와 동일한 ownership 검증 — deriveFollowups 가
+    // 마지막 턴 텍스트 일부를 응답에 그대로 splice 하므로, 세션 소유자가 아니면 컨텍스트를
+    // 읽지 않고 404 로 차단한다(existence-leak 방지, cross-org 정보 노출 방지).
+    if (deps.sessions) {
+      const session = await deps.sessions.byId(sessionId);
+      if (!session || session.userId !== auth?.sub) {
+        return c.json(errorJson("NOT_FOUND", "세션을 찾을 수 없습니다."), 404);
+      }
+    }
+
+    let lastUserText = "";
+    let lastAssistantText = "";
+    if (deps.messages?.list) {
+      const page = await deps.messages
+        .list({ sessionId }, { limit: 100 })
+        .catch((error) => {
+          deps.logger?.warn({
+            category: "system",
+            msg: "followups 컨텍스트 조회 실패 — 빈 컨텍스트로 폴백",
+            context: { error: String(error) },
+          });
+          return { items: [] as Message[] };
+        });
+      for (const m of page.items) {
+        const text = typeof m.content === "string" ? m.content : "";
+        if (m.role === "user") lastUserText = text;
+        else if (m.role === "assistant") lastAssistantText = text;
+      }
+    }
+
+    const followups = await generateFollowups({
+      provider: deps.provider,
+      model: deps.model,
+      lastUserText,
+      lastAssistantText,
+      signal: c.req.raw.signal,
+    });
+
+    return c.json({
+      data: { followups },
+      meta: { requestId: randomUUID() },
     });
   });
 

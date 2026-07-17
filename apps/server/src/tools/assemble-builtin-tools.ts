@@ -8,8 +8,11 @@ import type { AgentTool, LLMProvider } from "@wchat/interfaces";
 import type { ArtifactDataAccess } from "../db/artifact-service.js";
 import type { ObjectStore } from "../lib/object-store.js";
 import type { WebSearchPort } from "./web-search-port.js";
+import {
+  createWebSearchTool,
+  type WebSearchSettingsResolverPort,
+} from "./handlers/web-search-handler.js";
 import { createArtifactCreateTool } from "./handlers/artifact-create-handler.js";
-import { createWebSearchTool } from "./handlers/web-search-handler.js";
 import { createCodeInterpreterTool } from "./handlers/code-interpreter-handler.js";
 import {
   createDeepResearchTool,
@@ -31,7 +34,31 @@ export interface AssembleBuiltinToolsDeps {
   e2bApiKey?: string;
   // P15-T2-02 — 주입 시 deep_research 가 invoke 시점에 org-scoped toolMaxTokens 를 동적
   // 반영(정적 maxTokens 를 조용히 쓰지 않도록, L1). 미주입 시 비파괴(정적 maxTokens 유지).
-  settings?: ToolSettingsResolverPort;
+  // P19-T1-12 — 동일 settings 객체(SettingsService.resolve 는 전체 ResolvedOrgSettings 를
+  // 반환)를 web_search 의 provider 동적 선택에도 재사용(구조적으로 두 Pick 모두 만족).
+  settings?: ToolSettingsResolverPort & WebSearchSettingsResolverPort;
+}
+
+// P19-T1-12 — org_settings.webSearchProvider 로 invoke 시점에 실 provider 를 구성.
+//   apiKeyRef 는 실제 비밀이 아니라 서버가 아는 고정 env ref 이름만 가리키므로, 임의
+//   process.env 조회를 막기 위해 "TAVILY_API_KEY" 하나만 인식한다(DB-configurable 값으로
+//   다른 시크릿을 읽지 못하도록, 보안). provider 가 "tavily" 가 아니거나 ref 가 다르거나
+//   실 키가 없으면 undefined 를 반환해 deps.port(dev-stub) 폴백을 유도한다(L2).
+function buildWebSearchProviderResolver(
+  tavilyApiKey: string | undefined,
+): (input: {
+  provider?: string | undefined;
+  endpoint?: string | undefined;
+  apiKeyRef?: string | undefined;
+}) => WebSearchPort | undefined {
+  return (input) => {
+    if (input.provider !== "tavily") return undefined;
+    if (input.apiKeyRef !== "TAVILY_API_KEY" || !tavilyApiKey) return undefined;
+    return createTavilyWebSearchProvider({
+      apiKey: tavilyApiKey,
+      ...(input.endpoint ? { baseUrl: input.endpoint } : {}),
+    });
+  };
 }
 
 export function assembleBuiltinTools(
@@ -40,7 +67,11 @@ export function assembleBuiltinTools(
   const webSearchPort: WebSearchPort = deps.tavilyApiKey
     ? createTavilyWebSearchProvider({ apiKey: deps.tavilyApiKey })
     : createDevStubWebSearchProvider();
-  const webSearchTool = createWebSearchTool({ port: webSearchPort });
+  const webSearchTool = createWebSearchTool({
+    port: webSearchPort,
+    ...(deps.settings ? { settings: deps.settings } : {}),
+    resolveProvider: buildWebSearchProviderResolver(deps.tavilyApiKey),
+  });
 
   const sandboxTransport = deps.e2bApiKey
     ? createE2BSandboxTransport({

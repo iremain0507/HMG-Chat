@@ -1,12 +1,14 @@
 "use client";
 // components/admin/settings/ModelsGenerationTab.tsx — P14-T6-02 Models & Generation 탭.
-//   org_settings 기반 필드(maxTokens/temperature/topP/defaultModel/systemPrompt/toolMaxTokens)만
-//   저장 가능. temperature/topP 는 P15-T2-01 에서 orchestrator provider 호출까지 배선 완료.
-//   allowedModels 는 organizations 컬럼(§14-INTERFACES Organization)이고 이를
-//   admin 이 PUT 으로 편집할 라우트가 이 phase 표(routes/admin-settings.ts 는 T1-05 전용) 밖이라
-//   읽기 전용 노출로 격리 — 여기서 저장하는 척 하면 L5(조용한 실패)가 된다.
-import React from "react";
+//   org_settings 기반 필드(maxTokens/temperature/topP/defaultModel/systemPrompt/toolMaxTokens)는
+//   부모(AdminSettingsScreen)의 draft/저장 흐름을 따른다. allowedModels 는 organizations
+//   컬럼(§14-INTERFACES Organization)이라 별도 엔드포인트(P19-T1-09 GET/PUT
+//   /api/v1/admin/models)를 이 컴포넌트가 직접 호출해 자체 저장한다(칩 추가/제거 + 저장,
+//   실패 시 롤백).
+import React, { useEffect, useState } from "react";
 import type { AdminOrgSettings } from "../../../hooks/useAdminSettings";
+import { apiFetch } from "../../../lib/fetch-with-refresh";
+import { showToast } from "../../../lib/toast";
 
 export type ModelsGenerationErrors = Partial<
   Record<"maxTokens" | "temperature" | "topP" | "toolMaxTokens", string>
@@ -31,9 +33,58 @@ export function ModelsGenerationTab({
   orgAllowedModels,
   onChange,
 }: ModelsGenerationTabProps) {
-  const modelOptions = orgAllowedModels.includes(value.defaultModel)
-    ? orgAllowedModels
-    : [value.defaultModel, ...orgAllowedModels];
+  const [models, setModels] = useState<string[]>(orgAllowedModels);
+  const [newModel, setNewModel] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  const orgAllowedModelsKey = JSON.stringify(orgAllowedModels);
+  useEffect(() => {
+    setModels(orgAllowedModels);
+    // orgAllowedModelsKey(내용) 에만 의존 — orgAllowedModels 배열 참조가 매 렌더 바뀌어도
+    // 내용이 같으면(다른 탭 편집으로 인한 부모 리렌더) 로컬 편집을 리셋하지 않는다.
+  }, [orgAllowedModelsKey]);
+
+  const modelsDirty =
+    JSON.stringify(models) !== JSON.stringify(orgAllowedModels);
+
+  function addModel() {
+    const trimmed = newModel.trim();
+    if (!trimmed || models.includes(trimmed)) return;
+    setModels((prev) => [...prev, trimmed]);
+    setNewModel("");
+  }
+
+  function removeModel(model: string) {
+    setModels((prev) => prev.filter((m) => m !== model));
+  }
+
+  async function saveModels() {
+    setSaving(true);
+    try {
+      const res = await apiFetch("/api/v1/admin/models", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ allowedModels: models }),
+      });
+      if (!res.ok) {
+        setModels(orgAllowedModels);
+        showToast("error", "허용 모델을 저장하지 못했습니다.");
+        return;
+      }
+      const json = (await res.json()) as { data: { allowedModels: string[] } };
+      setModels(json.data.allowedModels);
+      showToast("success", "허용 모델을 저장했습니다.");
+    } catch {
+      setModels(orgAllowedModels);
+      showToast("error", "허용 모델을 저장하지 못했습니다.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const modelOptions = models.includes(value.defaultModel)
+    ? models
+    : [value.defaultModel, ...models];
 
   return (
     <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
@@ -145,28 +196,71 @@ export function ModelsGenerationTab({
           data-testid="admin-settings-allowedModels-list"
           className="mt-1 flex flex-wrap gap-1.5"
         >
-          {orgAllowedModels.length === 0 ? (
+          {models.length === 0 ? (
             <span className="text-xs text-fg-subtle">
               설정된 허용 모델이 없습니다.
             </span>
           ) : (
-            orgAllowedModels.map((m) => (
+            models.map((m) => (
               <span
                 key={m}
-                className="rounded-full border border-border bg-surface px-2 py-0.5 font-mono text-[11px] text-fg-muted"
+                className="flex items-center gap-1 rounded-full border border-border bg-surface px-2 py-0.5 font-mono text-[11px] text-fg-muted"
               >
                 {m}
+                <button
+                  type="button"
+                  aria-label={`${m} 제거`}
+                  data-testid={`admin-settings-allowedModels-remove-${m}`}
+                  onClick={() => removeModel(m)}
+                  className="text-fg-subtle hover:text-accent"
+                >
+                  ×
+                </button>
               </span>
             ))
           )}
+        </div>
+        <div className="mt-1.5 flex gap-1.5">
+          <input
+            type="text"
+            aria-label="허용 모델 추가"
+            data-testid="admin-settings-allowedModels-input"
+            className={`${INPUT_CLASS} mt-0 flex-1`}
+            value={newModel}
+            onChange={(e) => setNewModel(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                addModel();
+              }
+            }}
+          />
+          <button
+            type="button"
+            data-testid="admin-settings-allowedModels-add"
+            onClick={addModel}
+            className="rounded-md border border-border px-2.5 text-xs font-medium text-fg hover:bg-surface"
+          >
+            추가
+          </button>
         </div>
         <span
           data-testid="admin-settings-allowedModels-hint"
           className={HINT_CLASS}
         >
-          이 화면에서는 읽기 전용입니다. 조직 허용 모델 변경은 별도 관리 절차가
-          필요합니다.
+          모델 ID 를 입력하고 Enter 또는 추가 버튼으로 등록한 뒤 저장하세요.
         </span>
+        <div className="mt-1.5">
+          <button
+            type="button"
+            data-testid="admin-settings-allowedModels-save"
+            disabled={!modelsDirty || saving}
+            onClick={() => void saveModels()}
+            className="rounded-md bg-primary px-2.5 py-1 text-xs font-medium text-primary-fg disabled:opacity-60"
+          >
+            {saving ? "저장 중…" : "허용 모델 저장"}
+          </button>
+        </div>
       </div>
     </div>
   );
