@@ -21,6 +21,13 @@ export interface ModelsGenerationTabProps {
   onChange: (patch: Partial<AdminOrgSettings>) => void;
 }
 
+// 빈 입력을 Number("")=0 으로 무음 강제하지 않기 위해 NaN 을 대신 전달한다 —
+// 상위 validateFields 의 !Number.isInteger/!Number.isFinite 가 NaN 을 이미 걸러내
+// 필드 에러로 표시한다(UX-23).
+function parseNumberField(raw: string): number {
+  return raw.trim() === "" ? NaN : Number(raw);
+}
+
 const LABEL_CLASS = "block text-xs font-medium text-fg-muted";
 const INPUT_CLASS =
   "mt-1 w-full rounded-md border border-border bg-bg px-2.5 py-1.5 text-sm text-fg outline-none focus-visible:border-primary-400";
@@ -95,7 +102,9 @@ export function ModelsGenerationTab({
           data-testid="admin-settings-maxTokens"
           className={INPUT_CLASS}
           value={value.maxTokens}
-          onChange={(e) => onChange({ maxTokens: Number(e.target.value) })}
+          onChange={(e) =>
+            onChange({ maxTokens: parseNumberField(e.target.value) })
+          }
         />
         {errors.maxTokens && (
           <span
@@ -115,7 +124,9 @@ export function ModelsGenerationTab({
           data-testid="admin-settings-temperature"
           className={INPUT_CLASS}
           value={value.temperature}
-          onChange={(e) => onChange({ temperature: Number(e.target.value) })}
+          onChange={(e) =>
+            onChange({ temperature: parseNumberField(e.target.value) })
+          }
         />
         {errors.temperature && (
           <span
@@ -135,7 +146,7 @@ export function ModelsGenerationTab({
           data-testid="admin-settings-topP"
           className={INPUT_CLASS}
           value={value.topP}
-          onChange={(e) => onChange({ topP: Number(e.target.value) })}
+          onChange={(e) => onChange({ topP: parseNumberField(e.target.value) })}
         />
         {errors.topP && (
           <span data-testid="admin-settings-topP-error" className={ERROR_CLASS}>
@@ -167,7 +178,9 @@ export function ModelsGenerationTab({
           data-testid="admin-settings-toolMaxTokens"
           className={INPUT_CLASS}
           value={value.toolMaxTokens}
-          onChange={(e) => onChange({ toolMaxTokens: Number(e.target.value) })}
+          onChange={(e) =>
+            onChange({ toolMaxTokens: parseNumberField(e.target.value) })
+          }
         />
         {errors.toolMaxTokens && (
           <span

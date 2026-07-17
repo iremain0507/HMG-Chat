@@ -2399,8 +2399,8 @@
     "acceptance": "RED: 각 테스트가 (a)숫자 필드 비움 시 0 강제 대신 필드 에러 (b)'/' 없는 command 거부 (c)중복 태그 인라인 힌트 를 단언 — 현재 실패(UX-23,24). RTL.",
     "phase": "P21",
     "team": "T6",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P21-T6-18",

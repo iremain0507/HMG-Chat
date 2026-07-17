@@ -31,12 +31,14 @@ export function PromptsManager() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
+  const [commandError, setCommandError] = useState<string | null>(null);
   const dialogRef = useRef<HTMLDivElement>(null);
   useFocusTrap(dialogRef, { active: showModal, onClose: closeModal });
 
   function openCreate() {
     setEditingId(null);
     setForm(EMPTY_FORM);
+    setCommandError(null);
     setShowModal(true);
   }
 
@@ -48,16 +50,23 @@ export function PromptsManager() {
       content: prompt.content,
       access: prompt.access,
     });
+    setCommandError(null);
     setShowModal(true);
   }
 
   function closeModal() {
     setShowModal(false);
     setEditingId(null);
+    setCommandError(null);
   }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (!form.command.trim().startsWith("/")) {
+      setCommandError("명령은 '/'로 시작해야 합니다.");
+      return;
+    }
+    setCommandError(null);
     setSaving(true);
     try {
       const ok = editingId ? await update(editingId, form) : await create(form);
@@ -152,12 +161,27 @@ export function PromptsManager() {
                 명령(/command)
                 <input
                   aria-label="명령"
-                  value={form.command}
-                  onChange={(e) =>
-                    setForm((f) => ({ ...f, command: e.target.value }))
+                  aria-invalid={commandError ? true : undefined}
+                  aria-describedby={
+                    commandError ? "prompt-command-error" : undefined
                   }
-                  className={`mt-1 h-8 w-full rounded-md border border-border px-2.5 font-mono text-[13px] text-fg ${FOCUS_RING}`}
+                  value={form.command}
+                  onChange={(e) => {
+                    setForm((f) => ({ ...f, command: e.target.value }));
+                    if (commandError) setCommandError(null);
+                  }}
+                  className={`mt-1 h-8 w-full rounded-md border px-2.5 font-mono text-[13px] text-fg ${
+                    commandError ? "border-accent" : "border-border"
+                  } ${FOCUS_RING}`}
                 />
+                {commandError && (
+                  <span
+                    id="prompt-command-error"
+                    className="mt-1 block text-xs text-accent"
+                  >
+                    {commandError}
+                  </span>
+                )}
               </label>
               <label className="mt-2.5 block text-xs text-fg-muted">
                 제목

@@ -110,6 +110,49 @@ describe("PromptsManager", () => {
   });
 });
 
+describe("명령(/command) 검증 (P21-T6-17, UX-24)", () => {
+  afterEach(() => {
+    cleanup();
+    vi.unstubAllGlobals();
+  });
+
+  it("'/' 로 시작하지 않는 명령은 제출을 거부하고 인라인 에러를 보여준다", async () => {
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({ data: [] }),
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<PromptsManager />);
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("저장된 프롬프트가 없습니다."),
+      ).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "＋ 프롬프트 추가" }));
+    fireEvent.change(screen.getByLabelText("명령"), {
+      target: { value: "greet" },
+    });
+    fireEvent.change(screen.getByLabelText("제목"), {
+      target: { value: "인사" },
+    });
+    fireEvent.change(screen.getByLabelText("내용"), {
+      target: { value: "안녕하세요" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "추가" }));
+
+    expect(
+      screen.getByText("명령은 '/'로 시작해야 합니다."),
+    ).toBeInTheDocument();
+    expect(fetchMock).not.toHaveBeenCalledWith(
+      "/api/v1/prompts",
+      expect.objectContaining({ method: "POST" }),
+    );
+  });
+});
+
 describe("포커스 트랩(useFocusTrap)", () => {
   afterEach(() => {
     cleanup();

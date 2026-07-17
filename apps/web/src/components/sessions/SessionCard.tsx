@@ -94,9 +94,12 @@ export function SessionCard({
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(session.title ?? "");
   const [tagDraft, setTagDraft] = useState("");
+  const [tagError, setTagError] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [archiving, setArchiving] = useState(false);
   const label = session.title ?? "(제목 없음)";
+  const TITLE_MAX_LENGTH = 200;
+  const TAG_MAX_LENGTH = 40;
 
   const mountedRef = useRef(true);
   useEffect(() => {
@@ -173,8 +176,14 @@ export function SessionCard({
   function submitNewTag(e: React.FormEvent) {
     e.preventDefault();
     const tag = tagDraft.trim();
-    if (tag) onAddTag(session.id, tag);
+    if (!tag) return;
+    if (session.tags.includes(tag)) {
+      setTagError("이미 있는 태그입니다.");
+      return;
+    }
+    onAddTag(session.id, tag);
     setTagDraft("");
+    setTagError(null);
     tagMenu.close();
   }
 
@@ -196,6 +205,7 @@ export function SessionCard({
         <input
           autoFocus
           value={draft}
+          maxLength={TITLE_MAX_LENGTH}
           onChange={(e) => setDraft(e.target.value)}
           onBlur={submitEdit}
           onKeyDown={(e) => {
@@ -295,7 +305,14 @@ export function SessionCard({
           title={`태그 지정: ${label}`}
           aria-haspopup="dialog"
           aria-expanded={tagMenu.isOpen}
-          onClick={() => (tagMenu.isOpen ? tagMenu.close() : tagMenu.open())}
+          onClick={() => {
+            setTagError(null);
+            if (tagMenu.isOpen) {
+              tagMenu.close();
+            } else {
+              tagMenu.open();
+            }
+          }}
           className={`shrink-0 rounded p-1 text-xs group-hover:block ${
             session.tags.length > 0
               ? "block text-primary"
@@ -362,10 +379,26 @@ export function SessionCard({
             <input
               autoFocus
               value={tagDraft}
-              onChange={(e) => setTagDraft(e.target.value)}
+              maxLength={TAG_MAX_LENGTH}
+              aria-invalid={tagError ? true : undefined}
+              aria-describedby={
+                tagError ? `tag-error-${session.id}` : undefined
+              }
+              onChange={(e) => {
+                setTagDraft(e.target.value);
+                if (tagError) setTagError(null);
+              }}
               placeholder="새 태그"
               className="w-full rounded-md border border-primary bg-bg px-2 py-1 text-sm text-fg outline-none"
             />
+            {tagError && (
+              <span
+                id={`tag-error-${session.id}`}
+                className="mt-1 block text-xs text-accent"
+              >
+                {tagError}
+              </span>
+            )}
           </form>
         </div>
       )}

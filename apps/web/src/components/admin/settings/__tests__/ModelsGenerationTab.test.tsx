@@ -201,6 +201,38 @@ describe("ModelsGenerationTab", () => {
     });
   });
 
+  it("숫자 필드를 비우면 0 으로 무음 강제하지 않고 NaN 을 전달한다(UX-23)", () => {
+    const onChange = vi.fn();
+    render(
+      <ModelsGenerationTab
+        value={VALUE}
+        errors={{}}
+        orgAllowedModels={[]}
+        onChange={onChange}
+      />,
+    );
+
+    fireEvent.change(screen.getByTestId("admin-settings-maxTokens"), {
+      target: { value: "" },
+    });
+    expect(onChange).toHaveBeenCalledWith({ maxTokens: NaN });
+
+    fireEvent.change(screen.getByTestId("admin-settings-temperature"), {
+      target: { value: "" },
+    });
+    expect(onChange).toHaveBeenCalledWith({ temperature: NaN });
+
+    fireEvent.change(screen.getByTestId("admin-settings-topP"), {
+      target: { value: "" },
+    });
+    expect(onChange).toHaveBeenCalledWith({ topP: NaN });
+
+    fireEvent.change(screen.getByTestId("admin-settings-toolMaxTokens"), {
+      target: { value: "" },
+    });
+    expect(onChange).toHaveBeenCalledWith({ toolMaxTokens: NaN });
+  });
+
   it("errors 에 있는 필드는 에러 메시지를 보여준다", () => {
     render(
       <ModelsGenerationTab

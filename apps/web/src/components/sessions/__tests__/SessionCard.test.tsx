@@ -202,6 +202,37 @@ describe("SessionCard 태그", () => {
   });
 });
 
+describe("SessionCard 태그 폼 검증 (P21-T6-17, UX-24)", () => {
+  afterEach(() => cleanup());
+
+  it("이미 있는 태그를 다시 추가하면 인라인 힌트를 보여주고 onAddTag 를 호출하지 않는다", () => {
+    const onAddTag = vi.fn();
+    render(
+      <SessionCard
+        session={{ ...session, tags: ["업무"] }}
+        pinned={false}
+        folders={[]}
+        onOpen={vi.fn()}
+        onRename={vi.fn()}
+        onDelete={vi.fn()}
+        onTogglePin={vi.fn()}
+        onAssignFolder={vi.fn()}
+        onAddTag={onAddTag}
+        onRemoveTag={vi.fn()}
+        onArchive={vi.fn()}
+      />,
+    );
+
+    fireEvent.click(screen.getByLabelText("태그 지정: 테스트 세션"));
+    const input = screen.getByPlaceholderText("새 태그");
+    fireEvent.change(input, { target: { value: "업무" } });
+    fireEvent.submit(input.closest("form") as HTMLFormElement);
+
+    expect(screen.getByText("이미 있는 태그입니다.")).toBeInTheDocument();
+    expect(onAddTag).not.toHaveBeenCalled();
+  });
+});
+
 describe("SessionCard 드래그앤드롭", () => {
   afterEach(() => cleanup());
 
