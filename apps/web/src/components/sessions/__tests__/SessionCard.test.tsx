@@ -315,6 +315,7 @@ describe("SessionCard 우클릭 컨텍스트 메뉴", () => {
             name: "업무",
             createdAt: "2026-07-14T00:00:00Z",
             systemPrompt: null,
+            parentFolderId: null,
           },
         ]}
         onOpen={vi.fn()}

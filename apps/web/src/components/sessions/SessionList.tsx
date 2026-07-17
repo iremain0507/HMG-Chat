@@ -80,6 +80,8 @@ export function partitionByFolder(
   byFolder: Map<string, SessionListItemDto[]>;
   unfoldered: SessionListItemDto[];
 } {
+  // folders 는 루트/중첩 여부와 무관하게 전체 폴더 목록이므로 folderIds 는 이미 모든 깊이의
+  // 폴더 id 를 포함한다 — 세션이 중첩 폴더에 할당돼도 그대로 byFolder 에 잡힌다(P20-T1-06).
   const folderIds = new Set(folders.map((f) => f.id));
   const byFolder = new Map<string, SessionListItemDto[]>();
   const unfoldered: SessionListItemDto[] = [];
@@ -95,22 +97,59 @@ export function partitionByFolder(
   return { byFolder, unfoldered };
 }
 
+// P20-T1-06 — 중첩 폴더(parent_folder_id 계층) 트리 구성. parentFolderId 가 null/undefined 이거나
+// 부모를 목록에서 찾을 수 없으면 루트로 취급한다(고아 방지).
+export interface FolderNode {
+  folder: SessionFolder;
+  children: FolderNode[];
+}
+
+export function buildFolderTree(folders: SessionFolder[]): FolderNode[] {
+  const byId = new Map<string, FolderNode>();
+  for (const folder of folders) {
+    byId.set(folder.id, { folder, children: [] });
+  }
+  const roots: FolderNode[] = [];
+  for (const folder of folders) {
+    const node = byId.get(folder.id);
+    if (!node) continue;
+    const parentNode = folder.parentFolderId
+      ? byId.get(folder.parentFolderId)
+      : undefined;
+    if (parentNode) {
+      parentNode.children.push(node);
+    } else {
+      roots.push(node);
+    }
+  }
+  return roots;
+}
+
+const FOLDER_DND_TYPE = "application/x-wchat-folder-id";
+const SESSION_DND_TYPE = "application/x-wchat-session-id";
+const FOLDER_INDENT_PX = 12;
+const FOLDER_BASE_PADDING_PX = 8;
+
 function FolderGroupHeader({
   folder,
+  depth,
   collapsed,
   onToggleCollapse,
   onRename,
   onEditSystemPrompt,
   onDelete,
   onDropSession,
+  onDropFolder,
 }: {
   folder: SessionFolder;
+  depth: number;
   collapsed: boolean;
   onToggleCollapse: () => void;
   onRename: (name: string) => void;
   onEditSystemPrompt: (systemPrompt: string | null) => void;
   onDelete: () => void;
   onDropSession: (sessionId: string) => void;
+  onDropFolder: (folderId: string) => void;
 }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(folder.name);
@@ -135,9 +174,13 @@ function FolderGroupHeader({
     setEditingPrompt(false);
   }
 
+  const indentStyle = {
+    paddingLeft: FOLDER_BASE_PADDING_PX + depth * FOLDER_INDENT_PX,
+  };
+
   if (editing) {
     return (
-      <form onSubmit={submitEdit} className="px-2 py-1">
+      <form onSubmit={submitEdit} className="py-1 pr-2" style={indentStyle}>
         <input
           autoFocus
           value={draft}
@@ -154,7 +197,7 @@ function FolderGroupHeader({
 
   if (editingPrompt) {
     return (
-      <div className="px-2 py-1">
+      <div className="py-1 pr-2" style={indentStyle}>
         <textarea
           autoFocus
           aria-label={`폴더 시스템 프롬프트: ${folder.name}`}
@@ -175,6 +218,11 @@ function FolderGroupHeader({
   return (
     <div
       data-testid={`folder-header-${folder.id}`}
+      draggable
+      onDragStart={(e) => {
+        e.dataTransfer.setData(FOLDER_DND_TYPE, folder.id);
+        e.dataTransfer.effectAllowed = "move";
+      }}
       onDragOver={(e) => {
         e.preventDefault();
         setDragOver(true);
@@ -183,12 +231,24 @@ function FolderGroupHeader({
       onDrop={(e) => {
         e.preventDefault();
         setDragOver(false);
-        const sessionId = e.dataTransfer.getData(
-          "application/x-wchat-session-id",
-        );
+        // 폴더 자체를 드래그해 다른 폴더 아래로 이동(P20-T1-06). dataTransfer.types 로 실제
+        // 어떤 타입이 세팅됐는지 확인 후 분기 — 테스트 mock 의 getData 는 인자와 무관하게 값을
+        // 반환하는 경우가 있어 types 존재 여부로 우선순위를 가른다.
+        const types = e.dataTransfer.types
+          ? Array.from(e.dataTransfer.types)
+          : [];
+        if (types.includes(FOLDER_DND_TYPE)) {
+          const draggedFolderId = e.dataTransfer.getData(FOLDER_DND_TYPE);
+          if (draggedFolderId && draggedFolderId !== folder.id) {
+            onDropFolder(draggedFolderId);
+          }
+          return;
+        }
+        const sessionId = e.dataTransfer.getData(SESSION_DND_TYPE);
         if (sessionId) onDropSession(sessionId);
       }}
-      className={`group flex items-center gap-1 rounded-md px-2 py-1 ${
+      style={{ ...indentStyle, cursor: "grab" }}
+      className={`group flex items-center gap-1 rounded-md py-1 pr-2 ${
         dragOver ? "bg-primary-50" : ""
       }`}
     >
@@ -264,6 +324,7 @@ export function SessionList({ now }: { now?: Date } = {}) {
     renameFolder,
     updateFolderSystemPrompt,
     deleteFolder,
+    moveFolder,
     assignFolder,
     addTag,
     removeTag,
@@ -387,6 +448,8 @@ export function SessionList({ now }: { now?: Date } = {}) {
     [filtered, folders],
   );
 
+  const folderTree = useMemo(() => buildFolderTree(folders), [folders]);
+
   const contentOnlyMatches = useMemo(() => {
     const shown = new Set(filtered.map((s) => s.id));
     return contentMatches.filter((r) => !shown.has(r.id));
@@ -413,6 +476,44 @@ export function SessionList({ now }: { now?: Date } = {}) {
         onRemoveTag={(id, tag) => void removeTag(id, tag)}
         onArchive={(id) => void archiveSession(id)}
       />
+    );
+  }
+
+  function folderSubtreeHasItems(node: FolderNode): boolean {
+    if ((byFolder.get(node.folder.id) ?? []).length > 0) return true;
+    return node.children.some(folderSubtreeHasItems);
+  }
+
+  function renderFolderNode(node: FolderNode, depth: number): React.ReactNode {
+    const { folder } = node;
+    const items = byFolder.get(folder.id) ?? [];
+    if (query.trim() && !folderSubtreeHasItems(node)) return null;
+    const collapsed = collapsedFolders.has(folder.id);
+    return (
+      <div key={folder.id} className={depth === 0 ? "mb-3" : "mb-1"}>
+        <FolderGroupHeader
+          folder={folder}
+          depth={depth}
+          collapsed={collapsed}
+          onToggleCollapse={() => toggleFolderCollapse(folder.id)}
+          onRename={(name) => void renameFolder(folder.id, name)}
+          onEditSystemPrompt={(systemPrompt) =>
+            void updateFolderSystemPrompt(folder.id, systemPrompt)
+          }
+          onDelete={() => void deleteFolder(folder.id)}
+          onDropSession={(sessionId) => void assignFolder(sessionId, folder.id)}
+          onDropFolder={(draggedFolderId) => {
+            if (draggedFolderId === folder.id) return;
+            void moveFolder(draggedFolderId, folder.id);
+          }}
+        />
+        {!collapsed && (
+          <>
+            {items.map(renderSessionCard)}
+            {node.children.map((child) => renderFolderNode(child, depth + 1))}
+          </>
+        )}
+      </div>
     );
   }
 
@@ -544,29 +645,7 @@ export function SessionList({ now }: { now?: Date } = {}) {
           <p className="px-2 py-1 text-sm text-fg-muted">불러오는 중…</p>
         ) : (
           <>
-            {folders.map((folder) => {
-              const items = byFolder.get(folder.id) ?? [];
-              if (query.trim() && items.length === 0) return null;
-              const collapsed = collapsedFolders.has(folder.id);
-              return (
-                <div key={folder.id} className="mb-3">
-                  <FolderGroupHeader
-                    folder={folder}
-                    collapsed={collapsed}
-                    onToggleCollapse={() => toggleFolderCollapse(folder.id)}
-                    onRename={(name) => void renameFolder(folder.id, name)}
-                    onEditSystemPrompt={(systemPrompt) =>
-                      void updateFolderSystemPrompt(folder.id, systemPrompt)
-                    }
-                    onDelete={() => void deleteFolder(folder.id)}
-                    onDropSession={(sessionId) =>
-                      void assignFolder(sessionId, folder.id)
-                    }
-                  />
-                  {!collapsed && items.map(renderSessionCard)}
-                </div>
-              );
-            })}
+            {folderTree.map((node) => renderFolderNode(node, 0))}
             {filtered.length === 0 ? (
               <p className="px-2 py-1 text-sm text-fg-muted">
                 세션이 없습니다.

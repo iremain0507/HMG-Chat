@@ -10,6 +10,7 @@ import {
   createFolder as createFolderApi,
   deleteFolder as deleteFolderApi,
   listFolders,
+  moveFolder as moveFolderApi,
   renameFolder as renameFolderApi,
   updateFolderSystemPrompt as updateFolderSystemPromptApi,
   type SessionFolder,
@@ -48,6 +49,7 @@ interface UseSessionsResult {
     systemPrompt: string | null,
   ) => Promise<void>;
   deleteFolder: (id: string) => Promise<void>;
+  moveFolder: (id: string, parentFolderId: string | null) => Promise<void>;
   assignFolder: (id: string, folderId: string | null) => Promise<void>;
   addTag: (id: string, tag: string) => Promise<void>;
   removeTag: (id: string, tag: string) => Promise<void>;
@@ -267,6 +269,26 @@ export function useSessions(): UseSessionsResult {
     );
   }, []);
 
+  const moveFolder = useCallback(
+    async (id: string, parentFolderId: string | null) => {
+      const previous = folders.find((f) => f.id === id)?.parentFolderId ?? null;
+      setFolders((prev) =>
+        prev.map((f) => (f.id === id ? { ...f, parentFolderId } : f)),
+      );
+      const updated = await moveFolderApi(id, parentFolderId);
+      if (!updated) {
+        setFolders((prev) =>
+          prev.map((f) =>
+            f.id === id ? { ...f, parentFolderId: previous } : f,
+          ),
+        );
+        return;
+      }
+      setFolders((prev) => prev.map((f) => (f.id === id ? updated : f)));
+    },
+    [folders],
+  );
+
   const assignFolder = useCallback(
     async (id: string, folderId: string | null) => {
       let previous: string | null = null;
@@ -338,6 +360,7 @@ export function useSessions(): UseSessionsResult {
     renameFolder,
     updateFolderSystemPrompt,
     deleteFolder,
+    moveFolder,
     assignFolder,
     addTag,
     removeTag,

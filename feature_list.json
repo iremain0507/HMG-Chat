@@ -2102,8 +2102,8 @@
     "acceptance": "RED: data-access 테스트가 부모 하위 자식 생성 후 list 가 parentFolderId 를 반환하는지 + 자기참조/순환 거부를 단언(현재 컬럼 부재로 실패). migration-check 스킬: nullable-first/롤백/RLS 확인. L1 last-mile: 중첩 트리가 실제 들여쓰기·접힘으로 렌더 + 자식 할당 서버 영속. needsBrowser=true → 실앱 Playwright E2E(dev-login→하위 폴더 생성→들여쓰기/접기 단언) 또는 watchdog UAT.",
     "phase": "P20",
     "team": "T1",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P20-T6-08",

@@ -513,6 +513,324 @@ describe("SessionList", () => {
     });
   });
 
+  it("중첩 폴더는 부모 폴더 아래 들여쓰기되어 렌더된다(P20-T1-06)", async () => {
+    const fetchMock = vi.fn(
+      async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        if (
+          url === "/api/v1/folders" &&
+          (!init?.method || init.method === "GET")
+        ) {
+          return {
+            ok: true,
+            status: 200,
+            json: async () => ({
+              data: [
+                {
+                  id: "folder-parent",
+                  name: "부모",
+                  parentFolderId: null,
+                  createdAt: "2026-07-14T00:00:00Z",
+                },
+                {
+                  id: "folder-child",
+                  name: "자식",
+                  parentFolderId: "folder-parent",
+                  createdAt: "2026-07-14T00:00:00Z",
+                },
+              ],
+            }),
+          };
+        }
+        return { ok: true, status: 200, json: async () => ({ data: [] }) };
+      },
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<SessionList now={new Date("2026-07-14T12:00:00Z")} />);
+
+    await waitFor(() => {
+      expect(screen.getByText("부모")).toBeInTheDocument();
+    });
+    expect(screen.getByText("자식")).toBeInTheDocument();
+
+    const parentHeader = screen.getByTestId("folder-header-folder-parent");
+    const childHeader = screen.getByTestId("folder-header-folder-child");
+    const parentPaddingLeft = parseFloat(
+      (parentHeader as HTMLElement).style.paddingLeft || "0",
+    );
+    const childPaddingLeft = parseFloat(
+      (childHeader as HTMLElement).style.paddingLeft || "0",
+    );
+    expect(childPaddingLeft).toBeGreaterThan(parentPaddingLeft);
+  });
+
+  it("부모 폴더를 접으면 자식 폴더도 함께 숨겨진다(P20-T1-06)", async () => {
+    const fetchMock = vi.fn(
+      async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        if (
+          url === "/api/v1/folders" &&
+          (!init?.method || init.method === "GET")
+        ) {
+          return {
+            ok: true,
+            status: 200,
+            json: async () => ({
+              data: [
+                {
+                  id: "folder-parent",
+                  name: "부모",
+                  parentFolderId: null,
+                  createdAt: "2026-07-14T00:00:00Z",
+                },
+                {
+                  id: "folder-child",
+                  name: "자식",
+                  parentFolderId: "folder-parent",
+                  createdAt: "2026-07-14T00:00:00Z",
+                },
+              ],
+            }),
+          };
+        }
+        return { ok: true, status: 200, json: async () => ({ data: [] }) };
+      },
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<SessionList now={new Date("2026-07-14T12:00:00Z")} />);
+
+    await waitFor(() => {
+      expect(screen.getByText("자식")).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByLabelText("접기: 부모"));
+
+    await waitFor(() => {
+      expect(screen.queryByText("자식")).not.toBeInTheDocument();
+    });
+  });
+
+  it("중첩(비-루트) 폴더에 할당된 세션은 해당 폴더 아래 렌더되고 미분류 목록에 나타나지 않는다(P20-T1-06)", async () => {
+    const fetchMock = vi.fn(
+      async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        if (
+          url === "/api/v1/folders" &&
+          (!init?.method || init.method === "GET")
+        ) {
+          return {
+            ok: true,
+            status: 200,
+            json: async () => ({
+              data: [
+                {
+                  id: "folder-parent",
+                  name: "부모",
+                  parentFolderId: null,
+                  createdAt: "2026-07-14T00:00:00Z",
+                },
+                {
+                  id: "folder-child",
+                  name: "자식",
+                  parentFolderId: "folder-parent",
+                  createdAt: "2026-07-14T00:00:00Z",
+                },
+              ],
+            }),
+          };
+        }
+        if (
+          url === "/api/v1/sessions" &&
+          (!init?.method || init.method === "GET")
+        ) {
+          return {
+            ok: true,
+            status: 200,
+            json: async () => ({
+              data: [
+                {
+                  id: "sess-nested",
+                  title: "중첩 폴더 세션",
+                  lastMessageAt: "2026-07-14T01:00:00Z",
+                  projectId: null,
+                  archived: false,
+                  pinned: false,
+                  folderId: "folder-child",
+                },
+              ],
+            }),
+          };
+        }
+        return { ok: true, status: 200, json: async () => ({ data: [] }) };
+      },
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<SessionList now={new Date("2026-07-14T12:00:00Z")} />);
+
+    await waitFor(() => {
+      expect(screen.getByText("중첩 폴더 세션")).toBeInTheDocument();
+    });
+    expect(screen.queryByText("세션이 없습니다.")).not.toBeInTheDocument();
+    expect(screen.queryByText("오늘")).not.toBeInTheDocument();
+  });
+
+  it("폴더 헤더를 다른 폴더 헤더로 드래그하면 moveFolder(PATCH parentFolderId) 를 호출한다(P20-T1-06)", async () => {
+    const fetchMock = vi.fn(
+      async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        if (
+          url === "/api/v1/folders" &&
+          (!init?.method || init.method === "GET")
+        ) {
+          return {
+            ok: true,
+            status: 200,
+            json: async () => ({
+              data: [
+                {
+                  id: "folder-1",
+                  name: "폴더1",
+                  parentFolderId: null,
+                  createdAt: "2026-07-14T00:00:00Z",
+                },
+                {
+                  id: "folder-2",
+                  name: "폴더2",
+                  parentFolderId: null,
+                  createdAt: "2026-07-14T00:00:00Z",
+                },
+              ],
+            }),
+          };
+        }
+        if (url === "/api/v1/folders/folder-2" && init?.method === "PATCH") {
+          return {
+            ok: true,
+            status: 200,
+            json: async () => ({
+              data: {
+                id: "folder-2",
+                name: "폴더2",
+                parentFolderId: "folder-1",
+                createdAt: "2026-07-14T00:00:00Z",
+              },
+            }),
+          };
+        }
+        return { ok: true, status: 200, json: async () => ({ data: [] }) };
+      },
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<SessionList now={new Date("2026-07-14T12:00:00Z")} />);
+
+    await waitFor(() => {
+      expect(screen.getByText("폴더1")).toBeInTheDocument();
+    });
+
+    const targetHeader = screen.getByTestId("folder-header-folder-1");
+    fireEvent.drop(targetHeader, {
+      dataTransfer: {
+        types: ["application/x-wchat-folder-id"],
+        getData: (type: string) =>
+          type === "application/x-wchat-folder-id" ? "folder-2" : "",
+      },
+    });
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/v1/folders/folder-2",
+        expect.objectContaining({
+          method: "PATCH",
+          body: JSON.stringify({ parentFolderId: "folder-1" }),
+        }),
+      );
+    });
+  });
+
+  it("세션 카드를 폴더 헤더로 드래그앤드롭하면 여전히 세션 할당을 호출한다(폴더 드래그 타입 미검출 시 회귀 방지)", async () => {
+    const fetchMock = vi.fn(
+      async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        if (
+          url === "/api/v1/folders" &&
+          (!init?.method || init.method === "GET")
+        ) {
+          return {
+            ok: true,
+            status: 200,
+            json: async () => ({
+              data: [
+                {
+                  id: "folder-1",
+                  name: "업무",
+                  createdAt: "2026-07-14T00:00:00Z",
+                },
+              ],
+            }),
+          };
+        }
+        if (url === "/api/v1/sessions/sess-a" && init?.method === "PATCH") {
+          return {
+            ok: true,
+            status: 200,
+            json: async () => ({
+              data: { id: "sess-a", folderId: "folder-1" },
+            }),
+          };
+        }
+        if (
+          url === "/api/v1/sessions" &&
+          (!init?.method || init.method === "GET")
+        ) {
+          return {
+            ok: true,
+            status: 200,
+            json: async () => ({
+              data: [
+                {
+                  id: "sess-a",
+                  title: "세션 A",
+                  lastMessageAt: "2026-07-14T01:00:00Z",
+                  projectId: null,
+                  archived: false,
+                  pinned: false,
+                  folderId: null,
+                },
+              ],
+            }),
+          };
+        }
+        return { ok: true, status: 200, json: async () => ({ data: [] }) };
+      },
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<SessionList now={new Date("2026-07-14T12:00:00Z")} />);
+
+    await waitFor(() => {
+      expect(screen.getByText("세션 A")).toBeInTheDocument();
+    });
+
+    const folderHeader = screen.getByTestId("folder-header-folder-1");
+    fireEvent.drop(folderHeader, {
+      dataTransfer: { getData: () => "sess-a" },
+    });
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/v1/sessions/sess-a",
+        expect.objectContaining({
+          method: "PATCH",
+          body: JSON.stringify({ folderId: "folder-1" }),
+        }),
+      );
+    });
+  });
+
   it("＋ 폴더 버튼으로 새 폴더를 생성한다", async () => {
     const fetchMock = vi.fn(
       async (input: RequestInfo | URL, init?: RequestInit) => {

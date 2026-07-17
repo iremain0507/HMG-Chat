@@ -585,6 +585,122 @@ describe("useSessions", () => {
     expect(result.current.sessions[0]?.folderId).toBeNull();
   });
 
+  it("moveFolder 가 PATCH /api/v1/folders/:id 를 parentFolderId 와 함께 호출하고 반영한다(P20-T1-06)", async () => {
+    const fetchMock = vi.fn(
+      async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        if (
+          url === "/api/v1/folders" &&
+          (!init?.method || init.method === "GET")
+        ) {
+          return {
+            ok: true,
+            status: 200,
+            json: async () => ({
+              data: [
+                {
+                  id: "folder-1",
+                  name: "부모",
+                  parentFolderId: null,
+                  createdAt: "2026-07-14T00:00:00Z",
+                },
+                {
+                  id: "folder-2",
+                  name: "자식",
+                  parentFolderId: null,
+                  createdAt: "2026-07-14T00:00:00Z",
+                },
+              ],
+            }),
+          };
+        }
+        if (url === "/api/v1/folders/folder-2" && init?.method === "PATCH") {
+          return {
+            ok: true,
+            status: 200,
+            json: async () => ({
+              data: {
+                id: "folder-2",
+                name: "자식",
+                parentFolderId: "folder-1",
+                createdAt: "2026-07-14T00:00:00Z",
+              },
+            }),
+          };
+        }
+        return { ok: true, status: 200, json: async () => ({ data: [] }) };
+      },
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { result } = renderHook(() => useSessions());
+    await waitFor(() => expect(result.current.folders).toHaveLength(2));
+
+    await act(async () => {
+      await result.current.moveFolder("folder-2", "folder-1");
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/v1/folders/folder-2",
+      expect.objectContaining({
+        method: "PATCH",
+        body: JSON.stringify({ parentFolderId: "folder-1" }),
+      }),
+    );
+    expect(
+      result.current.folders.find((f) => f.id === "folder-2")?.parentFolderId,
+    ).toBe("folder-1");
+  });
+
+  it("moveFolder 요청 실패 시 낙관적 업데이트를 롤백한다(P20-T1-06)", async () => {
+    const fetchMock = vi.fn(
+      async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        if (
+          url === "/api/v1/folders" &&
+          (!init?.method || init.method === "GET")
+        ) {
+          return {
+            ok: true,
+            status: 200,
+            json: async () => ({
+              data: [
+                {
+                  id: "folder-1",
+                  name: "부모",
+                  parentFolderId: null,
+                  createdAt: "2026-07-14T00:00:00Z",
+                },
+                {
+                  id: "folder-2",
+                  name: "자식",
+                  parentFolderId: null,
+                  createdAt: "2026-07-14T00:00:00Z",
+                },
+              ],
+            }),
+          };
+        }
+        if (url === "/api/v1/folders/folder-2" && init?.method === "PATCH") {
+          return { ok: false, status: 400, json: async () => ({}) };
+        }
+        return { ok: true, status: 200, json: async () => ({ data: [] }) };
+      },
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { result } = renderHook(() => useSessions());
+    await waitFor(() => expect(result.current.folders).toHaveLength(2));
+
+    await act(async () => {
+      await result.current.moveFolder("folder-2", "folder-1");
+    });
+
+    expect(
+      result.current.folders.find((f) => f.id === "folder-2")?.parentFolderId,
+    ).toBeNull();
+  });
+
   it("loadMore 가 meta.nextCursor 를 cursor= 쿼리로 붙여 다음 페이지를 append 한다", async () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);

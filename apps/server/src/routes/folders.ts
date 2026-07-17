@@ -6,6 +6,7 @@ import { Hono } from "hono";
 import type { AuthedVariables } from "../middleware/auth-middleware.js";
 import {
   createPgSessionFolderDataAccess,
+  CircularFolderReferenceError,
   type SessionFolder,
   type SessionFolderDataAccess,
 } from "../db/session-folder-data-access.js";
@@ -21,6 +22,7 @@ function toWire(folder: SessionFolder) {
     id: folder.id,
     name: folder.name,
     systemPrompt: folder.systemPrompt,
+    parentFolderId: folder.parentFolderId,
     createdAt: folder.createdAt.toISOString(),
   };
 }
@@ -38,17 +40,42 @@ export function createFolderRoutes(
   app.post("/", async (c) => {
     const auth = c.get("auth");
     const body = await c.req
-      .json<{ name?: string; systemPrompt?: string | null }>()
-      .catch(() => ({}) as { name?: string; systemPrompt?: string | null });
+      .json<{
+        name?: string;
+        systemPrompt?: string | null;
+        parentFolderId?: string | null;
+      }>()
+      .catch(
+        () =>
+          ({}) as {
+            name?: string;
+            systemPrompt?: string | null;
+            parentFolderId?: string | null;
+          },
+      );
     const name = body.name?.trim();
     if (!name) {
       return c.json(errorJson("INVALID_INPUT", "name 이 필요합니다."), 400);
+    }
+    if (body.parentFolderId) {
+      const parent = await folders.byIdForOwner(
+        auth.org,
+        auth.sub,
+        body.parentFolderId,
+      );
+      if (!parent) {
+        return c.json(
+          errorJson("INVALID_INPUT", "parentFolderId 를 찾을 수 없습니다."),
+          400,
+        );
+      }
     }
     const folder = await folders.create(
       auth.org,
       auth.sub,
       name,
       body.systemPrompt,
+      body.parentFolderId,
     );
     return c.json(
       { data: toWire(folder), meta: { requestId: randomUUID() } },
@@ -69,20 +96,57 @@ export function createFolderRoutes(
     const auth = c.get("auth");
     const id = c.req.param("id");
     const body = await c.req
-      .json<{ name?: string; systemPrompt?: string | null }>()
-      .catch(() => ({}) as { name?: string; systemPrompt?: string | null });
+      .json<{
+        name?: string;
+        systemPrompt?: string | null;
+        parentFolderId?: string | null;
+      }>()
+      .catch(
+        () =>
+          ({}) as {
+            name?: string;
+            systemPrompt?: string | null;
+            parentFolderId?: string | null;
+          },
+      );
     const name = body.name?.trim();
     const hasSystemPrompt = body.systemPrompt !== undefined;
-    if (!name && !hasSystemPrompt) {
+    const hasParentFolderId = body.parentFolderId !== undefined;
+    if (!name && !hasSystemPrompt && !hasParentFolderId) {
       return c.json(
-        errorJson("INVALID_INPUT", "name 또는 systemPrompt 가 필요합니다."),
+        errorJson(
+          "INVALID_INPUT",
+          "name, systemPrompt 또는 parentFolderId 가 필요합니다.",
+        ),
         400,
       );
     }
-    const updated = await folders.updateForOwner(auth.org, auth.sub, id, {
-      ...(name ? { name } : {}),
-      ...(hasSystemPrompt ? { systemPrompt: body.systemPrompt } : {}),
-    });
+    if (hasParentFolderId && body.parentFolderId) {
+      const parent = await folders.byIdForOwner(
+        auth.org,
+        auth.sub,
+        body.parentFolderId,
+      );
+      if (!parent) {
+        return c.json(
+          errorJson("INVALID_INPUT", "parentFolderId 를 찾을 수 없습니다."),
+          400,
+        );
+      }
+    }
+    let updated: SessionFolder | null;
+    try {
+      updated = await folders.updateForOwner(auth.org, auth.sub, id, {
+        ...(name ? { name } : {}),
+        ...(hasSystemPrompt ? { systemPrompt: body.systemPrompt } : {}),
+        ...(hasParentFolderId ? { parentFolderId: body.parentFolderId } : {}),
+      });
+    } catch (err) {
+      if (err instanceof CircularFolderReferenceError) {
+        return c.json(errorJson("INVALID_INPUT", err.message), 400);
+      }
+      throw err;
+    }
     if (!updated) {
       return c.json(errorJson("NOT_FOUND", "폴더를 찾을 수 없습니다."), 404);
     }
