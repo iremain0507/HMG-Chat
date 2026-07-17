@@ -2372,8 +2372,8 @@
     "acceptance": "RED: SessionList.test 가 (a)로드 실패 시 에러+재시도 렌더('세션이 없습니다' 아님) (b)검색 무결과 시 '검색 결과 없음' 을 단언 — 현재 실패(UX-19). RTL 목킹.",
     "phase": "P21",
     "team": "T6",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P21-T6-15",

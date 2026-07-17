@@ -314,6 +314,8 @@ export function SessionList({ now }: { now?: Date } = {}) {
   const {
     sessions,
     loading,
+    error,
+    reload,
     hasMore,
     loadMore,
     createSession,
@@ -719,12 +721,23 @@ export function SessionList({ now }: { now?: Date } = {}) {
           )
         ) : loading ? (
           <p className="px-2 py-1 text-sm text-fg-muted">불러오는 중…</p>
+        ) : error ? (
+          <div className="px-2 py-2 text-sm">
+            <p className="text-accent">{error}</p>
+            <button
+              type="button"
+              onClick={() => void reload()}
+              className="mt-1.5 rounded-md border border-border px-2 py-1 text-xs text-fg hover:bg-bg"
+            >
+              다시 시도
+            </button>
+          </div>
         ) : (
           <>
             {folderTree.map((node) => renderFolderNode(node, 0))}
             {filtered.length === 0 ? (
               <p className="px-2 py-1 text-sm text-fg-muted">
-                세션이 없습니다.
+                {query.trim() ? "검색 결과 없음" : "세션이 없습니다."}
               </p>
             ) : (
               groups.map((group) => (

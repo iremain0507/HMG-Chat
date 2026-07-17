@@ -1239,6 +1239,66 @@ describe("SessionList", () => {
     ).toBeInTheDocument();
   });
 
+  it("세션 목록 로드 실패 시 '세션이 없습니다' 대신 에러+재시도 UI 를 렌더한다(UX-19)", async () => {
+    const fetchMock = vi.fn(async () => ({
+      ok: false,
+      status: 500,
+      json: async () => ({ error: "internal" }),
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<SessionList now={new Date("2026-07-14T12:00:00Z")} />);
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("세션 목록을 불러오지 못했습니다."),
+      ).toBeInTheDocument();
+    });
+    expect(screen.queryByText("세션이 없습니다.")).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "다시 시도" }),
+    ).toBeInTheDocument();
+  });
+
+  it("검색 결과가 없으면 '세션이 없습니다' 대신 '검색 결과 없음' 을 렌더한다(UX-19)", async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.startsWith("/api/v1/sessions/search")) {
+        return { ok: true, status: 200, json: async () => ({ data: [] }) };
+      }
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          data: [
+            {
+              id: "sess-a",
+              title: "예산 회의록",
+              lastMessageAt: "2026-07-12T01:00:00Z",
+              projectId: null,
+              archived: false,
+            },
+          ],
+        }),
+      };
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<SessionList now={new Date("2026-07-14T12:00:00Z")} />);
+    await waitFor(() => {
+      expect(screen.getByText("예산 회의록")).toBeInTheDocument();
+    });
+
+    fireEvent.change(screen.getByTestId("session-search-input"), {
+      target: { value: "없는검색어" },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("검색 결과 없음")).toBeInTheDocument();
+    });
+    expect(screen.queryByText("세션이 없습니다.")).not.toBeInTheDocument();
+  });
+
   it("목록 하단 sentinel 이 뷰포트에 들어오면 다음 페이지를 로드해 세션을 append 한다", async () => {
     const callbackRef: { current: IntersectionObserverCallback | null } = {
       current: null,
