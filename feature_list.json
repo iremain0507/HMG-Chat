@@ -1994,8 +1994,8 @@
     "acceptance": "RED: session-data-access 테스트가 '태그로만 매칭되는 세션(제목/본문 불일치)'을 검색 결과에 포함하는지 단언(현재 태그 미조인으로 실패) + 웹 테스트 Cmd/K 가 팔레트를 여는지. L1 last-mile: 실앱에서 Cmd/K→팔레트 오픈, 태그명 입력→태그 매칭 세션이 결과에 실제 표시(서버 응답이 태그 히트 포함). needsBrowser=true → 실앱 Playwright E2E(dev-login→Cmd/K→태그명 타이핑→결과 클릭 이동) 또는 watchdog UAT.",
     "phase": "P20",
     "team": "T6",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P20-T1-03",

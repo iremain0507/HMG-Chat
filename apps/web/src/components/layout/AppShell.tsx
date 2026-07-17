@@ -12,6 +12,7 @@ import { ToastContainer } from "./ToastContainer";
 import { ShortcutSheet } from "./ShortcutSheet";
 import { Banner } from "./Banner";
 import { useAppConfig } from "../../hooks/useAppConfig";
+import { CommandPalette } from "../sessions/CommandPalette";
 
 const DISMISSED_BANNERS_KEY = "wchat:dismissedBanners";
 
@@ -44,6 +45,7 @@ export function AppShell({ sidebar, rightPanel, children }: AppShellProps) {
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [shortcutSheetOpen, setShortcutSheetOpen] = useState(false);
+  const [paletteOpen, setPaletteOpen] = useState(false);
   const [rightPanelOpen, setRightPanelOpen] = useState(true);
   const [rightPanelWidth, setRightPanelWidth] = useState(
     RIGHT_PANEL_DEFAULT_WIDTH,
@@ -73,6 +75,7 @@ export function AppShell({ sidebar, rightPanel, children }: AppShellProps) {
 
   const openCommandSearch = useCallback(() => {
     window.dispatchEvent(new CustomEvent(CMDK_EVENT));
+    setPaletteOpen(true);
   }, []);
 
   useEffect(() => {
@@ -274,6 +277,10 @@ export function AppShell({ sidebar, rightPanel, children }: AppShellProps) {
       <ShortcutSheet
         open={shortcutSheetOpen}
         onClose={() => setShortcutSheetOpen(false)}
+      />
+      <CommandPalette
+        open={paletteOpen}
+        onClose={() => setPaletteOpen(false)}
       />
     </div>
   );

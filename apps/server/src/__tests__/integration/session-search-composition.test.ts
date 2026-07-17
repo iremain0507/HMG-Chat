@@ -94,6 +94,17 @@ describe("routes/sessions.ts 검색(GET /search?q=, app.ts 실 조립) — P19-T
     );
   }
 
+  async function createTag(
+    sessionId: string,
+    orgId: string,
+    tag: string,
+  ): Promise<void> {
+    await pgPool.query(
+      "INSERT INTO session_tags (session_id, org_id, tag) VALUES ($1, $2, $3)",
+      [sessionId, orgId, tag],
+    );
+  }
+
   it("제목이 매칭되는 세션을 반환한다", async () => {
     const matching = await createSession(userA.id, "분기별 예산 계획");
     const other = await createSession(userA.id, "무관한 세션");
@@ -119,6 +130,19 @@ describe("routes/sessions.ts 검색(GET /search?q=, app.ts 실 조립) — P19-T
     expect(json.data.some((s) => s.id === sessionId)).toBe(true);
   });
 
+  it("태그로만 매칭되는 세션(제목/본문 불일치)을 검색 결과에 포함한다", async () => {
+    const sessionId = await createSession(userA.id, "제목도내용도무관함");
+    const uniqueTag = `tag-${randomUUID()}`;
+    await createTag(sessionId, orgA.id, uniqueTag);
+
+    const res = await app.request(`/api/v1/sessions/search?q=${uniqueTag}`, {
+      headers: { Cookie: cookieFor(userA, orgA) },
+    });
+    expect(res.status).toBe(200);
+    const json = (await res.json()) as { data: Array<{ id: string }> };
+    expect(json.data.some((s) => s.id === sessionId)).toBe(true);
+  });
+
   it("q 가 없으면 400 을 반환한다", async () => {
     const res = await app.request("/api/v1/sessions/search", {
       headers: { Cookie: cookieFor(userA, orgA) },
@@ -126,9 +150,11 @@ describe("routes/sessions.ts 검색(GET /search?q=, app.ts 실 조립) — P19-T
     expect(res.status).toBe(400);
   });
 
-  it("cross-org — B 는 A 의 세션 제목/내용을 검색 결과에서 볼 수 없다", async () => {
+  it("cross-org — B 는 A 의 세션 제목/내용/태그를 검색 결과에서 볼 수 없다", async () => {
     const sessionId = await createSession(userA.id, "A전용예산문서");
     await createMessage(sessionId, "A조직만의비밀키워드");
+    const orgATag = `a-only-tag-${randomUUID()}`;
+    await createTag(sessionId, orgA.id, orgATag);
 
     const titleRes = await app.request(
       "/api/v1/sessions/search?q=A전용예산문서",
@@ -147,5 +173,13 @@ describe("routes/sessions.ts 검색(GET /search?q=, app.ts 실 조립) — P19-T
       data: Array<{ id: string }>;
     };
     expect(contentJson.data.some((s) => s.id === sessionId)).toBe(false);
+
+    const tagRes = await app.request(`/api/v1/sessions/search?q=${orgATag}`, {
+      headers: { Cookie: cookieFor(userB, orgB) },
+    });
+    const tagJson = (await tagRes.json()) as {
+      data: Array<{ id: string }>;
+    };
+    expect(tagJson.data.some((s) => s.id === sessionId)).toBe(false);
   });
 });

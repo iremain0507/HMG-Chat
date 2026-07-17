@@ -171,6 +171,10 @@ export function createPgSessionDataAccess(): SessionsDataAccess {
                SELECT 1 FROM messages m
                WHERE m.session_id = s.id AND m.content::text ILIKE $2 ESCAPE '\\'
              )
+             OR EXISTS (
+               SELECT 1 FROM session_tags t2
+               WHERE t2.session_id = s.id AND t2.tag ILIKE $2 ESCAPE '\\'
+             )
            )
          ORDER BY COALESCE(s.last_message_at, s.created_at) DESC
          LIMIT $3`,
