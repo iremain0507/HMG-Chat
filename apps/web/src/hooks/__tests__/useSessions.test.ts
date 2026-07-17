@@ -522,4 +522,68 @@ describe("useSessions", () => {
 
     expect(result.current.sessions[0]?.folderId).toBeNull();
   });
+
+  it("loadMore 가 meta.nextCursor 를 cursor= 쿼리로 붙여 다음 페이지를 append 한다", async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === "/api/v1/sessions") {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            data: [
+              {
+                id: "sess-1",
+                title: "첫 페이지",
+                lastMessageAt: "2026-07-14T01:00:00Z",
+                projectId: null,
+                archived: false,
+              },
+            ],
+            meta: { requestId: "r1", nextCursor: "cursor-1" },
+          }),
+        };
+      }
+      if (url === "/api/v1/sessions?cursor=cursor-1") {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            data: [
+              {
+                id: "sess-2",
+                title: "두번째 페이지",
+                lastMessageAt: "2026-07-13T01:00:00Z",
+                projectId: null,
+                archived: false,
+              },
+            ],
+            meta: { requestId: "r2" },
+          }),
+        };
+      }
+      return { ok: true, status: 200, json: async () => ({ data: [] }) };
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { result } = renderHook(() => useSessions());
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    expect(result.current.hasMore).toBe(true);
+    expect(result.current.sessions).toHaveLength(1);
+
+    await act(async () => {
+      await result.current.loadMore();
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/v1/sessions?cursor=cursor-1",
+      expect.objectContaining({ credentials: "include" }),
+    );
+    expect(result.current.sessions.map((s) => s.id)).toEqual([
+      "sess-1",
+      "sess-2",
+    ]);
+    expect(result.current.hasMore).toBe(false);
+  });
 });

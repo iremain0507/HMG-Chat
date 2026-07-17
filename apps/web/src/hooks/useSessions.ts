@@ -32,6 +32,8 @@ interface UseSessionsResult {
   sessions: SessionListItemDto[];
   loading: boolean;
   error: string | null;
+  hasMore: boolean;
+  loadMore: () => Promise<void>;
   createSession: () => Promise<SessionListItemDto | null>;
   renameSession: (id: string, title: string) => Promise<void>;
   deleteSession: (id: string) => Promise<void>;
@@ -59,6 +61,8 @@ export function useSessions(): UseSessionsResult {
     SessionListItemDto[]
   >([]);
   const [archivedLoading, setArchivedLoading] = useState(false);
+  const [cursor, setCursor] = useState<string | null>(null);
+  const [hasMore, setHasMore] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -75,6 +79,7 @@ export function useSessions(): UseSessionsResult {
         data: Array<
           SessionListItemDto & { folderId?: string | null; tags?: string[] }
         >;
+        meta?: { nextCursor?: string };
       };
       setSessions(
         body.data.map((s) => ({
@@ -83,10 +88,37 @@ export function useSessions(): UseSessionsResult {
           tags: s.tags ?? [],
         })),
       );
+      setCursor(body.meta?.nextCursor ?? null);
+      setHasMore(Boolean(body.meta?.nextCursor));
     } finally {
       setLoading(false);
     }
   }, []);
+
+  const loadMore = useCallback(async () => {
+    if (!cursor) return;
+    const res = await apiFetch(
+      `/api/v1/sessions?cursor=${encodeURIComponent(cursor)}`,
+      { credentials: "include" },
+    );
+    if (!res.ok) return;
+    const body = (await res.json()) as {
+      data: Array<
+        SessionListItemDto & { folderId?: string | null; tags?: string[] }
+      >;
+      meta?: { nextCursor?: string };
+    };
+    setSessions((prev) => [
+      ...prev,
+      ...body.data.map((s) => ({
+        ...s,
+        folderId: s.folderId ?? null,
+        tags: s.tags ?? [],
+      })),
+    ]);
+    setCursor(body.meta?.nextCursor ?? null);
+    setHasMore(Boolean(body.meta?.nextCursor));
+  }, [cursor]);
 
   const loadFolders = useCallback(async () => {
     const list = await listFolders();
@@ -280,6 +312,8 @@ export function useSessions(): UseSessionsResult {
     sessions,
     loading,
     error,
+    hasMore,
+    loadMore,
     createSession,
     renameSession,
     deleteSession,

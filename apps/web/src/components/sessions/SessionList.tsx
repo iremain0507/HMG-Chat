@@ -181,6 +181,8 @@ export function SessionList({ now }: { now?: Date } = {}) {
   const {
     sessions,
     loading,
+    hasMore,
+    loadMore,
     createSession,
     renameSession,
     deleteSession,
@@ -197,6 +199,7 @@ export function SessionList({ now }: { now?: Date } = {}) {
     loadArchived,
     archiveSession,
   } = useSessions();
+  const sentinelRef = useRef<HTMLDivElement>(null);
   const [query, setQuery] = useState("");
   const searchRef = useRef<HTMLInputElement>(null);
   const [folderFormOpen, setFolderFormOpen] = useState(false);
@@ -255,6 +258,19 @@ export function SessionList({ now }: { now?: Date } = {}) {
       window.removeEventListener("keydown", onKeyDown);
     };
   }, [createSession, router]);
+
+  useEffect(() => {
+    if (archivedView || !hasMore) return;
+    const node = sentinelRef.current;
+    if (!node) return;
+    const observer = new IntersectionObserver((entries) => {
+      if (entries.some((entry) => entry.isIntersecting)) {
+        void loadMore();
+      }
+    });
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [archivedView, hasMore, loadMore, sessions.length]);
 
   useEffect(() => {
     const q = query.trim();
@@ -485,6 +501,14 @@ export function SessionList({ now }: { now?: Date } = {}) {
                   {group.sessions.map(renderSessionCard)}
                 </div>
               ))
+            )}
+            {hasMore && (
+              <div
+                ref={sentinelRef}
+                data-testid="session-list-sentinel"
+                aria-hidden="true"
+                className="h-1 w-full"
+              />
             )}
           </>
         )}

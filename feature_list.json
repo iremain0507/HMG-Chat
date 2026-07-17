@@ -1985,8 +1985,8 @@
     "acceptance": "RED: useSessions 훅 테스트가 loadMore 호출 시 두번째 페이지가 cursor= 쿼리로 append 되는지 단언(현재 loadMore 부재로 실패). L1 last-mile: sentinel 이 뷰포트 진입 시 실제 GET ?cursor= 발행+이전 세션이 DOM 에 추가되는지(스토어만 갱신하고 렌더 누락 아님). needsBrowser=true → 실앱 Playwright E2E(dev-login→세션 21개 이상 시드→목록 스크롤→오래된 세션 로드 단언) 또는 watchdog 브라우저 UAT 로 실사용 무동작 여부 확인.",
     "phase": "P20",
     "team": "T6",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P20-T6-02",

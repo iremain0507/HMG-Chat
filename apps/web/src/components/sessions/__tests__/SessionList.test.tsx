@@ -776,4 +776,87 @@ describe("SessionList", () => {
       screen.getByText("…3분기 예산은 전년 대비 12% 증가…"),
     ).toBeInTheDocument();
   });
+
+  it("목록 하단 sentinel 이 뷰포트에 들어오면 다음 페이지를 로드해 세션을 append 한다", async () => {
+    const callbackRef: { current: IntersectionObserverCallback | null } = {
+      current: null,
+    };
+    const observe = vi.fn();
+    const disconnect = vi.fn();
+    class FakeIntersectionObserver {
+      constructor(cb: IntersectionObserverCallback) {
+        callbackRef.current = cb;
+      }
+      observe = observe;
+      disconnect = disconnect;
+      unobserve = vi.fn();
+    }
+    vi.stubGlobal("IntersectionObserver", FakeIntersectionObserver);
+
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === "/api/v1/sessions") {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            data: [
+              {
+                id: "sess-page1",
+                title: "첫 페이지 세션",
+                lastMessageAt: "2026-07-14T01:00:00Z",
+                projectId: null,
+                archived: false,
+              },
+            ],
+            meta: { requestId: "r1", nextCursor: "cursor-1" },
+          }),
+        };
+      }
+      if (url === "/api/v1/sessions?cursor=cursor-1") {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            data: [
+              {
+                id: "sess-page2",
+                title: "두번째 페이지 세션",
+                lastMessageAt: "2026-07-09T01:00:00Z",
+                projectId: null,
+                archived: false,
+              },
+            ],
+            meta: { requestId: "r2" },
+          }),
+        };
+      }
+      return { ok: true, status: 200, json: async () => ({ data: [] }) };
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<SessionList now={new Date("2026-07-14T12:00:00Z")} />);
+    await waitFor(() => {
+      expect(screen.getByText("첫 페이지 세션")).toBeInTheDocument();
+    });
+    expect(observe).toHaveBeenCalled();
+
+    await waitFor(() => {
+      expect(callbackRef.current).not.toBeNull();
+    });
+    callbackRef.current?.(
+      [{ isIntersecting: true } as IntersectionObserverEntry],
+      {} as IntersectionObserver,
+    );
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/v1/sessions?cursor=cursor-1",
+        expect.objectContaining({ credentials: "include" }),
+      );
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("두번째 페이지 세션")).toBeInTheDocument();
+    });
+  });
 });
