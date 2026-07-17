@@ -25,6 +25,10 @@ const BADGE_STYLE: Record<"neutral" | "warning", string> = {
   warning: "border-warning bg-warning-soft text-warning-fg",
 };
 
+export function optionDomId(itemId: string): string {
+  return `composer-popover-option-${itemId}`;
+}
+
 export function ComposerPopover({
   items,
   activeIndex,
@@ -37,6 +41,7 @@ export function ComposerPopover({
   onCategoryChange,
   showFooterHints = false,
   onDismiss,
+  panelRef,
 }: {
   items: ComposerPopoverItem[];
   activeIndex: number;
@@ -49,6 +54,7 @@ export function ComposerPopover({
   onCategoryChange?: (id: string) => void;
   showFooterHints?: boolean;
   onDismiss?: () => void;
+  panelRef?: React.Ref<HTMLDivElement>;
 }) {
   if (items.length === 0) return null;
 
@@ -64,6 +70,7 @@ export function ComposerPopover({
         />
       )}
       <div
+        ref={panelRef}
         data-testid="composer-popover"
         className="fixed inset-x-0 bottom-0 z-[var(--z-modal)] flex max-h-[75vh] w-full flex-col overflow-hidden rounded-t-[14px] border-t border-border bg-surface shadow-[0_12px_24px_rgba(0,0,0,0.10)] md:absolute md:inset-auto md:bottom-full md:left-0 md:z-10 md:mb-2 md:max-h-none md:w-[360px] md:rounded-[10px] md:border md:shadow-[0_4px_8px_rgba(0,0,0,0.08)]"
       >
@@ -119,6 +126,7 @@ export function ComposerPopover({
           {items.map((item, index) => (
             <li
               key={item.id}
+              id={optionDomId(item.id)}
               role="option"
               aria-selected={index === activeIndex}
             >

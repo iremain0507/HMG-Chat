@@ -348,6 +348,58 @@ describe("ChatInput 슬래시/멘션", () => {
     expect(screen.queryByText("대화 지우기")).not.toBeInTheDocument();
     expect(textarea.value).toBe("/대");
   });
+
+  // P21-T6-07 — 데스크톱(≥md)에서 backdrop 이 md:hidden 이라 바깥클릭 해제가 없던 갭.
+  it("UX-01: 팝오버 밖 pointerdown 시 팝오버가 unmount 되고 입력 텍스트는 유지된다", () => {
+    render(
+      <>
+        <button data-testid="outside">밖</button>
+        <ChatInput
+          sessionId="session-ux01-outside-dismiss"
+          isStreaming={false}
+          onSend={vi.fn()}
+          onStop={vi.fn()}
+          slashCommands={COMMANDS}
+        />
+      </>,
+    );
+    const textarea = screen.getByLabelText(
+      "메시지 입력",
+    ) as HTMLTextAreaElement;
+
+    fireEvent.change(textarea, { target: { value: "/대" } });
+    expect(screen.getByTestId("composer-popover")).toBeInTheDocument();
+
+    fireEvent.pointerDown(screen.getByTestId("outside"));
+    expect(screen.queryByTestId("composer-popover")).not.toBeInTheDocument();
+    expect(textarea.value).toBe("/대");
+  });
+
+  // R69 combobox 패턴 — 팝오버 항목에 실 DOM 포커스를 옮기지 않으므로 textarea 가
+  // aria-activedescendant 로 현재 active 옵션을 announce 해야 한다.
+  it("textarea 가 활성 팝오버 옵션을 aria-activedescendant 로 가리키고 ArrowDown 시 갱신된다", () => {
+    render(
+      <ChatInput
+        sessionId="session-activedescendant"
+        isStreaming={false}
+        onSend={vi.fn()}
+        onStop={vi.fn()}
+        slashCommands={COMMANDS}
+      />,
+    );
+    const textarea = screen.getByLabelText(
+      "메시지 입력",
+    ) as HTMLTextAreaElement;
+
+    fireEvent.change(textarea, { target: { value: "/" } });
+    const firstOption = screen.getByText("대화 지우기").closest("li");
+    expect(firstOption).toHaveAttribute("id");
+    expect(textarea).toHaveAttribute("aria-activedescendant", firstOption?.id);
+
+    fireEvent.keyDown(textarea, { key: "ArrowDown" });
+    const secondOption = screen.getByText("웹 검색").closest("li");
+    expect(textarea).toHaveAttribute("aria-activedescendant", secondOption?.id);
+  });
 });
 
 describe("ChatInput 모델/모드 피커 (P10-T6-13)", () => {

@@ -23,9 +23,11 @@ import React, {
 } from "react";
 import { Plus, AtSign, Slash, Hash, ArrowUp, Square } from "lucide-react";
 import { useAttachments } from "../../hooks/useAttachments";
+import { useDismiss } from "../../hooks/useDismiss";
 import type { SendOptions } from "../../hooks/useSessionStream";
 import {
   ComposerPopover,
+  optionDomId,
   type ComposerPopoverCategory,
   type ComposerPopoverItem,
 } from "./ComposerPopover";
@@ -176,6 +178,7 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
     const [webSearch, setWebSearch] = useState(false);
     const [temporary, setTemporary] = useState(false);
     const taRef = useRef<HTMLTextAreaElement>(null);
+    const popoverRef = useRef<HTMLDivElement>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
     const { items, addFiles, remove, clear, readyUploadIds } =
       useAttachments(sessionId);
@@ -276,6 +279,19 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
                 subtitle: "문서",
               }))
             : [];
+
+    const activeOptionId =
+      trigger && popoverItems.length > 0
+        ? optionDomId(popoverItems[activeIndex]?.id ?? "")
+        : undefined;
+
+    // P21-T6-07 — 데스크톱(≥md)에서도 팝오버 밖 pointerdown 시 닫히도록(backdrop 은
+    // md:hidden 이라 모바일에서만 유효했다). textarea 는 계속 편집 가능해야 하므로
+    // triggerRef 로 제외한다.
+    useDismiss(popoverRef, () => setTrigger(null), {
+      enabled: !!trigger && popoverItems.length > 0,
+      triggerRef: taRef,
+    });
 
     function selectPopoverItem(item: ComposerPopoverItem) {
       if (!trigger) return;
@@ -502,6 +518,7 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
             query={trigger.query}
             showFooterHints
             onDismiss={() => setTrigger(null)}
+            panelRef={popoverRef}
             {...(trigger.type === "mention"
               ? {
                   categories: MENTION_CATEGORIES,
@@ -561,6 +578,7 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
           ref={taRef}
           rows={1}
           aria-label="메시지 입력"
+          aria-activedescendant={activeOptionId}
           value={input}
           onChange={(e) => {
             const value = e.target.value;
