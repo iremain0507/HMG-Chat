@@ -20,6 +20,7 @@ const ADMIN_NAV_ITEMS: AdminNavItem[] = [
   { key: "dashboard", label: "대시보드", href: "/admin" },
   { key: "users", label: "사용자 관리", href: "/admin/users" },
   { key: "groups", label: "그룹 관리", href: "/admin/groups" },
+  { key: "grants", label: "접근 권한", href: "/admin/grants" },
   { key: "tool-metrics", label: "도구 지표", href: "/admin/tool-metrics" },
   { key: "settings", label: "설정", href: "/admin/settings" },
 ];

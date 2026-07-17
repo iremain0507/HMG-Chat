@@ -34,6 +34,7 @@ import { AdminDashboard } from "../../components/admin/AdminDashboard";
 import { ToolMetricsTable } from "../../components/admin/ToolMetricsTable";
 import { AdminUsersManager } from "../../components/admin/AdminUsersManager";
 import { GroupsManager } from "../../components/admin/GroupsManager";
+import { GrantsManager } from "../../components/admin/GrantsManager";
 import { AdminSettingsScreen } from "../../components/admin/settings/AdminSettingsScreen";
 import { ToastContainer } from "../../components/layout/ToastContainer";
 import {
@@ -298,6 +299,22 @@ function GroupsManagerPreview() {
       className="rounded-md border border-border px-3 py-1.5 text-sm text-fg-muted hover:border-primary hover:text-fg"
     >
       그룹 관리 열기
+    </button>
+  );
+}
+
+function GrantsManagerPreview() {
+  const [open, setOpen] = useState(false);
+  return open ? (
+    <GrantsManager />
+  ) : (
+    <button
+      type="button"
+      data-testid="grants-manager-preview-trigger"
+      onClick={() => setOpen(true)}
+      className="rounded-md border border-border px-3 py-1.5 text-sm text-fg-muted hover:border-primary hover:text-fg"
+    >
+      접근 권한 관리 열기
     </button>
   );
 }
@@ -1022,6 +1039,10 @@ export default function PreviewGallery() {
 
       <Section name="groups-manager">
         <GroupsManagerPreview />
+      </Section>
+
+      <Section name="grants-manager">
+        <GrantsManagerPreview />
       </Section>
 
       <Section name="admin-settings-screen">
