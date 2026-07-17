@@ -2,7 +2,7 @@
 
 // components/sessions/SessionCard.tsx — design-reference README §Screens/AppShell.
 // 세션 1건: 클릭 시 이동, hover 시 이름변경(인라인 편집 → PATCH)·고정(로컬)·폴더 지정·삭제.
-import React, { useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   Archive,
   ArchiveRestore,
@@ -18,6 +18,45 @@ import type {
   SessionFolder,
   SessionListItemDto,
 } from "../../hooks/useSessions";
+import { useDismiss } from "../../hooks/useDismiss";
+import { useExclusiveOverlay } from "../../hooks/useExclusiveOverlay";
+
+function focusMenuItem(
+  menuRef: React.RefObject<HTMLElement | null>,
+  index: number,
+): void {
+  const items =
+    menuRef.current?.querySelectorAll<HTMLElement>('[role="menuitem"]');
+  items?.[index]?.focus();
+}
+
+function handleMenuKeyDown(
+  e: React.KeyboardEvent,
+  menuRef: React.RefObject<HTMLElement | null>,
+  close: () => void,
+): void {
+  const items = Array.from(
+    menuRef.current?.querySelectorAll<HTMLElement>('[role="menuitem"]') ?? [],
+  );
+  if (items.length === 0) return;
+  const currentIndex = items.indexOf(document.activeElement as HTMLElement);
+
+  if (e.key === "ArrowDown") {
+    e.preventDefault();
+    items[(currentIndex + 1 + items.length) % items.length]?.focus();
+  } else if (e.key === "ArrowUp") {
+    e.preventDefault();
+    items[(currentIndex - 1 + items.length) % items.length]?.focus();
+  } else if (e.key === "Home") {
+    e.preventDefault();
+    items[0]?.focus();
+  } else if (e.key === "End") {
+    e.preventDefault();
+    items[items.length - 1]?.focus();
+  } else if (e.key === "Tab") {
+    close();
+  }
+}
 
 export interface SessionCardProps {
   session: SessionListItemDto;
@@ -54,18 +93,59 @@ export function SessionCard({
 }: SessionCardProps) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(session.title ?? "");
-  const [folderMenuOpen, setFolderMenuOpen] = useState(false);
-  const [tagMenuOpen, setTagMenuOpen] = useState(false);
   const [tagDraft, setTagDraft] = useState("");
-  const [contextMenuOpen, setContextMenuOpen] = useState(false);
   const label = session.title ?? "(제목 없음)";
+
+  const cardRef = useRef<HTMLDivElement>(null);
+  const contextMenuRef = useRef<HTMLDivElement>(null);
+  const folderMenuRef = useRef<HTMLDivElement>(null);
+  const tagMenuRef = useRef<HTMLDivElement>(null);
+  const folderTriggerRef = useRef<HTMLButtonElement>(null);
+  const tagTriggerRef = useRef<HTMLButtonElement>(null);
+
+  const contextMenu = useExclusiveOverlay(`session-context-${session.id}`);
+  const folderMenu = useExclusiveOverlay(`session-folder-${session.id}`);
+  const tagMenu = useExclusiveOverlay(`session-tag-${session.id}`);
+
+  useDismiss(
+    contextMenuRef,
+    () => {
+      contextMenu.close();
+      cardRef.current?.focus();
+    },
+    { enabled: contextMenu.isOpen, triggerRef: cardRef },
+  );
+  useDismiss(
+    folderMenuRef,
+    () => {
+      folderMenu.close();
+      folderTriggerRef.current?.focus();
+    },
+    { enabled: folderMenu.isOpen, triggerRef: folderTriggerRef },
+  );
+  useDismiss(
+    tagMenuRef,
+    () => {
+      tagMenu.close();
+      tagTriggerRef.current?.focus();
+    },
+    { enabled: tagMenu.isOpen, triggerRef: tagTriggerRef },
+  );
+
+  useEffect(() => {
+    if (contextMenu.isOpen) focusMenuItem(contextMenuRef, 0);
+  }, [contextMenu.isOpen]);
+
+  useEffect(() => {
+    if (folderMenu.isOpen) focusMenuItem(folderMenuRef, 0);
+  }, [folderMenu.isOpen]);
 
   function submitNewTag(e: React.FormEvent) {
     e.preventDefault();
     const tag = tagDraft.trim();
     if (tag) onAddTag(session.id, tag);
     setTagDraft("");
-    setTagMenuOpen(false);
+    tagMenu.close();
   }
 
   function startEdit() {
@@ -99,17 +179,22 @@ export function SessionCard({
 
   return (
     <div
+      ref={cardRef}
+      tabIndex={-1}
       data-testid={`session-card-${session.id}`}
       draggable
+      aria-haspopup="menu"
+      aria-expanded={contextMenu.isOpen}
       onDragStart={(e) => {
         e.dataTransfer.setData("application/x-wchat-session-id", session.id);
         e.dataTransfer.effectAllowed = "move";
       }}
       onContextMenu={(e) => {
         e.preventDefault();
-        setContextMenuOpen((prev) => !prev);
+        if (contextMenu.isOpen) contextMenu.close();
+        else contextMenu.open();
       }}
-      className="group relative flex flex-col gap-0.5 rounded-md px-2 py-1.5 hover:bg-bg"
+      className="group relative flex flex-col gap-0.5 rounded-md px-2 py-1.5 outline-none hover:bg-bg focus-visible:ring-2 focus-visible:ring-primary"
     >
       <div className="flex items-center gap-1">
         {selectionMode && (
@@ -156,10 +241,15 @@ export function SessionCard({
           <Pencil size={12} strokeWidth={1.8} />
         </button>
         <button
+          ref={folderTriggerRef}
           type="button"
           aria-label={`폴더 지정: ${label}`}
           title={`폴더 지정: ${label}`}
-          onClick={() => setFolderMenuOpen((prev) => !prev)}
+          aria-haspopup="menu"
+          aria-expanded={folderMenu.isOpen}
+          onClick={() =>
+            folderMenu.isOpen ? folderMenu.close() : folderMenu.open()
+          }
           className={`shrink-0 rounded p-1 text-xs group-hover:block ${
             session.folderId
               ? "block text-primary"
@@ -169,10 +259,13 @@ export function SessionCard({
           <FolderInput size={12} strokeWidth={1.8} />
         </button>
         <button
+          ref={tagTriggerRef}
           type="button"
           aria-label={`태그 지정: ${label}`}
           title={`태그 지정: ${label}`}
-          onClick={() => setTagMenuOpen((prev) => !prev)}
+          aria-haspopup="dialog"
+          aria-expanded={tagMenu.isOpen}
+          onClick={() => (tagMenu.isOpen ? tagMenu.close() : tagMenu.open())}
           className={`shrink-0 rounded p-1 text-xs group-hover:block ${
             session.tags.length > 0
               ? "block text-primary"
@@ -225,8 +318,11 @@ export function SessionCard({
           ))}
         </div>
       )}
-      {tagMenuOpen && (
+      {tagMenu.isOpen && (
         <div
+          ref={tagMenuRef}
+          role="dialog"
+          aria-label={`태그 지정: ${label}`}
           data-testid={`tag-menu-${session.id}`}
           className="absolute right-0 top-full z-10 mt-1 w-40 rounded-[10px] border border-border bg-surface p-1 shadow-lg"
         >
@@ -235,18 +331,21 @@ export function SessionCard({
               autoFocus
               value={tagDraft}
               onChange={(e) => setTagDraft(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Escape") setTagMenuOpen(false);
-              }}
               placeholder="새 태그"
               className="w-full rounded-md border border-primary bg-bg px-2 py-1 text-sm text-fg outline-none"
             />
           </form>
         </div>
       )}
-      {folderMenuOpen && (
+      {folderMenu.isOpen && (
         <div
+          ref={folderMenuRef}
+          role="menu"
+          aria-label={`폴더 지정: ${label}`}
           data-testid={`folder-menu-${session.id}`}
+          onKeyDown={(e) =>
+            handleMenuKeyDown(e, folderMenuRef, folderMenu.close)
+          }
           className="absolute right-0 top-full z-10 mt-1 w-40 rounded-[10px] border border-border bg-surface p-1 shadow-lg"
         >
           {folders.length === 0 ? (
@@ -256,9 +355,10 @@ export function SessionCard({
               <button
                 key={folder.id}
                 type="button"
+                role="menuitem"
                 onClick={() => {
                   onAssignFolder(session.id, folder.id);
-                  setFolderMenuOpen(false);
+                  folderMenu.close();
                 }}
                 className="block w-full truncate rounded-md px-2 py-1.5 text-left text-sm text-fg hover:bg-bg"
               >
@@ -269,9 +369,10 @@ export function SessionCard({
           {session.folderId && (
             <button
               type="button"
+              role="menuitem"
               onClick={() => {
                 onAssignFolder(session.id, null);
-                setFolderMenuOpen(false);
+                folderMenu.close();
               }}
               className="block w-full rounded-md px-2 py-1.5 text-left text-sm text-fg-muted hover:bg-bg"
             >
@@ -280,16 +381,26 @@ export function SessionCard({
           )}
         </div>
       )}
-      {contextMenuOpen && (
+      {contextMenu.isOpen && (
         <div
+          ref={contextMenuRef}
+          role="menu"
+          aria-label={`${label} 메뉴`}
           data-testid={`context-menu-${session.id}`}
+          onKeyDown={(e) =>
+            handleMenuKeyDown(e, contextMenuRef, () => {
+              contextMenu.close();
+              cardRef.current?.focus();
+            })
+          }
           className="absolute right-0 top-full z-10 mt-1 w-36 rounded-[10px] border border-border bg-surface p-1 shadow-lg"
         >
           <button
             type="button"
+            role="menuitem"
             onClick={() => {
-              setContextMenuOpen(false);
-              setFolderMenuOpen(true);
+              contextMenu.close();
+              folderMenu.open();
             }}
             className="block w-full rounded-md px-2 py-1.5 text-left text-sm text-fg hover:bg-bg"
           >
@@ -297,9 +408,10 @@ export function SessionCard({
           </button>
           <button
             type="button"
+            role="menuitem"
             onClick={() => {
               onTogglePin(session.id);
-              setContextMenuOpen(false);
+              contextMenu.close();
             }}
             className="block w-full rounded-md px-2 py-1.5 text-left text-sm text-fg hover:bg-bg"
           >
@@ -307,9 +419,10 @@ export function SessionCard({
           </button>
           <button
             type="button"
+            role="menuitem"
             onClick={() => {
               onArchive(session.id);
-              setContextMenuOpen(false);
+              contextMenu.close();
             }}
             className="block w-full rounded-md px-2 py-1.5 text-left text-sm text-fg hover:bg-bg"
           >
@@ -317,9 +430,10 @@ export function SessionCard({
           </button>
           <button
             type="button"
+            role="menuitem"
             onClick={() => {
               onDelete(session.id);
-              setContextMenuOpen(false);
+              contextMenu.close();
             }}
             className="block w-full rounded-md px-2 py-1.5 text-left text-sm text-fg hover:text-accent hover:bg-bg"
           >

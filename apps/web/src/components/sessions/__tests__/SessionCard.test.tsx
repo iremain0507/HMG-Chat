@@ -340,3 +340,103 @@ describe("SessionCard 우클릭 컨텍스트 메뉴", () => {
     expect(onAssignFolder).toHaveBeenCalledWith("sess-1", "folder-1");
   });
 });
+
+describe("SessionCard 컨텍스트 메뉴 dismiss 계약 (P21-T6-03, UX-01~05)", () => {
+  afterEach(() => cleanup());
+
+  const baseProps = {
+    pinned: false,
+    folders: [],
+    onOpen: vi.fn(),
+    onRename: vi.fn(),
+    onDelete: vi.fn(),
+    onTogglePin: vi.fn(),
+    onAssignFolder: vi.fn(),
+    onAddTag: vi.fn(),
+    onRemoveTag: vi.fn(),
+    onArchive: vi.fn(),
+  };
+
+  it("UX-02: 카드A 우클릭 후 카드B 우클릭하면 A 의 메뉴는 unmount 된다(동시 1개만)", () => {
+    const sessionA: SessionListItemDto = { ...session, id: "sess-a" };
+    const sessionB: SessionListItemDto = { ...session, id: "sess-b" };
+    render(
+      <>
+        <SessionCard {...baseProps} session={sessionA} />
+        <SessionCard {...baseProps} session={sessionB} />
+      </>,
+    );
+
+    fireEvent.contextMenu(screen.getByTestId("session-card-sess-a"));
+    expect(screen.getByTestId("context-menu-sess-a")).toBeInTheDocument();
+
+    fireEvent.contextMenu(screen.getByTestId("session-card-sess-b"));
+    expect(screen.queryByTestId("context-menu-sess-a")).not.toBeInTheDocument();
+    expect(screen.getByTestId("context-menu-sess-b")).toBeInTheDocument();
+  });
+
+  it("UX-01: 메뉴 밖 pointerdown 시 메뉴가 unmount 된다", () => {
+    render(
+      <>
+        <button data-testid="outside">밖</button>
+        <SessionCard {...baseProps} session={session} />
+      </>,
+    );
+
+    fireEvent.contextMenu(screen.getByTestId("session-card-sess-1"));
+    expect(screen.getByTestId("context-menu-sess-1")).toBeInTheDocument();
+
+    fireEvent.pointerDown(screen.getByTestId("outside"));
+    expect(screen.queryByTestId("context-menu-sess-1")).not.toBeInTheDocument();
+  });
+
+  it("UX-03: Escape 시 메뉴가 닫히고 포커스가 트리거(카드)로 복귀한다", () => {
+    render(<SessionCard {...baseProps} session={session} />);
+
+    const card = screen.getByTestId("session-card-sess-1");
+    fireEvent.contextMenu(card);
+    expect(screen.getByTestId("context-menu-sess-1")).toBeInTheDocument();
+
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(screen.queryByTestId("context-menu-sess-1")).not.toBeInTheDocument();
+    expect(document.activeElement).toBe(card);
+  });
+
+  it("컨텍스트 메뉴는 role=menu, 항목은 role=menuitem 이다", () => {
+    render(<SessionCard {...baseProps} session={session} />);
+    fireEvent.contextMenu(screen.getByTestId("session-card-sess-1"));
+    const menu = screen.getByTestId("context-menu-sess-1");
+    expect(menu).toHaveAttribute("role", "menu");
+    const items = within(menu).getAllByRole("menuitem");
+    expect(items.length).toBeGreaterThan(0);
+  });
+
+  it("메뉴 오픈 시 첫 항목에 포커스가 이동하고 ↓/↑/Home/End 로 roving 한다", () => {
+    render(<SessionCard {...baseProps} session={session} />);
+    fireEvent.contextMenu(screen.getByTestId("session-card-sess-1"));
+    const menu = screen.getByTestId("context-menu-sess-1");
+    const items = within(menu).getAllByRole("menuitem");
+
+    expect(document.activeElement).toBe(items[0]);
+
+    fireEvent.keyDown(menu, { key: "ArrowDown" });
+    expect(document.activeElement).toBe(items[1]);
+
+    fireEvent.keyDown(menu, { key: "End" });
+    expect(document.activeElement).toBe(items[items.length - 1]);
+
+    fireEvent.keyDown(menu, { key: "Home" });
+    expect(document.activeElement).toBe(items[0]);
+
+    fireEvent.keyDown(menu, { key: "ArrowUp" });
+    expect(document.activeElement).toBe(items[items.length - 1]);
+  });
+
+  it("Tab 시 메뉴가 닫힌다", () => {
+    render(<SessionCard {...baseProps} session={session} />);
+    fireEvent.contextMenu(screen.getByTestId("session-card-sess-1"));
+    const menu = screen.getByTestId("context-menu-sess-1");
+    fireEvent.keyDown(menu, { key: "Tab" });
+    expect(screen.queryByTestId("context-menu-sess-1")).not.toBeInTheDocument();
+  });
+});

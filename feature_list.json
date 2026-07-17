@@ -2273,8 +2273,8 @@
     "acceptance": "RED: SessionCard.test 가 (a)카드A 우클릭 후 카드B 우클릭 시 A 메뉴 unmount(동시 1개) (b)메뉴 밖 pointerdown 시 unmount (c)Escape 시 닫힘+트리거 포커스 복귀 를 단언 — 현재 전부 실패(시나리오 UX-01~05). L1: Playwright /preview SessionList 로 실제 우클릭×2→visible 메뉴 1개, document 바깥클릭→0개, Escape→0개 단언. needsBrowser=true → e2e/session-context-menu.pw.ts(미기동 시 정직 기록+RTL 대체).",
     "phase": "P21",
     "team": "T6",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P21-T6-04",
