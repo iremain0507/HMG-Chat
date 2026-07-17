@@ -2248,5 +2248,176 @@
     "team": "T1",
     "passes": true,
     "attempts": 1
+  },
+  {
+    "id": "P21-T6-01",
+    "desc": "재사용 dismiss primitive 생성(감사: 앱 전체 pointerdown/mousedown 문서 리스너 0개). files: apps/web/src/hooks/useDismiss.ts(신규: (ref, onDismiss, opts?) — 열려있을 때만 document pointerdown 이 ref/trigger 밖이면 onDismiss + keydown Escape → onDismiss, cleanup 필수), apps/web/src/hooks/__tests__/useDismiss.test.tsx. 신규 dependency 없음(hand-rolled). frozen 미접촉.",
+    "acceptance": "RED: useDismiss 테스트가 (a)ref 밖 pointerdown 시 onDismiss 호출 (b)ref 내부 pointerdown 시 미호출 (c)Escape 시 호출 (d)닫힘(enabled=false) 시 리스너 미부착 을 단언 — 현재 훅 부재로 컴파일/실행 실패. 순수 훅이라 renderHook+fireEvent(RTL) 충분(needsBrowser 아님).",
+    "phase": "P21",
+    "team": "T6",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P21-T6-02",
+    "desc": "단일-오픈 오버레이 조정자 생성(여러 메뉴 동시 오픈=시드버그 근본원인). files: apps/web/src/lib/overlay-registry.ts(신규: 모듈 store — 한 번에 하나만 open, open 시 이전 오버레이 close 콜백 호출), apps/web/src/hooks/useExclusiveOverlay.ts(신규: {isOpen,open,close} 반환, 등록/해제), apps/web/src/hooks/__tests__/useExclusiveOverlay.test.tsx. frozen 미접촉.",
+    "acceptance": "RED: 두 useExclusiveOverlay 인스턴스에서 A.open() 후 B.open() 시 A.isOpen===false 를 단언 — 현재 조정자 부재로 둘 다 열림(실패). RTL renderHook 충분(needsBrowser 아님).",
+    "phase": "P21",
+    "team": "T6",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P21-T6-03",
+    "desc": "[시드버그] SessionCard 컨텍스트/폴더/태그 메뉴 — 로컬 useState 로 단일-인스턴스 미보장 + 바깥클릭·Escape 해제 전무(SessionCard.tsx:60,108-111,283-329 컨텍스트 / 57,247-282 폴더 / 58,228-246 태그). fix: T6-01 useDismiss + T6-02 useExclusiveOverlay 채택 → (1)한 번에 하나만 (2)바깥 pointerdown·Escape 해제 (3)ARIA role=menu/menuitem·trigger aria-haspopup=menu+aria-expanded (4)오픈 시 첫 항목 포커스+↑/↓/Home/End roving+Tab 닫힘. files: apps/web/src/components/sessions/SessionCard.tsx, apps/web/src/components/sessions/__tests__/SessionCard.test.tsx, apps/web/e2e/session-context-menu.pw.ts(신규). [★needsBrowser · 의존:T6-01,T6-02]",
+    "acceptance": "RED: SessionCard.test 가 (a)카드A 우클릭 후 카드B 우클릭 시 A 메뉴 unmount(동시 1개) (b)메뉴 밖 pointerdown 시 unmount (c)Escape 시 닫힘+트리거 포커스 복귀 를 단언 — 현재 전부 실패(시나리오 UX-01~05). L1: Playwright /preview SessionList 로 실제 우클릭×2→visible 메뉴 1개, document 바깥클릭→0개, Escape→0개 단언. needsBrowser=true → e2e/session-context-menu.pw.ts(미기동 시 정직 기록+RTL 대체).",
+    "phase": "P21",
+    "team": "T6",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P21-T6-04",
+    "desc": "[치명·기능버그] 세션 전환 시 이전 대화가 그대로 남음 — /chat/[sessionId]/page.tsx:12 ChatView 에 key 없음 + useSessionStream treeRef(257)/historyLoadedRef(290)/artifactsLoadedRef(291) 가 sessionId 변경 시 리셋 안 됨 + loadHistory 가 tree 비어있지 않으면 early-return(351-352). fix: <ChatView key={sessionId}>(page.tsx, 비파괴 우선) 또는 useSessionStream 의 sessionId 변경 effect 로 refs/state 리셋+새 히스토리 로드. 추가: 언마운트/전환 시 in-flight 스트림 abort. files: apps/web/src/app/(app)/chat/[sessionId]/page.tsx, apps/web/src/hooks/useSessionStream.ts, apps/web/src/hooks/__tests__/useSessionStream.test.ts, apps/web/e2e/session-switch.pw.ts(신규). [★needsBrowser]",
+    "acceptance": "RED: useSessionStream(또는 ChatView) 테스트가 sessionId A→B 변경 시 A 메시지 소거 + B 히스토리 fetch 발행을 단언 — 현재 early-return 로 A 유지(실패, 시나리오 UX-16). L1: Playwright /preview 또는 실앱 dev-login→세션A 열람→세션B 클릭→B 메시지만 표시(A 잔존 0) 단언. needsBrowser=true.",
+    "phase": "P21",
+    "team": "T6",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P21-T6-05",
+    "desc": "ShareExportMenu 드롭다운+confirm — 바깥클릭·Escape 해제 없음(chat/ShareExportMenu.tsx:40,93-137); confirm 서브패널이 role=alertdialog 이나 aria-modal/포커스트랩/Escape 없음(139-168). fix: 드롭다운→useDismiss+useExclusiveOverlay+Escape+trigger aria-expanded/haspopup; confirm→useFocusTrap 로 실제 모달화(또는 인라인 확인 흐름). files: apps/web/src/components/chat/ShareExportMenu.tsx, apps/web/src/components/chat/__tests__/ShareExportMenu.test.tsx, apps/web/e2e/share-export-menu.pw.ts(기존 확장). [★needsBrowser · 의존:T6-01,T6-02]",
+    "acceptance": "RED: ShareExportMenu.test 가 바깥클릭·Escape 시 메뉴 닫힘 + confirm 이 Escape/포커스트랩 구비를 단언 — 현재 실패(UX-01,03,08~10). L1: 기존 share-export-menu.pw.ts 확장(바깥클릭→닫힘). needsBrowser=true.",
+    "phase": "P21",
+    "team": "T6",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P21-T6-06",
+    "desc": "ProjectPicker 드롭다운 — 바깥클릭·Escape 해제 없음 + trigger 미announce(chat/ProjectPicker.tsx:20,34,40-85; option/listbox ARIA 는 있음). fix: useDismiss+Escape + trigger button aria-haspopup=listbox·aria-expanded=true|false + ↑/↓/Home/End roving + aria-activedescendant. files: apps/web/src/components/chat/ProjectPicker.tsx, apps/web/src/components/chat/__tests__/ProjectPicker.test.tsx. [★needsBrowser · 의존:T6-01]",
+    "acceptance": "RED: ProjectPicker.test 가 바깥클릭·Escape 닫힘 + trigger aria-expanded 토글 + ↓ 로 옵션 이동을 단언 — 현재 실패(UX-01,03,06,07). L1: /preview 또는 실앱 header [프로젝트▾]. needsBrowser=true.",
+    "phase": "P21",
+    "team": "T6",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P21-T6-07",
+    "desc": "ComposerPopover(슬래시/@/#) — 데스크톱 바깥클릭 해제 없음(backdrop 이 md:hidden 이라 ≥md 미동작, ComposerPopover.tsx:57-65; 트리거/키다운 chat/ChatInput.tsx:170,410-435,489-513). fix: ≥md 에서도 useDismiss 바깥 pointerdown 해제(기존 Escape·roving activeIndex 유지) + textarea aria-activedescendant. files: apps/web/src/components/chat/ComposerPopover.tsx, apps/web/src/components/chat/ChatInput.tsx, apps/web/src/components/chat/__tests__/ComposerPopover.test.tsx, apps/web/e2e/chat-input-slash-mention.pw.ts(확장). [★needsBrowser · 의존:T6-01]",
+    "acceptance": "RED: 테스트가 데스크톱 뷰포트에서 팝오버 밖 pointerdown 시 닫힘을 단언 — 현재 잔존(실패, UX-01). L1: chat-input-slash-mention.pw.ts 확장. needsBrowser=true.",
+    "phase": "P21",
+    "team": "T6",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P21-T6-08",
+    "desc": "MessageActions 정보 팝오버 — button onBlur 에만 의존, Escape·문서 바깥클릭·패널 role 없음(chat/MessageActions.tsx:39,144-181; trigger aria-expanded 는 있음). fix: useDismiss(Escape+바깥 pointerdown) + 패널 role. files: apps/web/src/components/chat/MessageActions.tsx, apps/web/src/components/chat/__tests__/MessageActions.test.tsx. [의존:T6-01]",
+    "acceptance": "RED: MessageActions.test 가 바깥클릭·Escape 시 정보 팝오버 닫힘을 단언 — 현재 blur 미발생 시 잔존(실패, UX-01,03). RTL 실 DOM 이벤트로 충분.",
+    "phase": "P21",
+    "team": "T6",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P21-T6-09",
+    "desc": "CRUD 모달 3종 focus-trap 이식 — PromptsManager(settings/PromptsManager.tsx:134-215)/ApiKeysManager(140-179)/McpServersManager(230+) 모달이 Escape·포커스트랩·오픈시 포커스이동·닫을때 복귀 없음(기존 useFocusTrap 미채택). fix: 세 모달에 apps/web/src/hooks/useFocusTrap.ts 이식(신규 트랩 금지). files: apps/web/src/components/settings/PromptsManager.tsx, ApiKeysManager.tsx, McpServersManager.tsx + 각 __tests__. [★needsBrowser · 병렬:세 모달 독립 → 서브에이전트 3분할]",
+    "acceptance": "RED: 각 매니저 테스트가 (a)오픈 시 다이얼로그 내부 포커스 (b)Escape 닫힘 (c)Tab 이 배경으로 새지 않음(트랩) (d)닫을 때 트리거 포커스 복귀 를 단언 — 현재 실패(UX-08~11). L1: 대응 pw 스펙(있으면) 확장. needsBrowser=true.",
+    "phase": "P21",
+    "team": "T6",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P21-T6-10",
+    "desc": "CommandPalette + ShortcutSheet focus-trap/복귀 이식 — Escape·backdrop 은 있으나 포커스 트랩·복귀 없음(Tab 배경 침투; sessions/CommandPalette.tsx:81-157, layout/ShortcutSheet.tsx:35-77). fix: 두 모달에 useFocusTrap 이식(닫을 때 ⌘K/⌘ 트리거로 포커스 복귀). files: apps/web/src/components/sessions/CommandPalette.tsx, apps/web/src/components/layout/ShortcutSheet.tsx + 각 __tests__. [★needsBrowser]",
+    "acceptance": "RED: 테스트가 Tab 트랩 + 닫을 때 트리거 포커스 복귀를 단언 — 현재 실패(UX-09,10). L1: /preview 스펙. needsBrowser=true.",
+    "phase": "P21",
+    "team": "T6",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P21-T6-11",
+    "desc": "ChatView 유저메시지 인라인 편집 — Escape 취소·textarea autofocus 없음(chat/ChatView.tsx:768,819-853; SessionList 인라인 에디터는 Escape 구비 — 일관성 갭). fix: Escape→취소, 편집 진입 시 autofocus(+커서 끝). files: apps/web/src/components/chat/ChatView.tsx, apps/web/src/components/chat/__tests__/ChatView.test.tsx.",
+    "acceptance": "RED: ChatView.test 가 편집 모드 Escape 시 취소(원문 복원) + 진입 시 textarea 포커스를 단언 — 현재 실패(UX-03 inline). RTL 충분.",
+    "phase": "P21",
+    "team": "T6",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P21-T6-12",
+    "desc": "스트림 언마운트/전환 abort + 겹침 가드 — useSessionStream 이 언마운트/세션전환 시 in-flight 스트림 abort 없음(cleanup effect 부재; abortRef 464-465 finally 에서만 정리) + send/editMessage/regenerate/continueMessage 진입 시 isStreamingRef 가드 없음(928-1057). fix: sessionId/언마운트 cleanup effect(abortRef.current?.abort()+reader.cancel()) + 각 진입점에서 isStreamingRef.current 시 이전 leg abort 또는 진입 차단. files: apps/web/src/hooks/useSessionStream.ts, apps/web/src/hooks/__tests__/useSessionStream.test.ts.",
+    "acceptance": "RED: 테스트가 (a)언마운트 시 abort 호출 (b)스트리밍 중 send 재호출이 이전 controller 를 abort 하거나 무시됨을 단언 — 현재 겹쳐서 이중기록(실패, UX-20,21). SSE 스텁 controller.close() 로 RTL.",
+    "phase": "P21",
+    "team": "T6",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P21-T6-13",
+    "desc": "useSessions 뮤테이션 무음 실패 → 토스트+피드백 — rename(172)/delete(183)/archive(217)/pin/folder CRUD(267-295)/tag 실패가 전부 조용(헬퍼 pinnedSessions.ts:11 등 !ok→null 반환, UI 무변화); bulkArchive/bulkDelete 부분실패 무피드백(227-248). fix: 각 실패 경로 showToast('error', 평문) + bulk 실패 건수 보고(성공만 반영은 유지). files: apps/web/src/hooks/useSessions.ts, apps/web/src/hooks/__tests__/useSessions.test.ts.",
+    "acceptance": "RED: useSessions.test 가 rename/delete/archive 실패(fetch !ok) 시 showToast('error') 호출 + bulk 부분실패 시 실패수 보고를 단언 — 현재 무음(실패, UX-18). fetch 목킹 RTL.",
+    "phase": "P21",
+    "team": "T6",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P21-T6-14",
+    "desc": "세션목록 로드-에러 상태 + 검색-무결과 구분 — 로드 실패가 빈 목록과 구분 불가(useSessions.error(84) 를 SessionList 가 미소비, SessionList.tsx:725-728 → 네트워크 실패도 '세션이 없습니다.'); 검색 무결과도 동일 문구. fix: error 소비→에러+재시도 UI, 검색 컨텍스트에서 '검색 결과 없음' 구분. files: apps/web/src/hooks/useSessions.ts(error 노출 확인), apps/web/src/components/sessions/SessionList.tsx, apps/web/src/components/sessions/__tests__/SessionList.test.tsx.",
+    "acceptance": "RED: SessionList.test 가 (a)로드 실패 시 에러+재시도 렌더('세션이 없습니다' 아님) (b)검색 무결과 시 '검색 결과 없음' 을 단언 — 현재 실패(UX-19). RTL 목킹.",
+    "phase": "P21",
+    "team": "T6",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P21-T6-15",
+    "desc": "이중제출 가드 5종 — MemoryManager create/edit/pin/delete(130-223→useMemories 69/88/114), ApiKey revoke(ApiKeysManager.tsx:56-59,130), SessionCard delete/archive(188,201→useSessions 183/217 비낙관적), Mcp remove(McpServersManager.tsx:219→90), AdminUsers role/suspend(129,158). fix: 각 뮤테이션 in-flight 플래그(항목 단위)로 버튼 disable+pending. files: apps/web/src/components/settings/MemoryManager.tsx, ApiKeysManager.tsx, apps/web/src/components/sessions/SessionCard.tsx, apps/web/src/components/settings/McpServersManager.tsx, apps/web/src/components/admin/AdminUsersManager.tsx + 각 __tests__. [병렬:독립 컴포넌트 → 서브에이전트 분할]",
+    "acceptance": "RED: 각 테스트가 뮤테이션 in-flight 중 버튼 disabled(더블클릭 시 요청 1회)를 단언 — 현재 미가드로 2회 발행(실패, UX-17). RTL(비동기 resolve 지연 목킹).",
+    "phase": "P21",
+    "team": "T6",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P21-T6-16",
+    "desc": "토스트 상한+병합+상시 live-region — 무한 큐(lib/toast.ts:29 [...toasts,item] 상한 없음) + 중복 미병합(재연결 루프 '연결이 끊어졌습니다' 누적) + ToastContainer 가 빈 배열이면 null 반환(19)→aria-live 사라져 첫 토스트 미announce. fix: 최대 노출수 상한/FIFO evict + 동일 메시지 coalesce + 상시 마운트 aria-live 컨테이너. files: apps/web/src/lib/toast.ts, apps/web/src/components/layout/ToastContainer.tsx + 각 __tests__.",
+    "acceptance": "RED: toast.test/ToastContainer.test 가 (a)상한 초과 시 오래된 것 evict (b)동일 메시지 병합(중복 미누적) (c)빈 상태에도 live-region 상시 존재 를 단언 — 현재 실패(UX-22). RTL.",
+    "phase": "P21",
+    "team": "T6",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P21-T6-17",
+    "desc": "폼 검증 갭 — 숫자 입력 blank→Number()→0 무음 강제(ModelsGenerationTab.tsx:98,118,138,170), prompt command 선행 '/' 미검증(PromptsManager.tsx:149-156→슬래시 매칭 깨짐), rename/tag maxlength·중복 피드백 없음(SessionCard.tsx:86-95,234-243; tag dupe 무음 드롭 useSessions:340). fix: 숫자 parse-guard+필드 에러, command '/' 강제, maxlength/중복 인라인 힌트. files: apps/web/src/components/admin/settings/ModelsGenerationTab.tsx, apps/web/src/components/settings/PromptsManager.tsx, apps/web/src/components/sessions/SessionCard.tsx + 각 __tests__.",
+    "acceptance": "RED: 각 테스트가 (a)숫자 필드 비움 시 0 강제 대신 필드 에러 (b)'/' 없는 command 거부 (c)중복 태그 인라인 힌트 를 단언 — 현재 실패(UX-23,24). RTL.",
+    "phase": "P21",
+    "team": "T6",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P21-T6-18",
+    "desc": "채팅 스크롤 존중 + 재진입 위치 보존 + loadMore 에러 — 자동스크롤이 토큰마다 실행(ChatView.tsx:320-323 dep:messages, 유저 미세 스크롤과 충돌) + 긴 세션 재진입 시 항상 바닥(읽던 위치 소실) + loadMore 실패 무음(useSessions.ts:107-130, sentinel wedge). fix: 메시지 카운트 변화에만 스크롤(throttle), 재진입 시 위치/미읽음 상단 보존, loadMore 실패 표면화. files: apps/web/src/components/chat/ChatView.tsx, apps/web/src/hooks/useSessions.ts + 각 __tests__.",
+    "acceptance": "RED: 테스트가 (a)토큰 델타(카운트 불변)에는 강제 스크롤 미발생 (b)유저가 위로 스크롤 시 낚아채지 않음 (c)loadMore 실패 표면화 를 단언 — 현재 실패(UX-25,26). RTL(scroll 목킹).",
+    "phase": "P21",
+    "team": "T6",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P21-T6-19",
+    "desc": "툴팁/호버 키보드 패리티 & a11y — Markdown 인용 툴팁이 group-hover 전용(키보드 접근 불가, chat/Markdown.tsx:43-59), Mcp 툴 툴팁이 z-modal(100) 남용+role 없음(settings/McpServersManager.tsx:176), 툴팁 Escape-dismiss/hoverable(WCAG 1.4.13) 미구현. fix: 포커스로도 표시+Escape dismiss+hoverable 유지, Mcp 툴팁 role=tooltip+낮은 로컬 z. files: apps/web/src/components/chat/Markdown.tsx, apps/web/src/components/settings/McpServersManager.tsx + 각 __tests__.",
+    "acceptance": "RED: 테스트가 (a)키보드 포커스 시 인용 툴팁 표시 (b)Escape 로 dismiss (c)Mcp 툴팁 role=tooltip+z 낮춤 을 단언 — 현재 실패(UX-27, H55~59). RTL.",
+    "phase": "P21",
+    "team": "T6",
+    "passes": false,
+    "attempts": 0
   }
 ]
