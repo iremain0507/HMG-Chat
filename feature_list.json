@@ -2210,8 +2210,8 @@
     "acceptance": "RED: admin-users-delete.integration.test.ts 가 'DELETE /admin/users/:id(일반 member)→200 삭제' 및 'primary owner 삭제→409/403 거부', '마지막 owner 삭제→거부' 를 기대하면 라우트 부재로 404 실패(RED). L1 last-mile: 실 Postgres 통합테스트로 삭제 후 GET /admin/users 목록에서 실제 제외, primary/last-owner 는 DB 행 유지됨을 단언. UI 는 needsBrowser=true 이므로 실앱 Playwright E2E(dev-login admin→사용자 삭제 클릭→목록 갱신·primary admin 은 버튼 비활성) 또는 watchdog 브라우저 UAT 로 실사용 무동작 여부 확인. 검증: pnpm test admin-users-delete + E2E + verify-gates.",
     "phase": "P20",
     "team": "T1",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P20-T1-14",

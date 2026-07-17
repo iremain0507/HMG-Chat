@@ -42,6 +42,17 @@ export interface AdminDataAccess {
     userId: string,
   ): Promise<{ sessionsRevoked: number } | null>;
   unsuspendUser(orgId: string, userId: string): Promise<boolean>;
+  deleteUser(
+    orgId: string,
+    userId: string,
+    requesterId: string,
+  ): Promise<
+    | { ok: true }
+    | {
+        ok: false;
+        reason: "not_found" | "self" | "primary_owner" | "last_owner";
+      }
+  >;
   toolMetricsSummary(
     orgId: string,
     from: Date,
@@ -126,6 +137,8 @@ export function createPgAdminDataAccess(): AdminDataAccess {
       if (filter.status) {
         values.push(filter.status);
         conditions.push(`status = $${values.length}`);
+      } else {
+        conditions.push(`status != 'deleted'`);
       }
       if (filter.search) {
         values.push(`%${filter.search}%`);
@@ -175,6 +188,49 @@ export function createPgAdminDataAccess(): AdminDataAccess {
         [orgId, userId],
       );
       return res.rows.length > 0;
+    },
+
+    async deleteUser(orgId, userId, requesterId) {
+      if (userId === requesterId) {
+        return { ok: false, reason: "self" };
+      }
+      const targetRes = await pgPool.query(
+        `SELECT role, status FROM users WHERE id = $1 AND org_id = $2`,
+        [userId, orgId],
+      );
+      const target = targetRes.rows[0] as
+        { role: User["role"]; status: User["status"] } | undefined;
+      if (!target || target.status === "deleted") {
+        return { ok: false, reason: "not_found" };
+      }
+      if (target.role === "owner") {
+        const ownersRes = await pgPool.query(
+          `SELECT id FROM users WHERE org_id = $1 AND role = 'owner' AND status != 'deleted'
+           ORDER BY created_at ASC`,
+          [orgId],
+        );
+        const owners = ownersRes.rows.map((r) => r.id as string);
+        if (owners.length <= 1) {
+          return { ok: false, reason: "last_owner" };
+        }
+        if (owners[0] === userId) {
+          return { ok: false, reason: "primary_owner" };
+        }
+      }
+      const res = await pgPool.query(
+        `UPDATE users SET status = 'deleted', updated_at = NOW()
+         WHERE id = $2 AND org_id = $1 RETURNING id`,
+        [orgId, userId],
+      );
+      if (res.rows.length === 0) {
+        return { ok: false, reason: "not_found" };
+      }
+      await pgPool.query(
+        `UPDATE refresh_token_families SET revoked_at = NOW(), revoke_reason = 'admin'
+         WHERE user_id = $1 AND revoked_at IS NULL`,
+        [userId],
+      );
+      return { ok: true };
     },
 
     async toolMetricsSummary(orgId, from, to) {

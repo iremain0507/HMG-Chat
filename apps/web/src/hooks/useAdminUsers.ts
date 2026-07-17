@@ -13,6 +13,12 @@ export interface AdminUserDto {
   role: "member" | "admin" | "owner";
   status: "active" | "suspended";
   lastLoginAt: string | null;
+  createdAt: string;
+}
+
+interface DeleteUserOutcome {
+  ok: boolean;
+  message?: string;
 }
 
 interface UseAdminUsersResult {
@@ -22,6 +28,7 @@ interface UseAdminUsersResult {
   changeRole(id: string, role: AdminUserDto["role"]): Promise<void>;
   suspend(id: string, reason: string): Promise<void>;
   unsuspend(id: string): Promise<void>;
+  deleteUser(id: string): Promise<DeleteUserOutcome>;
 }
 
 export function useAdminUsers(): UseAdminUsersResult {
@@ -103,5 +110,34 @@ export function useAdminUsers(): UseAdminUsersResult {
     [load],
   );
 
-  return { users, loading, error, changeRole, suspend, unsuspend };
+  const deleteUser = useCallback(
+    async (id: string): Promise<DeleteUserOutcome> => {
+      setError(null);
+      const res = await apiFetch(`/api/v1/admin/users/${id}`, {
+        method: "DELETE",
+        credentials: "include",
+      });
+      if (!res.ok) {
+        const body = (await res.json().catch(() => null)) as {
+          error?: { message?: string };
+        } | null;
+        const message = body?.error?.message ?? "사용자 삭제에 실패했습니다.";
+        setError(message);
+        return { ok: false, message };
+      }
+      await load();
+      return { ok: true };
+    },
+    [load],
+  );
+
+  return {
+    users,
+    loading,
+    error,
+    changeRole,
+    suspend,
+    unsuspend,
+    deleteUser,
+  };
 }

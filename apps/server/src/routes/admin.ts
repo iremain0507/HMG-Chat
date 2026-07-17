@@ -35,6 +35,7 @@ function userDto(u: User) {
     role: u.role,
     status: u.status,
     lastLoginAt: u.lastLoginAt,
+    createdAt: u.createdAt,
   };
 }
 
@@ -183,6 +184,46 @@ export function createAdminRoutes(deps: {
     const ok = await deps.adminDa.unsuspendUser(auth.org, c.req.param("id"));
     if (!ok) {
       return c.json(errorJson("NOT_FOUND", "사용자를 찾을 수 없습니다."), 404);
+    }
+    return c.json({ data: { ok: true }, meta: { requestId: randomUUID() } });
+  });
+
+  app.delete("/users/:id", async (c) => {
+    const auth = c.get("auth");
+    if (!isAdmin(auth.role)) {
+      return c.json(errorJson("FORBIDDEN", "admin 권한이 필요합니다."), 403);
+    }
+    const result = await deps.adminDa.deleteUser(
+      auth.org,
+      c.req.param("id"),
+      auth.sub,
+    );
+    if (!result.ok) {
+      if (result.reason === "not_found") {
+        return c.json(
+          errorJson("NOT_FOUND", "사용자를 찾을 수 없습니다."),
+          404,
+        );
+      }
+      if (result.reason === "self") {
+        return c.json(
+          errorJson("FORBIDDEN", "자기 자신은 삭제할 수 없습니다."),
+          403,
+        );
+      }
+      if (result.reason === "primary_owner") {
+        return c.json(
+          errorJson(
+            "CONFLICT",
+            "최고 관리자(primary admin)는 삭제할 수 없습니다.",
+          ),
+          409,
+        );
+      }
+      return c.json(
+        errorJson("CONFLICT", "조직의 마지막 owner 는 삭제할 수 없습니다."),
+        409,
+      );
     }
     return c.json({ data: { ok: true }, meta: { requestId: randomUUID() } });
   });

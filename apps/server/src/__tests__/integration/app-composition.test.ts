@@ -107,18 +107,26 @@ describe("app.ts composition root — P2-T2-06", () => {
       body: JSON.stringify({ content: "hello" }),
     });
 
-    // 핸들러가 run 을 등록하고 dev-stub provider 가 지연 구간에 들어갈 때까지 tick 양보.
-    await new Promise((resolve) => setTimeout(resolve, 5));
-
-    const deleteRes = await app.request(
-      `/api/v1/sessions/${session.id}/active-run`,
-      { method: "DELETE", headers: { Cookie: authCookie() } },
-    );
-    expect(deleteRes.status).toBe(200);
-    const deleteJson = (await deleteRes.json()) as {
-      data: { cancelled: boolean };
-    };
-    expect(deleteJson.data.cancelled).toBe(true);
+    // 핸들러가 run 을 등록하고 dev-stub provider 가 지연 구간(ECHO_DELAY_MS=20ms)에
+    // 들어갈 때까지, 고정 sleep 대신 폴링으로 기다린다 — 전체 스위트 병렬 실행 시
+    // 이벤트 루프 지연으로 고정 5ms sleep 이 등록 시점보다 먼저 끝나 flake 하던 문제 수정
+    // (abortRun 은 등록 전엔 false 를 반환할 뿐 부수효과가 없어 재시도해도 안전).
+    let cancelled = false;
+    for (let attempt = 0; attempt < 15 && !cancelled; attempt++) {
+      const deleteRes = await app.request(
+        `/api/v1/sessions/${session.id}/active-run`,
+        { method: "DELETE", headers: { Cookie: authCookie() } },
+      );
+      expect(deleteRes.status).toBe(200);
+      const deleteJson = (await deleteRes.json()) as {
+        data: { cancelled: boolean };
+      };
+      cancelled = deleteJson.data.cancelled;
+      if (!cancelled) {
+        await new Promise((resolve) => setTimeout(resolve, 3));
+      }
+    }
+    expect(cancelled).toBe(true);
 
     const res = await postPromise;
     const text = await res.text();

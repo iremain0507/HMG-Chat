@@ -130,6 +130,11 @@ const EXPECTED_ROUTES: Array<{ method: string; path: string; phase: string }> =
     { method: "GET", path: "/api/v1/admin/groups", phase: "P19" },
     { method: "POST", path: "/api/v1/admin/groups", phase: "P19" },
     {
+      method: "DELETE",
+      path: `/api/v1/admin/users/${randomUUID()}`,
+      phase: "P20",
+    },
+    {
       method: "GET",
       path: `/api/v1/admin/grants?resourceType=prompt&resourceId=${randomUUID()}`,
       phase: "P20",

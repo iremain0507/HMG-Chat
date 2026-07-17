@@ -6,6 +6,7 @@
 // acceptance 범위 밖, 기존 결정 유지).
 import React from "react";
 import { useAdminUsers, type AdminUserDto } from "../../hooks/useAdminUsers";
+import { useCurrentUser } from "../../hooks/useCurrentUser";
 import { AdminSubNav } from "./AdminSubNav";
 
 const ROLES: AdminUserDto["role"][] = ["member", "admin", "owner"];
@@ -21,9 +22,35 @@ const STATUS_BADGE: Record<AdminUserDto["status"], string> = {
 const TH_CLASS =
   "border-b border-border px-2.5 py-[7px] text-left text-[11.5px] font-semibold text-fg-muted";
 
+// P20-T1-13 — 서버(db/admin-data-access.ts deleteUser)와 동일한 판정 로직을 클라이언트에서
+// 미리 계산해 삭제 버튼을 disabled+사유로 안내한다(서버는 여전히 최종 권위자로 동일 가드 재검증).
+function deleteGuardReason(
+  target: AdminUserDto,
+  users: AdminUserDto[],
+  currentUserId: string | null,
+): string | null {
+  if (currentUserId && target.id === currentUserId) {
+    return "자기 자신은 삭제할 수 없습니다.";
+  }
+  if (target.role === "owner") {
+    const owners = users
+      .filter((u) => u.role === "owner")
+      .slice()
+      .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+    if (owners.length <= 1) {
+      return "조직의 마지막 owner 는 삭제할 수 없습니다.";
+    }
+    if (owners[0]?.id === target.id) {
+      return "최고 관리자(primary admin)는 삭제할 수 없습니다.";
+    }
+  }
+  return null;
+}
+
 export function AdminUsersManager() {
-  const { users, loading, error, changeRole, suspend, unsuspend } =
+  const { users, loading, error, changeRole, suspend, unsuspend, deleteUser } =
     useAdminUsers();
+  const { user: currentUser } = useCurrentUser();
 
   async function handleSuspendToggle(u: AdminUserDto) {
     if (u.status === "suspended") {
@@ -33,6 +60,14 @@ export function AdminUsersManager() {
     const reason = window.prompt("정지 사유를 입력하세요.");
     if (!reason) return;
     await suspend(u.id, reason);
+  }
+
+  async function handleDelete(u: AdminUserDto) {
+    if (!window.confirm(`${u.email} 사용자를 삭제하시겠습니까?`)) return;
+    const outcome = await deleteUser(u.id);
+    if (!outcome.ok && outcome.message) {
+      window.alert(outcome.message);
+    }
   }
 
   return (
@@ -69,6 +104,11 @@ export function AdminUsersManager() {
             {users.map((u, i) => {
               const rowBorder =
                 i === users.length - 1 ? "" : "border-b border-border";
+              const guardReason = deleteGuardReason(
+                u,
+                users,
+                currentUser?.id ?? null,
+              );
               return (
                 <tr key={u.id}>
                   <td className={`${rowBorder} px-2.5 py-[6px] text-fg`}>
@@ -118,6 +158,16 @@ export function AdminUsersManager() {
                       onClick={() => handleSuspendToggle(u)}
                     >
                       {u.status === "suspended" ? "정지 해제" : "정지"}
+                    </button>
+                    <button
+                      type="button"
+                      disabled={!!guardReason}
+                      title={guardReason ?? undefined}
+                      className={`ml-2 text-xs font-medium text-accent disabled:cursor-not-allowed disabled:text-fg-subtle disabled:opacity-60 ${FOCUS_RING}`}
+                      aria-label={`삭제 (${u.email})`}
+                      onClick={() => handleDelete(u)}
+                    >
+                      삭제
                     </button>
                   </td>
                 </tr>
