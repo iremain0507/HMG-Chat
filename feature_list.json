@@ -2318,8 +2318,8 @@
     "acceptance": "RED: MessageActions.test 가 바깥클릭·Escape 시 정보 팝오버 닫힘을 단언 — 현재 blur 미발생 시 잔존(실패, UX-01,03). RTL 실 DOM 이벤트로 충분.",
     "phase": "P21",
     "team": "T6",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P21-T6-09",

@@ -175,6 +175,62 @@ describe("MessageActions", () => {
     ).not.toBeInTheDocument();
   });
 
+  it("정보 팝오버 바깥을 pointerdown 하면 닫힌다 (P21-T6-08, UX-01)", () => {
+    render(
+      <div>
+        <MessageActions
+          role="assistant"
+          content="hi"
+          meta={{ model: "fake-model", provider: "fake", inputTokens: 1 }}
+        />
+        <button type="button">바깥</button>
+      </div>,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "정보" }));
+    expect(screen.getByTestId("message-info-popover")).toBeInTheDocument();
+
+    fireEvent.pointerDown(screen.getByRole("button", { name: "바깥" }));
+
+    expect(
+      screen.queryByTestId("message-info-popover"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("정보 팝오버가 열린 상태에서 Escape 를 누르면 닫히고 포커스가 트리거로 복귀한다 (P21-T6-08, UX-03)", () => {
+    render(
+      <MessageActions
+        role="assistant"
+        content="hi"
+        meta={{ model: "fake-model", provider: "fake", inputTokens: 1 }}
+      />,
+    );
+    const infoButton = screen.getByRole("button", { name: "정보" });
+    fireEvent.click(infoButton);
+    expect(screen.getByTestId("message-info-popover")).toBeInTheDocument();
+
+    fireEvent.keyDown(document, { key: "Escape" });
+
+    expect(
+      screen.queryByTestId("message-info-popover"),
+    ).not.toBeInTheDocument();
+    expect(infoButton).toHaveFocus();
+  });
+
+  it("정보 팝오버 패널에 role 이 부여된다 (P21-T6-08)", () => {
+    render(
+      <MessageActions
+        role="assistant"
+        content="hi"
+        meta={{ model: "fake-model", provider: "fake", inputTokens: 1 }}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "정보" }));
+    expect(screen.getByTestId("message-info-popover")).toHaveAttribute(
+      "role",
+      "dialog",
+    );
+  });
+
   it("feedback API 실패 시 낙관적 업데이트를 롤백한다", async () => {
     vi.mocked(apiFetch).mockResolvedValue({
       ok: false,

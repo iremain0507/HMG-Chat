@@ -5,9 +5,10 @@
 // P19-T6-07: sessionId/messageId 가 주어지면 피드백이 서버(P19-T1-07)에 영속된다
 // (낙관적 업데이트 후 서버 응답으로 확정, 실패 시 롤백). 둘 다 없으면(예: 기존 테스트)
 // 로컬 표시 전용으로 남는다.
-import React, { useState } from "react";
+import React, { useRef, useState } from "react";
 import { copyText } from "../../lib/clipboard";
 import { sendMessageFeedback } from "../../lib/messageFeedback";
+import { useDismiss } from "../../hooks/useDismiss";
 import type { StreamMessageMeta } from "../../hooks/useSessionStream";
 
 export function MessageActions({
@@ -37,6 +38,16 @@ export function MessageActions({
   // P20-T6-06 — 생성 메타(Info): stop ChatEvent.usage(토큰)·message_start~stop 경과시간을
   // 클릭 시에만 노출하는 팝오버(항상 보이면 hover 액션바가 번잡해짐).
   const [showInfo, setShowInfo] = useState(false);
+  const infoButtonRef = useRef<HTMLButtonElement>(null);
+  const infoPanelRef = useRef<HTMLDivElement>(null);
+  useDismiss(
+    infoPanelRef,
+    () => {
+      setShowInfo(false);
+      infoButtonRef.current?.focus();
+    },
+    { enabled: showInfo, triggerRef: infoButtonRef },
+  );
   const hasInfo =
     role === "assistant" &&
     meta !== undefined &&
@@ -139,17 +150,20 @@ export function MessageActions({
       {hasInfo && (
         <div className="relative">
           <button
+            ref={infoButtonRef}
             type="button"
             aria-label="정보"
             aria-expanded={showInfo}
             onClick={() => setShowInfo((v) => !v)}
-            onBlur={() => setShowInfo(false)}
             className="rounded-md p-1 text-xs hover:bg-surface hover:text-fg"
           >
             정보
           </button>
           {showInfo && (
             <div
+              ref={infoPanelRef}
+              role="dialog"
+              aria-label="메시지 정보"
               data-testid="message-info-popover"
               className="absolute bottom-full right-0 z-10 mb-1 w-44 space-y-1 rounded-md border border-border bg-bg p-2 text-xs text-fg shadow-md"
             >
