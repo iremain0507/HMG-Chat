@@ -1967,8 +1967,8 @@
     "acceptance": "RED: knowledge-retrieval-pg.test.ts 가 시드된 project document chunks 에 대해 loadCandidates 가 관련 candidates + sourceMetaByDocumentId(filename/documentId 채워짐)를 반환함을 단언하나 구현 부재로 실패. L1 last-mile: 반환 candidates/sourceMeta 가 knowledge-search-handler 가 소비하는 HybridSearchCandidate/CitationSourceMeta shape 과 정확히 일치(핸들러 spec 테스트가 실 포트로도 green). cross-org: 타 org projectId 조회 시 0건. 검증: pnpm test knowledge/__tests__ + typecheck.",
     "phase": "P20",
     "team": "T3",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P20-T1-02",
