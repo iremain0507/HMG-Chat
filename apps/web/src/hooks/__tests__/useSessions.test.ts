@@ -764,4 +764,118 @@ describe("useSessions", () => {
     ]);
     expect(result.current.hasMore).toBe(false);
   });
+
+  it("bulkArchiveSessions 가 선택된 id 각각에 PATCH /:id/archive 를 호출하고 목록에서 제거한다(P20-T6-08)", async () => {
+    const archiveCalls: string[] = [];
+    const fetchMock = vi.fn(
+      async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        if (url === "/api/v1/sessions") {
+          return {
+            ok: true,
+            status: 200,
+            json: async () => ({
+              data: [
+                {
+                  id: "sess-1",
+                  title: "세션1",
+                  lastMessageAt: "2026-07-14T01:00:00Z",
+                  projectId: null,
+                  archived: false,
+                },
+                {
+                  id: "sess-2",
+                  title: "세션2",
+                  lastMessageAt: "2026-07-14T01:00:00Z",
+                  projectId: null,
+                  archived: false,
+                },
+                {
+                  id: "sess-3",
+                  title: "세션3",
+                  lastMessageAt: "2026-07-14T01:00:00Z",
+                  projectId: null,
+                  archived: false,
+                },
+              ],
+            }),
+          };
+        }
+        const archiveMatch = url.match(
+          /^\/api\/v1\/sessions\/(sess-\d)\/archive$/,
+        );
+        if (archiveMatch && init?.method === "PATCH") {
+          const id = archiveMatch[1] as string;
+          archiveCalls.push(id);
+          return {
+            ok: true,
+            status: 200,
+            json: async () => ({ data: { id, archived: true } }),
+          };
+        }
+        return { ok: true, status: 200, json: async () => ({ data: [] }) };
+      },
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { result } = renderHook(() => useSessions());
+    await waitFor(() => expect(result.current.sessions).toHaveLength(3));
+
+    await act(async () => {
+      await result.current.bulkArchiveSessions(["sess-1", "sess-2", "sess-3"]);
+    });
+
+    expect(archiveCalls.sort()).toEqual(["sess-1", "sess-2", "sess-3"]);
+    expect(result.current.sessions).toHaveLength(0);
+  });
+
+  it("bulkDeleteSessions 가 선택된 id 각각에 DELETE /:id 를 호출하고 목록에서 제거한다(P20-T6-08)", async () => {
+    const deleteCalls: string[] = [];
+    const fetchMock = vi.fn(
+      async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        if (url === "/api/v1/sessions") {
+          return {
+            ok: true,
+            status: 200,
+            json: async () => ({
+              data: [
+                {
+                  id: "sess-1",
+                  title: "세션1",
+                  lastMessageAt: "2026-07-14T01:00:00Z",
+                  projectId: null,
+                  archived: false,
+                },
+                {
+                  id: "sess-2",
+                  title: "세션2",
+                  lastMessageAt: "2026-07-14T01:00:00Z",
+                  projectId: null,
+                  archived: false,
+                },
+              ],
+            }),
+          };
+        }
+        const deleteMatch = url.match(/^\/api\/v1\/sessions\/(sess-\d)$/);
+        if (deleteMatch && init?.method === "DELETE") {
+          deleteCalls.push(deleteMatch[1] as string);
+          return { ok: true, status: 204, json: async () => ({}) };
+        }
+        return { ok: true, status: 200, json: async () => ({ data: [] }) };
+      },
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { result } = renderHook(() => useSessions());
+    await waitFor(() => expect(result.current.sessions).toHaveLength(2));
+
+    await act(async () => {
+      await result.current.bulkDeleteSessions(["sess-1", "sess-2"]);
+    });
+
+    expect(deleteCalls.sort()).toEqual(["sess-1", "sess-2"]);
+    expect(result.current.sessions).toHaveLength(0);
+  });
 });

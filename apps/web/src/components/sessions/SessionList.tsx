@@ -7,6 +7,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   Archive,
+  CheckSquare,
   ChevronDown,
   ChevronRight,
   MessageSquareText,
@@ -332,6 +333,8 @@ export function SessionList({ now }: { now?: Date } = {}) {
     archivedLoading,
     loadArchived,
     archiveSession,
+    bulkArchiveSessions,
+    bulkDeleteSessions,
   } = useSessions();
   const sentinelRef = useRef<HTMLDivElement>(null);
   const [query, setQuery] = useState("");
@@ -343,9 +346,43 @@ export function SessionList({ now }: { now?: Date } = {}) {
   );
   const [tagFilter, setTagFilter] = useState<string | null>(null);
   const [archivedView, setArchivedView] = useState(false);
+  const [selectionMode, setSelectionMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [contentMatches, setContentMatches] = useState<
     SessionSearchResultDto[]
   >([]);
+
+  function toggleSelectionMode() {
+    setSelectionMode((prev) => {
+      if (prev) setSelectedIds(new Set());
+      return !prev;
+    });
+  }
+
+  function toggleSelect(id: string) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  async function handleBulkArchive() {
+    const ids = Array.from(selectedIds);
+    if (ids.length === 0) return;
+    await bulkArchiveSessions(ids);
+    setSelectedIds(new Set());
+    setSelectionMode(false);
+  }
+
+  async function handleBulkDelete() {
+    const ids = Array.from(selectedIds);
+    if (ids.length === 0) return;
+    await bulkDeleteSessions(ids);
+    setSelectedIds(new Set());
+    setSelectionMode(false);
+  }
 
   function openArchivedView() {
     setArchivedView(true);
@@ -475,6 +512,9 @@ export function SessionList({ now }: { now?: Date } = {}) {
         onAddTag={(id, tag) => void addTag(id, tag)}
         onRemoveTag={(id, tag) => void removeTag(id, tag)}
         onArchive={(id) => void archiveSession(id)}
+        selectionMode={selectionMode}
+        selected={selectedIds.has(session.id)}
+        onToggleSelect={toggleSelect}
       />
     );
   }
@@ -586,6 +626,42 @@ export function SessionList({ now }: { now?: Date } = {}) {
         <Archive size={12} strokeWidth={1.8} />
         보관함
       </button>
+      {!archivedView && (
+        <button
+          type="button"
+          aria-pressed={selectionMode}
+          onClick={toggleSelectionMode}
+          className={`mt-1 flex h-[26px] shrink-0 items-center gap-1 rounded-md px-2 text-left text-xs ${
+            selectionMode
+              ? "bg-primary-50 text-primary"
+              : "text-fg-muted hover:bg-bg hover:text-fg"
+          }`}
+        >
+          <CheckSquare size={12} strokeWidth={1.8} />
+          다중 선택
+        </button>
+      )}
+      {selectionMode && (
+        <div className="mt-1 flex shrink-0 items-center gap-2 rounded-md bg-primary-50 px-2 py-1 text-xs text-primary">
+          <span>{selectedIds.size}개 선택됨</span>
+          <button
+            type="button"
+            onClick={() => void handleBulkArchive()}
+            disabled={selectedIds.size === 0}
+            className="rounded-md px-2 py-0.5 font-semibold hover:bg-bg disabled:opacity-40"
+          >
+            선택 항목 보관
+          </button>
+          <button
+            type="button"
+            onClick={() => void handleBulkDelete()}
+            disabled={selectedIds.size === 0}
+            className="rounded-md px-2 py-0.5 font-semibold text-accent hover:bg-bg disabled:opacity-40"
+          >
+            선택 항목 삭제
+          </button>
+        </div>
+      )}
       {allTags.length > 0 && (
         <div className="mt-1 flex flex-wrap gap-1 px-1">
           {allTags.map((tag) => (

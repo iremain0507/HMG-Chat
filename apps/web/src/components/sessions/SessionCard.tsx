@@ -31,6 +31,9 @@ export interface SessionCardProps {
   onAddTag: (id: string, tag: string) => void;
   onRemoveTag: (id: string, tag: string) => void;
   onArchive: (id: string) => void;
+  selectionMode?: boolean;
+  selected?: boolean;
+  onToggleSelect?: (id: string) => void;
 }
 
 export function SessionCard({
@@ -45,6 +48,9 @@ export function SessionCard({
   onAddTag,
   onRemoveTag,
   onArchive,
+  selectionMode = false,
+  selected = false,
+  onToggleSelect,
 }: SessionCardProps) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(session.title ?? "");
@@ -106,9 +112,20 @@ export function SessionCard({
       className="group relative flex flex-col gap-0.5 rounded-md px-2 py-1.5 hover:bg-bg"
     >
       <div className="flex items-center gap-1">
+        {selectionMode && (
+          <input
+            type="checkbox"
+            aria-label={`선택: ${label}`}
+            checked={selected}
+            onChange={() => onToggleSelect?.(session.id)}
+            className="shrink-0 accent-primary"
+          />
+        )}
         <button
           type="button"
-          onClick={() => onOpen(session.id)}
+          onClick={() =>
+            selectionMode ? onToggleSelect?.(session.id) : onOpen(session.id)
+          }
           className="min-w-0 flex-1 truncate text-left text-sm text-fg"
         >
           {label}

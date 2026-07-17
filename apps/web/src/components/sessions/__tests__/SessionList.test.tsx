@@ -1321,4 +1321,95 @@ describe("SessionList", () => {
       expect(screen.getByText("두번째 페이지 세션")).toBeInTheDocument();
     });
   });
+
+  it("선택 모드에서 체크박스로 3개 선택 후 일괄 보관하면 3건 모두 목록에서 사라진다(P20-T6-08)", async () => {
+    const archiveCalls: string[] = [];
+    const fetchMock = vi.fn(
+      async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        if (
+          url === "/api/v1/sessions" &&
+          (!init?.method || init.method === "GET")
+        ) {
+          return {
+            ok: true,
+            status: 200,
+            json: async () => ({
+              data: [
+                {
+                  id: "sess-a",
+                  title: "세션 A",
+                  lastMessageAt: "2026-07-14T01:00:00Z",
+                  projectId: null,
+                  archived: false,
+                  pinned: false,
+                  folderId: null,
+                  tags: [],
+                },
+                {
+                  id: "sess-b",
+                  title: "세션 B",
+                  lastMessageAt: "2026-07-14T01:00:00Z",
+                  projectId: null,
+                  archived: false,
+                  pinned: false,
+                  folderId: null,
+                  tags: [],
+                },
+                {
+                  id: "sess-c",
+                  title: "세션 C",
+                  lastMessageAt: "2026-07-14T01:00:00Z",
+                  projectId: null,
+                  archived: false,
+                  pinned: false,
+                  folderId: null,
+                  tags: [],
+                },
+              ],
+            }),
+          };
+        }
+        const archiveMatch = url.match(
+          /^\/api\/v1\/sessions\/(sess-[abc])\/archive$/,
+        );
+        if (archiveMatch && init?.method === "PATCH") {
+          const id = archiveMatch[1] as string;
+          archiveCalls.push(id);
+          return {
+            ok: true,
+            status: 200,
+            json: async () => ({ data: { id, archived: true } }),
+          };
+        }
+        return { ok: true, status: 200, json: async () => ({ data: [] }) };
+      },
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<SessionList now={new Date("2026-07-14T12:00:00Z")} />);
+
+    await waitFor(() => {
+      expect(screen.getByText("세션 A")).toBeInTheDocument();
+      expect(screen.getByText("세션 B")).toBeInTheDocument();
+      expect(screen.getByText("세션 C")).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "다중 선택" }));
+
+    fireEvent.click(screen.getByLabelText("선택: 세션 A"));
+    fireEvent.click(screen.getByLabelText("선택: 세션 B"));
+    fireEvent.click(screen.getByLabelText("선택: 세션 C"));
+
+    fireEvent.click(screen.getByRole("button", { name: /선택 항목 보관/ }));
+
+    await waitFor(() => {
+      expect(archiveCalls.sort()).toEqual(["sess-a", "sess-b", "sess-c"]);
+    });
+    await waitFor(() => {
+      expect(screen.queryByText("세션 A")).not.toBeInTheDocument();
+      expect(screen.queryByText("세션 B")).not.toBeInTheDocument();
+      expect(screen.queryByText("세션 C")).not.toBeInTheDocument();
+    });
+  });
 });

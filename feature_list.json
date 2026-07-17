@@ -2111,8 +2111,8 @@
     "acceptance": "RED: 테스트가 3개 선택+일괄 보관 시 3건 모두 archived 되는지 단언(현재 다중선택 UI 부재로 실패). 신규 route 추가 시 routes-mounted 가드가 미마운트를 잡음. L1 last-mile: 실제 다중선택 후 일괄 보관이 모두 보관함 뷰로 이동. needsBrowser=true → 실앱 Playwright E2E(dev-login→다중선택→일괄 보관→보관함 확인) 또는 watchdog UAT.",
     "phase": "P20",
     "team": "T6",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P20-T1-07",

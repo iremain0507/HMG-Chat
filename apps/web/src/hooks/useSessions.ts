@@ -57,6 +57,8 @@ interface UseSessionsResult {
   archivedLoading: boolean;
   loadArchived: () => Promise<void>;
   archiveSession: (id: string) => Promise<void>;
+  bulkArchiveSessions: (ids: string[]) => Promise<void>;
+  bulkDeleteSessions: (ids: string[]) => Promise<void>;
 }
 
 export function useSessions(): UseSessionsResult {
@@ -222,6 +224,29 @@ export function useSessions(): UseSessionsResult {
     }
   }, []);
 
+  const bulkArchiveSessions = useCallback(async (ids: string[]) => {
+    const results = await Promise.all(
+      ids.map((id) => toggleSessionArchive(id)),
+    );
+    const archivedIds = new Set(ids.filter((_, i) => results[i] === true));
+    setSessions((prev) => prev.filter((s) => !archivedIds.has(s.id)));
+  }, []);
+
+  const bulkDeleteSessions = useCallback(async (ids: string[]) => {
+    const results = await Promise.all(
+      ids.map(async (id) => {
+        const res = await apiFetch(`/api/v1/sessions/${id}`, {
+          method: "DELETE",
+          credentials: "include",
+        });
+        return res.ok || res.status === 204;
+      }),
+    );
+    const deletedIds = new Set(ids.filter((_, i) => results[i]));
+    setSessions((prev) => prev.filter((s) => !deletedIds.has(s.id)));
+    setArchivedSessions((prev) => prev.filter((s) => !deletedIds.has(s.id)));
+  }, []);
+
   const togglePin = useCallback(async (id: string) => {
     let previous = false;
     setSessions((prev) =>
@@ -368,5 +393,7 @@ export function useSessions(): UseSessionsResult {
     archivedLoading,
     loadArchived,
     archiveSession,
+    bulkArchiveSessions,
+    bulkDeleteSessions,
   };
 }
