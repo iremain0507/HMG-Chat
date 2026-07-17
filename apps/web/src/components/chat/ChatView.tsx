@@ -454,6 +454,7 @@ export function ChatView({ sessionId }: { sessionId: string }) {
                 content: m.content,
               }))}
               artifacts={artifacts}
+              sessionId={sessionId}
             />
             <button
               type="button"

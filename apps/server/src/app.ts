@@ -27,6 +27,11 @@ import { pgPool } from "./db/client.js";
 import { createArtifactShareRoutes } from "./routes/artifact-shares.js";
 import { createPgArtifactShareDataAccess } from "./db/artifact-share-data-access.js";
 import { createPublicShareRoutes } from "./routes/public-share.js";
+import {
+  createConversationShareRoutes,
+  createPublicConversationShareRoutes,
+} from "./routes/conversation-share.js";
+import { createPgConversationShareDataAccess } from "./db/conversation-share-data-access.js";
 import { createMemoryRoutes } from "./routes/memories.js";
 import { createPgUserMemoryDataAccess } from "./db/user-memory-data-access.js";
 import { createMcpServerRoutes } from "./routes/mcp-servers.js";
@@ -273,7 +278,27 @@ export function createApp(env: Env) {
       folders: createPgSessionFolderDataAccess(),
     }),
   );
+  // P20-T1-08 — 대화 스냅샷 공유(불변) 발급/revoke. sessionDa/messageDa 싱글톤 재사용
+  // (구조적 타이핑으로 ConversationShareSessionsPort/MessagesPort 충족, 신규 DA 불필요).
+  const conversationShareDa = createPgConversationShareDataAccess();
+  sessionsApp.route(
+    "/",
+    createConversationShareRoutes({
+      da: conversationShareDa,
+      sessions: sessionDa,
+      messages: messageDa,
+      appOrigin,
+    }),
+  );
   app.route("/api/v1/sessions", sessionsApp);
+
+  // 인증 우회 mount(P20-T1-08) — 대화 스냅샷 공개 조회. artifact 공개 조회(/api/v1/share)와
+  // 별도 prefix 로 "미마운트 404" vs "유효하지 않은 토큰 404" 모호성을 없앤다
+  // (routes/conversation-share.ts 상단 주석 참고).
+  app.route(
+    "/api/v1/conversation-shares",
+    createPublicConversationShareRoutes({ da: conversationShareDa }),
+  );
 
   // P19-T1-03 — 세션 폴더 CRUD(migration 0019 session_folders).
   const foldersApp = new Hono<{ Variables: AuthedVariables }>();

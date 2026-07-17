@@ -36,6 +36,7 @@ describe("ShareExportMenu", () => {
         title="테스트 대화"
         messages={MESSAGES}
         artifacts={[]}
+        sessionId="session-1"
       />,
     );
     fireEvent.click(screen.getByTestId("share-export-trigger"));
@@ -48,6 +49,7 @@ describe("ShareExportMenu", () => {
         title="테스트 대화"
         messages={MESSAGES}
         artifacts={[]}
+        sessionId="session-1"
       />,
     );
     fireEvent.click(screen.getByTestId("share-export-trigger"));
@@ -68,6 +70,7 @@ describe("ShareExportMenu", () => {
         title="테스트 대화"
         messages={MESSAGES}
         artifacts={[]}
+        sessionId="session-1"
       />,
     );
     fireEvent.click(screen.getByTestId("share-export-trigger"));
@@ -87,6 +90,7 @@ describe("ShareExportMenu", () => {
         title="테스트 대화"
         messages={MESSAGES}
         artifacts={[]}
+        sessionId="session-1"
       />,
     );
     fireEvent.click(screen.getByTestId("share-export-trigger"));
@@ -107,6 +111,7 @@ describe("ShareExportMenu", () => {
         title="테스트 대화"
         messages={MESSAGES}
         artifacts={[]}
+        sessionId="session-1"
       />,
     );
     fireEvent.click(screen.getByTestId("share-export-trigger"));
@@ -126,6 +131,7 @@ describe("ShareExportMenu", () => {
             sizeBytes: 100,
           },
         ]}
+        sessionId="session-1"
       />,
     );
     fireEvent.click(screen.getByTestId("share-export-trigger"));
@@ -150,6 +156,7 @@ describe("ShareExportMenu", () => {
             sizeBytes: 100,
           },
         ]}
+        sessionId="session-1"
       />,
     );
     fireEvent.click(screen.getByTestId("share-export-trigger"));
@@ -181,6 +188,7 @@ describe("ShareExportMenu", () => {
             sizeBytes: 200,
           },
         ]}
+        sessionId="session-1"
       />,
     );
     fireEvent.click(screen.getByTestId("share-export-trigger"));
@@ -188,5 +196,124 @@ describe("ShareExportMenu", () => {
     fireEvent.click(screen.getByTestId("share-confirm-accept"));
 
     expect(screen.getByRole("dialog", { name: "공유" })).toBeInTheDocument();
+  });
+
+  // P20-T1-08 대화 스냅샷 공유 — 아티팩트 유무와 무관하게 항상 활성화, opt-in 확인 없이
+  // 바로 ConversationShareDialog 를 연다.
+  it("아티팩트가 없어도 대화 스냅샷 공유 버튼은 항상 활성화된다", () => {
+    render(
+      <ShareExportMenu
+        title="테스트 대화"
+        messages={MESSAGES}
+        artifacts={[]}
+        sessionId="session-1"
+      />,
+    );
+    fireEvent.click(screen.getByTestId("share-export-trigger"));
+    expect(
+      screen.getByRole("button", { name: "대화 스냅샷 공유" }),
+    ).not.toBeDisabled();
+  });
+
+  it("대화 스냅샷 공유 클릭 시 opt-in 확인 없이 바로 스냅샷 공유 다이얼로그가 열린다", () => {
+    render(
+      <ShareExportMenu
+        title="테스트 대화"
+        messages={MESSAGES}
+        artifacts={[]}
+        sessionId="session-1"
+      />,
+    );
+    fireEvent.click(screen.getByTestId("share-export-trigger"));
+    fireEvent.click(screen.getByRole("button", { name: "대화 스냅샷 공유" }));
+
+    expect(
+      screen.getByRole("dialog", { name: "대화 스냅샷 공유" }),
+    ).toBeInTheDocument();
+    expect(screen.queryByTestId("share-confirm")).not.toBeInTheDocument();
+  });
+
+  it("스냅샷 공유 링크 생성 버튼을 누르면 POST /sessions/:id/share-snapshot 후 URL 을 표시한다", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({
+        ok: true,
+        json: async () => ({
+          data: {
+            token: "snap-tok-1",
+            url: "https://app.example.com/share/conversations/snap-tok-1",
+            expiresAt: null,
+          },
+        }),
+      })),
+    );
+
+    render(
+      <ShareExportMenu
+        title="테스트 대화"
+        messages={MESSAGES}
+        artifacts={[]}
+        sessionId="session-1"
+      />,
+    );
+    fireEvent.click(screen.getByTestId("share-export-trigger"));
+    fireEvent.click(screen.getByRole("button", { name: "대화 스냅샷 공유" }));
+    fireEvent.click(
+      screen.getByRole("button", { name: "스냅샷 공유 링크 생성" }),
+    );
+
+    await screen.findByDisplayValue(
+      "https://app.example.com/share/conversations/snap-tok-1",
+    );
+    expect(fetch).toHaveBeenCalledWith(
+      "/api/v1/sessions/session-1/share-snapshot",
+      expect.objectContaining({ method: "POST" }),
+    );
+    vi.unstubAllGlobals();
+  });
+
+  it("스냅샷 링크 해제 버튼을 누르면 DELETE /sessions/:id/share-snapshot/:token 후 생성 버튼으로 되돌아간다", async () => {
+    const fetchMock = vi.fn(async (_url: string, opts?: RequestInit) => {
+      if (opts?.method === "DELETE") {
+        return { ok: true };
+      }
+      return {
+        ok: true,
+        json: async () => ({
+          data: {
+            token: "snap-tok-1",
+            url: "https://app.example.com/share/conversations/snap-tok-1",
+            expiresAt: null,
+          },
+        }),
+      };
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(
+      <ShareExportMenu
+        title="테스트 대화"
+        messages={MESSAGES}
+        artifacts={[]}
+        sessionId="session-1"
+      />,
+    );
+    fireEvent.click(screen.getByTestId("share-export-trigger"));
+    fireEvent.click(screen.getByRole("button", { name: "대화 스냅샷 공유" }));
+    fireEvent.click(
+      screen.getByRole("button", { name: "스냅샷 공유 링크 생성" }),
+    );
+    await screen.findByDisplayValue(
+      "https://app.example.com/share/conversations/snap-tok-1",
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "링크 해제" }));
+
+    await screen.findByRole("button", { name: "스냅샷 공유 링크 생성" });
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/v1/sessions/session-1/share-snapshot/snap-tok-1",
+      expect.objectContaining({ method: "DELETE" }),
+    );
+    vi.unstubAllGlobals();
   });
 });

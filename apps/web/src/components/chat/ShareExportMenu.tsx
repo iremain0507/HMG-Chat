@@ -6,6 +6,7 @@
 //   기존 ArtifactShare 계약(components/artifacts/ShareDialog.tsx, 16-API-CONTRACT § 8)으로 위임.
 import React, { useState } from "react";
 import { ShareDialog } from "../artifacts/ShareDialog";
+import { ConversationShareDialog } from "./ConversationShareDialog";
 import type { ArtifactSummary } from "../../hooks/useSessionStream";
 import {
   conversationToJson,
@@ -14,7 +15,8 @@ import {
   type ExportMessage,
 } from "../../lib/export-conversation";
 
-type MenuState = "closed" | "menu" | "confirm" | "share-dialog";
+type MenuState =
+  "closed" | "menu" | "confirm" | "share-dialog" | "conversation-share-dialog";
 
 const FOCUS_RING =
   "outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--focus-ring)] focus-visible:outline-offset-2";
@@ -28,10 +30,12 @@ export function ShareExportMenu({
   title,
   messages,
   artifacts,
+  sessionId,
 }: {
   title: string;
   messages: ExportMessage[];
   artifacts: ArtifactSummary[];
+  sessionId: string;
 }) {
   const [state, setState] = useState<MenuState>("closed");
   const [printRequested, setPrintRequested] = useState(false);
@@ -122,6 +126,13 @@ export function ShareExportMenu({
           >
             대화 공유
           </button>
+          <button
+            type="button"
+            onClick={() => setState("conversation-share-dialog")}
+            className={`block w-full rounded-md px-2 py-1.5 text-left text-sm text-fg hover:bg-bg ${FOCUS_RING}`}
+          >
+            대화 스냅샷 공유
+          </button>
         </div>
       )}
 
@@ -159,6 +170,13 @@ export function ShareExportMenu({
       {state === "share-dialog" && latestArtifact && (
         <ShareDialog
           artifactId={latestArtifact.artifactId}
+          onClose={() => setState("closed")}
+        />
+      )}
+
+      {state === "conversation-share-dialog" && (
+        <ConversationShareDialog
+          sessionId={sessionId}
           onClose={() => setState("closed")}
         />
       )}

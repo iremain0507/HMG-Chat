@@ -2129,8 +2129,8 @@
     "acceptance": "RED: createApp 기반 실HTTP 통합테스트가 POST→토큰 발급, 공개 GET /:token→스냅샷 반환, revoke 후 410, cross-org 404 를 단언(현재 대화 스냅샷 route 부재로 실패). routes-mounted 가드가 신규 prefix 미마운트를 잡음. migration-check: RLS/nullable-first/롤백. L1 last-mile: 실제 공유 버튼이 동작하는 공개 링크를 생성하고 그 URL 이 대화를 렌더. needsBrowser=true → 실앱 Playwright E2E(dev-login→대화 공유 생성→토큰 URL 오픈→대화 렌더 단언) 또는 watchdog UAT.",
     "phase": "P20",
     "team": "T1",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P20-T1-09",

@@ -21,6 +21,7 @@ import { ProjectPicker } from "../../components/chat/ProjectPicker";
 import { MemoryPanel } from "../../components/chat/MemoryPanel";
 import { ShareExportMenu } from "../../components/chat/ShareExportMenu";
 import { SharePublicView } from "../../components/share/SharePublicView";
+import { ConversationSharePublicView } from "../../components/share/ConversationSharePublicView";
 import { LoginForm } from "../../components/auth/LoginForm";
 import { SignupForm } from "../../components/auth/SignupForm";
 import { HomeContent } from "../../components/home/HomeContent";
@@ -819,6 +820,22 @@ function SharePublicViewPreview() {
   );
 }
 
+// P20-T1-08 — 대화 스냅샷 공유 프리뷰. ConversationSharePublicView 는 useConversationShare
+//   훅이 실 fetch 를 수행하므로, Playwright(e2e/conversation-share.pw.ts)가 page.route 로
+//   /api/v1/conversation-shares/:token 응답을 가로채 정상/410 두 상태를 결정론적으로 재현한다.
+function ConversationSharePublicViewPreview() {
+  return (
+    <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+      <div className="flex justify-center rounded-md bg-bg p-4">
+        <ConversationSharePublicView token="preview-conversation-ok" />
+      </div>
+      <div className="flex justify-center rounded-md bg-bg p-4">
+        <ConversationSharePublicView token="preview-conversation-gone" />
+      </div>
+    </div>
+  );
+}
+
 function LoginFormPreview() {
   return (
     <div className="flex justify-center">
@@ -1062,12 +1079,17 @@ export default function PreviewGallery() {
               },
             ]}
             artifacts={ARTIFACTS}
+            sessionId="preview-session"
           />
         </div>
       </Section>
 
       <Section name="share-public-view">
         <SharePublicViewPreview />
+      </Section>
+
+      <Section name="conversation-share-public-view">
+        <ConversationSharePublicViewPreview />
       </Section>
 
       <Section name="login-form">

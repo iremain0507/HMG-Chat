@@ -204,6 +204,13 @@
       "when": 1783891100000,
       "tag": "0029_nested_folders",
       "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "7",
+      "when": 1783891200000,
+      "tag": "0030_conversation_shares",
+      "breakpoints": true
     }
   ]
 }
