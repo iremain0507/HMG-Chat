@@ -1,0 +1,106 @@
+# P21 백로그 (P20 이후 저우선 롱테일) + 명시적 범위 밖
+
+> P20 은 audit ⚠️/❌ 중 P1·P2 우선순위 34개를 다룬다. 아래는 P3 롱테일(P21 후보)과 의도적 제외 목록.
+
+## P21 후보 (P3 롱테일)
+
+- **[T1] 웹검색 2번째 provider 어댑터 (SearXNG, 자가호스팅)** — 웹검색 provider 를 Tavily 1종에서 엔터프라이즈 자가호스팅 친화 SearXNG 1종 추가(20+ 아님, 1~2종 정책 준수). files: 신규 apps/server/src/tools/handlers/web-search-provider-s
+- **[T1] 피드백에 사유 코멘트 추가 (👎 이유)** — 현재 message_feedback 은 👍/👎 boolean 만(migration 0023). 엔터프라이즈 품질 추적용 선택적 텍스트 사유 추가. files: 신규 migration(message_feedback 에 nullable comment 컬럼
+- **[T6] 활성 워크스페이스 선택(폴더 활성화→새 채팅 상속)** — 활성 폴더가 신규 세션 생성 컨텍스트를 결정하는 로직 없음. 폴더 활성화 시 새 채팅이 그 안에 생성되고 폴더 시스템 프롬프트 상속(Open WebUI Active Workspace). '폴더 시스템 프롬프트 상속' + '중첩 폴더'에 의존. file
+- **[T6] 공유 대화 관리 대시보드** — 공유 채팅 목록/관리 대시보드 없음. 생성한 모든 대화 스냅샷 공유를 검색·정렬·해제(Open WebUI Shared Chats Dashboard). '대화 스냅샷 공유 링크'에 의존. files: apps/web/src/app/(app)/settin
+- **[T1] 대화 가져오기(JSON / ChatGPT export)** — import 라우트·UI 전무(server/web grep 0건). 내보낸 WChat JSON + ChatGPT conversations.json 가져오기(Open WebUI Import). files: apps/server/src/routes/ses
+- **[T1] 웹검색 결과 지식 저장 (Save to Knowledge)** — web_search 로 얻은 출처를 사용자가 프로젝트 지식베이스로 저장해 이후 재사용/인용하게 한다. 현재 web 결과는 ephemeral 근사만, 영구 보존 없음. files: apps/server/src/routes/documents.ts 또는 신
+- **[T1] 전체 문서 주입(Full Context) 토글** — 짧은 문서는 청킹/검색 없이 전문을 컨텍스트로 주입하는 토글을 추가한다(정밀 QA 용). files: apps/server/src/routes/messages.ts(요청 fullContext 플래그 또는 첨부별 옵션 시 ephemeral 검색 대신 문
+- **[T1] `#url` 웹페이지 인제스트 (fetch→parse→chunk→ephemeral)** — `#`+URL 로 웹페이지를 문서로 로드해 대화 컨텍스트에 주입한다. SSRF 는 기존 하드닝 재사용. files: 신규 apps/server/src/routes/uploads.ts 확장 또는 routes/url-ingest.ts(POST {url,s
+- **[T6] 프롬프트 입력 변수 폼 (typed Input Variables)** — 저장 프롬프트에 text/dropdown/date/number/checkbox 타입 변수를 정의하고, 삽입 시 팝업 폼으로 값을 받아 치환한다. 현재 PromptsManager 에 폼필드 정의 0건. files: apps/web/src/componen
+- **[T6] 시스템 변수 확장 ({{CURRENT_DATE}}/{{USER_NAME}} 등)** — 현재 {{today}}/{{user}}/{{clipboard}} 3종만 치환하는 런타임 변수셋을 OWUI 급으로 확장한다. files: apps/web/src/lib/promptVariables.ts(추가 변수: {{CURRENT_DATE}},{{CU
+- **[T6] 콜론-펜스(:::) 콘텐츠 블록 렌더** — ❌미개발이나 엔터프라이즈 문서형 답변에 유용+실현가능: `:::note`/`:::warning`/`:::tip` 콜론-펜스를 시맨틱 토큰 스타일 컨테이너(callout)로 렌더. 신규 의존성 회피 위해 기존 remarkCitations(lib/cita
+- **[T6] PWA(설치형/오프라인 셸)** — ⚠️부분→완성: 반응형은 있으나 PWA 부재(manifest/service worker/오프라인 미지원). Next 네이티브 app/manifest.ts(name·icons·display:standalone·theme_color=primary #002
+- **[T6] i18n(ko/en) 다국어 기반** — ❌미개발: layout.tsx가 `<html lang="ko">` 하드코딩 + UI 문자열 직접삽입(단일 로케일). 글로벌 사내 사용 대비 ko/en 전환 기반 구축. 신규 프레임워크 의존성(next-intl/i18next 등) 미지정이므로 **경량
+- **[T1] Pending 역할 / 가입 승인 큐** — WChat 은 가입 즉시 member 활성이라 대기/승인 큐가 없다(audit ❌ Pending 역할). 신규가입을 pending 상태로 두고 admin 승인 후 활성화하는 흐름. status 확장('pending' 추가) 또는 role 확장이 필요한
+- **[T1] 그룹 feature 권한 baseline + 오버라이드 (소수)** — 그룹은 순수 멤버십 컨테이너라 권한 토글 필드가 없다(audit ⚠️: additive union 로직만 존재, 그룹 permissions 필드 없음). 61종 전체 카탈로그가 아니라 소수 feature 권한(webSearch/apiKeys/fileU
+- **[T1] JWT_EXPIRES_IN 설정화** — Access 15분/refresh 30일이 auth.ts:65-66 하드코딩이라 env 설정 토글이 없다(audit ⚠️ 부분·하드코딩). env.ts 에 JWT_ACCESS_TTL/JWT_REFRESH_TTL 추가(기본값=현행 15m/30d 로 하위
+- **[T2] reasoningEffort 서버 소비(provider 파라미터 패스스루)** — 클라(ChatInput.tsx)는 reasoningEffort를 body로 전송하나 messages.ts POST body 파싱 타입에 없어 server no-op(서버 전체 grep 0건). files: routes/messages.ts body 파
+- **[T3] 프로젝트 문서 Reindex 엔드포인트** — 임베딩 설정/모델 변경 시 컬렉션 재청크·재임베딩 수단이 없다(retryDocument는 failed 문서만). files: routes/documents.ts에 POST /:projectId/reindex(또는 admin) — 대상 문서 docume
+- **[T1] 신규 사용자 가입 Admin Webhook(Slack/Teams 알림)** — 가입 시 외부 알림 없음. 기존 SlackWebhookAlertNotifier/alert-engine.ts 인프라 재사용. files: lib/org-settings-schema.ts에 newUserWebhookUrl 필드, auth/가입 경로에서 사
+- **[T3] Retrieval Query Generation(검색용 LLM 쿼리 생성)** — knowledge_search 호출 전 사용자 발화를 검색 최적화 쿼리로 LLM 생성(session-title-tags.ts의 결정적 폴백 패턴 재사용, dev-stub 시 원문 폴백). files: knowledge/retrieval-query-ge
+- **[T1] Model Presets(최소: 시스템프롬프트+모델+도구셋 재사용 프리셋)** — OWUI Custom Models 대응 최소판. base 모델을 systemPrompt·허용 도구·파라미터로 감싼 org 재사용 프리셋. files: db/migrations/00NN_model_presets.sql(org_id RLS, nullabl
+- **[T1] Prompt Suggestions(org 스타터 칩)** — 새 채팅 진입 시 클릭형 스타터 칩. 프리셋 없이 org 전역 스타터로 최소 구현. files: lib/org-settings-schema.ts에 starterPrompts: string[](최대 N) 추가, GET /admin/settings로 노출
+
+## 의도적 범위 밖 (구현 안 함)
+
+- **Multi-Model 동시질의 / Parallel Response Display / MOA Synthesiz** — 지시상 명시 제외(멀티모델 동시질의/MOA 합성/Arena). WChat 은 턴당 단일 모델 소비 모델이라 fan-out 상태트리·합성기 인프라 신설은 범위 밖.
+- **Read Aloud (TTS) / 음성 낭독** — 음성/오디오(STT/TTS/call) 도메인 전체 제외.
+- **Generate Image 메시지 액션 / 이미지 생성·편집** — 이미지 생성/편집 제외.
+- **Custom Action Buttons / Functions(Pipe·Filter·Action)** — 임의 파이썬 확장=보안 위험, Functions/Pipelines/Filters 제외.
+- **Structured Response Editing (툴콜/JSON 인라인 편집)** — reasoning 스트림 부재 전제 + 임의 구조편집은 가치 낮고 frozen 표면 큼. 후속 검토.
+- **Message Queue (생성 중 큐잉·Send Now)** — 단일 active-run 불변식과 충돌, 엔터프라이즈 가치 낮음.
+- **Direct Connections (사용자 개인 브라우저 저장 엔드포인트로 백엔드 우회)** — 지시상 명시 제외 + 백엔드 우회는 org 거버넌스/감사와 상충.
+- **세밀 1~10 평점 / 형제 자동 다운보트 / Elo 리더보드** — Arena/Elo 평가 제외(👍/👎 + 선택 코멘트까지만 채택).
+- **Import (JSON / ChatGPT export 가져오기)** — 세션 조직화/데이터(chat-org) 도메인 — 이번 chat-core 범위 밖(별도 도메인 태스크).
+- **CrossEncoder Reranking / Full Context Mode / Multi-engine 파싱** — dev-stub 임베딩 하에서 의미품질 이득 낮음 + knowledge 도메인 후속 최적화. 인덱싱 실배선 우선.
+- **#url 웹페이지 인제스트 / YouTube Transcript RAG / Google Drive 커넥터** — 외부 인제스트 커넥터는 knowledge 도메인 + 외부 의존, 이번 in-chat RAG 실배선 범위 밖.
+- **Web Search 20+ providers** — 1~2종 정책 — Tavily(기존)+SearXNG(신규 1종)만, 나머지 제외.
+- **Save to Knowledge (웹/채팅 결과 지식베이스 저장)** — knowledge 도메인 후속 + 계약상 web source 동결(project|ephemeral). 인덱싱 실배선 완료 후 재검토.
+- **Autocomplete 고스트 텍스트 (입력 인라인 자동완성)** — task 모델 상시 구동 비용/UX 튜닝 부담, 우선순위 낮음(별도 태스크로 후순위).
+- **Folder Sharing (사용자/그룹 read/write 공유·하위 상속)** — 폴더는 0019 설계상 개인 소유(created_by) 모델이고 공유는 RBAC resource_grants/그룹(지식·RBAC 도메인)에 강하게 의존 — chat-org 범위로 완결 불가, 별도 RBAC enfor
+- **Folder Background Customization (폴더별 배경 이미지)** — 순수 장식 기능, 엔터프라이즈 에이전틱 챗에 실질 가치 없음
+- **Community Platform 공유 (openwebui.com 업로드)** — 외부 커뮤니티 SaaS 연동 — 사내 온프레미스 엔터프라이즈 범위 밖
+- **Autocomplete 고스트텍스트(입력 중 인라인 자동완성)** — 키입력마다 task 모델 호출 필요 — 비용/지연 대비 엔터프라이즈 한계가치 낮음, 기존 슬래시 커맨드 피커로 대체 성격 다름
+- **Unread Indicators (백그라운드 새 활동 미확인 배지)** — 세션은 단일 사용자 소유·단일 액터 모델이라 백그라운드 '새 활동' 개념이 성립하지 않음 — 다중 액터 활동 추적 모델 부재
+- **지식/RAG 인덱싱 생산측 실배선(embed→INSERT chunks, knowledge_search app** — audit 상 최상위 갭이나 chat-org 가 아닌 지식/RAG 도메인 소관 — 본 큐레이션 범위(chat-org) 밖, 해당 도메인 태스크로 별도 처리
+- **음성/오디오 (STT·TTS·call·read-aloud)** — 범위 밖 명시. 사내 텍스트 에이전틱 챗에 불필요, 실 provider 의존.
+- **이미지 생성/편집 (DALL·E/SD 등)** — 범위 밖 명시. 외부 생성 API 의존, 엔터프라이즈 유스케이스 낮음.
+- **코드 인터프리터 실 실행환경 (E2B/터미널 실 샌드박스)** — 이미 dev-stub 배선 존재. 실 실행환경은 보안/인프라 범위 밖, 배포 시 교체 대상.
+- **Functions — Pipe/Filter/Action/Event (임의 파이썬 플러그인)** — 임의 코드 실행=보안 위험, 범위 밖 명시.
+- **커뮤니티 툴/프롬프트 마켓 import (openwebui.com)** — 범위 밖 명시. 외부 신뢰경계·공급망 위험.
+- **Tool Valves / UserValves** — org_settings 로 대체됨. Functions 프레임워크 종속이라 범위 밖.
+- **멀티모델 동시질의 / MOA 합성** — 범위 밖 명시. 비용·복잡도 대비 엔터프라이즈 가치 낮음.
+- **Arena / Elo 모델 평가** — 범위 밖 명시.
+- **Notes / Channels** — 범위 밖 명시. 별도 프로덕트 표면.
+- **LDAP/SCIM/OAuth/OIDC SSO** — 엔터프라이즈 인증은 별도 auth 도메인. 현 magic-link+도메인 게이트로 충분, 사내 IdP 연동은 별도 대형 트랙.
+- **Direct Connections (사용자별 외부 LLM 엔드포인트)** — 범위 밖 명시. org-scoped provider 정책과 상충.
+- **20+ 검색 provider (SearXNG/Brave/Google 등 대량)** — Tavily 1종+dev-stub 로 배선 완료. 다수 adapter 는 배포 시 필요분만 교체, 신규 태스크 불필요.
+- **YouTube Transcript RAG** — 외부 자막 API 의존, 사내 유스케이스 낮음. 필요 시 #url 인제스트로 근사.
+- **Google Drive Integration** — 외부 커넥터·OAuth 범위 밖. 파일 업로드로 대체.
+- **OpenAPI 서버 툴 연결** — MCP 전구간(SSRF+CIDR+rate limit) 실배선으로 툴 연결 커버. OpenAPI 는 중복 표면.
+- **Multi-Format 파싱 엔진 선택 (Tika/Docling/Mistral OCR)** — PDF·DOCX·PPTX·XLSX 파서 이미 존재. 다엔진 선택은 외부 서비스 의존, 한계효용 낮음.
+- **Reranking CrossEncoder (실 리랭커 모델)** — RRF fusion 으로 근사 배선 완료. 실 cross-encoder 는 외부/로컬 모델 인프라 의존, dev-stub 가치 낮음.
+- **URL Parameters 세션 사전구성 (model/q/web-search/tools)** — 한계효용 낮은 UX 편의. 엔터프라이즈 핵심 아님.
+- **Skill Mentions ($) 피커** — skills=T5 별도 도메인 소유. 본 도메인(T1/T2/T3/T6) 범위 밖.
+- **Chat Controls Sidebar (per-chat 시스템프롬프트·파라미터)** — per-chat 파라미터는 frozen ChatInput/계약 변경 위험 + org-level 설정으로 이미 커버. 신규 SSE/계약 리스크 대비 가치 낮아 보류.
+- **Prompt Version History & Rollback** — 감사엔 유용하나 프롬프트 CRUD 대비 우선순위 낮음. 별도 감사 트랙에서 처리 권장.
+- **Python via Pyodide (브라우저 WASM) / Jupyter Server Execution** — 코드 인터프리터 실 실행환경 확장. WChat은 이미 서버측 격리 E2B 어댑터로 code_interpreter를 실배선했고, 브라우저 WASM/Jupyter 커널 경로는 범위 밖(실 실행환경 제외 규칙).
+- **Open Terminal / Terminals(원격 셸)** — 임의 셸/전체 OS 접근 노출은 보안상 엔터프라이즈 부적합. E2B 내부 runCommand는 code_interpreter 전용으로 유지, 사용자 셸 미노출.
+- **이미지 생성/편집/인페인팅/합성 + 이미지 백엔드(DALL·E/Gemini/ComfyUI/A1111)** — 이미지 생성/편집 전체 범위 밖(제외 규칙). 외부 이미지 엔진 연동 없음.
+- **음성/영상: 핸즈프리 보이스, Call/Video 오버레이, STT 받아쓰기, TTS Read-Aloud, ** — 음성/오디오(STT/TTS/call) 전체 범위 밖(제외 규칙).
+- **Notes(리치에디터·AI Enhance·Note Chat·Context Injection·Agentic A** — Notes 기능 전체 범위 밖(제외 규칙, PROGRESS P19 명시). WChat 메모리는 별개 기능.
+- **Channels(실시간 팀채널·@model 태깅·스레드·이모지/핀·@mentions·채널 파일공유·접근제어/** — Channels 기능 전체 범위 밖(제외 규칙, PROGRESS P19 명시).
+- **OAuth/OIDC/SSO/SAML 로그인 + role/group claim 동기화** — 외부 IdP provider 전무(grep 0건), 소셜/디렉토리 SSO 는 프롬프트 제외 범위(LDAP/SCIM류) 및 대형 인증 리아키텍처. 배포 시 별도 SSO 페이즈.
+- **LDAP/AD 인증, SCIM 2.0 프로비저닝, Trusted Header 인증** — 프롬프트 명시 제외(LDAP/SCIM/Direct Connections). 디렉토리 동기화는 엔터프라이즈 별도 통합 트랙.
+- **비밀번호 인증 계열(ENABLE_LOGIN_FORM/password policy/change form/sig** — WChat 은 매직링크+JWT passwordless 구조라 비밀번호 저장 자체가 없음 — 구조적으로 해당 없음(N/A).
+- **권한 61종 전체 카탈로그(Workspace 13 / Sharing 15 / Chat 20 / Feature** — per-action RBAC 스키마 신설은 단일 페이즈 범위를 크게 초과하고 다수가 부재 기능(Notes/Channels/STT/TTS)에 걸림. 소수 feature 권한(그룹 baseline)만 p3 태스크로 축소
+- **Preview Access / Preview Group Access(리소스 접근 미리보기 감사)** — resource_grants enforcement 배선(p2 태스크) 이후에나 의미. 우선순위 낮아 후속 페이즈로 이연.
+- **ENABLE_ADMIN_CHAT_ACCESS(admin 이 타 사용자 채팅 열람)** — cross-user 사적 대화 열람은 프라이버시 민감·오남용 위험. 모든 세션조회 WHERE user_id=auth.sub 격리 원칙과 충돌, 컴플라이언스 정책 결정 선행 필요.
+- **User Status(active/away)/presence, 활성 사용자 수 공개 토글, Admin Ana** — presence 기능 자체 부재(P19 범위밖) 또는 cosmetic 토글. 엔터프라이즈 핵심 가치 낮아 제외.
+- **커스텀 API 키 헤더(CUSTOM_API_KEY_HEADER), 키별 Endpoint Restriction** — scope 강제(p2 채택) 위에 얹는 부가 기능. scope enforcement 선행 후 필요 시 후속.
+- **Banner HTML 화이트리스트 렌더링** — content HTML 렌더는 XSS 표면. typed 시맨틱 텍스트 배너(p1 채택)로 충분하며 HTML 저작은 보안 검토 별도.
+- **License Key / Offline Mode, Response Watermark 런타임 삽입, IFRAM** — 엔터프라이즈 라이선싱/오프라인은 해당 없음. 워터마크/CSP 는 저장/고정 sandbox 로 근사되어 있고 런타임 소비는 저가치.
+- **DEFAULT_GROUP_ID 자동배정 / 그룹 가시성(who can share)** — OAuth/SCIM group sync 및 공유 권한체계에 의존. 선행 인프라 부재로 이연.
+- **STT/TTS/Voice/Call(오디오 도메인 전체)** — 프롬프트 명시 범위 밖. WChat에 audio/stt/whisper/tts 코드 0건, 실 provider 의존 대규모.
+- **이미지 생성/편집/Inpainting/프롬프트 향상** — 프롬프트 명시 범위 밖. image-generation/comfyui 0건, 외부 이미지 provider 의존.
+- **Code Interpreter 실 실행환경(E2B/Jupyter/Pyodide/Open Terminal)** — 프롬프트 명시 범위 밖. 실 샌드박스·터미널 서버는 보안·인프라 대규모(현행 dev-stub로 충분).
+- **Functions/Pipelines/Filters/Valves(임의 Python 확장)** — 프롬프트 명시 범위 밖. 임의 파이썬 실행=보안 리스크, 프레임워크 부재.
+- **Community marketplace** — 프롬프트 명시 범위 밖. 외부 배포·큐레이션 인프라 필요.
+- **멀티모델 동시질의/MOA 합성** — 프롬프트 명시 범위 밖. runtime은 단일 provider 등록 구조.
+- **Arena Model / Elo Leaderboard / Model Activity / eval Topic ** — 프롬프트 명시 범위 밖(평가/Arena 도메인). 코드 부재, 엔터프라이즈 우선순위 낮음.
+- **Notes / Channels / Channel Webhooks / Calendar Alert** — 프롬프트 명시 범위 밖. 기능 자체 부재.
+- **LDAP/SCIM 프로비저닝** — 프롬프트 명시 범위 밖. 외부 디렉터리 연동 대규모.
+- **Direct Connections(브라우저 직결 추론)** — 프롬프트 명시 범위 밖. 토글만 저장, 백엔드 우회 경로는 엔터프라이즈 거버넌스와 상충.
+- **20+ 검색 provider / OpenAI-compatible 다중 연결 CRUD / Ollama / Op** — 프롬프트가 1~2종만 허용. 이미 dev-stub+Tavily 2종 배선됨. 추가 provider는 배포 시 adapter 교체로 충분.
+- **Vector DB 선택 / External Knowledge Sources / GDrive·OneDrive·** — pgvector·단일 파서 파이프라인으로 고정. 다중 백엔드 선택은 외부 의존·범위 과대, RAG 핵심 배선(knowledge_search/첨부 인덱싱) 우선.
+- **OpenTelemetry SDK 도입 / Websocket Manager / Redis 런타임(HITL pu** — 계획 의존성 목록 외 인프라. 대체 관측(tool_metrics/error_logs)·SSE·in-memory HITL 존재, 멀티워커는 현 배포 범위 밖.
+- **Autocomplete Generation / Context Compaction / Task Model 분리** — 엔터프라이즈 우선순위 낮고 비용·복잡도 대비 효용 작음. 제목/태그/후속질문은 이미 메인 provider로 동작.
+- **License/Offline/Version Check / Instance 세부 브랜딩(WEBUI_NAME/U** — 엔터프라이즈 필수 아님·저효용. 핵심 RAG·관측·감사 태스크 우선.
+- **Bulk 모델 Hide/Clone/Export / resource_grants RBAC enforcement** — presets·grant 프레임워크 선행 필요(대규모). 현행 allowed_models 화이트리스트로 최소 요건 충족, 별도 phase 후보.
+- **Search Confirmation / Loader 엔진 선택(Playwright/Firecrawl) / I** — 현행 이중 게이트·sandbox='' iframe·E2B egress 차단으로 보안 대체. 추가 구성면 저효용.

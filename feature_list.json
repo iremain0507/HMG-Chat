@@ -1942,5 +1942,311 @@
     "team": "T6",
     "passes": true,
     "attempts": 1
+  },
+  {
+    "id": "P20-T3-01",
+    "desc": "첨부 ephemeral 인덱싱 생산측 (parse→chunk→embed→rows): 업로드 첨부의 인덱싱 생산 함수를 신설. 현재 소비측(db/ephemeral-chunk-search.ts searchEphemeralChunks)은 실배선이나 ephemeral_chunks 를 채우는 코드가 어디에도 없어(uploads.ts 는 UploadRecord 만 생성) 항상 빈 결과 → `#`/첨부 RAG 실사용 무동작. files: 신규 apps/server/src/knowledge/ephemeral-indexer.ts — 입력(파일 bytes+mimeType, uploadId, sessionId), 내부에서 parser-pipeline.ts(parse→markdown)+chunker.ts(chunkText, org ChunkOptions 기본값)+embedding-provider(dev-stub) 를 조합해 EphemeralChunk 행 배열(text/embedding/bm25 source/uploadId/sessionId/ordinal) 을 순수 반환(DB 접근 없음). 14-INTERFACES EphemeralChunk 스키마(0014_uploads.sql)와 1:1. 실 INSERT/배선은 후속 T1 태스크가 소비. [병렬:parser 어댑터별(md/txt vs docx/pdf) 인덱싱 정합성 테스트 병렬]",
+    "acceptance": "RED: ephemeral-indexer.test.ts 가 샘플 문서(md/txt) 입력 시 N>0 chunk + 각 chunk 에 dim 일치 embedding + bm25 source 텍스트가 채워짐을 단언하나 함수 부재로 실패. L1 last-mile: 반환 행 shape 이 0014_uploads.sql ephemeral_chunks 컬럼(embedding vector dim, bm25_tsv 원문)과 정확히 매핑됨을 픽스처로 단언(후속 INSERT 가 바로 소비 가능). 검증: pnpm test knowledge/__tests__/ephemeral-indexer + typecheck.",
+    "phase": "P20",
+    "team": "T3",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P20-T1-01",
+    "desc": "업로드 시 ephemeral_chunks 실배선 (INSERT + app.ts 주입): T3 ephemeral-indexer 를 업로드 흐름에 배선해 ephemeral_chunks 가 실제로 채워지게 함. files: apps/server/src/db/upload-service.ts(createUpload 이후 object bytes 로 indexer 호출→ ephemeral_chunks 배치 INSERT repo 추가), apps/server/src/routes/uploads.ts(deps 확장), apps/server/src/app.ts(createUploadRoutes 에 parser/embeddingProvider/indexer 주입 — createDevStubEmbeddingProvider 재사용). 인덱싱은 업로드 트랜잭션과 분리(실패해도 업로드 자체는 성공, fail-soft). cross-org/소유자 격리는 기존 ephemeral_chunks RLS(session owner) 유지. 신규 route 아님(기존 /api/v1/uploads). [병렬:INSERT repo + app.ts 주입 병렬 후 통합]",
+    "acceptance": "RED: uploads 통합테스트가 POST /uploads(텍스트 파일) 후 해당 uploadId 의 ephemeral_chunks row 수>0 을 단언하나 INSERT 부재로 0건 실패. 그리고 createApp 기반 실HTTP: 업로드→같은 세션 턴 전송 시 첨부 근거로 citation ChatEvent 방출됨을 단언(현재는 빈 인덱스라 무방출). L1 last-mile: app.ts 주입 없이 route 를 마운트하면 인덱서 미동작임을 드러내는 조립 테스트(주입 후에만 rows 생성). 검증: pnpm test + scripts/verify-gates.sh exit 0.",
+    "phase": "P20",
+    "team": "T1",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P20-T3-02",
+    "desc": "KnowledgeRetrievalPort pg 구현체 (loadCandidates): knowledge_search 도구가 의존하는 KnowledgeRetrievalPort(tools/handlers/knowledge-search-handler.ts 에 인터페이스만 존재, pg 구현 부재)의 실 구현. files: 신규 apps/server/src/knowledge/knowledge-retrieval-pg.ts — loadCandidates({projectId, sessionId}) 가 기존 DocumentChunkRepo.hybridSearch(search-service.ts 의 vector+bm25+RRF, org topK/rrfK/threshold) 로 후보 청크 + documentId별 CitationSourceMeta(파일명/title/page/sourceUri) 를 반환. 인덱싱 생산측(document-service.ts)은 이미 실배선(app.ts documents 라우트)이므로 project knowledge 는 조회 가능. cross-org 는 project→org 스코프 필터 유지.",
+    "acceptance": "RED: knowledge-retrieval-pg.test.ts 가 시드된 project document chunks 에 대해 loadCandidates 가 관련 candidates + sourceMetaByDocumentId(filename/documentId 채워짐)를 반환함을 단언하나 구현 부재로 실패. L1 last-mile: 반환 candidates/sourceMeta 가 knowledge-search-handler 가 소비하는 HybridSearchCandidate/CitationSourceMeta shape 과 정확히 일치(핸들러 spec 테스트가 실 포트로도 green). cross-org: 타 org projectId 조회 시 0건. 검증: pnpm test knowledge/__tests__ + typecheck.",
+    "phase": "P20",
+    "team": "T3",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P20-T1-02",
+    "desc": "knowledge_search 도구 assemble + app.ts 배선: createKnowledgeSearchTool(핸들러 존재)을 실제 도구셋에 조립해 모델이 지식베이스를 조회 가능하게 함(현재 assemble-builtin-tools.ts·app.ts 어디에도 미배선 → knowledge base collections 실사용 무동작). files: apps/server/src/tools/assemble-builtin-tools.ts(createKnowledgeSearchTool 추가, deps 확장: embeddingProvider+retrieval(T3 pg 포트)+settings resolver), apps/server/src/app.ts(retrieval 포트+settings 주입). deep-research-handler 의 workerTools(read-only)에도 knowledge_search 포함되도록 전달. 신규 route 아님(도구 조립). L1(21-LOOP-LESSONS): org-scoped RAG 설정은 invoke 시점 resolve(정적 조립 아님). [병렬:assemble-builtin-tools 조립 + deep_research workerTools 포함 병렬]",
+    "acceptance": "RED: assemble-builtin-tools.test.ts 가 반환 tool 이름 목록에 'knowledge_search' 포함을 단언하나 미조립으로 실패. 그리고 createApp 기반 실HTTP 턴에서 지식 질의 시 knowledge_search tool_use→tool_result→citation 이 방출됨을 단언(현재 도구 자체가 없어 미방출). L1 last-mile: app.ts 에 retrieval 포트를 주입하지 않으면 도구가 조립되지 않음(주입 유무로 목록이 갈리는 조립 테스트)로 '진입점 도달' 확인. 검증: pnpm test tools/__tests__ + routes 통합 + verify-gates exit 0.",
+    "phase": "P20",
+    "team": "T1",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P20-T6-01",
+    "desc": "세션 목록 무한스크롤 페이지네이션 실배선: 서버 GET /api/v1/sessions 는 이미 커서 페이지네이션(sessions.ts:124-134 cursor/limit)을 받으나 프론트가 단일 페이지만 로드(limit-only). files: apps/web/src/hooks/useSessions.ts(cursor/hasMore 상태 + loadMore 액션 추가, 응답 meta.nextCursor 소비 — 응답에 nextCursor 미포함이면 sessions.ts 리스트 핸들러에서 meta.nextCursor 반환 보강), apps/web/src/components/sessions/SessionList.tsx(목록 하단 sentinel + IntersectionObserver→loadMore). 신규 route 없음. [★needsBrowser(실앱 브라우저 검증)]",
+    "acceptance": "RED: useSessions 훅 테스트가 loadMore 호출 시 두번째 페이지가 cursor= 쿼리로 append 되는지 단언(현재 loadMore 부재로 실패). L1 last-mile: sentinel 이 뷰포트 진입 시 실제 GET ?cursor= 발행+이전 세션이 DOM 에 추가되는지(스토어만 갱신하고 렌더 누락 아님). needsBrowser=true → 실앱 Playwright E2E(dev-login→세션 21개 이상 시드→목록 스크롤→오래된 세션 로드 단언) 또는 watchdog 브라우저 UAT 로 실사용 무동작 여부 확인.",
+    "phase": "P20",
+    "team": "T6",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P20-T6-02",
+    "desc": "전역 검색 커맨드 팔레트(Cmd/Ctrl+K) + 태그 스코프: 기존 검색은 사이드바 인라인 + 제목/본문 ILIKE 만(태그 미포함). (1) 서버: GET /api/v1/sessions/search 가 session_tags 도 매칭하도록 확장 — files: apps/server/src/db/session-data-access.ts(search 에 session_tags LEFT JOIN + tag ILIKE, org+user 스코프 유지), routes/sessions.ts(/search 시그니처 유지). (2) 웹: 전역 Cmd/K keydown→오버레이 CommandPalette 컴포넌트가 기존 searchSessions 재사용 — files: apps/web/src/components/sessions/ 신규 CommandPalette.tsx + AppShell 전역 단축키. [★needsBrowser(실앱 브라우저 검증) · 병렬:server 태그스코프 search(T1) + web Cmd/K 팔레트(T6) 병렬]",
+    "acceptance": "RED: session-data-access 테스트가 '태그로만 매칭되는 세션(제목/본문 불일치)'을 검색 결과에 포함하는지 단언(현재 태그 미조인으로 실패) + 웹 테스트 Cmd/K 가 팔레트를 여는지. L1 last-mile: 실앱에서 Cmd/K→팔레트 오픈, 태그명 입력→태그 매칭 세션이 결과에 실제 표시(서버 응답이 태그 히트 포함). needsBrowser=true → 실앱 Playwright E2E(dev-login→Cmd/K→태그명 타이핑→결과 클릭 이동) 또는 watchdog UAT.",
+    "phase": "P20",
+    "team": "T6",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P20-T1-03",
+    "desc": "폴더 스코프 시스템 프롬프트 상속(프로젝트 워크스페이스): 폴더별 시스템 프롬프트가 그 폴더 내 채팅에 자동 적용(Open WebUI Folder System Prompt). 지식 첨부부분은 RAG 도메인으로 이관, 여기선 프롬프트만. files: apps/server/src/db/migrations/0028_folder_system_prompt.sql(session_folders.system_prompt TEXT nullable-first, DEFAULT 없음, RLS 정책 변경 불필요, 롤백 ALTER TABLE ... DROP COLUMN), db/session-folder-data-access.ts(SessionFolder 에 systemPrompt + create/rename 확장), routes/folders.ts(POST/PATCH 가 systemPrompt 수용/반환), routes/messages.ts:312 부근(세션.folderId 존재 시 폴더.system_prompt 를 org systemPrompt 뒤·deps.systemBlocks 앞 system-tier PromptBlock 로 삽입 — tier 우선순위 system>project>user 유지), apps/web 폴더 설정 UI(FolderHeader 프롬프트 편집). [★needsBrowser(실앱 브라우저 검증) · 병렬:migration+data-access+route(T1) 선행 후 messages 상속 배선 + web 편집 UI 병렬]",
+    "acceptance": "RED: messages 통합테스트가 '폴더에 속한 세션 + 폴더 system_prompt 설정 시 buildSystemPrompt 산출물에 폴더 텍스트 포함'을 단언(현재 미상속으로 실패). migration-check 스킬: nullable-first/롤백 경로/RLS 무변경 확인. L1 last-mile: 폴더 프롬프트가 DB 저장에 그치지 않고 실제 turn 의 system prompt 문자열까지 도달(무동작 방지). needsBrowser=true(폴더 프롬프트 편집 UI 실반영) → 실앱 Playwright E2E(dev-login→폴더 프롬프트 설정→그 폴더에 새 채팅→응답이 프롬프트 영향받는지) 또는 watchdog UAT.",
+    "phase": "P20",
+    "team": "T1",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P20-T2-01",
+    "desc": "에이전틱 과거대화 검색 도구(search_chats / view_chat): 모델이 과거 대화를 네이티브 도구로 자율 검색(Open WebUI search_chats/view_chat). knowledge_search 가 app.ts 미조립이던 것과 동일한 last-mile 배선 패턴. files: apps/server/src/tools/handlers/search-chats-handler.ts(신규 read-only AgentTool 2종: search_chats=쿼리→기존 session search data-access 로 호출자 본인 세션만 검색, view_chat=sessionId→소유검증 후 메시지 히스토리 반환; org_id+user_id 스코프를 핸들러에서 강제), tools/assemble-builtin-tools.ts(두 도구 조립 배열에 추가), app.ts(assembleBuiltinTools 경유 자동 노출 확인). 세션 search/history port 주입. [병렬:search_chats 핸들러 + view_chat 핸들러 2종 병렬]",
+    "acceptance": "RED: 핸들러 테스트가 tool.spec.name==='search_chats' + 다른 유저/타org 세션이 결과에서 제외되는지 단언(현재 도구 부재로 실패). 조립 가드 테스트: assembleBuiltinTools() 반환 배열이 search_chats/view_chat 포함(knowledge_search app.ts 조립 가드와 동형). L1 last-mile: 도구가 정의에 그치지 않고 runTurn 에 전달되는 tools[] 에 실제 포함(app.ts→messages 조립 경로). needsBrowser=false.",
+    "phase": "P20",
+    "team": "T2",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P20-T6-03",
+    "desc": "아티팩트 HTML 인터랙티브 JS 실행(sandbox 완성): ⚠️완성: 현재 ArtifactPanel.tsx:79 `sandbox=\"\"`가 스크립트를 전면 차단해 ThreeJS/D3/애니 등 인터랙티브 HTML 아티팩트가 정적 HTML/CSS로만 렌더됨. `sandbox=\"allow-scripts\"`로 변경해 스크립트 실행을 허용하되 **allow-same-origin은 절대 병기 금지**(불투명 origin 유지 → 앱 DOM/쿠키/localStorage 접근 불가, 엔터프라이즈 안전). files: apps/web/src/components/artifacts/ArtifactPanel.tsx(html 분기 iframe), apps/web/src/components/artifacts/__tests__/. 신규 route/interface 없음. [★needsBrowser(실앱 브라우저 검증)]",
+    "acceptance": "RED: iframe sandbox 속성이 'allow-scripts'를 포함하고 'allow-same-origin'을 포함하지 않음을 단언하는 테스트를 구현 전 추가 → 현재 sandbox=\"\" 라 실패. L1 last-mile: 실앱 Playwright E2E(dev-login→스크립트가 DOM을 실제 변경하는 HTML 아티팩트 렌더→변경된 텍스트/노드가 iframe 안에 나타남을 단언)로 '속성만 켜지고 CSP로 실행 안 됨' 무동작 여부까지 확인. 보안 회귀 가드: allow-same-origin 부재 단언 유지.",
+    "phase": "P20",
+    "team": "T6",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P20-T1-04",
+    "desc": "resource_grants 관리 라우트 (grant/list/revoke): resource_grants 는 migration 0027 + resource-grants-data-access.ts(grant/grantsForResource/groupIdsForUser) + lib/access-control.ts(canAccessResource) 까지 인프라만 존재하고 grant 를 생성/조회/회수하는 HTTP 라우트가 하나도 없다(테스트에서만 직접 호출, PROGRESS.md:238 부분축소 기록). admin 전용 grant 관리 라우트 신설: POST /(grant 생성: resourceType[model|knowledge|tool|prompt]·resourceId·subjectType[user|group]·subjectId·access[read|write]), GET /?resourceType&resourceId(grantsForResource 조회), DELETE /(회수). 타입은 resource-grants-data-access.ts 의 로컬 ResourceType/SubjectType/AccessLevel 재사용(packages/interfaces 무수정). files: apps/server/src/routes/admin-grants.ts(신규), db/resource-grants-data-access.ts 에 revoke 메서드 추가, app.ts 에 adminApp.route('/grants', createAdminGrantsRoutes()) 마운트 + __tests__/routes-mounted.test.ts EXPECTED_ROUTES 에 GET/POST/DELETE /api/v1/admin/grants prefix 추가. 전 핸들러 isAdmin 403 self-check, orgId 는 auth.org(JWT)에서만 파생, cross-org grant 차단. [병렬:revoke DA 메서드 + admin-grants route 핸들러 병렬 작성 후 조립]",
+    "acceptance": "RED: 구현 전 admin-grants.integration.test.ts 가 POST /api/v1/admin/grants(admin JWT) 로 grant 생성→GET 으로 회수확인 시도 시 404(미마운트)로 실패해야 한다. 또 routes-mounted 가드가 새 prefix 부재로 RED. L1 last-mile: 생성한 grant 가 실제 DB resource_grants 행으로 INSERT 되고 GET 이 그 행을 반환하며, 비-admin JWT 는 403, 타 org subjectId 는 거부됨을 실 Postgres 통합테스트로 단언(canAccessResource 가 이 행을 실제로 소비하는지까지 후속 enforcement 태스크와 연결). 검증: pnpm test admin-grants + bash scripts/verify-gates.sh exit 0.",
+    "phase": "P20",
+    "team": "T1",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P20-T6-04",
+    "desc": "Typed 다중 배너 저작 UI: 서버는 이미 typed 다중 배너를 지원(org-settings-schema.ts BannerSchema: type[info|success|warning|error]·title·content·dismissible + BannerListInput array max 20, GET /config 노출, Banner.tsx 사용자 실표시). 그러나 관리자 저작 UI(BrandingTab.tsx:42 `banner: string`)는 평문 단일 textarea 뿐이라 type/title/dismissible/다중 저작이 불가하다. BrandingTab 을 배너 리스트 에디터로 교체: 항목 추가/삭제/재정렬, 항목별 type 셀렉트·title·content·dismissible 토글, PUT /api/v1/admin/settings 로 배너 배열 저장. web OrgSettings 클라 타입의 banner:string → Banner[] 로 변경(apps/web 소유, frozen 아님). files: apps/web/src/components/admin/settings/BrandingTab.tsx, 관련 settings form state/타입, __tests__/BrandingTab.test.tsx. [★needsBrowser(실앱 브라우저 검증) · 병렬:리스트 에디터 컴포넌트 + 폼 state/타입 배선 병렬]",
+    "acceptance": "RED: BrandingTab.test.tsx 에 '두 번째 배너 추가 + type=warning 선택 → onChange 가 length2 배열/type warning 로 호출' 기대를 추가하면 현재 평문 단일 input 구조에서 실패(RED). L1 last-mile: 저장한 typed 다중 배너가 GET /config 를 거쳐 Banner.tsx 로 실제 렌더되어 사용자 화면에 type별 색/title/dismiss 로 표시됨을 단언 — needsBrowser=true 이므로 실앱 Playwright E2E(dev-login admin→BrandingTab 에서 warning 배너 저작·저장→일반 세션 화면에서 해당 배너 실표시 확인) 또는 watchdog 브라우저 UAT 로 실사용 무동작 여부 확인. 검증: pnpm test BrandingTab + E2E.",
+    "phase": "P20",
+    "team": "T6",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P20-T1-05",
+    "desc": "개별 메시지 삭제 라우트 (DELETE /:id/messages/:mid): 채팅 내 단일 메시지 삭제 엔드포인트 신설(현재 세션 단위 DELETE /:id 만, per-message 삭제 부재). files: apps/server/src/routes/sessions.ts(app.delete('/:id/messages/:messageId'), ownership-in-query, 세션 owner 아니면 404 existence-leak 방지). 트리 정합: 자식이 있는 노드 삭제 시 하위 서브트리 함께 prune(하드 삭제) 또는 활성경로 재지정 — 하위 CASCADE 로 일관 처리. app.ts 마운트는 기존 sessions 라우트 그룹 안이라 신규 prefix 아니나, routes-mounted.test.ts EXPECTED_ROUTES 에 해당 메서드+경로 추가.",
+    "acceptance": "RED: sessions 통합테스트가 DELETE /:id/messages/:mid 후 해당 메시지(및 하위 형제/자식)가 GET /:id/messages 응답에서 사라짐을 단언하나 404(라우트 부재)로 실패. cross-org/타 유저 세션의 메시지 삭제 시도는 404. L1 last-mile: routes-mounted.test.ts 가 새 경로 등재를 강제(미마운트 시 실패). 검증: pnpm test + verify-gates exit 0.",
+    "phase": "P20",
+    "team": "T1",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P20-T6-05",
+    "desc": "개별 메시지 삭제 UI (MessageActions 삭제 버튼): 메시지 액션바에 삭제 버튼 추가, 위 T1 라우트 소비. files: apps/web/src/components/chat/MessageActions.tsx(삭제 액션+확인), apps/web/src/hooks/useSessionStream.ts(deleteMessage: DELETE 호출 후 트리에서 노드/하위 낙관적 제거, 실패 롤백), ChatView 배선. 삭제 후 활성 분기 재지정(형제/부모로). [★needsBrowser(실앱 브라우저 검증)]",
+    "acceptance": "RED: useSessionStream 유닛/컴포넌트 테스트가 deleteMessage 호출 시 노드+하위가 트리에서 제거됨을 단언하나 미구현 실패. needsBrowser=true: 실앱 Playwright E2E(dev-login→턴 생성→메시지 삭제 클릭→목록에서 사라지고 새로고침 후에도 유지) 또는 watchdog 브라우저 UAT 로 삭제가 실제 화면/영속에 반영됨을 확인(설정/버튼이 실 진입점까지 도달). 검증: pnpm test + E2E green(로컬 스택 기동 가능 시), 불가 시 배선 근거+UAT 절차 기록.",
+    "phase": "P20",
+    "team": "T6",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P20-T6-06",
+    "desc": "생성 메타(Info) 표시 — 토큰/응답시간: 응답 메시지에 토큰 수·응답 시간 Info 표시. stop ChatEvent 가 이미 usage:TokenUsage 를 실어 오고 클라도 수신(useSessionStream.ts:155)하나 표시하지 않음 → frozen 변경 불필요, 순수 프론트. files: apps/web/src/hooks/useSessionStream.ts(message_start→stop 사이 elapsedMs 측정 + usage 를 MessagePart 메타로 보존), apps/web/src/components/chat/MessageActions.tsx 또는 신규 Info 팝오버(입력/출력 토큰, 경과시간, 모델명). ToolCallRenderer 의 tool elapsedMs 와 혼동 금지(응답 레벨 별도). [★needsBrowser(실앱 브라우저 검증)]",
+    "acceptance": "RED: 컴포넌트 테스트가 stop.usage(inputTokens/outputTokens) 수신 후 Info 팝오버에 토큰/경과시간이 렌더됨을 단언하나 미표시로 실패. L1 last-mile: 실제 stop 이벤트의 usage 필드가 UI 진입점(팝오버 DOM)까지 도달함을 단언(fixture 가 아닌 스트림 경로). needsBrowser=true: 실앱 Playwright E2E(dev-login→턴 완료→Info 열어 토큰/시간 노출) 또는 watchdog UAT 로 실사용 반영 확인. 검증: pnpm test + E2E/ UAT.",
+    "phase": "P20",
+    "team": "T6",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P20-T2-02",
+    "desc": "reasoningEffort provider 실전달 (서버 no-op 해소): 클라가 body.reasoningEffort(ChatInput.tsx:339)를 보내지만 서버가 파싱/전달하지 않는 no-op 해소. files: apps/server/src/routes/messages.ts(body 파싱에 reasoningEffort 추가), apps/server/src/orchestrator/orchestrator.ts(provider.chat 호출부에 thinking budget 매핑 전달). FROZEN 위험: RunTurnInput/ChatInput 에 reasoningEffort 필드 추가는 packages/interfaces 수정 필요 → frozenRisk. (blocked_tasks 의 P14-T2-01 temperature 배선과 동일 구조적 제약: 인터페이스 필드 확장.) 격리 후보이나 태스크는 정의. [★frozenRisk(격리후보)]",
+    "acceptance": "RED: messages/orchestrator 통합테스트가 reasoningEffort='high' 전송 시 provider.chat 이 해당 thinking budget 파라미터로 호출됨을 spy 로 단언하나 미전달 실패. L1 last-mile: 클라 전송값→서버 파싱→provider 인자까지 end-to-end 전달(중간 drop 없음) 단언. frozenRisk: packages/interfaces(ChatInput/RunTurnInput) 편집 필요 시 즉시 .ralph/blocked_tasks 격리(human gate). 검증: pnpm test(격리 시 사유 기록).",
+    "phase": "P20",
+    "team": "T2",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P20-T2-03",
+    "desc": "Reasoning/Thinking 스트림 서버 방출: 서버가 provider 의 reasoning delta 를 스트리밍해 기존 UI 껍데기(Reasoning.tsx)를 실동작시킴. 현재 서버는 사고 스트림 미방출(ChatEvent 12변형에 reasoning 이벤트 없음). files: packages/interfaces/src/types.ts(신규 ChatEvent 변형 예: reasoning_delta), apps/server/src/orchestrator/orchestrator.ts(provider thinking delta→방출), apps/web/src/hooks/useSessionStream.ts+components/chat/Reasoning.tsx(소비/히스토리 보존). FROZEN 위험 최상: 신규 SSE 이벤트=ChatEvent 동결 위반 → frozenRisk, 격리 후보(human gate). 태스크는 정의하되 인터페이스 승인 전 구현 금지. [★needsBrowser(실앱 브라우저 검증) · ★frozenRisk(격리후보)]",
+    "acceptance": "RED: orchestrator 테스트가 thinking 지원 provider 스텁의 reasoning delta 를 reasoning_delta ChatEvent 로 방출함을 단언하나 미구현 실패. UI: Reasoning.tsx 가 스트림을 접이식으로 렌더+히스토리 재로드 시 보존. frozenRisk: packages/interfaces ChatEvent 확장 필요 → 즉시 .ralph/blocked_tasks 격리(신규 SSE 이벤트, human gate). 검증: 승인 후에만 pnpm test, 그 전엔 격리 사유+설계 기록.",
+    "phase": "P20",
+    "team": "T2",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P20-T6-07",
+    "desc": "폴더 드래그앤드롭 + 우클릭 컨텍스트 메뉴 이동: 폴더 이동은 현재 SessionCard 메뉴로만 가능. 드래그앤드롭 + 우클릭 컨텍스트 메뉴 추가(Open WebUI DnD/right-click move). 기존 assignFolder 재사용, 신규 API 없음. files: apps/web/src/components/sessions/SessionCard.tsx(draggable + dragstart), SessionList.tsx/FolderHeader(폴더를 drop target 으로 onDrop→assignFolder, 우클릭 메뉴=이동/고정/보관/삭제). [★needsBrowser(실앱 브라우저 검증)]",
+    "acceptance": "RED: 컴포넌트 테스트가 폴더 헤더 drop 이벤트 시 onAssignFolder(sessionId, folderId) 호출을 단언(현재 핸들러 부재로 실패). L1 last-mile: 실제 드래그로 세션이 폴더 그룹에 이동 + PATCH /:id {folderId} 서버 영속. needsBrowser=true → 실앱 Playwright E2E(dev-login→세션을 폴더로 드래그→그룹 이동+서버 반영 단언) 또는 watchdog 브라우저 UAT.",
+    "phase": "P20",
+    "team": "T6",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P20-T1-06",
+    "desc": "중첩 폴더(parent_folder 계층): 폴더가 현재 flat(0019 에 부모 FK 없음). 하위 폴더 계층 추가(Open WebUI Nested Folders). files: apps/server/src/db/migrations/0029_nested_folders.sql(session_folders.parent_folder_id UUID nullable FK→session_folders ON DELETE SET NULL, nullable-first, RLS 정책 무변경, 롤백 DROP COLUMN; 순환참조는 app 레벨 방어), db/session-folder-data-access.ts(parentFolderId 반환/할당, 순환 방지), routes/folders.ts(부모 지정 수용), apps/web SessionList.tsx(접기/펼치기 가능한 중첩 트리 렌더). [★needsBrowser(실앱 브라우저 검증) · 병렬:migration+data-access+route(T1) + 트리 UI(T6) 병렬]",
+    "acceptance": "RED: data-access 테스트가 부모 하위 자식 생성 후 list 가 parentFolderId 를 반환하는지 + 자기참조/순환 거부를 단언(현재 컬럼 부재로 실패). migration-check 스킬: nullable-first/롤백/RLS 확인. L1 last-mile: 중첩 트리가 실제 들여쓰기·접힘으로 렌더 + 자식 할당 서버 영속. needsBrowser=true → 실앱 Playwright E2E(dev-login→하위 폴더 생성→들여쓰기/접기 단언) 또는 watchdog UAT.",
+    "phase": "P20",
+    "team": "T1",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P20-T6-08",
+    "desc": "다중 선택 + 일괄 보관/삭제(Bulk Archive): 현재 단건 토글만(bulk/selectedSessions grep 0건). 다중 선택 + 일괄 액션 추가(Open WebUI Bulk Archive). 기본은 기존 PATCH /:id/archive 를 클라 루프 호출(신규 route 회피); 성능상 배치가 필요하면 POST /api/v1/sessions/bulk-archive 추가 시 app.ts 마운트 + routes-mounted EXPECTED_ROUTES 에 prefix 추가 필수. files: apps/web/src/components/sessions/SessionList.tsx(체크박스 선택 모드 + 선택 액션바), useSessions.ts(일괄 액션), (선택) routes/sessions.ts + __tests__/routes-mounted.test.ts. [★needsBrowser(실앱 브라우저 검증)]",
+    "acceptance": "RED: 테스트가 3개 선택+일괄 보관 시 3건 모두 archived 되는지 단언(현재 다중선택 UI 부재로 실패). 신규 route 추가 시 routes-mounted 가드가 미마운트를 잡음. L1 last-mile: 실제 다중선택 후 일괄 보관이 모두 보관함 뷰로 이동. needsBrowser=true → 실앱 Playwright E2E(dev-login→다중선택→일괄 보관→보관함 확인) 또는 watchdog UAT.",
+    "phase": "P20",
+    "team": "T6",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P20-T1-07",
+    "desc": "검색 접두어 필터(tag: / folder: / pinned: / archived:): 접두어 파싱 없음(grep 0건). 검색어 문법으로 범위 조합(Open WebUI Prefix Filters). files: apps/server/src/db/session-data-access.ts(쿼리 문자열에서 tag:/folder:/pinned:/archived: 토큰 파싱→해당 WHERE 조건 + 잔여 자유텍스트 ILIKE 결합, org+user 스코프 유지), routes/sessions.ts(/search), apps/web 검색 입력 힌트/자동완성. Task '전역 검색+태그 스코프'의 태그 조인에 의존. [★needsBrowser(실앱 브라우저 검증)]",
+    "acceptance": "RED: data-access 테스트가 'tag:report 예산' 쿼리 시 report 태그 + 예산 매칭 세션만 반환을 단언(현재 접두어 미파싱으로 실패). L1 last-mile: 실 검색창이 접두어를 end-to-end 존중(파서만 통과하고 UI 무반영 아님). needsBrowser=true(검색 UI 실반영) → 실앱 Playwright E2E(dev-login→검색창에 접두어 입력→스코프된 결과 단언) 또는 watchdog UAT.",
+    "phase": "P20",
+    "team": "T1",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P20-T1-08",
+    "desc": "대화 스냅샷 공유 링크(불변): 현재 '대화 공유'는 최신 아티팩트만 공개 토큰화(public-share.ts), 대화 전체 스냅샷은 아님. 시점 불변 대화 스냅샷 공유 추가(Open WebUI Share Link). files: apps/server/src/db/migrations/0030_conversation_shares.sql(conversation_shares: id,org_id,session_id,created_by,snapshot JSONB,token,expires_at,revoked_at; org+owner RLS, nullable-first, 롤백 DROP TABLE), routes/conversation-share.ts(POST 스냅샷 생성 / 공개 GET /:token / DELETE revoke)→app.ts 마운트 + __tests__/routes-mounted.test.ts EXPECTED_ROUTES 에 prefix 추가, apps/web ShareExportMenu/ShareDialog '대화 스냅샷 공유'. 기존 public-share 토큰 패턴 재사용. NOTE: 스냅샷 DTO 를 packages/interfaces 에 둬야 하면 격리(frozen). [★needsBrowser(실앱 브라우저 검증) · 병렬:migration+route(T1) + 공유 UI(T6) 병렬]",
+    "acceptance": "RED: createApp 기반 실HTTP 통합테스트가 POST→토큰 발급, 공개 GET /:token→스냅샷 반환, revoke 후 410, cross-org 404 를 단언(현재 대화 스냅샷 route 부재로 실패). routes-mounted 가드가 신규 prefix 미마운트를 잡음. migration-check: RLS/nullable-first/롤백. L1 last-mile: 실제 공유 버튼이 동작하는 공개 링크를 생성하고 그 URL 이 대화를 렌더. needsBrowser=true → 실앱 Playwright E2E(dev-login→대화 공유 생성→토큰 URL 오픈→대화 렌더 단언) 또는 watchdog UAT.",
+    "phase": "P20",
+    "team": "T1",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P20-T1-09",
+    "desc": "Persistent memory 런타임 회상 배선 (저장→프롬프트 주입): 이미 저장·표시되는 사용자 메모리(routes/memories.ts, MemoryManager)를 대화에 자동 회상해 시스템 프롬프트에 주입한다. retrieveUserMemoryBlock/formatMemoriesForPrompt(orchestrator/memory-retriever.ts)는 구현됐으나 어디에도 호출되지 않아 런타임 소비 0. files: apps/server/src/routes/messages.ts(runTurn 전에 retrieveUserMemoryBlock(userMemories reader, actor)로 핀/최근 메모리 블록을 조회해 system tier PromptBlock 으로 prepend — 기존 attachment/citation 조립부 인접), apps/server/src/app.ts(memories data access(createPgUserMemoryDataAccess, app.ts:29 이미 존재)를 messages 라우트에 reader 로 주입). org/사용자 격리(ownedByActor) 유지, 미주입 환경은 비파괴(빈 블록). [★needsBrowser(실앱 브라우저 검증)]",
+    "acceptance": "RED: messages 실HTTP 통합테스트 — 사용자가 저장한 메모리(예: '나는 X팀 소속')가 있을 때, 메시지 전송 시 orchestrator 로 전달되는 system 프롬프트/PromptBlock 에 해당 메모리 텍스트가 포함됨을 단언(배선 전 미포함으로 실패). L1 last-mile: retrieveUserMemoryBlock 이 실제 DB userMemories 를 읽어 buildSystemPrompt 결과 문자열까지 도달(스텁 아님) — 핀 우선·최근순 정렬 반영 확인. cross-org/actor: 타 사용자 메모리가 절대 주입되지 않음 단언. needsBrowser=true: 실앱 Playwright E2E(dev-login→Settings 메모리 추가→새 대화 질문→답변이 그 사실을 반영) 또는 watchdog UAT 로 회상 실동작 확인. verify-gates exit 0.",
+    "phase": "P20",
+    "team": "T1",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P20-T1-10",
+    "desc": "자율 메모리 도구 (add_memory / search_memories) 배선: 모델이 대화 중 사용자 사실/선호를 스스로 저장·조회하는 메모리 도구를 내장 도구로 추가한다. 현재 메모리는 UI/REST 전용, 모델 접근 경로 0. files: apps/server/src/tools/handlers/memory-tool-handler.ts(신규 — createMemoryTools: add_memory(category/content, ownedByActor 로 INSERT)·search_memories(category 필터+최근/핀 조회) AgentTool 2종, ctx.actor 격리, 기존 memory data access 재사용), apps/server/src/tools/assemble-builtin-tools.ts(두 도구를 배열에 추가 — memory writes 는 all-allow 유지, 필요 시 HITL 정책은 후속), apps/server/src/app.ts(memories data access 주입). 신규 AgentTool 스펙은 기존 AgentTool 계약 내(frozen 미변경). [★needsBrowser(실앱 브라우저 검증) · 병렬:add_memory 핸들러 + search_memories 핸들러 병렬]",
+    "acceptance": "RED: (a) memory-tool-handler.test — add_memory invoke 후 DB 에 actor 소유 row 가 생성되고, search_memories 가 그 항목을 반환함을 단언(구현 전 실패). (b) assemble-builtin-tools.test — 반환 배열에 add_memory·search_memories spec 존재 단언(실패). L1 last-mile: runTurn tools 배열에 실제 노출되어 모델 tool_use→DB 반영까지 도달. cross-actor 격리: add_memory 가 다른 사용자 소유로 쓰이지 않음 단언. needsBrowser=true: 실앱 Playwright/watchdog UAT — 대화에서 '이거 기억해줘' → 이후 새 대화 조회 시 반영 여부로 실사용 확인. verify-gates exit 0.",
+    "phase": "P20",
+    "team": "T1",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P20-T6-09",
+    "desc": "`#` 문서 참조 컴포저 UI (업로드 문서 인라인 첨부): 컴포저에서 `#` 입력 시 업로드/프로젝트 문서 피커를 열어 참조를 메시지 첨부(attachments[].uploadId)로 병합한다. 현재 첨부는 파일 업로드 방식만, `#` 참조 문법 UI 없음. files: apps/web/src/components/chat/ChatInput.tsx(기존 `/` slash trigger 패턴 재사용해 `#` trigger→문서 피커 오버레이, 선택 시 attachments 로 병합), apps/web/src/components/chat/ChatView.tsx(선택된 uploadId 를 전송 body.attachments 에 반영). Hyundai WIA CI 토큰만 사용(DESIGN.md, bg-primary/border-border), 하드코딩 hex 금지. 태스크1(첨부 인덱싱)과 결합해 실제 근거 답변 완성. [★needsBrowser(실앱 브라우저 검증)]",
+    "acceptance": "RED: ChatInput 컴포넌트 테스트 — `#` 입력 시 문서 피커가 렌더되고 선택 항목이 attachments 상태에 추가됨을 단언(구현 전 실패). L1 last-mile: 선택된 참조가 실제 전송 payload(body.attachments[].uploadId)까지 도달하는지 단언(UI-only 아님). needsBrowser=true: 실앱 Playwright E2E(dev-login→컴포저에 `#` 입력→문서 선택→전송→첨부 chip 표시 및 답변 인용) 또는 watchdog 브라우저 UAT 로 `#` 참조 실동작·무동작 여부 확인. 디자인 토큰 준수 확인. verify-gates exit 0.",
+    "phase": "P20",
+    "team": "T6",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P20-T2-04",
+    "desc": "per-turn 관련 도구 선택 배선 (selectRelevantTools 런타임): 매 턴 조립된 전체 도구 대신 질의와 관련된 도구만 모델에 노출해 도구 노이즈/오호출을 줄인다. selectRelevantTools(tools/tool-router.ts)는 구현됐으나 런타임 미호출. files: apps/server/src/orchestrator/orchestrator.ts 또는 apps/server/src/routes/messages.ts(runTurn 전에 selectRelevantTools 로 tools 배열 필터 — 결과가 비면 전체 폴백(fail-soft L2)). 기능 플래그로 기존 동작 보존, org 설정 토글 고려. 계약 미변경.",
+    "acceptance": "RED: 오케스트레이터/messages 테스트 — 웹검색 무관 질의 시 runTurn 에 전달되는 tools 에서 web_search 가 제외되고 knowledge_search 등 관련 도구만 남음을 단언(배선 전 전체 노출로 실패). L1 last-mile: 필터가 실제 runTurn 진입 tools 배열에 반영(도구 스펙 이름 검사) — 미배선 selectRelevantTools 가 실 경로에 연결됨. 폴백: 선택 결과 0개면 전체 도구 유지 단언. needsBrowser=false. verify-gates exit 0.",
+    "phase": "P20",
+    "team": "T2",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P20-T6-10",
+    "desc": "아티팩트 버전 복원(revert) 액션: ⚠️완성: ArtifactCanvas.tsx:311~338 버전 페이저(‹ vN/M ›)는 sibling artifacts[] 배열 탐색만 가능하고 '이 버전으로 복원' 액션이 없음. 선택 버전을 최신으로 승격하는 '복원' 버튼 추가(클라 상태에서 active 배열 재정렬/승격 → 이후 대화가 해당 버전 기준으로 이어짐). 서버 영속화는 artifacts.ts에 GET만 있고 생성 경로가 오케스트레이터 내부라 이번 스코프는 클라측 승격까지(영속은 후속). files: apps/web/src/components/artifacts/ArtifactCanvas.tsx, __tests__/ArtifactCanvas.test.tsx. 신규 interface 없음. [★needsBrowser(실앱 브라우저 검증)]",
+    "acceptance": "RED: 여러 버전 아티팩트 상태에서 '복원' 버튼 존재 + 클릭 시 선택 버전이 최신(v M/M)으로 승격됨을 단언하는 테스트를 구현 전 추가 → 버튼 부재로 실패. L1 last-mile: 실앱 Playwright E2E(dev-login→다버전 아티팩트 세션 열기→이전 버전으로 이동→복원 클릭→페이저가 해당 콘텐츠를 최신으로 표시하고 프리뷰가 복원 콘텐츠임을 단언) 또는 watchdog 브라우저 UAT로 실사용 무동작 여부 확인.",
+    "phase": "P20",
+    "team": "T6",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P20-T1-11",
+    "desc": "resource_grants 조회 라우트 enforcement 배선: canAccessResource 호출처가 통합테스트뿐이라 실효 enforcement=0(audit §4 dead-path). knowledge(documents.ts)·prompt(prompts.ts)·tool(mcp-servers.ts/skills.ts) 조회 라우트에 canAccessResource 를 배선해 비허용 리소스를 목록에서 제외한다. 회귀 방지 핵심: additive-union 이므로 'grant 가 하나도 없는 리소스=전체 공개(기존 동작 보존)', grant 가 존재할 때만 canAccessResource(user 직접 grant 또는 소속 group grant) 로 필터 — org-wide allowed_models 게이트는 그대로 유지. files: apps/server/src/routes/documents.ts·prompts.ts·mcp-servers.ts 조회 핸들러, lib/access-control.ts 소비, resource-grants-data-access.grantsForResource. model 은 allowed_models 와 중복 게이트라 이번엔 knowledge/prompt/tool 만. [병렬:documents/prompts/tool 세 라우트 배선 병렬 후 공통 헬퍼로 수렴]",
+    "acceptance": "RED: enforcement.integration.test.ts 가 'userB 로 GET /documents → grant 있는 문서만 노출' 을 기대하면 현재 무필터라 grant 없는 문서까지 반환되어 실패(RED). 그리고 'grant 0건 문서는 여전히 전원 노출'(회귀 보존) 케이스도 포함. L1 last-mile: 실 Postgres 통합테스트로 (a) userA read grant→ GET 응답에 포함, (b) grant 없는 userB→ 제외, (c) group grant 경유 union, (d) cross-org 격리 를 실 HTTP 흐름으로 단언(순수 로직테스트가 아니라 라우트 응답 검증). 검증: pnpm test enforcement + verify-gates exit 0.",
+    "phase": "P20",
+    "team": "T1",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P20-T6-11",
+    "desc": "리소스별 접근 부여(grant) 관리 UI: admin-grants 라우트(T1) 소비하는 관리 화면. 리소스(knowledge/prompt/tool) 선택→해당 리소스의 grants 목록(GET)→ user/group 에 read/write 부여(POST)·회수(DELETE) UI. GroupsManager.tsx:6-9 주석이 명시한 후속 T6. files: apps/web/src/components/admin/GrantsManager.tsx(신규), hooks/useGrants.ts, app/(app)/admin/grants/page.tsx, AdminSubNav 에 '접근 권한' 링크 추가. AdminGuard 하위. [★needsBrowser(실앱 브라우저 검증) · 병렬:GrantsManager 컴포넌트 + useGrants 훅 + subnav/page 라우트 병렬]",
+    "acceptance": "RED: GrantsManager.test.tsx 가 'group 에 read grant 부여 버튼 클릭→ useGrants.create 호출' 기대 시 컴포넌트 부재로 실패(RED). L1 last-mile: UI 에서 부여한 grant 가 실제 POST /api/v1/admin/grants 를 거쳐 DB 반영되고, 그 결과 대상 사용자의 리소스 조회 노출이 실제로 바뀌는 end-to-end 를 확인 — needsBrowser=true 이므로 실앱 Playwright E2E(dev-login admin→GrantsManager 에서 특정 knowledge 를 userB 에게 read 부여→userB 세션에서 해당 문서 접근 가능/미부여 문서 미노출) 또는 watchdog 브라우저 UAT 로 실사용 무동작 여부 확인. 검증: pnpm test GrantsManager + E2E.",
+    "phase": "P20",
+    "team": "T6",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P20-T1-12",
+    "desc": "API 키 scope 강제 + 전역 ENABLE_API_KEYS 게이트: scopes 는 저장/응답만 하고 auth-middleware Bearer 경로가 미검사→전권 부여(audit: 순수 메타데이터). (1) auth-middleware.ts Bearer 인증에 scope enforcement 배선: 빈 scopes=전권(기존 키 하위호환), scopes 존재 시 요청 리소스/액션이 scope 에 없으면 403. (2) 전역 마스터 토글: org-settings-schema 에 enableApiKeys(boolean) 추가→ POST /api/v1/api-keys 발급 핸들러가 비활성 org 는 발급 거부, admin-settings PUT 로 편집. files: apps/server/src/middleware/auth-middleware.ts, routes/api-keys.ts, lib/org-settings-schema.ts(server lib, interfaces 무수정). endpoint restriction(키별 화이트리스트)은 scope 위에 얹는 후속으로 남김. [병렬:auth-middleware scope 검사 + org-settings enableApiKeys 게이트 병렬]",
+    "acceptance": "RED: api-key-scope.test.ts 가 'scopes=[chat:read] 키로 POST /api/v1/prompts 시도→403' 을 기대하면 현재 전권이라 통과해버려 실패(RED, 잘못된 통과=미배선 증거). 또 'enableApiKeys=false org 에서 POST /api-keys→403' RED. L1 last-mile: 하위호환(빈 scope 키는 기존대로 전권 200), scoped 키는 범위 밖 라우트 실제 403, 마스터 토글 off 시 발급 실제 차단 을 실 HTTP 통합테스트로 단언. 검증: pnpm test api-key-scope + verify-gates exit 0.",
+    "phase": "P20",
+    "team": "T1",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P20-T1-13",
+    "desc": "Primary Administrator 보호 + 사용자 삭제: 현재 AdminUsersManager 는 role 변경·suspend 만 있고 사용자 삭제/최고관리자 보호 로직이 없다(audit ❌). DELETE /api/v1/admin/users/:id 신설: soft-delete(또는 status 확장), 단 (a) org 최고령 owner(primary admin) 삭제 금지, (b) org 마지막 owner 삭제 금지, (c) 자기 자신 삭제 금지 가드. web 은 AdminUsersManager 에 삭제 버튼(가드된 경우 disabled+사유). files: apps/server/src/routes/admin.ts(DELETE 핸들러) + db/admin-data-access.ts(deleteUser·primary-admin 판정 쿼리), routes-mounted EXPECTED_ROUTES 에 DELETE /api/v1/admin/users/:id 추가, apps/web/src/components/admin/AdminUsersManager.tsx. [★needsBrowser(실앱 브라우저 검증) · 병렬:server DELETE 라우트+가드 DA 와 web 삭제 UI 병렬]",
+    "acceptance": "RED: admin-users-delete.integration.test.ts 가 'DELETE /admin/users/:id(일반 member)→200 삭제' 및 'primary owner 삭제→409/403 거부', '마지막 owner 삭제→거부' 를 기대하면 라우트 부재로 404 실패(RED). L1 last-mile: 실 Postgres 통합테스트로 삭제 후 GET /admin/users 목록에서 실제 제외, primary/last-owner 는 DB 행 유지됨을 단언. UI 는 needsBrowser=true 이므로 실앱 Playwright E2E(dev-login admin→사용자 삭제 클릭→목록 갱신·primary admin 은 버튼 비활성) 또는 watchdog 브라우저 UAT 로 실사용 무동작 여부 확인. 검증: pnpm test admin-users-delete + E2E + verify-gates.",
+    "phase": "P20",
+    "team": "T1",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P20-T1-14",
+    "desc": "신규가입 Admin Webhook (Slack/Discord dev-stub): 신규 가입 시 관리자 알림 webhook 발송 경로가 없다(audit ❌). org-settings 에 adminWebhookUrl(string, optional) 추가→ signup 완료 시 new_user 페이로드 POST. 외부 API 라 web_search 패턴대로 dev-stub/1종 배선까지만: LOCAL_ONLY 기본은 in-memory fake dispatcher 주입(실 네트워크 미발송, 호출 기록만), 실 Slack/Discord adapter 는 인터페이스 뒤에 두고 배포 시 교체. files: apps/server/src/lib/webhook-dispatcher.ts(신규, createDevStubWebhookDispatcher/InMemory), routes/auth.ts signup 완료 지점에서 fire-and-forget 호출(인증흐름 미차단), lib/org-settings-schema.ts adminWebhookUrl. [병렬:dispatcher 인터페이스/dev-stub + signup 배선 병렬]",
+    "acceptance": "RED: webhook-signup.test.ts 가 'adminWebhookUrl 설정된 org 에서 signup→ fake dispatcher 가 new_user 페이로드로 1회 호출됨' 을 기대하면 배선 부재로 호출 0회 실패(RED). 미설정 org 는 미호출. L1 last-mile: 실 signup 라우트 흐름을 태워 fake dispatcher 가 실제 email/org 담은 payload 를 수신했는지 단언(단순 유닛 아님), dispatcher 실패해도 signup 200 유지(fire-and-forget) 단언. 검증: pnpm test webhook-signup + verify-gates exit 0.",
+    "phase": "P20",
+    "team": "T1",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P20-T1-15",
+    "desc": "Analytics: 모델별 사용량 테이블 + 메시지 타임라인 집계 API/차트: usage_logs(0010: model,tokens_in/out,cost_micros,ts)와 messages 데이터는 있으나 OWUI식 모델별 랭킹/시간대별 메시지량 뷰가 없다. files: routes/admin-analytics.ts(신규) — GET /api/v1/admin/analytics: (a) 모델별 messages/tokens/cost 랭킹, (b) 시간 버킷(일/시)별 메시지 카운트, org-scoped, 선택 group_id 필터. app.ts에 마운트 + __tests__/routes-mounted.test.ts EXPECTED_ROUTES에 prefix 추가. T6: apps/web/src admin에 Model Usage Table + Message Timeline 차트(디자인 토큰만, 하드코딩 hex 금지, dataviz 접근성). 집계는 서버 SQL, 프론트는 표시. [★needsBrowser(실앱 브라우저 검증) · 병렬:admin-analytics 라우트+SQL(T1) + web 테이블/차트(T6) 병렬]",
+    "acceptance": "RED: routes-mounted.test.ts에 GET /api/v1/admin/analytics 추가 → 미마운트로 실패. 집계 정확성 테스트(usage_logs seed→모델별 합계·버킷 카운트 기대값). cross-org: 타 org 데이터 미노출. L1: admin 아닌 유저 403. needsBrowser=true: 실앱 Playwright E2E(dev-login admin→Analytics 탭→테이블/차트에 seed 데이터 실렌더) 또는 watchdog 브라우저 UAT로 무데이터·무렌더 아님 확인.",
+    "phase": "P20",
+    "team": "T1",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P20-T1-16",
+    "desc": "Audit Logs(관리 변경·인증 이벤트 감사 로그 + admin 조회): 현재 audit 로그 0건(error_logs는 관측용 별개). 엔터프라이즈 필수. files: db/migrations/00NN_audit_log.sql — audit_log(id,org_id,actor_user_id,action,resource_type,resource_id,metadata jsonb,created_at) nullable-first + org_id RLS + 롤백 경로. db/audit-log-data-access.ts + lib/audit-recorder 서비스: admin mutation(PUT /admin/settings·/admin/models·mcp-servers 변경 등)과 auth 이벤트 기록. routes/admin-audit.ts: GET /api/v1/admin/audit-logs(org-scoped, 페이지네이션·action 필터). app.ts 마운트 + routes-mounted EXPECTED_ROUTES 등재. T6: 간단 조회 테이블(읽기 전용). [★needsBrowser(실앱 브라우저 검증) · 병렬:migration+data-access+record 미들웨어(T1) + admin-audit 라우트 + 조회 UI(T6) 병렬]",
+    "acceptance": "RED: admin 설정 PUT 후 audit_log에 행이 없어 실패하는 테스트(변경→기록 단언) + routes-mounted에 /admin/audit-logs 추가 → 미마운트 실패. cross-org: 타 org audit_log 미조회. migration nullable-first/롤백 확인. needsBrowser=true: 실앱 Playwright E2E(admin이 설정 변경→Audit 탭에 해당 action 행 표시) 또는 watchdog 브라우저 UAT로 실기록·실표시 확인.",
+    "phase": "P20",
+    "team": "T1",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P20-T1-17",
+    "desc": "업로드 확장자 화이트리스트 + size/count enforcement 완성: Quota 탭 maxUploadSizeMb/maxUploadCount는 저장·검증되나 확장자 화이트리스트가 없다. files: lib/org-settings-schema.ts(T1 소유)에 allowedUploadExtensions 필드 추가(Zod, 기본=일반 문서셋), routes/uploads.ts에서 업로드 시 확장자·size 검증 enforce(거부 시 400). apps/web QuotaTab에 확장자 편집 칩(선택). shared/interfaces 무변경(server lib 국한).",
+    "acceptance": "RED: 화이트리스트 밖 확장자(예: .exe) 업로드가 현재 통과 → 거부(400) 기대 테스트로 실패. size/count 초과 거부도 함께 단언. L1: admin이 설정한 화이트리스트가 실제 업로드 라우트 검증까지 도달. needsBrowser=false(서버 enforcement 통합테스트로 충분, admin 칩 UI는 반영이면 부수).",
+    "phase": "P20",
+    "team": "T1",
+    "passes": false,
+    "attempts": 0
   }
 ]
