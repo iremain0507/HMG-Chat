@@ -61,6 +61,7 @@ import { createLocalObjectStore } from "./lib/object-store.js";
 import { createParserPipeline } from "./knowledge/parser-pipeline.js";
 import { withUsageTracking } from "./knowledge/embedding-provider.js";
 import { createDevStubEmbeddingProvider } from "./knowledge/embedding-provider-dev-stub.js";
+import { createKnowledgeRetrievalPgPort } from "./knowledge/knowledge-retrieval-pg.js";
 import { createPgAttachmentsPort } from "./db/ephemeral-chunk-search.js";
 import {
   authMiddleware,
@@ -245,6 +246,11 @@ export function createApp(env: Env) {
         ...(env.TAVILY_API_KEY ? { tavilyApiKey: env.TAVILY_API_KEY } : {}),
         ...(env.E2B_API_KEY ? { e2bApiKey: env.E2B_API_KEY } : {}),
         settings: settingsService,
+        // P20-T1-02 — knowledge_search 실배선: retrieval(T3 pg 포트, project_documents 스코프)
+        // + embeddingProvider(dev-stub) 둘 다 주입해야 조립된다(assemble-builtin-tools.ts L1
+        // last-mile 가드). 미주입 시 이전처럼 모델이 지식베이스를 아예 못 봤다(실사용 무동작).
+        embeddingProvider: withUsageTracking(createDevStubEmbeddingProvider()),
+        retrieval: createKnowledgeRetrievalPgPort(),
       }),
       mcpTools: assembleOrgMcpTools(mcpServerDa, mcpBridge, mcpClientPool),
       hitl: hitlBridge,

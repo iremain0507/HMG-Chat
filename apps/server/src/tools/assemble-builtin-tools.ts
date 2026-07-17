@@ -4,7 +4,11 @@
 //   폴백한다(app.ts 의 ANTHROPIC fail-soft 와 동일 원칙 — LOCAL_ONLY 에서도 왕복 동작).
 //   20-MULTI-AGENT-TOOL.md. (이전엔 app.ts 가 artifact_create 하나만 배선해 모델이 웹검색/
 //   리서치 도구를 아예 못 봤다 — 이 헬퍼가 그 last-mile 배선 갭을 닫는다.)
-import type { AgentTool, LLMProvider } from "@wchat/interfaces";
+import type {
+  AgentTool,
+  EmbeddingProvider,
+  LLMProvider,
+} from "@wchat/interfaces";
 import type { ArtifactDataAccess } from "../db/artifact-service.js";
 import type { ObjectStore } from "../lib/object-store.js";
 import type { WebSearchPort } from "./web-search-port.js";
@@ -18,6 +22,11 @@ import {
   createDeepResearchTool,
   type ToolSettingsResolverPort,
 } from "./handlers/deep-research-handler.js";
+import {
+  createKnowledgeSearchTool,
+  type KnowledgeRetrievalPort,
+  type KnowledgeSearchSettingsPort,
+} from "./handlers/knowledge-search-handler.js";
 import { createTavilyWebSearchProvider } from "./web-search-provider-tavily.js";
 import { createDevStubWebSearchProvider } from "./web-search-provider-dev-stub.js";
 import { createE2BSandboxTransport } from "./sandbox/sandbox-transport-e2b.js";
@@ -36,7 +45,14 @@ export interface AssembleBuiltinToolsDeps {
   // 반영(정적 maxTokens 를 조용히 쓰지 않도록, L1). 미주입 시 비파괴(정적 maxTokens 유지).
   // P19-T1-12 — 동일 settings 객체(SettingsService.resolve 는 전체 ResolvedOrgSettings 를
   // 반환)를 web_search 의 provider 동적 선택에도 재사용(구조적으로 두 Pick 모두 만족).
-  settings?: ToolSettingsResolverPort & WebSearchSettingsResolverPort;
+  // P20-T1-02 — knowledge_search 의 ragTopK/ragRrfK/ragRelevanceThreshold invoke-time resolve 에도 재사용.
+  settings?: ToolSettingsResolverPort &
+    WebSearchSettingsResolverPort &
+    KnowledgeSearchSettingsPort;
+  // P20-T1-02 — 둘 다 주입돼야 knowledge_search 를 조립(L1 last-mile: 주입 유무로 도구
+  // 목록이 갈리는 조립 테스트로 진입점 도달을 단언). 미주입 시 이전처럼 도구 자체가 생략된다.
+  embeddingProvider?: EmbeddingProvider;
+  retrieval?: KnowledgeRetrievalPort;
 }
 
 // P19-T1-12 — org_settings.webSearchProvider 로 invoke 시점에 실 provider 를 구성.
@@ -80,6 +96,17 @@ export function assembleBuiltinTools(
       })
     : createDevStubSandboxTransport({ objectStore: deps.objectStore });
 
+  // P20-T1-02 — retrieval 포트 주입 시에만 조립(app.ts 에서 pg 구현체를 주입하지 않으면
+  // 이전처럼 모델이 지식베이스를 아예 못 보게 생략 — L1 last-mile).
+  const knowledgeSearchTool =
+    deps.retrieval && deps.embeddingProvider
+      ? createKnowledgeSearchTool({
+          embeddingProvider: deps.embeddingProvider,
+          retrieval: deps.retrieval,
+          ...(deps.settings ? { settings: deps.settings } : {}),
+        })
+      : undefined;
+
   return [
     createArtifactCreateTool({ da: deps.artifactDa }),
     webSearchTool,
@@ -92,11 +119,14 @@ export function assembleBuiltinTools(
       leadModel: deps.model,
       workerProvider: deps.provider,
       workerModel: deps.model,
-      // researcher 스코프 = read-only web_search 만(20-MULTI-AGENT-TOOL.md §20.4-3).
-      workerTools: [webSearchTool],
+      // researcher 스코프 = read-only web_search/knowledge_search 만(20-MULTI-AGENT-TOOL.md §20.4-3).
+      workerTools: knowledgeSearchTool
+        ? [webSearchTool, knowledgeSearchTool]
+        : [webSearchTool],
       maxTokens: deps.maxTokens,
       da: deps.artifactDa,
       ...(deps.settings ? { settings: deps.settings } : {}),
     }),
+    ...(knowledgeSearchTool ? [knowledgeSearchTool] : []),
   ];
 }

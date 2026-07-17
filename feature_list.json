@@ -1976,8 +1976,8 @@
     "acceptance": "RED: assemble-builtin-tools.test.ts 가 반환 tool 이름 목록에 'knowledge_search' 포함을 단언하나 미조립으로 실패. 그리고 createApp 기반 실HTTP 턴에서 지식 질의 시 knowledge_search tool_use→tool_result→citation 이 방출됨을 단언(현재 도구 자체가 없어 미방출). L1 last-mile: app.ts 에 retrieval 포트를 주입하지 않으면 도구가 조립되지 않음(주입 유무로 목록이 갈리는 조립 테스트)로 '진입점 도달' 확인. 검증: pnpm test tools/__tests__ + routes 통합 + verify-gates exit 0.",
     "phase": "P20",
     "team": "T1",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P20-T6-01",
