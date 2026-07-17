@@ -37,6 +37,25 @@ function fakeObjectStore(): ObjectStore {
   } as unknown as ObjectStore;
 }
 
+function fakeSessions() {
+  return {
+    async search() {
+      return [];
+    },
+    async byId() {
+      return null;
+    },
+  };
+}
+
+function fakeSessionMessages() {
+  return {
+    async list() {
+      return { items: [] };
+    },
+  };
+}
+
 function base() {
   return {
     provider: fakeProvider(),
@@ -44,6 +63,8 @@ function base() {
     maxTokens: 1024,
     artifactDa: fakeArtifactDa(),
     objectStore: fakeObjectStore(),
+    sessions: fakeSessions(),
+    sessionMessages: fakeSessionMessages(),
   };
 }
 
@@ -66,7 +87,7 @@ function fakeRetrieval(): KnowledgeRetrievalPort {
 }
 
 describe("tools/assembleBuiltinTools", () => {
-  it("내장 도구 4종을 조립한다(artifact_create/web_search/code_interpreter/deep_research)", () => {
+  it("내장 도구 6종을 조립한다(artifact_create/web_search/code_interpreter/deep_research/search_chats/view_chat)", () => {
     const names = assembleBuiltinTools(base())
       .map((t) => t.spec.name)
       .sort();
@@ -74,8 +95,16 @@ describe("tools/assembleBuiltinTools", () => {
       "artifact_create",
       "code_interpreter",
       "deep_research",
+      "search_chats",
+      "view_chat",
       "web_search",
     ]);
+  });
+
+  it("search_chats/view_chat 은 sessions/sessionMessages 없이도 생략되지 않고 항상 조립된다(P20-T2-01 L1 last-mile)", () => {
+    const names = assembleBuiltinTools(base()).map((t) => t.spec.name);
+    expect(names).toContain("search_chats");
+    expect(names).toContain("view_chat");
   });
 
   it("TAVILY_API_KEY 유무와 무관하게 web_search 를 포함(키 있으면 실 Tavily, 없으면 dev-stub 폴백)", () => {
@@ -103,6 +132,8 @@ describe("tools/assembleBuiltinTools", () => {
       "code_interpreter",
       "deep_research",
       "knowledge_search",
+      "search_chats",
+      "view_chat",
       "web_search",
     ]);
   });

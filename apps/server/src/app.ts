@@ -252,6 +252,10 @@ export function createApp(env: Env) {
         // last-mile 가드). 미주입 시 이전처럼 모델이 지식베이스를 아예 못 봤다(실사용 무동작).
         embeddingProvider: withUsageTracking(createDevStubEmbeddingProvider()),
         retrieval: createKnowledgeRetrievalPgPort(),
+        // P20-T2-01 — search_chats/view_chat: 기존 sessionDa/messageDa 싱글톤을 그대로
+        // 재주입(구조적 타이핑으로 SessionsSearchPort/ViewChatMessagesPort 충족, 신규 DA 불필요).
+        sessions: sessionDa,
+        sessionMessages: messageDa,
       }),
       mcpTools: assembleOrgMcpTools(mcpServerDa, mcpBridge, mcpClientPool),
       hitl: hitlBridge,

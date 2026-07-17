@@ -2012,8 +2012,8 @@
     "acceptance": "RED: 핸들러 테스트가 tool.spec.name==='search_chats' + 다른 유저/타org 세션이 결과에서 제외되는지 단언(현재 도구 부재로 실패). 조립 가드 테스트: assembleBuiltinTools() 반환 배열이 search_chats/view_chat 포함(knowledge_search app.ts 조립 가드와 동형). L1 last-mile: 도구가 정의에 그치지 않고 runTurn 에 전달되는 tools[] 에 실제 포함(app.ts→messages 조립 경로). needsBrowser=false.",
     "phase": "P20",
     "team": "T2",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P20-T6-03",

@@ -27,6 +27,12 @@ import {
   type KnowledgeRetrievalPort,
   type KnowledgeSearchSettingsPort,
 } from "./handlers/knowledge-search-handler.js";
+import {
+  createSearchChatsTool,
+  createViewChatTool,
+  type SessionsSearchPort,
+  type ViewChatMessagesPort,
+} from "./handlers/search-chats-handler.js";
 import { createTavilyWebSearchProvider } from "./web-search-provider-tavily.js";
 import { createDevStubWebSearchProvider } from "./web-search-provider-dev-stub.js";
 import { createE2BSandboxTransport } from "./sandbox/sandbox-transport-e2b.js";
@@ -53,6 +59,11 @@ export interface AssembleBuiltinToolsDeps {
   // 목록이 갈리는 조립 테스트로 진입점 도달을 단언). 미주입 시 이전처럼 도구 자체가 생략된다.
   embeddingProvider?: EmbeddingProvider;
   retrieval?: KnowledgeRetrievalPort;
+  // P20-T2-01 — search_chats/view_chat: 항상 조립(app.ts 는 이미 sessionDa/messageDa 를
+  // 다른 라우트에도 주입하는 싱글톤 인스턴스를 갖고 있어 knowledge_search 와 달리 optional
+  // 게이트가 불필요 — 구조적 타이핑으로 SessionsDataAccess/MessageRepo 그대로 만족).
+  sessions: SessionsSearchPort;
+  sessionMessages: ViewChatMessagesPort;
 }
 
 // P19-T1-12 — org_settings.webSearchProvider 로 invoke 시점에 실 provider 를 구성.
@@ -107,6 +118,12 @@ export function assembleBuiltinTools(
         })
       : undefined;
 
+  const searchChatsTool = createSearchChatsTool({ sessions: deps.sessions });
+  const viewChatTool = createViewChatTool({
+    sessions: deps.sessions,
+    messages: deps.sessionMessages,
+  });
+
   return [
     createArtifactCreateTool({ da: deps.artifactDa }),
     webSearchTool,
@@ -114,6 +131,8 @@ export function assembleBuiltinTools(
       transport: sandboxTransport,
       da: deps.artifactDa,
     }),
+    searchChatsTool,
+    viewChatTool,
     createDeepResearchTool({
       leadProvider: deps.provider,
       leadModel: deps.model,
