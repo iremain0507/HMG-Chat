@@ -38,6 +38,7 @@ import {
   ArtifactCanvas,
   type ArtifactCanvasArtifact,
 } from "../../components/artifacts/ArtifactCanvas";
+import { ArtifactPanel } from "../../components/artifacts/ArtifactPanel";
 import { useOnlineStatus } from "../../hooks/useOnlineStatus";
 import type { Citation } from "../../hooks/useSessionStream";
 import type { ProjectDto } from "../../hooks/useProject";
@@ -418,6 +419,27 @@ function ArtifactCanvasPreview() {
           />
         </div>
       )}
+    </div>
+  );
+}
+
+// P20-T6-03 — sandbox="allow-scripts" iframe(스크립트 실행 허용, allow-same-origin 미병기)이
+//   실제 브라우저에서 인터랙티브 HTML 아티팩트의 스크립트를 실행하는지 검증하는 전용 프리뷰.
+//   e2e/artifact-html-sandbox.pw.ts 가 이 artifactId 의 content 를 page.route() 로 목킹한다.
+function ArtifactHtmlSandboxPreview() {
+  return (
+    <div className="h-[280px] overflow-hidden rounded-lg border border-border">
+      <ArtifactPanel
+        artifact={{
+          id: "preview-artifact-html-1",
+          type: "html",
+          filename: "demo.html",
+          sizeBytes: 256,
+          storageKind: "inline",
+          downloadUrl: null,
+          createdAt: new Date(0).toISOString(),
+        }}
+      />
     </div>
   );
 }
@@ -913,6 +935,10 @@ export default function PreviewGallery() {
 
       <Section name="artifact-canvas">
         <ArtifactCanvasPreview />
+      </Section>
+
+      <Section name="artifact-html-sandbox">
+        <ArtifactHtmlSandboxPreview />
       </Section>
 
       <Section name="mcp-servers-manager">

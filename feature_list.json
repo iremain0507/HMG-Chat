@@ -2021,8 +2021,8 @@
     "acceptance": "RED: iframe sandbox 속성이 'allow-scripts'를 포함하고 'allow-same-origin'을 포함하지 않음을 단언하는 테스트를 구현 전 추가 → 현재 sandbox=\"\" 라 실패. L1 last-mile: 실앱 Playwright E2E(dev-login→스크립트가 DOM을 실제 변경하는 HTML 아티팩트 렌더→변경된 텍스트/노드가 iframe 안에 나타남을 단언)로 '속성만 켜지고 CSP로 실행 안 됨' 무동작 여부까지 확인. 보안 회귀 가드: allow-same-origin 부재 단언 유지.",
     "phase": "P20",
     "team": "T6",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P20-T1-04",
