@@ -7,6 +7,9 @@ import { Hono } from "hono";
 import { z } from "zod";
 import type { AuthedVariables } from "../middleware/auth-middleware.js";
 import type { Organization } from "@wchat/interfaces";
+import type { AuditRecorder } from "../lib/audit-recorder.js";
+
+const NOOP_AUDIT: AuditRecorder = { async record() {} };
 
 const AllowedModelsSchema = z.object({
   allowedModels: z.array(z.string().min(1)),
@@ -36,11 +39,13 @@ export interface AdminModelsRouteDeps {
       data: { allowedModels: string[] },
     ): Promise<Organization>;
   };
+  audit?: AuditRecorder;
 }
 
 export function createAdminModelsRoutes(
   deps: AdminModelsRouteDeps,
 ): Hono<{ Variables: AuthedVariables }> {
+  const audit = deps.audit ?? NOOP_AUDIT;
   const app = new Hono<{ Variables: AuthedVariables }>();
 
   app.get("/", async (c) => {
@@ -80,6 +85,14 @@ export function createAdminModelsRoutes(
     }
     const updated = await deps.organizations.update(auth.org, {
       allowedModels: parsed.data.allowedModels,
+    });
+    await audit.record({
+      orgId: auth.org,
+      actorUserId: auth.sub,
+      action: "admin.models.updated",
+      resourceType: "org_settings",
+      resourceId: auth.org,
+      metadata: { allowedModels: updated.allowedModels },
     });
     return c.json({
       data: { allowedModels: updated.allowedModels },

@@ -9,6 +9,9 @@ import type { User } from "@wchat/interfaces";
 import type { AuthedVariables } from "../middleware/auth-middleware.js";
 import type { HealthHistoryDataAccess } from "../db/health-history-data-access.js";
 import type { AdminDataAccess } from "../db/admin-data-access.js";
+import type { AuditRecorder } from "../lib/audit-recorder.js";
+
+const NOOP_AUDIT: AuditRecorder = { async record() {} };
 
 const DEFAULT_LIMIT = 50;
 const MAX_USER_LIMIT = 100;
@@ -57,7 +60,9 @@ function parseDateRange(c: {
 export function createAdminRoutes(deps: {
   da: HealthHistoryDataAccess;
   adminDa: AdminDataAccess;
+  audit?: AuditRecorder;
 }): Hono<{ Variables: AuthedVariables }> {
+  const audit = deps.audit ?? NOOP_AUDIT;
   const app = new Hono<{ Variables: AuthedVariables }>();
 
   app.get("/health/history", async (c) => {
@@ -151,6 +156,17 @@ export function createAdminRoutes(deps: {
     if (!updated) {
       return c.json(errorJson("NOT_FOUND", "사용자를 찾을 수 없습니다."), 404);
     }
+    await audit.record({
+      orgId: auth.org,
+      actorUserId: auth.sub,
+      action: "admin.user.updated",
+      resourceType: "user",
+      resourceId: updated.id,
+      metadata: {
+        ...(role !== undefined ? { role } : {}),
+        ...(status !== undefined ? { status } : {}),
+      },
+    });
     return c.json({
       data: userDto(updated),
       meta: { requestId: randomUUID() },
@@ -170,6 +186,17 @@ export function createAdminRoutes(deps: {
     if (!result) {
       return c.json(errorJson("NOT_FOUND", "사용자를 찾을 수 없습니다."), 404);
     }
+    await audit.record({
+      orgId: auth.org,
+      actorUserId: auth.sub,
+      action: "admin.user.suspended",
+      resourceType: "user",
+      resourceId: c.req.param("id"),
+      metadata: {
+        reason: body.reason,
+        sessionsRevoked: result.sessionsRevoked,
+      },
+    });
     return c.json({
       data: { ok: true, sessionsRevoked: result.sessionsRevoked },
       meta: { requestId: randomUUID() },
@@ -185,6 +212,13 @@ export function createAdminRoutes(deps: {
     if (!ok) {
       return c.json(errorJson("NOT_FOUND", "사용자를 찾을 수 없습니다."), 404);
     }
+    await audit.record({
+      orgId: auth.org,
+      actorUserId: auth.sub,
+      action: "admin.user.unsuspended",
+      resourceType: "user",
+      resourceId: c.req.param("id"),
+    });
     return c.json({ data: { ok: true }, meta: { requestId: randomUUID() } });
   });
 
@@ -225,6 +259,13 @@ export function createAdminRoutes(deps: {
         409,
       );
     }
+    await audit.record({
+      orgId: auth.org,
+      actorUserId: auth.sub,
+      action: "admin.user.deleted",
+      resourceType: "user",
+      resourceId: c.req.param("id"),
+    });
     return c.json({ data: { ok: true }, meta: { requestId: randomUUID() } });
   });
 

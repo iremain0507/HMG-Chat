@@ -10,6 +10,9 @@ import {
   createPgResourceGrantsDataAccess,
   type ResourceGrantsDataAccess,
 } from "../db/resource-grants-data-access.js";
+import type { AuditRecorder } from "../lib/audit-recorder.js";
+
+const NOOP_AUDIT: AuditRecorder = { async record() {} };
 
 const RESOURCE_TYPES = ["model", "knowledge", "tool", "prompt"] as const;
 const SUBJECT_TYPES = ["user", "group"] as const;
@@ -46,12 +49,14 @@ function isAdmin(role: string): boolean {
 
 export interface AdminGrantsRouteDeps {
   grants?: ResourceGrantsDataAccess;
+  audit?: AuditRecorder;
 }
 
 export function createAdminGrantsRoutes(
   deps: AdminGrantsRouteDeps = {},
 ): Hono<{ Variables: AuthedVariables }> {
   const grants = deps.grants ?? createPgResourceGrantsDataAccess();
+  const audit = deps.audit ?? NOOP_AUDIT;
   const app = new Hono<{ Variables: AuthedVariables }>();
 
   app.post("/", async (c) => {
@@ -87,6 +92,14 @@ export function createAdminGrantsRoutes(
         404,
       );
     }
+    await audit.record({
+      orgId: auth.org,
+      actorUserId: auth.sub,
+      action: "admin.grant.created",
+      resourceType,
+      resourceId,
+      metadata: { subjectType, subjectId, access },
+    });
     return c.json(
       {
         data: { resourceType, resourceId, subjectType, subjectId, access },
@@ -161,6 +174,14 @@ export function createAdminGrantsRoutes(
     if (!revoked) {
       return c.json(errorJson("NOT_FOUND", "grant 를 찾을 수 없습니다."), 404);
     }
+    await audit.record({
+      orgId: auth.org,
+      actorUserId: auth.sub,
+      action: "admin.grant.revoked",
+      resourceType,
+      resourceId,
+      metadata: { subjectType, subjectId, access },
+    });
     return c.body(null, 204);
   });
 

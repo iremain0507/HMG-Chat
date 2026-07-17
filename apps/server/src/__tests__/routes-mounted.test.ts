@@ -146,6 +146,7 @@ const EXPECTED_ROUTES: Array<{ method: string; path: string; phase: string }> =
       phase: "P20",
     },
     { method: "GET", path: "/api/v1/admin/analytics", phase: "P20" },
+    { method: "GET", path: "/api/v1/admin/audit-logs", phase: "P20" },
     {
       method: "POST",
       path: `/api/v1/sessions/${sid}/share-snapshot`,

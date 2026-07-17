@@ -2237,8 +2237,8 @@
     "acceptance": "RED: admin 설정 PUT 후 audit_log에 행이 없어 실패하는 테스트(변경→기록 단언) + routes-mounted에 /admin/audit-logs 추가 → 미마운트 실패. cross-org: 타 org audit_log 미조회. migration nullable-first/롤백 확인. needsBrowser=true: 실앱 Playwright E2E(admin이 설정 변경→Audit 탭에 해당 action 행 표시) 또는 watchdog 브라우저 UAT로 실기록·실표시 확인.",
     "phase": "P20",
     "team": "T1",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P20-T1-17",

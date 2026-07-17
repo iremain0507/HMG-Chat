@@ -36,6 +36,7 @@ import { AdminUsersManager } from "../../components/admin/AdminUsersManager";
 import { GroupsManager } from "../../components/admin/GroupsManager";
 import { GrantsManager } from "../../components/admin/GrantsManager";
 import { AnalyticsDashboard } from "../../components/admin/AnalyticsDashboard";
+import { AuditLogTable } from "../../components/admin/AuditLogTable";
 import { AdminSettingsScreen } from "../../components/admin/settings/AdminSettingsScreen";
 import { ToastContainer } from "../../components/layout/ToastContainer";
 import {
@@ -332,6 +333,22 @@ function AnalyticsDashboardPreview() {
       className="rounded-md border border-border px-3 py-1.5 text-sm text-fg-muted hover:border-primary hover:text-fg"
     >
       사용량 분석 열기
+    </button>
+  );
+}
+
+function AuditLogTablePreview() {
+  const [open, setOpen] = useState(false);
+  return open ? (
+    <AuditLogTable />
+  ) : (
+    <button
+      type="button"
+      data-testid="audit-log-table-preview-trigger"
+      onClick={() => setOpen(true)}
+      className="rounded-md border border-border px-3 py-1.5 text-sm text-fg-muted hover:border-primary hover:text-fg"
+    >
+      감사 로그 열기
     </button>
   );
 }
@@ -1064,6 +1081,10 @@ export default function PreviewGallery() {
 
       <Section name="admin-analytics">
         <AnalyticsDashboardPreview />
+      </Section>
+
+      <Section name="admin-audit-logs">
+        <AuditLogTablePreview />
       </Section>
 
       <Section name="admin-settings-screen">

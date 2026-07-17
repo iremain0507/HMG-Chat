@@ -7,6 +7,9 @@ import type { AuthedVariables } from "../middleware/auth-middleware.js";
 import type { OrgSettingsDataAccess } from "../db/org-settings-data-access.js";
 import type { SettingsService } from "../lib/settings-service.js";
 import { OrgSettingsSchema } from "../lib/org-settings-schema.js";
+import type { AuditRecorder } from "../lib/audit-recorder.js";
+
+const NOOP_AUDIT: AuditRecorder = { async record() {} };
 
 function errorJson(code: string, message: string, details?: unknown) {
   return {
@@ -27,7 +30,9 @@ function isAdmin(role: string): boolean {
 export function createAdminSettingsRoutes(deps: {
   da: OrgSettingsDataAccess;
   settingsService: SettingsService;
+  audit?: AuditRecorder;
 }): Hono<{ Variables: AuthedVariables }> {
+  const audit = deps.audit ?? NOOP_AUDIT;
   const app = new Hono<{ Variables: AuthedVariables }>();
 
   app.get("/", async (c) => {
@@ -65,6 +70,14 @@ export function createAdminSettingsRoutes(deps: {
     await deps.da.upsert(auth.org, parsed.data, auth.sub);
     deps.settingsService.invalidate(auth.org);
     const data = await deps.settingsService.resolve(auth.org);
+    await audit.record({
+      orgId: auth.org,
+      actorUserId: auth.sub,
+      action: "admin.settings.updated",
+      resourceType: "org_settings",
+      resourceId: auth.org,
+      metadata: parsed.data,
+    });
     return c.json({ data, meta: { requestId: randomUUID() } });
   });
 

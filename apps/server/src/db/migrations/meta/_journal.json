@@ -211,6 +211,13 @@
       "when": 1783891200000,
       "tag": "0030_conversation_shares",
       "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "7",
+      "when": 1783891300000,
+      "tag": "0031_audit_log",
+      "breakpoints": true
     }
   ]
 }

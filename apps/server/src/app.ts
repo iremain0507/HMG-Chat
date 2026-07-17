@@ -55,6 +55,9 @@ import { createAdminGrantsRoutes } from "./routes/admin-grants.js";
 import { createPgResourceGrantsDataAccess } from "./db/resource-grants-data-access.js";
 import { createAdminAnalyticsRoutes } from "./routes/admin-analytics.js";
 import { createPgAdminAnalyticsDataAccess } from "./db/admin-analytics-data-access.js";
+import { createAdminAuditRoutes } from "./routes/admin-audit.js";
+import { createPgAuditLogDataAccess } from "./db/audit-log-data-access.js";
+import { createAuditRecorder } from "./lib/audit-recorder.js";
 import { createConfigRoutes } from "./routes/config.js";
 import { createPgHealthHistoryDataAccess } from "./db/health-history-data-access.js";
 import { createPgAdminDataAccess } from "./db/admin-data-access.js";
@@ -483,6 +486,9 @@ export function createApp(env: Env) {
   errorsApp.route("/", createErrorRoutes({ da: createPgErrorLogDataAccess() }));
   app.route("/api/v1/errors", errorsApp);
 
+  const auditLogDa = createPgAuditLogDataAccess();
+  const auditRecorder = createAuditRecorder(auditLogDa, createLogger());
+
   const adminApp = new Hono<{ Variables: AuthedVariables }>();
   adminApp.use("*", authMiddleware);
   adminApp.route(
@@ -490,6 +496,7 @@ export function createApp(env: Env) {
     createAdminRoutes({
       da: createPgHealthHistoryDataAccess(),
       adminDa: createPgAdminDataAccess(),
+      audit: auditRecorder,
     }),
   );
   adminApp.route(
@@ -497,18 +504,20 @@ export function createApp(env: Env) {
     createAdminSettingsRoutes({
       da: orgSettingsDa,
       settingsService,
+      audit: auditRecorder,
     }),
   );
   adminApp.route(
     "/models",
     createAdminModelsRoutes({
       organizations: authDa.organizations,
+      audit: auditRecorder,
     }),
   );
   adminApp.route("/groups", createAdminGroupsRoutes());
   adminApp.route(
     "/grants",
-    createAdminGrantsRoutes({ grants: resourceGrantsDa }),
+    createAdminGrantsRoutes({ grants: resourceGrantsDa, audit: auditRecorder }),
   );
   adminApp.route(
     "/analytics",
@@ -516,6 +525,7 @@ export function createApp(env: Env) {
       analyticsDa: createPgAdminAnalyticsDataAccess(),
     }),
   );
+  adminApp.route("/audit-logs", createAdminAuditRoutes({ da: auditLogDa }));
   app.route("/api/v1/admin", adminApp);
 
   const configApp = new Hono<{ Variables: AuthedVariables }>();
