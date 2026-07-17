@@ -16,6 +16,7 @@ export function MessageActions({
   messageId,
   onRegenerate,
   onEdit,
+  onDelete,
 }: {
   role: "user" | "assistant";
   content: string;
@@ -23,9 +24,22 @@ export function MessageActions({
   messageId?: string;
   onRegenerate?: () => void;
   onEdit?: () => void;
+  onDelete?: () => void;
 }) {
   const [copied, setCopied] = useState(false);
   const [feedback, setFeedback] = useState<"up" | "down" | null>(null);
+  // P20-T6-05 — 삭제는 실수 방지를 위해 두 번 클릭(확인) 필요. 첫 클릭은 확인 상태로만
+  // 전환하고, 확인 상태에서 다시 클릭해야 실제 onDelete 를 호출한다.
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
+
+  function handleDeleteClick() {
+    if (!confirmingDelete) {
+      setConfirmingDelete(true);
+      return;
+    }
+    setConfirmingDelete(false);
+    onDelete?.();
+  }
 
   async function copy() {
     if (!(await copyText(content))) return;
@@ -98,6 +112,17 @@ export function MessageActions({
             👎
           </button>
         </>
+      )}
+      {onDelete && (
+        <button
+          type="button"
+          aria-label={confirmingDelete ? "정말 삭제?" : "삭제"}
+          onClick={handleDeleteClick}
+          onBlur={() => setConfirmingDelete(false)}
+          className="rounded-md p-1 text-xs hover:bg-surface hover:text-accent"
+        >
+          {confirmingDelete ? "정말 삭제?" : "삭제"}
+        </button>
       )}
     </div>
   );

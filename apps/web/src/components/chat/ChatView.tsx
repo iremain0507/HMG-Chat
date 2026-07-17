@@ -96,6 +96,7 @@ export function ChatView({ sessionId }: { sessionId: string }) {
     editMessage,
     regenerate,
     continueMessage,
+    deleteMessage,
     switchBranch,
     historyLoading,
     loadHistory,
@@ -548,6 +549,7 @@ export function ChatView({ sessionId }: { sessionId: string }) {
                       onOpenArtifact={handleOpenArtifact}
                       onCitationFocus={handleCitationFocus}
                       onActivityFocus={handleActivityFocus}
+                      onDelete={() => void deleteMessage(m.id)}
                       {...(canRegenerate
                         ? {
                             // P17-T6-03(TS-06) — 재생성은 같은 user 턴 아래 새 assistant
@@ -727,6 +729,7 @@ export function MessageItem({
   onCitationFocus,
   onActivityFocus,
   onOpenArtifact,
+  onDelete,
 }: {
   role: "user" | "assistant";
   content: string;
@@ -750,6 +753,7 @@ export function MessageItem({
   onCitationFocus?: (index: number) => void;
   onActivityFocus?: () => void;
   onOpenArtifact?: (artifactId: string) => void;
+  onDelete?: () => void;
 }) {
   const [focusedCitation, setFocusedCitation] = useState<number | null>(null);
   const [isEditing, setIsEditing] = useState(false);
@@ -881,6 +885,7 @@ export function MessageItem({
                   setDraft(content);
                   setIsEditing(true);
                 }}
+                {...(onDelete ? { onDelete } : {})}
               />
             </div>
           </div>
@@ -1031,6 +1036,7 @@ export function MessageItem({
                   content={content}
                   {...(sessionId && messageId ? { sessionId, messageId } : {})}
                   {...(onRegenerate ? { onRegenerate } : {})}
+                  {...(onDelete ? { onDelete } : {})}
                 />
               </div>
             )}

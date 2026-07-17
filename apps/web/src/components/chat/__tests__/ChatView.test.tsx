@@ -248,6 +248,81 @@ describe("ChatView", () => {
     );
   });
 
+  it("메시지 삭제 버튼을 두 번 클릭하면 DELETE 요청 후 해당 메시지가 화면에서 사라진다 (P20-T6-05)", async () => {
+    const encoder = new TextEncoder();
+    // 트리 노드 키는 서버 messageId 와 무관한 local-* 라(message_start 참고) deleteMessage 는
+    // 삭제 전 GET /:id/messages 로 영속된 실제 id 를 역산해 그 id 로 DELETE 를 보낸다.
+    // ChatView 마운트 시 loadHistory 가 자동으로 같은 GET 엔드포인트를 먼저 호출하므로
+    // (새 세션 = 빈 히스토리), 첫 호출은 빈 배열을 반환하고 이후(삭제 시점의 역산 조회)
+    // 호출부터 방금 전송된 턴이 영속된 것으로 실제 id 를 반환한다.
+    let messagesGetCalls = 0;
+    const fetchMock = vi.fn(async (url: unknown, init?: RequestInit) => {
+      const u = String(url);
+      if (init?.method === "DELETE") {
+        return { ok: true, status: 204 };
+      }
+      if (u.endsWith("/messages") && (!init || init.method === undefined)) {
+        messagesGetCalls += 1;
+        if (messagesGetCalls === 1) {
+          return { ok: true, json: async () => ({ data: [] }) };
+        }
+        return {
+          ok: true,
+          json: async () => ({
+            data: [
+              { id: "real-u-1", role: "user", parentMessageId: null },
+              {
+                id: "real-a-1",
+                role: "assistant",
+                parentMessageId: "real-u-1",
+              },
+            ],
+          }),
+        };
+      }
+      return {
+        body: new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.enqueue(
+              encoder.encode(sseFrame("message_start", { messageId: "msg-1" })),
+            );
+            controller.enqueue(
+              encoder.encode(sseFrame("text_delta", { text: "hello" })),
+            );
+            controller.enqueue(
+              encoder.encode(sseFrame("stop", { reason: "end_turn" })),
+            );
+            controller.close();
+          },
+        }),
+      };
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<ChatView sessionId="session-1" />);
+    fireEvent.change(screen.getByLabelText("메시지 입력"), {
+      target: { value: "hi" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "전송" }));
+
+    await waitFor(() => {
+      expect(screen.getByText("hello")).toBeInTheDocument();
+    });
+
+    // user("hi")와 assistant("hello") 메시지 둘 다 삭제 버튼을 갖는다 — 마지막(assistant)을 클릭.
+    const deleteButtons = screen.getAllByRole("button", { name: "삭제" });
+    fireEvent.click(deleteButtons[deleteButtons.length - 1]!);
+    fireEvent.click(screen.getByRole("button", { name: "정말 삭제?" }));
+
+    await waitFor(() => {
+      expect(screen.queryByText("hello")).not.toBeInTheDocument();
+    });
+    expect(fetchMock).toHaveBeenLastCalledWith(
+      "/api/v1/sessions/session-1/messages/real-a-1",
+      expect.objectContaining({ method: "DELETE" }),
+    );
+  });
+
   it("첫 토큰 도착 전에는 shimmer 스켈레톤을 보여주고 델타 도착 시 사라진다", async () => {
     const encoder = new TextEncoder();
     let sendDelta: (() => void) | undefined;

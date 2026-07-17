@@ -791,6 +791,117 @@ describe("useSessionStream", () => {
     );
   });
 
+  // P20-T6-05 — 개별 메시지 삭제: DELETE /:id/messages/:mid(P20-T1-05)를 소비해
+  // 대상 노드+하위 서브트리를 트리에서 낙관적 제거하고, 실패 시 롤백한다.
+  // 트리 노드 키는 서버 messageId 와 무관한 local-* 라(message_start 참고) deleteMessage 는
+  // 삭제 전 GET /:id/messages 로 영속된 실제 id 를 역산해 그 id 로 DELETE 를 보낸다.
+  function deleteFlowFetchMock(deleteOk: boolean) {
+    return vi.fn(async (url: unknown, init?: RequestInit) => {
+      const u = String(url);
+      if (init?.method === "DELETE") {
+        return { ok: deleteOk, status: deleteOk ? 204 : 404 };
+      }
+      if (u.endsWith("/messages") && (!init || init.method === undefined)) {
+        return {
+          ok: true,
+          json: async () => ({
+            data: [
+              { id: "real-u-1", role: "user", parentMessageId: null },
+              {
+                id: "real-a-1",
+                role: "assistant",
+                parentMessageId: "real-u-1",
+              },
+            ],
+          }),
+        };
+      }
+      return {
+        body: sseBody([
+          sseFrame("message_start", { messageId: "msg-1" }),
+          sseFrame("text_delta", { text: "첫 응답" }),
+          sseFrame("stop", { reason: "end_turn" }),
+        ]),
+      };
+    });
+  }
+
+  it("deleteMessage 는 대상 assistant 메시지의 실제 id 를 역산해 DELETE 로 요청하고 트리에서 제거한다 (P20-T6-05)", async () => {
+    const fetchMock = deleteFlowFetchMock(true);
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { result } = renderHook(() => useSessionStream("session-1"));
+
+    await act(async () => {
+      await result.current.send("원본 질문");
+    });
+    const assistantId = result.current.messages.find(
+      (m) => m.role === "assistant",
+    )!.id;
+
+    await act(async () => {
+      await result.current.deleteMessage(assistantId);
+    });
+
+    expect(result.current.messages.some((m) => m.id === assistantId)).toBe(
+      false,
+    );
+    expect(fetchMock).toHaveBeenLastCalledWith(
+      "/api/v1/sessions/session-1/messages/real-a-1",
+      expect.objectContaining({ method: "DELETE" }),
+    );
+  });
+
+  it("deleteMessage 는 대상 user 메시지를 지우면 하위 assistant 응답도 함께 트리에서 제거한다 (P20-T6-05)", async () => {
+    const fetchMock = deleteFlowFetchMock(true);
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { result } = renderHook(() => useSessionStream("session-1"));
+
+    await act(async () => {
+      await result.current.send("원본 질문");
+    });
+    const userId = result.current.messages.find((m) => m.role === "user")!.id;
+    const assistantId = result.current.messages.find(
+      (m) => m.role === "assistant",
+    )!.id;
+
+    await act(async () => {
+      await result.current.deleteMessage(userId);
+    });
+
+    expect(result.current.messages).toHaveLength(0);
+    expect(result.current.messages.some((m) => m.id === assistantId)).toBe(
+      false,
+    );
+    expect(fetchMock).toHaveBeenLastCalledWith(
+      "/api/v1/sessions/session-1/messages/real-u-1",
+      expect.objectContaining({ method: "DELETE" }),
+    );
+  });
+
+  it("deleteMessage 는 서버 요청이 실패하면 낙관적 제거를 롤백한다 (P20-T6-05)", async () => {
+    const fetchMock = deleteFlowFetchMock(false);
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { result } = renderHook(() => useSessionStream("session-1"));
+
+    await act(async () => {
+      await result.current.send("원본 질문");
+    });
+    const assistantId = result.current.messages.find(
+      (m) => m.role === "assistant",
+    )!.id;
+
+    await act(async () => {
+      await result.current.deleteMessage(assistantId);
+    });
+
+    expect(result.current.messages.some((m) => m.id === assistantId)).toBe(
+      true,
+    );
+  });
+
   // P10-T6-17 — 에러/신뢰: turn 내 원인별 에러배너 + 재시도(재시도 가능 코드만) +
   // SSE 드롭 재연결/resume.
   it("error 이벤트의 SerializedError.retryable/category 를 메시지 노드에 반영한다", async () => {

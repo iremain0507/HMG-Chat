@@ -2057,8 +2057,8 @@
     "acceptance": "RED: useSessionStream 유닛/컴포넌트 테스트가 deleteMessage 호출 시 노드+하위가 트리에서 제거됨을 단언하나 미구현 실패. needsBrowser=true: 실앱 Playwright E2E(dev-login→턴 생성→메시지 삭제 클릭→목록에서 사라지고 새로고침 후에도 유지) 또는 watchdog 브라우저 UAT 로 삭제가 실제 화면/영속에 반영됨을 확인(설정/버튼이 실 진입점까지 도달). 검증: pnpm test + E2E green(로컬 스택 기동 가능 시), 불가 시 배선 근거+UAT 절차 기록.",
     "phase": "P20",
     "team": "T6",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P20-T6-06",

@@ -1005,6 +1005,143 @@ export function useSessionStream(sessionId: string) {
     [sessionId, updateNode],
   );
 
+  // P20-T6-05 — 개별 메시지 삭제: 대상 노드+하위 서브트리를 낙관적으로 제거하고
+  // DELETE /:id/messages/:messageId(P20-T1-05, 서버가 동일하게 서브트리를 prune)를
+  // 호출한다. 삭제된 노드가 활성 자식이었으면 형제(이전 우선)로, 없으면 부모로 재지정한다.
+  // 실패 시 삭제 전 스냅샷으로 트리를 통째로 되돌린다(낙관적 롤백).
+  //
+  // 트리 노드 키는 서버 messageId 와 별개(위 message_start 참고, 항상 local-* 로 새로
+  // 발급)이므로, 새로고침 전(라이브 턴) 메시지는 로컬 id 뿐 실제 DB id 를 모른다. 삭제는
+  // 실제 DB id 로 요청해야 하므로, local-* 대상은 GET /:id/messages 로 영속된 행을 가져와
+  // ROOT 부터의 조상 경로를 형제 순서(인덱스)로 매칭해 실제 id 를 역산한다(추가 SSE
+  // 이벤트·interfaces 변경 없이 in-scope 파일만으로 해결).
+  const resolveServerMessageId = useCallback(
+    async (
+      ancestorChain: string[],
+      localParentKeyOf: Map<string, string>,
+      localSiblingsAt: Map<string, string[]>,
+    ): Promise<string | null> => {
+      const res = await apiFetch(`/api/v1/sessions/${sessionId}/messages`, {
+        credentials: "include",
+      });
+      if (!res.ok) return null;
+      const body = (await res.json()) as {
+        data: Array<{ id: string; parentMessageId?: string | null }>;
+      };
+      const realChildrenOf = new Map<string, string[]>();
+      for (const row of body.data) {
+        const key = row.parentMessageId ?? ROOT;
+        realChildrenOf.set(key, [...(realChildrenOf.get(key) ?? []), row.id]);
+      }
+      let realParentKey = ROOT;
+      let resolved: string | null = null;
+      for (const localId of ancestorChain) {
+        const parentKey = localParentKeyOf.get(localId) ?? ROOT;
+        const localSiblings = localSiblingsAt.get(parentKey) ?? [];
+        const idx = localSiblings.indexOf(localId);
+        const realSiblings = realChildrenOf.get(realParentKey) ?? [];
+        const realId = idx >= 0 ? realSiblings[idx] : undefined;
+        if (!realId) return null;
+        resolved = realId;
+        realParentKey = realId;
+      }
+      return resolved;
+    },
+    [sessionId],
+  );
+
+  const deleteMessage = useCallback(
+    async (messageId: string) => {
+      const t = treeRef.current;
+      if (!t.nodes[messageId]) return;
+
+      const snapshot: TreeData = {
+        nodes: { ...t.nodes },
+        parentOf: { ...t.parentOf },
+        childrenOf: Object.fromEntries(
+          Object.entries(t.childrenOf).map(([k, v]) => [k, [...v]]),
+        ),
+        activeChildOf: { ...t.activeChildOf },
+      };
+
+      const ancestorChain: string[] = [];
+      {
+        let cursor: string | null = messageId;
+        while (cursor) {
+          ancestorChain.unshift(cursor);
+          cursor = t.parentOf[cursor] ?? null;
+        }
+      }
+      const localParentKeyOf = new Map<string, string>();
+      const localSiblingsAt = new Map<string, string[]>();
+      for (const id of ancestorChain) {
+        const parentKey = t.parentOf[id] ?? ROOT;
+        localParentKeyOf.set(id, parentKey);
+        if (!localSiblingsAt.has(parentKey)) {
+          localSiblingsAt.set(parentKey, [...(t.childrenOf[parentKey] ?? [])]);
+        }
+      }
+
+      const toRemove: string[] = [];
+      const stack = [messageId];
+      while (stack.length > 0) {
+        const id = stack.pop();
+        if (id === undefined) continue;
+        toRemove.push(id);
+        stack.push(...(t.childrenOf[id] ?? []));
+      }
+
+      const parentId = t.parentOf[messageId] ?? null;
+      const key = parentId ?? ROOT;
+      const siblings = t.childrenOf[key] ?? [];
+      const idx = siblings.indexOf(messageId);
+      const remainingSiblings = siblings.filter((id) => id !== messageId);
+
+      for (const id of toRemove) {
+        delete t.nodes[id];
+        delete t.parentOf[id];
+        delete t.childrenOf[id];
+        delete t.activeChildOf[id];
+      }
+      if (remainingSiblings.length > 0) {
+        t.childrenOf[key] = remainingSiblings;
+      } else {
+        delete t.childrenOf[key];
+      }
+      if (t.activeChildOf[key] === messageId) {
+        const fallback =
+          remainingSiblings[Math.max(0, idx - 1)] ?? remainingSiblings[0];
+        if (fallback) {
+          t.activeChildOf[key] = fallback;
+        } else {
+          delete t.activeChildOf[key];
+        }
+      }
+      bump();
+
+      try {
+        const serverId = messageId.startsWith("local-")
+          ? await resolveServerMessageId(
+              ancestorChain,
+              localParentKeyOf,
+              localSiblingsAt,
+            )
+          : messageId;
+        if (!serverId) throw new Error("unresolved message id");
+        const res = await apiFetch(
+          `/api/v1/sessions/${sessionId}/messages/${serverId}`,
+          { method: "DELETE", credentials: "include" },
+        );
+        if (!res.ok) throw new Error("delete failed");
+      } catch {
+        treeRef.current = snapshot;
+        bump();
+        showToast("error", "메시지 삭제에 실패했습니다.");
+      }
+    },
+    [sessionId, bump, resolveServerMessageId],
+  );
+
   const switchBranch = useCallback(
     (messageId: string, direction: "prev" | "next") => {
       const t = treeRef.current;
@@ -1079,6 +1216,7 @@ export function useSessionStream(sessionId: string) {
     editMessage,
     regenerate,
     continueMessage,
+    deleteMessage,
     switchBranch,
     historyLoading,
     loadHistory,

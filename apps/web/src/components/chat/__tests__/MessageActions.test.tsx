@@ -119,6 +119,28 @@ describe("MessageActions", () => {
     await waitFor(() => expect(up).toHaveAttribute("aria-pressed", "false"));
   });
 
+  it("onDelete 가 주어지면 삭제 버튼이 있고, 두 번 클릭해야 onDelete 가 호출된다 (P20-T6-05)", () => {
+    const onDelete = vi.fn();
+    render(
+      <MessageActions role="assistant" content="hi" onDelete={onDelete} />,
+    );
+
+    const del = screen.getByRole("button", { name: "삭제" });
+    fireEvent.click(del);
+    expect(onDelete).not.toHaveBeenCalled();
+
+    const confirm = screen.getByRole("button", { name: "정말 삭제?" });
+    fireEvent.click(confirm);
+    expect(onDelete).toHaveBeenCalledTimes(1);
+  });
+
+  it("onDelete 가 없으면 삭제 버튼이 렌더되지 않는다 (P20-T6-05)", () => {
+    render(<MessageActions role="assistant" content="hi" />);
+    expect(
+      screen.queryByRole("button", { name: "삭제" }),
+    ).not.toBeInTheDocument();
+  });
+
   it("feedback API 실패 시 낙관적 업데이트를 롤백한다", async () => {
     vi.mocked(apiFetch).mockResolvedValue({
       ok: false,
