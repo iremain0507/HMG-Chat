@@ -52,6 +52,7 @@ import { createAdminSettingsRoutes } from "./routes/admin-settings.js";
 import { createAdminModelsRoutes } from "./routes/admin-models.js";
 import { createAdminGroupsRoutes } from "./routes/admin-groups.js";
 import { createAdminGrantsRoutes } from "./routes/admin-grants.js";
+import { createPgResourceGrantsDataAccess } from "./db/resource-grants-data-access.js";
 import { createConfigRoutes } from "./routes/config.js";
 import { createPgHealthHistoryDataAccess } from "./db/health-history-data-access.js";
 import { createPgAdminDataAccess } from "./db/admin-data-access.js";
@@ -194,6 +195,9 @@ export function createApp(env: Env) {
   // handler(artifact_create) + MCP 조립 함수. mcp-servers 라우트(§ 아래)와 인스턴스를
   // 공유해 discover 로 채워진 mcpBridge registry 를 그대로 재사용한다.
   const artifactDa = createPgArtifactDataAccess();
+  // P20-T1-11 — documents/prompts/mcp-servers 조회 라우트가 공유하는 resource_grants(0027)
+  // enforcement 포트. admin-grants 라우트(관리)와 동일 테이블, 별도 인스턴스로 조회 전용 사용.
+  const resourceGrantsDa = createPgResourceGrantsDataAccess();
   const mcpServerDa = createPgMcpServerDataAccess();
   const mcpClientPool = createMcpClientPool({
     da: mcpServerDa,
@@ -340,7 +344,7 @@ export function createApp(env: Env) {
   // P19-T1-08 — 프롬프트 라이브러리 CRUD(migration 0024 prompts).
   const promptsApp = new Hono<{ Variables: AuthedVariables }>();
   promptsApp.use("*", authMiddleware);
-  promptsApp.route("/", createPromptRoutes());
+  promptsApp.route("/", createPromptRoutes({ grants: resourceGrantsDa }));
   app.route("/api/v1/prompts", promptsApp);
 
   const projectsApp = new Hono<{ Variables: AuthedVariables }>();
@@ -376,6 +380,7 @@ export function createApp(env: Env) {
       objectStore: createLocalObjectStore(),
       parserPipeline: createParserPipeline(),
       embeddingProvider: withUsageTracking(createDevStubEmbeddingProvider()),
+      grants: resourceGrantsDa,
     }),
   );
   app.route("/api/v1/documents", documentsApp);
@@ -427,6 +432,7 @@ export function createApp(env: Env) {
       da: mcpServerDa,
       nodeEnv: env.NODE_ENV,
       discover: (server) => mcpBridge.discoverServerTools(server),
+      grants: resourceGrantsDa,
     }),
   );
   app.route("/api/v1/mcp-servers", mcpServersApp);
@@ -494,7 +500,10 @@ export function createApp(env: Env) {
     }),
   );
   adminApp.route("/groups", createAdminGroupsRoutes());
-  adminApp.route("/grants", createAdminGrantsRoutes());
+  adminApp.route(
+    "/grants",
+    createAdminGrantsRoutes({ grants: resourceGrantsDa }),
+  );
   app.route("/api/v1/admin", adminApp);
 
   const configApp = new Hono<{ Variables: AuthedVariables }>();

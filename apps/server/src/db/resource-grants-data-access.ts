@@ -14,6 +14,10 @@ export interface ResourceGrant {
   access: AccessLevel;
 }
 
+export interface ResourceGrantRow extends ResourceGrant {
+  resourceId: string;
+}
+
 export interface ResourceGrantsDataAccess {
   /** subjectId 가 org 에 속하지 않으면 grant 하지 않고 false 를 반환한다(cross-org 거부). */
   grant(
@@ -29,6 +33,13 @@ export interface ResourceGrantsDataAccess {
     resourceType: ResourceType,
     resourceId: string,
   ): Promise<ResourceGrant[]>;
+  /** 목록 라우트(documents.ts/prompts.ts/mcp-servers.ts)의 N+1 방지 — resourceIds 전체를
+   *  단일 쿼리로 조회한다(P20-T1-11). */
+  grantsForResources(
+    orgId: string,
+    resourceType: ResourceType,
+    resourceIds: string[],
+  ): Promise<ResourceGrantRow[]>;
   groupIdsForUser(orgId: string, userId: string): Promise<string[]>;
   revoke(
     orgId: string,
@@ -77,6 +88,21 @@ export function createPgResourceGrantsDataAccess(): ResourceGrantsDataAccess {
         [orgId, resourceType, resourceId],
       );
       return res.rows.map((row) => ({
+        subjectType: row.subject_type as SubjectType,
+        subjectId: row.subject_id as string,
+        access: row.access as AccessLevel,
+      }));
+    },
+    async grantsForResources(orgId, resourceType, resourceIds) {
+      if (resourceIds.length === 0) return [];
+      const res = await pgPool.query(
+        `SELECT resource_id, subject_type, subject_id, access
+         FROM resource_grants
+         WHERE org_id = $1 AND resource_type = $2 AND resource_id = ANY($3)`,
+        [orgId, resourceType, resourceIds],
+      );
+      return res.rows.map((row) => ({
+        resourceId: row.resource_id as string,
         subjectType: row.subject_type as SubjectType,
         subjectId: row.subject_id as string,
         access: row.access as AccessLevel,

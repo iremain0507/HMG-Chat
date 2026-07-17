@@ -16,6 +16,8 @@ import {
 } from "../db/document-service.js";
 import type { ObjectStore } from "../lib/object-store.js";
 import { ParserPipelineError } from "../knowledge/parser-pipeline.js";
+import { filterAccessibleResourceIds } from "../lib/access-control.js";
+import type { ResourceGrantsDataAccess } from "../db/resource-grants-data-access.js";
 
 function errorJson(code: string, message: string) {
   return {
@@ -45,6 +47,7 @@ export function createDocumentRoutes(
   deps: {
     da: DocumentDataAccess;
     objectStore: ObjectStore;
+    grants?: ResourceGrantsDataAccess;
   } & Partial<DocumentIndexingDeps>,
 ): Hono<{ Variables: AuthedVariables }> {
   const app = new Hono<{ Variables: AuthedVariables }>();
@@ -87,14 +90,26 @@ export function createDocumentRoutes(
       );
     }
     const contentHash = c.req.query("contentHash");
+    const actor = actorOf(c);
     try {
       const docs = await service.listDocumentsForActor(
-        actorOf(c),
+        actor,
         projectId,
         contentHash ? { contentHash } : undefined,
       );
+      let visible = docs;
+      if (deps.grants) {
+        const accessible = await filterAccessibleResourceIds(deps.grants, {
+          orgId: actor.orgId,
+          userId: actor.userId,
+          resourceType: "knowledge",
+          resourceIds: docs.map((d) => d.id),
+          access: "read",
+        });
+        visible = docs.filter((d) => accessible.has(d.id));
+      }
       return c.json({
-        data: docs.map(toDto),
+        data: visible.map(toDto),
         meta: { requestId: randomUUID() },
       });
     } catch (err) {
@@ -135,12 +150,22 @@ export function createDocumentRoutes(
   });
 
   app.get("/:id", async (c) => {
-    const found = await service.getDocumentForActor(
-      actorOf(c),
-      c.req.param("id"),
-    );
+    const actor = actorOf(c);
+    const found = await service.getDocumentForActor(actor, c.req.param("id"));
     if (!found) {
       return c.json(errorJson("NOT_FOUND", "문서를 찾을 수 없습니다."), 404);
+    }
+    if (deps.grants) {
+      const accessible = await filterAccessibleResourceIds(deps.grants, {
+        orgId: actor.orgId,
+        userId: actor.userId,
+        resourceType: "knowledge",
+        resourceIds: [found.id],
+        access: "read",
+      });
+      if (!accessible.has(found.id)) {
+        return c.json(errorJson("NOT_FOUND", "문서를 찾을 수 없습니다."), 404);
+      }
     }
     return c.json({ data: toDto(found), meta: { requestId: randomUUID() } });
   });

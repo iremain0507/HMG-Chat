@@ -2183,8 +2183,8 @@
     "acceptance": "RED: enforcement.integration.test.ts 가 'userB 로 GET /documents → grant 있는 문서만 노출' 을 기대하면 현재 무필터라 grant 없는 문서까지 반환되어 실패(RED). 그리고 'grant 0건 문서는 여전히 전원 노출'(회귀 보존) 케이스도 포함. L1 last-mile: 실 Postgres 통합테스트로 (a) userA read grant→ GET 응답에 포함, (b) grant 없는 userB→ 제외, (c) group grant 경유 union, (d) cross-org 격리 를 실 HTTP 흐름으로 단언(순수 로직테스트가 아니라 라우트 응답 검증). 검증: pnpm test enforcement + verify-gates exit 0.",
     "phase": "P20",
     "team": "T1",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P20-T6-11",

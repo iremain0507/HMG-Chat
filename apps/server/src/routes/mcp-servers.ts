@@ -11,6 +11,8 @@ import type { McpServerRecord } from "@wchat/interfaces";
 import type { AuthedVariables } from "../middleware/auth-middleware.js";
 import type { McpServerDataAccess } from "../db/mcp-server-data-access.js";
 import { validateMcpUrl } from "../mcp/url-validator.js";
+import type { ResourceGrantsDataAccess } from "../db/resource-grants-data-access.js";
+import { filterAccessibleResourceIds } from "../lib/access-control.js";
 
 const TRANSPORTS = ["streamable_http", "sse"] as const;
 
@@ -51,6 +53,7 @@ export function createMcpServerRoutes(deps: {
   ) => Promise<McpServerRecord["supportedTools"]>;
   nodeEnv?: string;
   allowedCidrs?: string[];
+  grants?: ResourceGrantsDataAccess;
 }): Hono<{ Variables: AuthedVariables }> {
   const app = new Hono<{ Variables: AuthedVariables }>();
   const validateUrl = deps.validateUrl ?? validateMcpUrl;
@@ -137,6 +140,21 @@ export function createMcpServerRoutes(deps: {
     );
   });
 
+  async function applyGrantsFilter(
+    servers: McpServerRecord[],
+    actor: { orgId: string; userId: string },
+  ): Promise<McpServerRecord[]> {
+    if (!deps.grants) return servers;
+    const accessible = await filterAccessibleResourceIds(deps.grants, {
+      orgId: actor.orgId,
+      userId: actor.userId,
+      resourceType: "tool",
+      resourceIds: servers.map((s) => s.id),
+      access: "read",
+    });
+    return servers.filter((s) => accessible.has(s.id));
+  }
+
   app.get("/", async (c) => {
     const actor = actorOf(c);
     const projectIdParam = c.req.query("projectId");
@@ -147,15 +165,17 @@ export function createMcpServerRoutes(deps: {
         ...(projectIdParam !== undefined ? { projectId: projectIdParam } : {}),
         ...(userIdParam !== undefined ? { userId: userIdParam } : {}),
       });
+      const visible = await applyGrantsFilter(page.items, actor);
       return c.json({
-        data: page.items.map(toDto),
+        data: visible.map(toDto),
         meta: { requestId: randomUUID() },
       });
     }
     const page = await deps.da.mcpServers.list({ orgId: actor.orgId });
-    const visible = page.items.filter(
+    const scoped = page.items.filter(
       (s) => s.userId === null || s.userId === actor.userId,
     );
+    const visible = await applyGrantsFilter(scoped, actor);
     return c.json({
       data: visible.map(toDto),
       meta: { requestId: randomUUID() },
