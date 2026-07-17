@@ -2138,8 +2138,8 @@
     "acceptance": "RED: messages 실HTTP 통합테스트 — 사용자가 저장한 메모리(예: '나는 X팀 소속')가 있을 때, 메시지 전송 시 orchestrator 로 전달되는 system 프롬프트/PromptBlock 에 해당 메모리 텍스트가 포함됨을 단언(배선 전 미포함으로 실패). L1 last-mile: retrieveUserMemoryBlock 이 실제 DB userMemories 를 읽어 buildSystemPrompt 결과 문자열까지 도달(스텁 아님) — 핀 우선·최근순 정렬 반영 확인. cross-org/actor: 타 사용자 메모리가 절대 주입되지 않음 단언. needsBrowser=true: 실앱 Playwright E2E(dev-login→Settings 메모리 추가→새 대화 질문→답변이 그 사실을 반영) 또는 watchdog UAT 로 회상 실동작 확인. verify-gates exit 0.",
     "phase": "P20",
     "team": "T1",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P20-T1-10",

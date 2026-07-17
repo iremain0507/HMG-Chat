@@ -19,6 +19,10 @@ import {
   type ToolMetricRepo,
 } from "@wchat/interfaces";
 import { runTurn } from "../orchestrator/orchestrator.js";
+import {
+  retrieveUserMemoryBlock,
+  type UserMemoryReader,
+} from "../orchestrator/memory-retriever.js";
 import { generateFollowups } from "../orchestrator/followups.js";
 import { generateSessionTitleAndTags } from "../orchestrator/session-title-tags.js";
 import { registerRun, unregisterRun } from "../orchestrator/run-registry.js";
@@ -250,6 +254,10 @@ export interface MessageRouteDeps {
   // P20-T1-03 — 폴더 스코프 시스템 프롬프트 상속(Open WebUI Folder System Prompt 참고).
   // 미주입 시 상속 생략(기존 동작 보존, L2).
   folders?: FolderSystemPromptPort;
+  // P20-T1-09 — 영구 사용자 메모리 회상(저장→프롬프트 주입). db/user-memory-data-access.ts
+  // (createPgUserMemoryDataAccess)의 UserMemoryReader 를 그대로 주입(구조적 타이핑). 미주입
+  // 시 회상 생략(기존 동작 보존, L2).
+  memories?: UserMemoryReader;
 }
 
 function errorJson(code: string, message: string) {
@@ -353,9 +361,32 @@ export function createMessageRoutes(
       ? [{ tier: "project", content: folderSystemPrompt }]
       : [];
 
+    // P20-T1-09 — 영구 사용자 메모리 회상: routes/memories.ts 로 저장된 메모리(user_memories)를
+    // 매 턴 system 프롬프트에 자동 주입한다(저장·조회 UI 는 이미 있었으나 런타임 소비가 0).
+    // retrieveUserMemoryBlock(T2 소유, orchestrator/memory-retriever.ts)이 핀 우선+최근순 정렬 후
+    // tier="user" PromptBlock 으로 변환 — auth.sub 로만 조회해 타 사용자 메모리가 섞이지 않는다
+    // (user_memories 는 user_id 단위 격리라 org 컬럼 자체가 없음). 미인증/deps.memories 미주입 시
+    // 조회를 건너뛴다(L2 fail-soft, 기존 동작 보존).
+    let memoryBlock: PromptBlock[] = [];
+    if (auth && deps.memories) {
+      const block = await retrieveUserMemoryBlock(
+        deps.memories,
+        auth.sub,
+      ).catch((error) => {
+        deps.logger?.warn({
+          category: "system",
+          msg: "사용자 메모리 회상 실패",
+          context: { error: String(error) },
+        });
+        return null;
+      });
+      memoryBlock = block ? [block] : [];
+    }
+
     const systemBlocks = [
       ...orgSystemBlock,
       ...folderSystemBlock,
+      ...memoryBlock,
       ...(deps.systemBlocks ?? []),
     ];
     const ephemeralBlock: PromptBlock[] =

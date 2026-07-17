@@ -197,6 +197,9 @@ export function createApp(env: Env) {
   const sessionDa = createPgSessionDataAccess();
   // P19-T2-06 — 첫 턴 완료 후 생성된 세션 태그를 session_tags(0020)에 반영.
   const sessionTagDa = createPgSessionTagDataAccess();
+  // P20-T1-09 — messages 라우트(런타임 회상)와 memoriesApp(CRUD, 기존 P7-T2-03)가 같은
+  // user_memories 데이터 접근 인스턴스를 공유.
+  const userMemoryDa = createPgUserMemoryDataAccess();
 
   const sessionsApp = new Hono<{ Variables: AuthedVariables }>();
   sessionsApp.use("*", authMiddleware);
@@ -276,6 +279,8 @@ export function createApp(env: Env) {
       // P20-T1-03 — 폴더 스코프 시스템 프롬프트 상속(routes/folders.ts 와 동일 pg 구현 재사용,
       // 구조적 타이핑상 FolderSystemPromptPort 를 그대로 만족).
       folders: createPgSessionFolderDataAccess(),
+      // P20-T1-09 — 영구 사용자 메모리 런타임 회상(저장→프롬프트 주입).
+      memories: userMemoryDa,
     }),
   );
   // P20-T1-08 — 대화 스냅샷 공유(불변) 발급/revoke. sessionDa/messageDa 싱글톤 재사용
@@ -385,10 +390,7 @@ export function createApp(env: Env) {
 
   const memoriesApp = new Hono<{ Variables: AuthedVariables }>();
   memoriesApp.use("*", authMiddleware);
-  memoriesApp.route(
-    "/",
-    createMemoryRoutes({ da: createPgUserMemoryDataAccess() }),
-  );
+  memoriesApp.route("/", createMemoryRoutes({ da: userMemoryDa }));
   app.route("/api/v1/memories", memoriesApp);
 
   const mcpServersApp = new Hono<{ Variables: AuthedVariables }>();
