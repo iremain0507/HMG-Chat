@@ -4,10 +4,13 @@
 //   내보내기(md/JSON)는 클라이언트가 이미 보유한 messages 를 그대로 직렬화해 즉시 다운로드
 //   트리거(신규 서버 계약 없음). 공유는 세션의 최신 아티팩트를 명시적 opt-in 확인 후에만
 //   기존 ArtifactShare 계약(components/artifacts/ShareDialog.tsx, 16-API-CONTRACT § 8)으로 위임.
-import React, { useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { ShareDialog } from "../artifacts/ShareDialog";
 import { ConversationShareDialog } from "./ConversationShareDialog";
 import type { ArtifactSummary } from "../../hooks/useSessionStream";
+import { useDismiss } from "../../hooks/useDismiss";
+import { useExclusiveOverlay } from "../../hooks/useExclusiveOverlay";
+import { useFocusTrap } from "../../hooks/useFocusTrap";
 import {
   conversationToJson,
   conversationToMarkdown,
@@ -40,6 +43,40 @@ export function ShareExportMenu({
   const [state, setState] = useState<MenuState>("closed");
   const [printRequested, setPrintRequested] = useState(false);
   const latestArtifact = artifacts[artifacts.length - 1] ?? null;
+
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const confirmRef = useRef<HTMLDivElement>(null);
+  const menuOverlay = useExclusiveOverlay(`share-export-menu-${sessionId}`);
+
+  useEffect(() => {
+    if (!menuOverlay.isOpen && state === "menu") setState("closed");
+  }, [menuOverlay.isOpen, state]);
+
+  useDismiss(
+    menuRef,
+    () => {
+      menuOverlay.close();
+      setState("closed");
+      triggerRef.current?.focus();
+    },
+    { enabled: state === "menu", triggerRef },
+  );
+
+  useFocusTrap(confirmRef, {
+    active: state === "confirm",
+    onClose: () => setState("closed"),
+  });
+
+  function toggleMenu() {
+    if (state === "closed") {
+      menuOverlay.open();
+      setState("menu");
+    } else {
+      menuOverlay.close();
+      setState("closed");
+    }
+  }
 
   function exportMarkdown() {
     downloadTextFile(
@@ -79,11 +116,12 @@ export function ShareExportMenu({
         </div>
       )}
       <button
+        ref={triggerRef}
         type="button"
         data-testid="share-export-trigger"
-        onClick={() =>
-          setState((prev) => (prev === "closed" ? "menu" : "closed"))
-        }
+        aria-haspopup="menu"
+        aria-expanded={state === "menu"}
+        onClick={toggleMenu}
         className={`flex items-center gap-1 rounded-md px-2 py-1 text-sm text-fg-muted hover:text-fg ${FOCUS_RING}`}
       >
         <span>공유/내보내기</span>
@@ -92,6 +130,7 @@ export function ShareExportMenu({
 
       {state === "menu" && (
         <div
+          ref={menuRef}
           data-testid="share-export-menu"
           className="absolute right-0 top-full z-10 mt-1 w-56 rounded-[10px] border border-border bg-surface p-1 shadow-lg"
         >
@@ -121,7 +160,10 @@ export function ShareExportMenu({
             type="button"
             disabled={!latestArtifact}
             title={latestArtifact ? undefined : "공유할 아티팩트가 없습니다"}
-            onClick={() => setState("confirm")}
+            onClick={() => {
+              triggerRef.current?.focus();
+              setState("confirm");
+            }}
             className={`block w-full rounded-md px-2 py-1.5 text-left text-sm text-fg hover:bg-bg disabled:opacity-40 disabled:hover:bg-transparent ${FOCUS_RING}`}
           >
             대화 공유
@@ -138,10 +180,13 @@ export function ShareExportMenu({
 
       {state === "confirm" && latestArtifact && (
         <div
+          ref={confirmRef}
+          tabIndex={-1}
           data-testid="share-confirm"
           role="alertdialog"
+          aria-modal="true"
           aria-label="공유 확인"
-          className="absolute right-0 top-full z-10 mt-1 w-72 rounded-[10px] border border-border bg-surface p-3 shadow-lg"
+          className={`absolute right-0 top-full z-10 mt-1 w-72 rounded-[10px] border border-border bg-surface p-3 shadow-lg ${FOCUS_RING}`}
         >
           <p className="text-sm text-fg">
             이 대화의 최신 아티팩트({latestArtifact.filename})를 공개 링크로

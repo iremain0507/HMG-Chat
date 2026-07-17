@@ -45,4 +45,44 @@ test.describe("P10 preview — ShareExportMenu", () => {
       fullPage: true,
     });
   });
+
+  // P21-T6-05 — UX-01/03/08/09/10: 바깥클릭·Escape 라이트-디스미스 + confirm 실 모달화.
+  test("메뉴 밖을 클릭하면 메뉴가 닫힌다", async ({ page }) => {
+    await page.goto("/preview");
+
+    const section = page.getByTestId("preview-share-export-menu");
+    await section.getByTestId("share-export-trigger").click();
+    const menu = section.getByTestId("share-export-menu");
+    await expect(menu).toBeVisible();
+
+    await page.mouse.click(10, 10);
+    await expect(menu).toBeHidden();
+  });
+
+  test("Escape 시 메뉴가 닫히고, 공유 확인은 포커스트랩과 함께 실 모달로 동작한다", async ({
+    page,
+  }) => {
+    await page.goto("/preview");
+
+    const section = page.getByTestId("preview-share-export-menu");
+    const trigger = section.getByTestId("share-export-trigger");
+    await trigger.click();
+    const menu = section.getByTestId("share-export-menu");
+    await expect(menu).toBeVisible();
+
+    await page.keyboard.press("Escape");
+    await expect(menu).toBeHidden();
+    await expect(trigger).toBeFocused();
+
+    await trigger.click();
+    await section.getByRole("button", { name: "대화 공유" }).click();
+    const confirm = section.getByTestId("share-confirm");
+    await expect(confirm).toBeVisible();
+    await expect(confirm).toHaveAttribute("aria-modal", "true");
+    await expect(section.getByRole("button", { name: "취소" })).toBeFocused();
+
+    await page.keyboard.press("Escape");
+    await expect(confirm).toBeHidden();
+    await expect(trigger).toBeFocused();
+  });
 });

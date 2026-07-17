@@ -316,4 +316,117 @@ describe("ShareExportMenu", () => {
     );
     vi.unstubAllGlobals();
   });
+
+  // P21-T6-05 — 드롭다운 라이트-디스미스 + confirm 실 모달화.
+  it("UX-01: 메뉴 밖 pointerdown 시 메뉴가 unmount 된다", () => {
+    render(
+      <>
+        <button data-testid="outside">밖</button>
+        <ShareExportMenu
+          title="테스트 대화"
+          messages={MESSAGES}
+          artifacts={[]}
+          sessionId="session-1"
+        />
+      </>,
+    );
+    fireEvent.click(screen.getByTestId("share-export-trigger"));
+    expect(screen.getByTestId("share-export-menu")).toBeInTheDocument();
+
+    fireEvent.pointerDown(screen.getByTestId("outside"));
+    expect(screen.queryByTestId("share-export-menu")).not.toBeInTheDocument();
+  });
+
+  it("UX-03: Escape 시 메뉴가 닫히고 포커스가 트리거로 복귀한다", () => {
+    render(
+      <ShareExportMenu
+        title="테스트 대화"
+        messages={MESSAGES}
+        artifacts={[]}
+        sessionId="session-1"
+      />,
+    );
+    const trigger = screen.getByTestId("share-export-trigger");
+    fireEvent.click(trigger);
+    expect(screen.getByTestId("share-export-menu")).toBeInTheDocument();
+
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(screen.queryByTestId("share-export-menu")).not.toBeInTheDocument();
+    expect(document.activeElement).toBe(trigger);
+  });
+
+  it("트리거는 aria-haspopup=menu 이고 메뉴 오픈 상태를 aria-expanded 로 announce 한다", () => {
+    render(
+      <ShareExportMenu
+        title="테스트 대화"
+        messages={MESSAGES}
+        artifacts={[]}
+        sessionId="session-1"
+      />,
+    );
+    const trigger = screen.getByTestId("share-export-trigger");
+    expect(trigger).toHaveAttribute("aria-haspopup", "menu");
+    expect(trigger).toHaveAttribute("aria-expanded", "false");
+
+    fireEvent.click(trigger);
+    expect(trigger).toHaveAttribute("aria-expanded", "true");
+  });
+
+  it("UX-08/09: 공유 확인 오픈 시 포커스가 패널 내부로 이동하고 Tab 이 패널 안에서 순환한다", () => {
+    render(
+      <ShareExportMenu
+        title="테스트 대화"
+        messages={MESSAGES}
+        artifacts={[
+          {
+            artifactId: "artifact-1",
+            artifactKind: "markdown",
+            filename: "report.md",
+            sizeBytes: 100,
+          },
+        ]}
+        sessionId="session-1"
+      />,
+    );
+    fireEvent.click(screen.getByTestId("share-export-trigger"));
+    fireEvent.click(screen.getByRole("button", { name: "대화 공유" }));
+
+    const confirm = screen.getByTestId("share-confirm");
+    expect(confirm).toHaveAttribute("aria-modal", "true");
+    expect(confirm).toContainElement(
+      document.activeElement as HTMLElement | null,
+    );
+
+    const cancelBtn = screen.getByRole("button", { name: "취소" });
+    const acceptBtn = screen.getByTestId("share-confirm-accept");
+    acceptBtn.focus();
+    fireEvent.keyDown(confirm, { key: "Tab" });
+    expect(document.activeElement).toBe(cancelBtn);
+  });
+
+  it("UX-10: 공유 확인에서 Escape 시 닫히고 포커스가 트리거로 복귀한다", () => {
+    render(
+      <ShareExportMenu
+        title="테스트 대화"
+        messages={MESSAGES}
+        artifacts={[
+          {
+            artifactId: "artifact-1",
+            artifactKind: "markdown",
+            filename: "report.md",
+            sizeBytes: 100,
+          },
+        ]}
+        sessionId="session-1"
+      />,
+    );
+    const trigger = screen.getByTestId("share-export-trigger");
+    fireEvent.click(trigger);
+    fireEvent.click(screen.getByRole("button", { name: "대화 공유" }));
+    expect(screen.getByTestId("share-confirm")).toBeInTheDocument();
+
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(screen.queryByTestId("share-confirm")).not.toBeInTheDocument();
+    expect(document.activeElement).toBe(trigger);
+  });
 });
