@@ -2264,8 +2264,8 @@
     "acceptance": "RED: 두 useExclusiveOverlay 인스턴스에서 A.open() 후 B.open() 시 A.isOpen===false 를 단언 — 현재 조정자 부재로 둘 다 열림(실패). RTL renderHook 충분(needsBrowser 아님).",
     "phase": "P21",
     "team": "T6",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P21-T6-03",
