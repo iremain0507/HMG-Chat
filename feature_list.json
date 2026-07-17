@@ -2419,5 +2419,446 @@
     "team": "T6",
     "passes": true,
     "attempts": 1
+  },
+  {
+    "id": "P22-T1-01",
+    "desc": "[Tier1 in-plan 완성 · auth · verdict=confirmed-undeveloped] DELETE /auth/me self-service account deletion. 구현: Add a DELETE /me handler in apps/server/src/routes/auth.ts (T1-owned, same file as GET/PATCH /me). Handler: call authenticate() -> 401 UNAUTHENTICATED if no session; parse body {confirmation}; if confirmation !== DELETE_MY_ACCOUNT return 400 with code INVALID_CONFIRMATION (contract-specified code, NOT generic INVALID_INPUT). On success: soft-delete self via deps.da.users.update(auth.sub, {status:deleted}) wrapped in deps.da.withRlsContext, mirroring the admin pattern in db/admin-data-access.ts:193; force-logout… files: apps/server/src/routes/auth.ts. 구현방식·인터랙션·UI/UX 는 Open WebUI 를 레퍼런스(단 디자인은 apps/web/DESIGN.md 토큰·현대위아 CI 유지). 상세근거: docs/P22-GAP-CATALOG.md §P22-T1-01",
+    "acceptance": "RED 우선. GIVEN an authenticated user WHEN they DELETE /api/v1/auth/me with body {confirmation: 'DELETE_MY_ACCOUNT'} THEN respond 202 with data.scheduledHardDeleteAt (ISO, ~now+30d) and data.ticketId, set user.status='deleted',… / GIVEN an authenticated user WHEN they DELETE /api/v1/auth/me with a missing or incorrect confirmation THEN respond 400 with error.code = INVALID_CONFIRMATION and leave the user status unchanged / GIVEN a request with no valid access-token cookie WHEN it hits DELETE /api/v1/auth/me THEN respond 401 UNAUTHENTICATED / GIVEN the route is added WHEN the routes-mounted test runs THEN EXPECTED_ROUTES includes { method: DELETE, path: /api/v1/auth/me } and the mount check passes",
+    "phase": "P22",
+    "team": "T1",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P22-T1-02",
+    "desc": "[Tier1 in-plan 완성 · infra · verdict=confirmed-incomplete] Wire periodic alert rule-evaluation loop at bootstrap (health/retention -> triggerAlert). 구현: Add a periodic rule-evaluation scheduler and wire it at bootstrap. (1) NEW apps/server/src/lib/alerting-scheduler.ts (T1-owned lib/) exporting startAlertingScheduler(deps) that returns a stop() handle and uses setInterval. AVOID node-cron: it is a NEW unspecified dependency; if the plan truly requires cron, isolate the task per CLAUDE.md dependency rule. Each tick: build notifier via createAlertNotifier(); call runHealthChecks(da.healthHistory, probes for db/redis/e2b/llm, onUnhealthy) where onUnhealthy triggers… files: apps/server/src/lib/alert-engine.ts, apps/server/src/app.ts, apps/server/src/index.ts. 구현방식·인터랙션·UI/UX 는 Open WebUI 를 레퍼런스(단 디자인은 apps/web/DESIGN.md 토큰·현대위아 CI 유지). 상세근거: docs/P22-GAP-CATALOG.md §P22-T1-02",
+    "acceptance": "RED 우선. GIVEN the server bootstrap (index.ts/createApp) WHEN the process starts THEN a periodic scheduler is registered that invokes health/threshold rule evaluation (runHealthChecks and/or runRetention) on an interval. / GIVEN a failing health probe or a partial retention failure WHEN a scheduler tick runs THEN triggerAlert is invoked and the configured AlertNotifier.send receives the alert (verified in test with InMemoryAlertNotifier). / GIVEN server shutdown (SIGTERM/SIGINT) WHEN the process terminates THEN the scheduler interval/timer is cleared with no leaked timers. / GIVEN the repo WHEN `bash scripts/verify-gates.sh` runs THEN it exits 0 (typecheck/lint/tests pass, routes-mounted guard unaffected).",
+    "phase": "P22",
+    "team": "T1",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P22-T1-03",
+    "desc": "[Tier1 in-plan 완성 · infra · verdict=confirmed-incomplete] Data-retention job defined but never scheduled/invoked. 구현: Add a bootstrap scheduler that periodically invokes runRetention. Concrete work: (1) new apps/server/src/lib/retention-scheduler.ts (T1 lib) exposing a testable startRetentionScheduler({ da, artifactStore, alerting, now?, setTimer? }) that schedules a daily run near 03:00 KST and calls runRetention(da{uploads,artifactShares}, artifactStore, alerting). Make the timer/clock injectable (default setTimeout/setInterval) so tests use a fake clock -- do NOT depend on wall-clock in tests. (2) Wire it in bootstrap:… files: apps/server/src/lib/data-retention.ts, apps/server/src/index.ts. 구현방식·인터랙션·UI/UX 는 Open WebUI 를 레퍼런스(단 디자인은 apps/web/DESIGN.md 토큰·현대위아 CI 유지). 상세근거: docs/P22-GAP-CATALOG.md §P22-T1-03",
+    "acceptance": "RED 우선. GIVEN the server bootstrap (index.ts), WHEN the process starts, THEN startRetentionScheduler is invoked and a timer is registered that will run runRetention on a daily cadence (~03:00 KST), with the scheduler wired to… / GIVEN the scheduler with an injected fake clock/timer, WHEN the scheduled tick fires, THEN runRetention is called exactly once with { uploads, artifactShares }, the artifact store (cleanupExpired), and alerting; a unit… / GIVEN a tick where the repos contain expired uploads and expired artifact_shares, WHEN runRetention runs via the scheduler, THEN expired uploads are deleted, artifactStore.cleanupExpired runs, and expired shares are… / GIVEN a partial-failure tick (one step throws), WHEN runRetention completes, THEN the scheduler does not crash the process and a data-retention-failure alert is triggered (assert via alert notifier spy).",
+    "phase": "P22",
+    "team": "T1",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P22-T1-04",
+    "desc": "[Tier1 in-plan 완성 · chat · verdict=confirmed-incomplete] POST /sessions explicit session create. 구현: Add `app.post(\"/\")` to apps/server/src/routes/sessions.ts: parse optional { title?, projectId? } body, derive userId/org from c.get(\"auth\") ONLY (never body — same cross-org policy as GET /), generate id via randomUUID(), insert, return 201 { data: { id, title: title??null, projectId: projectId??null, createdAt: iso }, meta: { requestId } } matching contract §418. Wire a create method into SessionsPort (routes/sessions.ts local port) and implement it in createPgSessionDataAccess… files: apps/server/src/routes/sessions.ts, apps/server/src/app.ts. 구현방식·인터랙션·UI/UX 는 Open WebUI 를 레퍼런스(단 디자인은 apps/web/DESIGN.md 토큰·현대위아 CI 유지). 상세근거: docs/P22-GAP-CATALOG.md §P22-T1-04",
+    "acceptance": "RED 우선. GIVEN an authenticated user WHEN POST /api/v1/sessions with body {} THEN respond 201 with { data:{ id, title:null, projectId:null, createdAt }, meta:{ requestId } } and a row exists in sessions for that user (id… / GIVEN body { title:'Plan', projectId:<owned> } WHEN POST /api/v1/sessions THEN 201 data.title==='Plan' and data.projectId===<owned>; a subsequent GET /api/v1/sessions lists the new session / GIVEN a session created by user A WHEN user B (different org/user) lists sessions THEN B does not see A's session (userId derived from auth only, never request body) / GIVEN the new POST handler WHEN routes-mounted.test.ts runs THEN POST /api/v1/sessions is in EXPECTED_ROUTES and resolves (not 404), and `pnpm test`/typecheck/lint gates pass",
+    "phase": "P22",
+    "team": "T1",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P22-T1-05",
+    "desc": "[Tier1 in-plan 완성 · chat · verdict=confirmed-undeveloped] GET /sessions/:id single-session read. 구현: Add `app.get(\"/:id\", ...)` in apps/server/src/routes/sessions.ts. Mirror the existing ownership pattern used by /:id/tags (L185-191): derive userId from auth (c.get(\"auth\").sub) only — never from body/query; call sessions.byId(sessionId); if !session || session.userId !== auth.sub return errorJson(\"NOT_FOUND\", ...) 404 (existence-leak parity for cross-org). Return { data: { id, title, projectId, createdAt: session.createdAt.toISOString(), archivedAt: session.archivedAt ? session.archivedAt.toISOString() : null },… files: apps/server/src/routes/sessions.ts. 구현방식·인터랙션·UI/UX 는 Open WebUI 를 레퍼런스(단 디자인은 apps/web/DESIGN.md 토큰·현대위아 CI 유지). 상세근거: docs/P22-GAP-CATALOG.md §P22-T1-05",
+    "acceptance": "RED 우선. GIVEN an authenticated user who owns session S, WHEN GET /api/v1/sessions/{S} is called, THEN it returns 200 with data {id,title,projectId,createdAt,archivedAt} and meta.requestId per contract §432 / GIVEN an authenticated user, WHEN GET /api/v1/sessions/{id} targets a session owned by another user/org (or a non-existent id), THEN it returns 404 NOT_FOUND with identical body in both cases (no existence leak),… / GIVEN the route is added, WHEN the routes-mounted test runs, THEN EXPECTED_ROUTES includes GET /api/v1/sessions/:id and it is confirmed mounted (not 404-by-missing-route) / GIVEN sibling routes /:id/messages and /:id/artifacts, WHEN GET /:id is registered, THEN those multi-segment routes still resolve correctly (no shadowing)",
+    "phase": "P22",
+    "team": "T1",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P22-T1-06",
+    "desc": "[Tier1 in-plan 완성 · infra · verdict=confirmed-incomplete] Admin new-user webhook has only a record-only dev-stub. 구현: Pure T1, mirrors alert-engine pattern; NO packages/interfaces or API-contract change (WebhookDispatcher interface is local to apps/server/src/lib/webhook-dispatcher.ts). (1) apps/server/src/lib/webhook-dispatcher.ts: add a real HttpWebhookDispatcher class implementing WebhookDispatcher.dispatch(url,payload) that POSTs JSON (Slack {text:...} / Discord {content:...} compatible body) via injectable fetchImpl = fetch (copy SlackWebhookAlertNotifier's constructor(fetchImpl) shape so it's unit-testable). Add… files: apps/server/src/lib/webhook-dispatcher.ts, apps/server/src/app.ts. 구현방식·인터랙션·UI/UX 는 Open WebUI 를 레퍼런스(단 디자인은 apps/web/DESIGN.md 토큰·현대위아 CI 유지). 상세근거: docs/P22-GAP-CATALOG.md §P22-T1-06",
+    "acceptance": "RED 우선. GIVEN WEBHOOK_DISPATCHER_KIND=slack (or http) with an injected fake fetch, WHEN createWebhookDispatcher().dispatch(url, {event:'new_user',...}) is called, THEN the fake fetch receives exactly one POST to url with a JSON… / GIVEN WEBHOOK_DISPATCHER_KIND unset or 'test'/'devstub', WHEN createWebhookDispatcher() is called, THEN it returns the record-only dev-stub (calls[] populated, no network) preserving existing webhook-signup.test.ts… / GIVEN an unknown WEBHOOK_DISPATCHER_KIND, WHEN createWebhookDispatcher() is called, THEN it throws 'Unknown WEBHOOK_DISPATCHER_KIND' (parity with createEmailSender/createAlertNotifier). / GIVEN app.ts createApp() with WEBHOOK_DISPATCHER_KIND=slack env, WHEN a signup completes for an org with adminWebhookUrl set, THEN the injected fake fetch receives one new_user POST (real dispatcher is now flippable at…",
+    "phase": "P22",
+    "team": "T1",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P22-T2-01",
+    "desc": "[Tier1 in-plan 완성 · models · verdict=confirmed-incomplete] Google/Gemini provider silently drops temperature and topP. 구현: Edit apps/server/src/orchestrator/llm-provider-google.ts (T2-owned, in orchestrator/). At line ~117 change the generationConfig assembly to conditionally include sampling params, mirroring the OpenAI adapter's spread pattern: generationConfig: { maxOutputTokens: input.maxTokens, ...(input.temperature !== undefined ? { temperature: input.temperature } : {}), ...(input.topP !== undefined ? { topP: input.topP } : {}) }. NOTE Gemini's GenerationConfig field for nucleus sampling is `topP` (camelCase, unlike OpenAI's… files: apps/server/src/orchestrator/llm-provider-google.ts. 구현방식·인터랙션·UI/UX 는 Open WebUI 를 레퍼런스(단 디자인은 apps/web/DESIGN.md 토큰·현대위아 CI 유지). 상세근거: docs/P22-GAP-CATALOG.md §P22-T2-01",
+    "acceptance": "RED 우선. GIVEN a ChatInput with temperature=0.3 and topP=0.9 WHEN google provider.chat is invoked THEN receivedRequest().generationConfig.temperature === 0.3 and .topP === 0.9 (alongside maxOutputTokens) / GIVEN a ChatInput with temperature and topP omitted WHEN google provider.chat is invoked THEN generationConfig has neither temperature nor topP keys (undefined), preserving Gemini defaults / GIVEN the new test written before the fix WHEN pnpm test runs THEN it fails (RED) because the current provider only sets maxOutputTokens, then passes (GREEN) after the two spreads are added / GIVEN the change WHEN bash scripts/verify-gates.sh runs THEN typecheck+lint+test exit 0 (topP camelCase matches Gemini GenerationConfig type)",
+    "phase": "P22",
+    "team": "T2",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P22-T2-02",
+    "desc": "[Tier1 in-plan 완성 · chat · verdict=confirmed-undeveloped] GET /notifications SSE notification stream. 구현: Create apps/server/src/routes/notifications.ts: Hono factory returning GET / with authMiddleware, responding via streamSSE (copy 30s heartbeat/ping pattern from routes/messages.ts:574-579 to beat ALB idle timeout). Emit event:<type> + data:JSON.stringify({...fields}) per the FROZEN NotificationEvent union (packages/interfaces/src/types.ts:757) with NO envelope on SSE payloads (contract 906). Add a per-user in-process notification bus (e.g. apps/server/src/lib/notification-bus.ts or… files: apps/server/src/app.ts, apps/server/src/routes/. 구현방식·인터랙션·UI/UX 는 Open WebUI 를 레퍼런스(단 디자인은 apps/web/DESIGN.md 토큰·현대위아 CI 유지). 상세근거: docs/P22-GAP-CATALOG.md §P22-T2-02",
+    "acceptance": "RED 우선. GIVEN an authenticated user WHEN they GET /api/v1/notifications with Accept: text/event-stream THEN response is 200 with content-type text/event-stream and a periodic ping heartbeat (~30s) keeps the connection open / GIVEN a subscribed user's project document finishes indexing WHEN indexStatus reaches 'indexed' THEN the stream emits event: document_indexed with data { documentId, projectId, indexStatus } matching the frozen… / GIVEN two users A and B each connected WHEN a document belonging to A is indexed THEN only A's stream receives the document_indexed event and B receives none (cross-user isolation) / GIVEN the route is added WHEN the routes-mounted gate runs THEN EXPECTED_ROUTES includes GET /api/v1/notifications and the app mounts it (no 404), verified by createApp HTTP integration test",
+    "phase": "P22",
+    "team": "T2",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P22-T2-03",
+    "desc": "[Tier1 in-plan 완성 · infra · verdict=confirmed-incomplete] Redis-backed abort/resume/HITL runtime state selectable at deploy. 구현: Touch: apps/server/src/orchestrator/run-registry.ts, apps/server/src/orchestrator/message-run-registry.ts, apps/server/src/tools/hitl-manager.ts; wire selection in app.ts (hitlBridge at :71/:297) and consumers routes/messages.ts (:28-33) + routes/sessions.ts (:7). Add a deploy-time store-selection seam keyed on env (LOCAL_ONLY in-memory vs redis-backed), reading env.ts:9 REDIS_URL which is currently declared-but-unused. HitlBridge interface ALREADY exists in packages/interfaces section 9, so a Redis impl (e.g.… files: apps/server/src/orchestrator/run-registry.ts, apps/server/src/orchestrator/message-run-registry.ts, apps/server/src/tools/hitl-manager.ts. 구현방식·인터랙션·UI/UX 는 Open WebUI 를 레퍼런스(단 디자인은 apps/web/DESIGN.md 토큰·현대위아 CI 유지). 상세근거: docs/P22-GAP-CATALOG.md §P22-T2-03",
+    "acceptance": "RED 우선. GIVEN two app instances sharing one Redis, WHEN a run starts on instance A and DELETE /sessions/:id/active-run is served by instance B, THEN abortRun on B fires controller.abort() for the run on A and returns… / GIVEN a message run streaming on instance A, WHEN GET /sessions/:id/messages/:messageId/stream (resume) is served by instance B, THEN B returns kind:ok with the contentSoFar catch-up snapshot and relays subsequent live… / GIVEN a pending HITL approval created on instance A, WHEN POST /sessions/:id/messages/hitl resolves on instance B, THEN the askApproval promise on A settles approved/denied and listPendingHitl no longer lists it (today… / GIVEN env selects LOCAL_ONLY (no redis flag), WHEN the server boots single-process, THEN existing in-memory abort/resume/HITL behavior and all current tests pass unchanged (adapter selection is backward compatible).",
+    "phase": "P22",
+    "team": "T2",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P22-T3-01",
+    "desc": "[Tier1 in-plan 완성 · rag · verdict=partial-refine] knowledge_search unified retrieval over project + ephemeral chunks. 구현: Edit apps/server/src/knowledge/knowledge-retrieval-pg.ts loadCandidates to ALSO query ephemeral_chunks by the already-passed sessionId (JOIN uploads for filename) and merge those rows into candidates. Tag each ephemeral candidate with CitationSourceMeta {source:\"ephemeral\", uploadId, filename} keyed by chunk.documentId=uploadId, reusing the aliasing pattern in db/ephemeral-chunk-search.ts:72-90. The handler's existing hybridSearch (knowledge-search-handler.ts:113) then ranks the combined project+ephemeral pool,… files: apps/server/src/knowledge/knowledge-retrieval-pg.ts, apps/server/src/app.ts. 구현방식·인터랙션·UI/UX 는 Open WebUI 를 레퍼런스(단 디자인은 apps/web/DESIGN.md 토큰·현대위아 CI 유지). 상세근거: docs/P22-GAP-CATALOG.md §P22-T3-01",
+    "acceptance": "RED 우선. GIVEN a session with an uploaded doc indexed into ephemeral_chunks and no project docs, WHEN the agent invokes knowledge_search with a matching query, THEN the tool returns at least one citation with source=\"ephemeral\"… / GIVEN a session whose project also has document_chunks, WHEN knowledge_search runs, THEN candidates from BOTH project_documents and ephemeral_chunks are merged and RRF-ranked together (a more-relevant ephemeral chunk… / GIVEN loadCandidates is called with a sessionId that has no ephemeral_chunks, WHEN it runs, THEN behavior is unchanged (project-only candidates, no error). / GIVEN the new behavior, WHEN the RED test runs before implementation, THEN it fails because loadCandidates ignores sessionId and returns zero ephemeral candidates.",
+    "phase": "P22",
+    "team": "T3",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P22-T3-02",
+    "desc": "[Tier1 in-plan 완성 · rag · verdict=partial-refine] Serve project-document CRUD off the nested contract path /projects/:id/documents*. 구현: Two acceptable resolutions per the gap's Done criteria: (a) serve the nested contract URLs, or (b) amend the contract to bless the flat shape. Recommend (a). Files to touch: apps/server/src/app.ts (change mount from /api/v1/documents to /api/v1/projects/:id/documents, or add a nested sub-app), and apps/server/src/routes/documents.ts (read projectId from the path param instead of ?projectId query on GET / and from the form body on POST /). CAUTION param-name collision: the project id and document id would both be… files: apps/server/src/routes/documents.ts, apps/server/src/app.ts. 구현방식·인터랙션·UI/UX 는 Open WebUI 를 레퍼런스(단 디자인은 apps/web/DESIGN.md 토큰·현대위아 CI 유지). 상세근거: docs/P22-GAP-CATALOG.md §P22-T3-02",
+    "acceptance": "RED 우선. GIVEN an authed member of a project WHEN they POST multipart to /api/v1/projects/:id/documents THEN the document is created and returned (contract nested path resolves, not 404) / GIVEN an indexed document WHEN GET /api/v1/projects/:id/documents/:docId is called THEN it returns that document's DTO scoped to the path projectId / GIVEN the routes-mounted guard test WHEN the suite runs THEN EXPECTED_ROUTES asserts the nested /projects/:id/documents* paths resolve (non-404) and the flat-path assertions are updated or retained as back-compat / GIVEN a cross-org or non-member actor WHEN they hit any nested /projects/:id/documents* endpoint THEN existence-leak protection still maps FORBIDDEN/NOT_FOUND to 404 (behavior preserved from db/document-service.ts)",
+    "phase": "P22",
+    "team": "T3",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P22-T3-03",
+    "desc": "[Tier1 in-plan 완성 · rag · verdict=confirmed-incomplete] Ephemeral (attachment) indexing ignores org chunk settings. 구현: No interface/shared-type change needed (ChunkOptions and EphemeralIndexerDeps.chunkOptions already exist, so team is T3 not \"shared\"). Replicate the document-service.ts resolveChunkOptions pattern on the ephemeral path. (1) apps/server/src/routes/uploads.ts: extend the existing deps.settings.resolve(auth.org) block (already fetched for whitelist/size/count) to also derive {chunkSizeTokens: resolved.ragChunkSizeTokens, overlapTokens: resolved.ragChunkOverlapTokens} and pass it into service.createUpload. (2)… files: apps/server/src/app.ts, apps/server/src/db/upload-service.ts, apps/server/src/knowledge/ephemeral-indexer.ts. 구현방식·인터랙션·UI/UX 는 Open WebUI 를 레퍼런스(단 디자인은 apps/web/DESIGN.md 토큰·현대위아 CI 유지). 상세근거: docs/P22-GAP-CATALOG.md §P22-T3-03",
+    "acceptance": "RED 우선. GIVEN an org with org_settings.ragChunkSizeTokens/ragChunkOverlapTokens set to non-default values, WHEN a user uploads a session attachment (POST /api/v1/uploads with sessionId), THEN the produced ephemeral_chunks… / GIVEN no settings resolver injected (or resolve throws), WHEN an attachment is indexed, THEN chunking fails soft to DEFAULT_ORG_SETTINGS values and the upload still succeeds (existing fail-soft behavior preserved). / GIVEN the same bytes re-attached to a different session (sha256 dedup re-index branch), WHEN re-indexing runs, THEN the per-org chunkOptions are applied on that path too. / GIVEN a RED test asserting org-specific chunk boundaries on the ephemeral path, WHEN run before the fix, THEN it fails because chunkOptions is undefined; after wiring, it passes and full test/typecheck gates stay green.",
+    "phase": "P22",
+    "team": "T3",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P22-T3-04",
+    "desc": "[Tier1 in-plan 완성 · rag · verdict=confirmed-incomplete] Org-scoped RAG chunk settings not applied at project-document indexing (resolver never injected). 구현: Two-point wiring fix, no new types (ChunkSettingsResolverPort, DocumentIndexingDeps, ResolvedOrgSettings, SettingsService all already exist -> NOT shared, no interface/contract change). (1) apps/server/src/routes/documents.ts:57-62 — in createDocumentRoutes, add `settings: deps.settings` to the indexing-deps object built when parserPipeline && embeddingProvider are present (currently only forwards parserPipeline+embeddingProvider, silently dropping the resolver deps type Partial<DocumentIndexingDeps> already… files: apps/server/src/app.ts, apps/server/src/routes/documents.ts, apps/server/src/db/document-service.ts. 구현방식·인터랙션·UI/UX 는 Open WebUI 를 레퍼런스(단 디자인은 apps/web/DESIGN.md 토큰·현대위아 CI 유지). 상세근거: docs/P22-GAP-CATALOG.md §P22-T3-04",
+    "acceptance": "RED 우선. GIVEN an org with ragChunkSizeTokens=1200 set via admin settings WHEN a project document large enough to exceed 1200 tokens is uploaded via POST /api/v1/documents (through createApp, real wiring) THEN it is split at… / GIVEN an org with no ragChunkSizeTokens override WHEN a document is indexed THEN chunking uses DEFAULT_ORG_SETTINGS 800/100 (backward-compatible default). / GIVEN the injected settings resolver throws at resolve() WHEN a document is indexed THEN indexing still succeeds fail-soft at the 800/100 defaults (indexStatus='indexed', not 'failed'). / GIVEN the createApp document route wiring WHEN inspected/tested THEN settingsService is threaded app.ts -> createDocumentRoutes -> createDocumentService (indexing.settings defined), verified by an…",
+    "phase": "P22",
+    "team": "T3",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P22-T4-01",
+    "desc": "[Tier1 in-plan 완성 · artifacts · verdict=confirmed-incomplete] artifact_create routes large/binary content to S3 ArtifactStore (storageKind=s3). 구현: Edit apps/server/src/tools/handlers/artifact-create-handler.ts: extend ArtifactCreateToolDeps to accept an ArtifactStore (s3Store: ArtifactStore) — reuse existing packages/interfaces ArtifactStore (put/get), no new shared types needed. In invoke(): compute the data Buffer, and when sizeBytes >= INLINE_STORAGE_THRESHOLD_BYTES (import decideStorageKind/INLINE_STORAGE_THRESHOLD_BYTES from db/artifact-service.ts), first allocate an id or call s3Store.put({artifactId, content, sizeBytes, mimeType}) to upload, then pass… files: apps/server/src/tools/handlers/artifact-create-handler.ts. 구현방식·인터랙션·UI/UX 는 Open WebUI 를 레퍼런스(단 디자인은 apps/web/DESIGN.md 토큰·현대위아 CI 유지). 상세근거: docs/P22-GAP-CATALOG.md §P22-T4-01",
+    "acceptance": "RED 우선. GIVEN artifact_create is invoked with content whose UTF-8 byte length >= 256_000, WHEN the tool runs, THEN it uploads via s3Store.put() and service.createArtifact receives a non-empty s3Key, producing an ArtifactRecord… / GIVEN artifact_create is invoked with small content (< 256_000 bytes), WHEN the tool runs, THEN the artifact is stored inline (storageKind='inline', s3Key=null) exactly as today — no regression in the existing inline… / GIVEN a large (s3) artifact was created by the tool, WHEN a client calls GET /api/v1/artifacts/:id then GET /api/v1/artifacts/:id/content with the returned exp+sig token, THEN the original bytes stream back with a valid… / GIVEN the assemble-builtin-tools wiring, WHEN assembleBuiltinTools runs with objectStore present, THEN createArtifactCreateTool is constructed with an s3Store dependency (assert via injection/spy) rather than {da} only.",
+    "phase": "P22",
+    "team": "T4",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P22-T4-02",
+    "desc": "[Tier1 in-plan 완성 · artifacts · verdict=confirmed-incomplete] Public share 410 cannot distinguish expired vs revoked. 구현: Cross-team T4(server) + T6(UI). NO packages/interfaces or packages/shared change needed (error code/reason built ad-hoc via local errorJson; ArtifactShareServiceError and ConversationShareServiceError code unions are local to their service files) -- do NOT isolate as shared. SERVER (T4-owned per 07-AGENT-TEAMS:17): (1) apps/server/src/db/artifact-share-service.ts:81 -- split the lumped condition and carry a reason='revoked' when found.revokedAt is truthy else 'expired'; simplest is to add a `reason` property to… files: apps/server/src/db/artifact-share-service.ts, apps/server/src/routes/public-share.ts, apps/web/src/components/share/SharePublicView.tsx. 구현방식·인터랙션·UI/UX 는 Open WebUI 를 레퍼런스(단 디자인은 apps/web/DESIGN.md 토큰·현대위아 CI 유지). 상세근거: docs/P22-GAP-CATALOG.md §P22-T4-02",
+    "acceptance": "RED 우선. GIVEN a share whose expiresAt is in the past WHEN GET /api/v1/share/:token is called THEN response is 410 and the error body carries reason='expired' / GIVEN a share with revokedAt set WHEN GET /api/v1/share/:token (and the conversation-shares equivalent) is called THEN response is 410 and the error body carries reason='revoked' / GIVEN the 410 body reason='expired' WHEN SharePublicView/ConversationSharePublicView render THEN a clock icon and expired copy show; GIVEN reason='revoked' THEN a distinct X/ban icon and revoked copy show (RTL component… / GIVEN an existing valid share WHEN fetched THEN it still returns 200 with data unchanged (no regression in the happy path)",
+    "phase": "P22",
+    "team": "T4",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P22-T1-07",
+    "desc": "[Tier2 OWUI 파리티 · admin · verdict=confirmed-incomplete] Group card lacks per-resource access-grant toggle (no list-grants-for-group API). 구현: Two-part; NO packages/interfaces or packages/shared edits (NOT isolate/human-gated -- ResourceGrantsDataAccess is local to apps/server/src/db/resource-grants-data-access.ts, GrantDto is local to apps/web/src/hooks/useGrants.ts). BACKEND (T1, load-bearing blocker): (1) Add grantsForSubject(orgId, subjectType, subjectId) to ResourceGrantsDataAccess interface + pg impl returning rows of {resourceType, resourceId, access} via SELECT resource_type, resource_id, access FROM resource_grants WHERE org_id=$1 AND… files: apps/web/src/components/admin/GroupsManager.tsx, apps/server/src/routes/admin-grants.ts. 구현방식·인터랙션·UI/UX 는 Open WebUI 를 레퍼런스(단 디자인은 apps/web/DESIGN.md 토큰·현대위아 CI 유지). ★needsBrowser 상세근거: docs/P22-GAP-CATALOG.md §P22-T1-07",
+    "acceptance": "RED 우선. GIVEN an admin authenticated in org A WHEN they call GET /api/v1/admin/grants?subjectType=group&subjectId=<groupId> THEN the response lists every resource grant held by that group (resourceType, resourceId, access)… / GIVEN the new grantsForSubject(orgId, subjectType, subjectId) data-access method WHEN invoked for a group holding 2 grants THEN it returns exactly those 2 rows and a unit test proves org isolation via the explicit WHERE… / GIVEN the admin panel Groups page in a browser WHEN an admin opens a group card THEN it displays that group's current resource grants and provides an in-card control to grant and revoke a resource (POST/DELETE… / GIVEN the new route query shape WHEN pnpm test runs routes-mounted + admin-grants integration tests THEN the subject-scoped GET is covered and the existing resource-scoped GET/POST/DELETE still pass with no regression / ★실브라우저 UAT: 스택 기동 후 Claude-in-Chrome 로 실제 화면에서 동작 확인(불가 시 Playwright /preview + 정직히 미실행 명시).",
+    "phase": "P22",
+    "team": "T1",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P22-T1-08",
+    "desc": "[Tier2 OWUI 파리티 · media · verdict=confirmed-undeveloped] No image-generation feature (backend tool + in-chat trigger + settings). 구현: Build a new builtin AgentTool image_generate, mirroring the existing web_search pattern. Files: (1) NEW apps/server/src/tools/image-gen-port.ts (ImageGenPort interface: generate(prompt,size,n) returns image bytes/url, following web-search-port.ts). (2) NEW apps/server/src/tools/image-gen-provider-dev-stub.ts for LOCAL_ONLY (returns a placeholder image; mirror web-search-provider-dev-stub.ts). (3) NEW apps/server/src/tools/handlers/image-generate-handler.ts createImageGenerateTool(): invoke calls port, stores… files: apps/web/src/components/chat/. 구현방식·인터랙션·UI/UX 는 Open WebUI 를 레퍼런스(단 디자인은 apps/web/DESIGN.md 토큰·현대위아 CI 유지). ★needsBrowser 상세근거: docs/P22-GAP-CATALOG.md §P22-T1-08",
+    "acceptance": "RED 우선. GIVEN an org with imageGenEnabled=true and the image_generate tool assembled, WHEN a user asks the chat to generate an image, THEN the model invokes image_generate, the (dev-stub) provider returns an image, it is stored… / GIVEN imageGenEnabled=false (or the flag absent), WHEN messages tools are assembled, THEN image_generate is NOT present in the tool list (assembly gate test, mirroring knowledge_search optional gate) / GIVEN the returned image artifact, WHEN the assistant message renders in the browser chat UI, THEN the generated image is displayed inline (browser check of ToolCallRenderer/artifact rendering) / GIVEN an org admin in the settings panel, WHEN they toggle Image generation on/off, THEN the imageGenEnabled setting persists and controls whether the tool is offered (browser check of admin settings) / ★실브라우저 UAT: 스택 기동 후 Claude-in-Chrome 로 실제 화면에서 동작 확인(불가 시 Playwright /preview + 정직히 미실행 명시).",
+    "phase": "P22",
+    "team": "T1",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P22-T1-09",
+    "desc": "[Tier2 OWUI 파리티 · rag · verdict=confirmed-undeveloped] No #url website loader (fetch_url tool) into chat. 구현: Add a new agent tool `web_fetch` (or `fetch_url`) as a server-side handler, modeled directly on apps/server/src/tools/handlers/web-search-handler.ts. Concrete touchpoints (all within T1 ownership — no shared-type change needed): 1) NEW apps/server/src/tools/handlers/web-fetch-handler.ts exporting createWebFetchTool(): AgentToolSpec { name:\"web_fetch\", inputSchema {url:string}, permissionTier:\"tool\", defaultPolicy:\"allow\" or \"ask\", tags:[\"read-only\",\"web\"] } + invoke that (a) runs validateMcpUrl from… files: apps/server/src/tools/. 구현방식·인터랙션·UI/UX 는 Open WebUI 를 레퍼런스(단 디자인은 apps/web/DESIGN.md 토큰·현대위아 CI 유지). 상세근거: docs/P22-GAP-CATALOG.md §P22-T1-09",
+    "acceptance": "RED 우선. GIVEN a reachable public URL, WHEN the model invokes web_fetch with that url, THEN the handler fetches the page, extracts cleaned main text, and returns tool_result JSON containing {url,title,content} plus a Citation… / GIVEN an internal/link-local URL (e.g. http://10.0.0.1 or http://169.254.169.254), WHEN web_fetch is invoked, THEN validateMcpUrl rejects it (INTERNAL_IP_FORBIDDEN) BEFORE any network call and the tool returns a… / GIVEN assembleBuiltinTools() is called with standard deps, WHEN the returned AgentTool[] is inspected, THEN a tool named web_fetch is present (assembly test) so the model can actually see and call it. / GIVEN pnpm test + pnpm run typecheck, WHEN scripts/verify-gates.sh runs, THEN it exits 0 with the new RED->GREEN handler and assembly tests passing.",
+    "phase": "P22",
+    "team": "T1",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P22-T3-05",
+    "desc": "[Tier2 OWUI 파리티 · rag · verdict=confirmed-undeveloped] No cross-encoder reranking stage in RAG. 구현: Add an OPTIONAL reranker stage after hybridSearch in the T3-owned knowledge pipeline. (1) NEW apps/server/src/knowledge/rerank-provider.ts defining a LOCAL RerankProvider port (rerank(query, chunks) -> ordered/scored), mirroring the local-port pattern of embedding-provider.ts so it does NOT touch packages/interfaces. (2) NEW apps/server/src/knowledge/rerank-provider-dev-stub.ts, a deterministic dev-stub reranker (like embedding-provider-dev-stub.ts) since LOCAL_ONLY has no real cross-encoder model; real model… files: apps/server/src/knowledge/. 구현방식·인터랙션·UI/UX 는 Open WebUI 를 레퍼런스(단 디자인은 apps/web/DESIGN.md 토큰·현대위아 CI 유지). 상세근거: docs/P22-GAP-CATALOG.md §P22-T3-05",
+    "acceptance": "RED 우선. GIVEN a set of retrieved candidates and an injected RerankProvider, WHEN knowledge_search runs, THEN the returned citations are ordered by the reranker score (not the raw RRF order) and re-ranks reflect the reranker… / GIVEN no RerankProvider is injected (deps.reranker undefined), WHEN knowledge_search runs, THEN output is identical to current RRF-only behavior (backward compatible, no regression). / GIVEN the reranker prunes below its own relevance cut, WHEN results are assembled, THEN only the reranked topK survive and citation [N] markers remain consistent with citation-helper. / GIVEN pnpm test and bash scripts/verify-gates.sh, WHEN run, THEN the new reranker unit tests and handler integration test pass (exit 0) with a documented RED failure before implementation.",
+    "phase": "P22",
+    "team": "T3",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P22-T6-01",
+    "desc": "[Tier2 OWUI 파리티 · chat · verdict=confirmed-undeveloped] No clone/duplicate chat action. 구현: Full-stack (spans backend + frontend; suspected file is T6 but backend route/db is outside strict T6 apps/web/src ownership — coordinate). NO packages/interfaces or packages/shared edit required (reuse existing Session + Message types; route-local SessionsPort + concrete data-access), so NOT shared. Backend: add POST /sessions/:id/clone in apps/server/src/routes/sessions.ts — verify owner via byId (auth.sub) + org scope, create a new session copying title/projectId (reuse the existing session-create path used by… files: apps/web/src/components/sessions/SessionCard.tsx. 구현방식·인터랙션·UI/UX 는 Open WebUI 를 레퍼런스(단 디자인은 apps/web/DESIGN.md 토큰·현대위아 CI 유지). ★needsBrowser 상세근거: docs/P22-GAP-CATALOG.md §P22-T6-01",
+    "acceptance": "RED 우선. GIVEN an existing session with a multi-message tree (branching via parentMessageId) WHEN POST /sessions/:id/clone is called by the owner THEN a new session id is returned and its GET /:id/messages returns the same… / GIVEN a session owned by a different user/org WHEN POST /sessions/:id/clone is called THEN it returns 404 (no cross-org/cross-owner clone) — verified by createApp real-HTTP integration test / GIVEN the sessions list in the browser WHEN the user opens a SessionCard hover/context menu and clicks 복제 THEN a new duplicated session appears at the top of the list (double-click does not create two clones) and… / GIVEN the new route WHEN pnpm test runs THEN routes-mounted.test.ts passes with the clone path added to EXPECTED_ROUTES / ★실브라우저 UAT: 스택 기동 후 Claude-in-Chrome 로 실제 화면에서 동작 확인(불가 시 Playwright /preview + 정직히 미실행 명시).",
+    "phase": "P22",
+    "team": "T6",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P22-T6-02",
+    "desc": "[Tier2 OWUI 파리티 · admin · verdict=confirmed-incomplete] Admin Connectors allowedTools is read-only (no editable PUT). 구현: Cross-team (T1 server route + T6 UI) but NOT shared: allowedTools already exists on the Organization type (packages/interfaces/src/types.ts:100) and organizations.update already persists it (auth-data-access.ts:103,112), so NO packages/interfaces or packages/shared edit is needed and no human gate applies. Replicate the proven allowedModels pattern verbatim. T1 SERVER: create apps/server/src/routes/admin-tools.ts mirroring admin-models.ts -> GET/PUT '/' with isAdmin(role) guard, orgId derived ONLY from auth JWT… files: apps/web/src/components/admin/settings/ConnectorsTab.tsx. 구현방식·인터랙션·UI/UX 는 Open WebUI 를 레퍼런스(단 디자인은 apps/web/DESIGN.md 토큰·현대위아 CI 유지). ★needsBrowser 상세근거: docs/P22-GAP-CATALOG.md §P22-T6-02",
+    "acceptance": "RED 우선. GIVEN an admin on the Connectors/MCP tab WHEN they add or remove a tool chip and save THEN PUT /api/v1/admin/tools is called with the updated allowedTools array and the org allow-list reflects the change (verify in… / GIVEN a non-admin session or a token for another org WHEN calling PUT /api/v1/admin/tools THEN it returns 403 FORBIDDEN and no other org's allowedTools are mutated (orgId comes from JWT only). / GIVEN the server test suite WHEN routes-mounted.test runs THEN GET and PUT /api/v1/admin/tools are present in EXPECTED_ROUTES and actually mounted. / GIVEN ConnectorsTab rendered WHEN inspected THEN the read-only hint is gone and an editable add-input plus per-chip remove controls exist, wired to the PUT save. / ★실브라우저 UAT: 스택 기동 후 Claude-in-Chrome 로 실제 화면에서 동작 확인(불가 시 Playwright /preview + 정직히 미실행 명시).",
+    "phase": "P22",
+    "team": "T6",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P22-T6-03",
+    "desc": "[Tier2 OWUI 파리티 · rag · verdict=confirmed-incomplete] No UI to delete/remove an indexed knowledge document. 구현: Pure T6 (apps/web only) - no shared/interface or API-contract change (DTO + route + contract already exist). (1) apps/web/src/hooks/useDocuments.ts: add deleteDocument(id): Promise<void> plus deletingId state, mirroring existing retryDocument pattern (lines 93-115) - apiFetch(`/api/v1/documents/${id}`, { method: 'DELETE', credentials: 'include' }); on !res.ok setError(body.error?.message ?? '삭제에 실패했습니다.'); on success call load() to refresh list. Add both to UseDocumentsResult interface (lines 26-35) and the… files: apps/web/src/components/projects/DocumentsPanel.tsx. 구현방식·인터랙션·UI/UX 는 Open WebUI 를 레퍼런스(단 디자인은 apps/web/DESIGN.md 토큰·현대위아 CI 유지). 상세근거: docs/P22-GAP-CATALOG.md §P22-T6-03",
+    "acceptance": "RED 우선. GIVEN an indexed document row in DocumentsPanel, WHEN the user clicks the delete/remove control and confirms the window.confirm prompt, THEN useDocuments.deleteDocument issues DELETE /api/v1/documents/:id with… / GIVEN the confirm dialog, WHEN the user cancels, THEN no DELETE request is sent and the row remains. / GIVEN the server returns a non-2xx error on delete, WHEN deleteDocument runs, THEN error state is set and surfaced in the panel's role=alert message and the row is not removed. / GIVEN a delete is in flight, WHEN deletingId===doc.id, THEN that row's delete button is disabled to prevent double submit.",
+    "phase": "P22",
+    "team": "T6",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P22-T6-04",
+    "desc": "[Tier2 OWUI 파리티 · media · verdict=UNVERIFIED] Images shown only as filename chips, no thumbnail/preview. 구현: Images can be uploaded (vision input) but are rendered only as filename chips — no <img>/thumbnail in composer (ChatInput) or message bubbles (ChatView). Table-stakes for a multimodal chat. Done = image thumbnail preview in composer chips and in sent message bubbles. files: apps/web/src/components/chat/ChatInput.tsx, apps/web/src/components/chat/ChatView.tsx, apps/web/src/hooks/useAttachments.ts. 구현방식·인터랙션·UI/UX 는 Open WebUI 를 레퍼런스(단 디자인은 apps/web/DESIGN.md 토큰·현대위아 CI 유지). ★needsBrowser △미검증(루프 시작 시 실재 확인) 상세근거: docs/P22-GAP-CATALOG.md §P22-T6-04",
+    "acceptance": "RED 우선. Images can be uploaded (vision input) but are rendered only as filename chips — no <img>/thumbnail in composer (ChatInput) or message bubbles (ChatView). Table-stakes for a multimodal chat. Done = image thumbnail preview in composer chips and in sent message bubbles. / ★실브라우저 UAT: 스택 기동 후 Claude-in-Chrome 로 실제 화면에서 동작 확인(불가 시 Playwright /preview + 정직히 미실행 명시).",
+    "phase": "P22",
+    "team": "T6",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P22-T6-05",
+    "desc": "[Tier2 OWUI 파리티 · chat · verdict=confirmed-undeveloped] Queue messages while a response is generating. 구현: Frontend-only, T6, no shared/interface change (reuses existing send()/SendOptions and POST /messages; the Redis session lock releases at run end so sequential post-stream dispatch is compatible). (1) apps/web/src/hooks/useSessionStream.ts: add a queue buffer (useRef array of {content, attachments, options}) plus queued-messages state exposed from the hook return (~:1322). When send() (:979) is called while isStreamingRef.current is true, push to the queue INSTEAD of hitting streamTurn's abort-on-overlap guard… files: apps/web/src/components/chat/ChatInput.tsx. 구현방식·인터랙션·UI/UX 는 Open WebUI 를 레퍼런스(단 디자인은 apps/web/DESIGN.md 토큰·현대위아 CI 유지). ★needsBrowser 상세근거: docs/P22-GAP-CATALOG.md §P22-T6-05",
+    "acceptance": "RED 우선. GIVEN a response is currently streaming, WHEN the user types a message and presses Enter, THEN the message is added to a visible queue (not discarded) and the in-flight stream continues uninterrupted (not aborted). / GIVEN one or more queued messages, WHEN the current response finishes streaming, THEN the next queued message is automatically dispatched as a new turn in FIFO order until the queue drains. / GIVEN a queued (not-yet-sent) message, WHEN the user removes/cancels it, THEN it is dropped and never sent. / BROWSER: GIVEN the chat UI, WHEN two messages are entered during generation, THEN both appear as queued and are delivered sequentially after the active response completes, each producing its own assistant turn. / ★실브라우저 UAT: 스택 기동 후 Claude-in-Chrome 로 실제 화면에서 동작 확인(불가 시 Playwright /preview + 정직히 미실행 명시).",
+    "phase": "P22",
+    "team": "T6",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P22-T6-06",
+    "desc": "[Tier2 OWUI 파리티 · chat · verdict=confirmed-undeveloped] No multi-model side-by-side comparison chat. 구현: Goal: one prompt fanned out to 2+ selected models, streamed into parallel columns with per-column sibling navigation (Open WebUI-style). T6 files: ModelModePicker.tsx (add multi-select/compare mode so more than one model can be chosen), ChatInput.tsx (pass models[] through send options), useSessionStream.ts (fan out N parallel runs, one per model, keying each stream/assistant message by message_start.meta.model which already carries the model; group them as per-column siblings), ChatView.tsx (columnar layout, one… files: apps/web/src/components/chat/ChatView.tsx. 구현방식·인터랙션·UI/UX 는 Open WebUI 를 레퍼런스(단 디자인은 apps/web/DESIGN.md 토큰·현대위아 CI 유지). ★needsBrowser 상세근거: docs/P22-GAP-CATALOG.md §P22-T6-06",
+    "acceptance": "RED 우선. GIVEN a user in a chat session WHEN they enable compare mode and select 2+ allowed models and send one prompt THEN each selected model streams its answer into its own parallel column simultaneously / GIVEN two model columns rendered side by side WHEN each column has multiple regenerated answers THEN per-column prev/next sibling controls navigate that column's answers independently without affecting the other column / GIVEN a browser session (needs_browser) WHEN compare mode is toggled and a prompt is sent THEN the column UI, live streaming per model, and message_start.meta.model labeling are visually verified in the running app / GIVEN a single selected model WHEN a prompt is sent THEN behavior is unchanged (single-column) confirming backward compatibility / ★실브라우저 UAT: 스택 기동 후 Claude-in-Chrome 로 실제 화면에서 동작 확인(불가 시 Playwright /preview + 정직히 미실행 명시).",
+    "phase": "P22",
+    "team": "T6",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P22-T6-07",
+    "desc": "[Tier2 OWUI 파리티 · workspace · verdict=confirmed-undeveloped] No PWA / installable app manifest. 구현: All changes confined to apps/web (T6; no packages/interfaces or packages/shared edits, no API contract change). Files: (1) Web app manifest via Next.js metadata route apps/web/src/app/manifest.ts (MetadataRoute.Manifest served at /manifest.webmanifest) or static apps/web/public/manifest.webmanifest — fields: name 'WChat', short_name, start_url '/', display 'standalone', background_color/theme_color = Hyundai WIA primary #00287A per apps/web/DESIGN.md tokens, icons 192px + 512px + maskable variant. (2) Icon assets… files: apps/web/src/app/. 구현방식·인터랙션·UI/UX 는 Open WebUI 를 레퍼런스(단 디자인은 apps/web/DESIGN.md 토큰·현대위아 CI 유지). ★needsBrowser 상세근거: docs/P22-GAP-CATALOG.md §P22-T6-07",
+    "acceptance": "RED 우선. GIVEN the app served in Chrome WHEN fetching /manifest.webmanifest THEN it returns a valid manifest with display:standalone, name/short_name, start_url, theme_color #00287A, and 192px+512px icons (Lighthouse PWA /… / GIVEN a Chromium browser that fired beforeinstallprompt WHEN the user clicks the install affordance THEN the native install prompt appears and accepting it installs the app / GIVEN the app installed WHEN launched from the home screen/app list THEN it opens in a standalone window with no browser URL chrome / GIVEN the page loaded WHEN inspecting navigator.serviceWorker THEN a service worker is registered and the app shell loads on repeat/offline visit / ★실브라우저 UAT: 스택 기동 후 Claude-in-Chrome 로 실제 화면에서 동작 확인(불가 시 Playwright /preview + 정직히 미실행 명시).",
+    "phase": "P22",
+    "team": "T6",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P22-T6-08",
+    "desc": "[Tier2 OWUI 파리티 · media · verdict=confirmed-undeveloped] Speech-to-Text voice input. 구현: Deferred by plan (section 19.8, E-tier follow-up) -- build only when that follow-up phase is authorized. Minimal viable version is pure-frontend T6 using the browser Web Speech API (SpeechRecognition / webkitSpeechRecognition): add a Mic toggle button to the action bar in apps/web/src/components/chat/ChatInput.tsx (lucide Mic/MicOff icon), add a useSpeechRecognition hook under apps/web/src/hooks/ handling mic permission prompt, interim/final transcript, start/stop toggle, and unsupported-browser feature-detect… files: apps/web/src/components/chat/. 구현방식·인터랙션·UI/UX 는 Open WebUI 를 레퍼런스(단 디자인은 apps/web/DESIGN.md 토큰·현대위아 CI 유지). ★needsBrowser 상세근거: docs/P22-GAP-CATALOG.md §P22-T6-08",
+    "acceptance": "RED 우선. GIVEN a browser that supports the Web Speech API, WHEN the user clicks the Mic button in the ChatInput composer and speaks, THEN recognized text is inserted into the composer textarea at the cursor and the button… / GIVEN the user is recording, WHEN they click the Mic button again (or press Escape), THEN recognition stops, the active state clears, and no further text is appended. / GIVEN a browser without SpeechRecognition support (feature-detect false), WHEN the composer renders, THEN the Mic button is hidden or disabled and no runtime error occurs. / BROWSER: GIVEN the running web app, WHEN a real user grants microphone permission and dictates a phrase, THEN the spoken phrase appears in the composer and can be sent as a message. / ★실브라우저 UAT: 스택 기동 후 Claude-in-Chrome 로 실제 화면에서 동작 확인(불가 시 Playwright /preview + 정직히 미실행 명시).",
+    "phase": "P22",
+    "team": "T6",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P22-T6-09",
+    "desc": "[Tier2 OWUI 파리티 · media · verdict=confirmed-undeveloped] Text-to-Speech read-aloud on messages. 구현: Pure client-side, browser-native Web Speech API (window.speechSynthesis + SpeechSynthesisUtterance). NO server route, NO new npm dependency, NO new shared type, NO API contract change => team T6, NOT shared/isolated. Files to touch: (1) apps/web/src/components/chat/MessageActions.tsx — add a read-aloud toggle button on assistant messages (role===\"assistant\"), reusing the existing `content` prop; strip markdown to plaintext before speaking (reuse a small stripper or the existing Markdown pipeline). (2) New hook… files: apps/web/src/components/chat/. 구현방식·인터랙션·UI/UX 는 Open WebUI 를 레퍼런스(단 디자인은 apps/web/DESIGN.md 토큰·현대위아 CI 유지). ★needsBrowser 상세근거: docs/P22-GAP-CATALOG.md §P22-T6-09",
+    "acceptance": "RED 우선. GIVEN an assistant message rendered in ChatView, WHEN the user clicks the read-aloud (낭독) button, THEN window.speechSynthesis.speak is called with a SpeechSynthesisUtterance of the message plaintext and the button… / GIVEN TTS is playing, WHEN the user clicks the button again (toggle/stop), THEN speechSynthesis.cancel (or pause) is invoked and the button returns to idle; utterance is also cancelled on component unmount. / GIVEN a runtime without window.speechSynthesis (feature-unsupported), WHEN MessageActions renders, THEN the read-aloud button is hidden or disabled and no error is thrown. / BROWSER: GIVEN the app running in Chrome with an assistant reply, WHEN the user clicks read-aloud, THEN audible speech plays and pause/stop controls work and stop the audio. / ★실브라우저 UAT: 스택 기동 후 Claude-in-Chrome 로 실제 화면에서 동작 확인(불가 시 Playwright /preview + 정직히 미실행 명시).",
+    "phase": "P22",
+    "team": "T6",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P22-C-01",
+    "desc": "[계약 · infra · verdict=N/A] 계약 배치 초안(interface/shared 확장 RFC+diff, 휴먼게이트). 구현: Tier3(계약의존) 태스크들이 요구하는 packages/interfaces·packages/shared·DB migration 추가를 하나의 RFC(docs/rfc/P22-contract-batch.md)+제안 diff로 모아 작성하고 .ralph/CONTRACT_PENDING 를 기록 후 정지. 사람이 검토·승인하면 .ralph/CONTRACT_APPROVED 생성(승인된 항목 화이트리스트 포함). 승인 후에만 Tier3 태스크가 해당 파일 편집 허용. files: docs/rfc/P22-contract-batch.md, .ralph/CONTRACT_PENDING. 구현방식·인터랙션·UI/UX 는 Open WebUI 를 레퍼런스(단 디자인은 apps/web/DESIGN.md 토큰·현대위아 CI 유지). 휴먼게이트 상세근거: docs/P22-GAP-CATALOG.md §P22-C-01",
+    "acceptance": "RED 우선. docs/rfc/P22-contract-batch.md 에 각 Tier3 항목별 필요한 interface/shared/migration 변경이 제안 diff와 함께 명시됨 / 제안은 nullable-first·롤백경로·기존 타입 비파괴 원칙 준수 / .ralph/CONTRACT_PENDING 기록 + <CONTRACT_REVIEW_REQUESTED:P22> 신호로 정지(자동 편집 금지) / 사람 승인 후 .ralph/CONTRACT_APPROVED 존재 시에만 후속 Tier3 진행",
+    "phase": "P22",
+    "team": "RC",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P22-T1-10",
+    "desc": "[Tier3 계약의존 · admin · verdict=confirmed-incomplete] Admin health/history missing from/to time-range filter (interface change required). 구현: FLAG: requires packages/interfaces change -> MUST isolate/human-gate (CLAUDE.md path-ownership: packages/interfaces edits are blocked and human-gated). Steps once interface approved: (1) packages/interfaces/src/types.ts -- add ts:string (ISO) to HealthCheckResult AND extend HealthHistoryRepo.recent to accept a date range, e.g. recent(target, opts:{from?:Date;to?:Date;limit:number}) or add range(target,from,to,limit); mirror the identical edit in rebuild_plan/14-INTERFACES.md to keep the single-source-of-truth… files: apps/server/src/routes/admin.ts, apps/server/src/db/admin-data-access.ts. 구현방식·인터랙션·UI/UX 는 Open WebUI 를 레퍼런스(단 디자인은 apps/web/DESIGN.md 토큰·현대위아 CI 유지). ★계약의존(P22-C-01 승인 후) 상세근거: docs/P22-GAP-CATALOG.md §P22-T1-10",
+    "acceptance": "RED 우선. GIVEN health_check_history rows for target=db spanning several days WHEN GET /admin/health/history?target=db&from=<iso>&to=<iso> is called as admin THEN only rows whose ts falls within [from,to] are returned / GIVEN no from/to query params WHEN GET /admin/health/history?target=db is called THEN behavior is unchanged (most-recent up to limit, backward compatible) / GIVEN a returned health history item WHEN inspected THEN it includes a ts timestamp field per contract 16-API-CONTRACT.md:946 / GIVEN the interface HealthHistoryRepo.recent signature changes THEN the task is isolated to .ralph/blocked_tasks as a shared/human-gated change before any implementation / .ralph/CONTRACT_APPROVED 없으면 격리(구현 금지).",
+    "phase": "P22",
+    "team": "T1",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P22-T1-11",
+    "desc": "[Tier3 계약의존 · auth · verdict=confirmed-undeveloped] LDAP / Active Directory auth. 구현: Genuinely absent AND explicitly deferred to the enterprise-governance phase - treat as ISOLATE/human-gated, do NOT build in a normal loop iteration. FLAGS forcing team=shared: (a) new packages/interfaces types required - LdapAuthConfig (server URL/TLS, bind DN + secret ref, baseDN, user/group search filters), attribute mapping, group-to-role mapping, and an AuthProvider/IdentityProvider abstraction the current magic-link User model lacks; (b) a new UNSPECIFIED dependency (e.g. ldapjs/ldapts) not authorized by any… files: apps/server/src/routes/auth.ts. 구현방식·인터랙션·UI/UX 는 Open WebUI 를 레퍼런스(단 디자인은 apps/web/DESIGN.md 토큰·현대위아 CI 유지). ★계약의존(P22-C-01 승인 후) ★needsBrowser 상세근거: docs/P22-GAP-CATALOG.md §P22-T1-11",
+    "acceptance": "RED 우선. GIVEN a configured LDAP/AD server and valid directory credentials, WHEN a user submits them to the directory-login endpoint, THEN the server performs an LDAP bind, maps attributes to a User, and issues the normal… / GIVEN an AD user belonging to a mapped security group, WHEN they log in, THEN their org role/permissions are derived from the group-to-role mapping (and login is rejected if bind fails or the user is outside the… / GIVEN an admin in the browser Settings/Identity panel, WHEN they enter LDAP connection details (host, baseDN, bind DN, group filters) and click Test/Save, THEN the config persists, a connection test succeeds, and… / GIVEN this is a shared/interfaces + new-dependency change, WHEN picked up, THEN it is isolated to blocked_tasks with rationale rather than implemented, because it requires packages/interfaces types, an unspecified… / ★실브라우저 UAT: 스택 기동 후 Claude-in-Chrome 로 실제 화면에서 동작 확인(불가 시 Playwright /preview + 정직히 미실행 명시). / .ralph/CONTRACT_APPROVED 없으면 격리(구현 금지).",
+    "phase": "P22",
+    "team": "T1",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P22-T1-12",
+    "desc": "[Tier3 계약의존 · tools · verdict=confirmed-undeveloped] No OpenAPI tool-server ingestion. 구현: Full-stack, contract-first feature mirroring the existing MCP-servers stack. FLAG: requires a NEW API contract — a Zod schema for an OpenApiToolServer resource (register URL/spec, list, delete, per-endpoint enable) in packages/shared/src/schemas/*.ts — which is the source-of-truth that regenerates routes/OpenAPI/web types; this makes the task team=shared / human-gated and it MUST be isolated per CLAUDE.md path-ownership rules. Note the AgentTool/AgentToolSpec interface in packages/interfaces is already SUFFICIENT… files: apps/server/src/tools/. 구현방식·인터랙션·UI/UX 는 Open WebUI 를 레퍼런스(단 디자인은 apps/web/DESIGN.md 토큰·현대위아 CI 유지). ★계약의존(P22-C-01 승인 후) ★needsBrowser 상세근거: docs/P22-GAP-CATALOG.md §P22-T1-12",
+    "acceptance": "RED 우선. GIVEN a valid OpenAPI 3.x spec URL/body, WHEN an admin registers it via the new route/admin panel, THEN each operation is persisted and exposed as an AgentToolSpec (operationId->name, params->inputSchema) discoverable… / GIVEN a registered OpenAPI tool server, WHEN the model calls one of its endpoints in a chat turn, THEN the server performs an SSRF-validated HTTP request (reusing mcp/url-validator.ts) and returns an AgentToolResult,… / GIVEN a spec URL pointing at a private/internal address, WHEN registration or invocation is attempted, THEN the url-validator rejects it and no request is made. / BROWSER: GIVEN the settings admin panel, WHEN a user opens the OpenAPI tool-servers manager, adds a spec, and starts a chat, THEN the imported endpoints appear as callable tools and a tool call round-trips end-to-end in… / ★실브라우저 UAT: 스택 기동 후 Claude-in-Chrome 로 실제 화면에서 동작 확인(불가 시 Playwright /preview + 정직히 미실행 명시). / .ralph/CONTRACT_APPROVED 없으면 격리(구현 금지).",
+    "phase": "P22",
+    "team": "T1",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P22-T1-13",
+    "desc": "[Tier3 계약의존 · auth · verdict=confirmed-undeveloped] POST /auth/login password login endpoint. 구현: MUST ISOLATE (human gate): requires a packages/interfaces change. (1) Expose the password hash to the login handler: either add passwordHash to User in packages/interfaces/src/types.ts (then scrub it from every AuthMeResponse-shaped serializer in /me and /login) OR add a dedicated credential-fetch method to the users repo in packages/interfaces/src/DataAccess.ts. The DB column already exists via migration 0012_password_or_magic.sql. (2) Add POST /login handler in apps/server/src/routes/auth.ts (T1) inside… files: apps/server/src/routes/auth.ts, apps/server/src/__tests__/routes-mounted.test.ts. 구현방식·인터랙션·UI/UX 는 Open WebUI 를 레퍼런스(단 디자인은 apps/web/DESIGN.md 토큰·현대위아 CI 유지). ★계약의존(P22-C-01 승인 후) 상세근거: docs/P22-GAP-CATALOG.md §P22-T1-13",
+    "acceptance": "RED 우선. GIVEN a user with a bcrypt password_hash WHEN POST /api/v1/auth/login with correct email+password THEN 200 with AuthMeResponse {user,org} and the _at and _rt cookies set / GIVEN a user WHEN POST /auth/login with a wrong password THEN 401 INVALID_CREDENTIALS and no cookies set / GIVEN repeated failed attempts beyond the brute-force threshold WHEN POST /auth/login THEN 429 RATE_LIMITED / GIVEN an email whose domain is not in ALLOWED_DOMAINS WHEN POST /auth/login THEN 403 EMAIL_DOMAIN_FORBIDDEN / .ralph/CONTRACT_APPROVED 없으면 격리(구현 금지).",
+    "phase": "P22",
+    "team": "T1",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P22-T1-14",
+    "desc": "[Tier3 계약의존 · tools · verdict=confirmed-undeveloped] User-authored Python Tools / Valves / Pipe-Filter-Action functions. 구현: DO NOT BUILD — out-of-scope by design (scope_class: out-of-scope). The platform's extensibility is deliberately MCP + Skills + built-in tools, not Open WebUI's in-app Python plugin runtime. Confirmed via rebuild_plan/20-MULTI-AGENT-TOOL.md (universal tool use = JSON Schema + MCP + built-in + Skills). Marked team=shared to force human-gate/isolation: if ever pursued it would REQUIRE editing packages/interfaces (new Tool/Valve/UserValve/Pipe/Filter/Action type defs — freeze violation), a new API contract in… files: apps/server/src/tools/. 구현방식·인터랙션·UI/UX 는 Open WebUI 를 레퍼런스(단 디자인은 apps/web/DESIGN.md 토큰·현대위아 CI 유지). ★계약의존(P22-C-01 승인 후) 상세근거: docs/P22-GAP-CATALOG.md §P22-T1-14",
+    "acceptance": "RED 우선. GIVEN the repo source tree, WHEN grepping for the Open WebUI plugin primitives (valves, inlet/outlet, def pipe/filter/action, pipelines module, function_module), THEN zero implementation or interface definitions are… / GIVEN a user wanting to extend agent capabilities, WHEN they look for extensibility, THEN the supported paths are MCP servers (routes/mcp-servers.ts), Skills (routes/skills.ts + skills-engine.ts), and built-in tools… / GIVEN this is scope_class out-of-scope, WHEN the orchestrator triages this gap, THEN it is treated as a WON'T-BUILD/human-gated item (team=shared) and no auto-build sub-agent is spawned, because implementing it would… / .ralph/CONTRACT_APPROVED 없으면 격리(구현 금지).",
+    "phase": "P22",
+    "team": "T1",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P22-T1-15",
+    "desc": "[Tier3 계약의존 · infra · verdict=confirmed-incomplete] error_logs/health_history/message retention deletion unimplemented. 구현: SHARED / must isolate — requires packages/interfaces + migration edits (CLAUDE.md hard rule blocks in-loop implementation). Concrete work: (1) packages/interfaces/src/types.ts — add deleteOlderThan(cutoff: Date): Promise<number> to ErrorLogRepo and HealthHistoryRepo; add retentionDays: number|null to Organization; add a bulk deleteOlderThan(cutoff, orgId?) to MessageRepo (MessageRepo currently only extends Repo -> delete(id)). Mirror in rebuild_plan/14-INTERFACES.md (lines 463-476, Organization ~ same section).… files: apps/server/src/lib/data-retention.ts. 구현방식·인터랙션·UI/UX 는 Open WebUI 를 레퍼런스(단 디자인은 apps/web/DESIGN.md 토큰·현대위아 CI 유지). ★계약의존(P22-C-01 승인 후) 상세근거: docs/P22-GAP-CATALOG.md §P22-T1-15",
+    "acceptance": "RED 우선. data-retention 부록 H items 3/4/5 (error_logs, org.retention_days messages, health_history purge) are unimplemented: ErrorLogRepo/HealthHistoryRepo have no delete methods and message retention needs an org.retention_days column (v1.1). Requires interfaces/migration change → isolated. / .ralph/CONTRACT_APPROVED 없으면 격리(구현 금지).",
+    "phase": "P22",
+    "team": "T1",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P22-T1-16",
+    "desc": "[Tier3 계약의존 · auth · verdict=confirmed-undeveloped] SCIM 2.0 user/group provisioning. 구현: Genuinely absent AND explicitly deferred to the enterprise-governance phase (rebuild_plan/19-UIUX-UPGRADE.md lines 48, 195). SHARED/ISOLATE: implementing SCIM requires NEW shared types (SCIM User/Group resource schemas, PATCH ops) in packages/interfaces plus a NEW section in rebuild_plan/16-API-CONTRACT.md — both are human-gated per Path ownership rules (packages/interfaces + API contract changes must be isolated). Concretely it would need: new apps/server/src/routes/scim.ts implementing SCIM 2.0 endpoints… files: apps/server/src/routes/. 구현방식·인터랙션·UI/UX 는 Open WebUI 를 레퍼런스(단 디자인은 apps/web/DESIGN.md 토큰·현대위아 CI 유지). ★계약의존(P22-C-01 승인 후) 상세근거: docs/P22-GAP-CATALOG.md §P22-T1-16",
+    "acceptance": "RED 우선. GIVEN an IdP sends POST /scim/v2/Users with a valid SCIM 2.0 payload and a valid Bearer token, WHEN the endpoint processes it, THEN a corresponding user is created/linked via externalId and a 201 with the SCIM User… / GIVEN an existing SCIM-provisioned user, WHEN the IdP sends PATCH /scim/v2/Users/{id} with active=false, THEN the user is deactivated (soft-disabled, cannot auth) and 200 is returned / GIVEN a new scim route file is added, WHEN routes-mounted.test.ts runs, THEN /scim/v2 prefix is present in EXPECTED_ROUTES and the route is mounted in createApp (app.ts) / GIVEN SCIM group provisioning, WHEN the IdP creates/updates a Group with members, THEN membership is reflected in the existing admin-groups tables and reads back via GET /scim/v2/Groups/{id} / .ralph/CONTRACT_APPROVED 없으면 격리(구현 금지).",
+    "phase": "P22",
+    "team": "T1",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P22-T1-17",
+    "desc": "[Tier3 계약의존 · auth · verdict=UNVERIFIED] SSO via OAuth/OIDC (and trusted-header). 구현: Auth is magic-link + JWT/refresh; no OAuth/OIDC SSO, role/group claim mapping, or trusted-proxy header auth. Plan defers SSO (SAML/OIDC) to the enterprise-governance phase. Listed as deferred. files: apps/server/src/routes/auth.ts. 구현방식·인터랙션·UI/UX 는 Open WebUI 를 레퍼런스(단 디자인은 apps/web/DESIGN.md 토큰·현대위아 CI 유지). ★계약의존(P22-C-01 승인 후) △미검증(루프 시작 시 실재 확인) 상세근거: docs/P22-GAP-CATALOG.md §P22-T1-17",
+    "acceptance": "RED 우선. Auth is magic-link + JWT/refresh; no OAuth/OIDC SSO, role/group claim mapping, or trusted-proxy header auth. Plan defers SSO (SAML/OIDC) to the enterprise-governance phase. Listed as deferred. / .ralph/CONTRACT_APPROVED 없으면 격리(구현 금지).",
+    "phase": "P22",
+    "team": "T1",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P22-T4-03",
+    "desc": "[Tier3 계약의존 · infra · verdict=confirmed-incomplete] ArtifactStore.cleanupExpired is a no-op; 90-day artifact retention unimplemented. 구현: FLAG: SHARED-CONTRACT / MUST ISOLATE (human gate). A correct, spec-aligned fix requires editing packages/interfaces, which the CLAUDE.md path-ownership hard rule forbids doing inline. Concretely: (1) packages/interfaces/src/ArtifactStore.ts:23 - change cleanupExpired() to receive the deps it needs (a system-scoped ArtifactRepo + ArtifactShareRepo + cutoff), and/or (2) packages/interfaces/src/types.ts:467 - add ArtifactRepo.expiredOlderThan(cutoff) mirroring UploadRepo.expiredOlderThan (types.ts:507). Then T1 work:… files: apps/server/src/lib/artifact-store.s3.ts, apps/server/src/lib/artifact-store.inline.ts, apps/server/src/lib/data-retention.ts. 구현방식·인터랙션·UI/UX 는 Open WebUI 를 레퍼런스(단 디자인은 apps/web/DESIGN.md 토큰·현대위아 CI 유지). ★계약의존(P22-C-01 승인 후) 상세근거: docs/P22-GAP-CATALOG.md §P22-T4-03",
+    "acceptance": "RED 우선. GIVEN artifacts whose created_at is older than 90 days and that have no active (non-revoked, non-expired) share, WHEN runRetention/cleanupExpired runs, THEN each such artifact's DB row is deleted and its object bytes… / GIVEN an artifact older than 90 days that HAS an active (non-expired, non-revoked) artifact_share, WHEN cleanupExpired runs, THEN it is NOT deleted (kept until the share's expires_at) per 12-OPS-SECURITY.md:187. / GIVEN the current no-op implementations, WHEN a new test asserts deletedCount>0 for expired fixtures, THEN it fails (RED evidence the stub does nothing) and passes only after the real enumeration+deletion is implemented. / GIVEN the retention job runs with no per-user auth context, WHEN it enumerates expired artifacts, THEN it sees artifacts across all users via a system/BYPASSRLS-scoped DataAccess, not just the current caller's… / .ralph/CONTRACT_APPROVED 없으면 격리(구현 금지).",
+    "phase": "P22",
+    "team": "T4",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P22-T6-10",
+    "desc": "[Tier3 계약의존 · workspace · verdict=confirmed-undeveloped] No agent registry/create/edit UI (custom workspace models). 구현: FLAG: REQUIRES NEW SHARED INTERFACE + NEW API CONTRACT => team=shared, MUST ISOLATE (human gate). Per CLAUDE.md, new types are only allowed from rebuild_plan/14-INTERFACES.md and packages/interfaces/packages/shared edits must be isolated. Scope spans all layers: (1) SHARED/BLOCKED: add an Agent record type to 14-INTERFACES.md + packages/interfaces/src (fields: id, orgId, name, description, baseModel/mode, systemPrompt, toolIds/skillIds, knowledge/projectIds, visibility/accessControl, createdBy, timestamps); add… files: apps/web/src/components/layout/NavRail.tsx, apps/web/src/components/settings/SkillsManager.tsx, apps/web/src/app/(app)/page.tsx. 구현방식·인터랙션·UI/UX 는 Open WebUI 를 레퍼런스(단 디자인은 apps/web/DESIGN.md 토큰·현대위아 CI 유지). ★계약의존(P22-C-01 승인 후) ★needsBrowser 상세근거: docs/P22-GAP-CATALOG.md §P22-T6-10",
+    "acceptance": "RED 우선. GIVEN an authenticated org user, WHEN they POST /api/v1/agents with {name, systemPrompt, baseModel, toolIds}, THEN a 201 with the Agent record is returned and GET /api/v1/agents lists it scoped to their org only (a… / GIVEN the new Agent interface, WHEN typecheck runs, THEN the Agent record type resolves from packages/interfaces (added via isolated Phase 0.5 contract PR, not invented ad-hoc in a feature task). / GIVEN a browser at /settings/agents (or the 'agents' nav item), WHEN the user opens the agent gallery and clicks create, fills the editor (base model + system prompt + tools + knowledge + access control) and saves, THEN… / GIVEN agents exist, WHEN the home page loads, THEN the agents count reflects the real GET /agents length (not the hardcoded BUILTIN_AGENT_COUNT=4). / ★실브라우저 UAT: 스택 기동 후 Claude-in-Chrome 로 실제 화면에서 동작 확인(불가 시 Playwright /preview + 정직히 미실행 명시). / .ralph/CONTRACT_APPROVED 없으면 격리(구현 금지).",
+    "phase": "P22",
+    "team": "T6",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P22-T6-11",
+    "desc": "[Tier3 계약의존 · admin · verdict=UNVERIFIED] Arena models + ELO leaderboard / evaluation dashboard. 구현: No anonymous arena A/B models, thumbs-fed ELO leaderboard, or evaluation dashboard (message feedback rating exists but not the leaderboard/arena). Not in plan. Listed as out-of-scope. files: apps/web/src/components/admin/. 구현방식·인터랙션·UI/UX 는 Open WebUI 를 레퍼런스(단 디자인은 apps/web/DESIGN.md 토큰·현대위아 CI 유지). ★계약의존(P22-C-01 승인 후) ★needsBrowser △미검증(루프 시작 시 실재 확인) 상세근거: docs/P22-GAP-CATALOG.md §P22-T6-11",
+    "acceptance": "RED 우선. No anonymous arena A/B models, thumbs-fed ELO leaderboard, or evaluation dashboard (message feedback rating exists but not the leaderboard/arena). Not in plan. Listed as out-of-scope. / ★실브라우저 UAT: 스택 기동 후 Claude-in-Chrome 로 실제 화면에서 동작 확인(불가 시 Playwright /preview + 정직히 미실행 명시). / .ralph/CONTRACT_APPROVED 없으면 격리(구현 금지).",
+    "phase": "P22",
+    "team": "T6",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P22-T6-12",
+    "desc": "[Tier3 계약의존 · workspace · verdict=confirmed-undeveloped] Channels (real-time multi-user + @model collaboration). 구현: Genuinely absent and explicitly out-of-scope for v1 (not in rebuild_plan). FLAG: requires NEW shared types in packages/interfaces (Channel, ChannelMember, ChannelMessage, Reaction, Mention, Presence) AND a new section in rebuild_plan/16-API-CONTRACT.md AND new DB migrations — therefore team=shared, MUST be human-gated/isolated per CLAUDE.md path-ownership (no packages/interfaces or packages/shared edits without isolation). Repo also has NO real-time transport (no websocket/socket.io/presence infra anywhere);… files: apps/web/src/. 구현방식·인터랙션·UI/UX 는 Open WebUI 를 레퍼런스(단 디자인은 apps/web/DESIGN.md 토큰·현대위아 CI 유지). ★계약의존(P22-C-01 승인 후) ★needsBrowser 상세근거: docs/P22-GAP-CATALOG.md §P22-T6-12",
+    "acceptance": "RED 우선. GIVEN two authenticated users in the same org WHEN both open the same channel and one posts a message THEN the other sees it appear in real time without reload (browser check, needs_browser) / GIVEN a channel message WHEN a user adds a reaction or replies in a thread THEN the reaction/thread persists via a channels API + DB tables and is visible to all members / GIVEN a message mentioning @model WHEN posted THEN the orchestrator generates an assistant reply attributed to the model within the channel thread / GIVEN the shared-type/API-contract/migration requirement THEN the task is isolated to a human gate (packages/interfaces + 16-API-CONTRACT.md changes) rather than built inline / ★실브라우저 UAT: 스택 기동 후 Claude-in-Chrome 로 실제 화면에서 동작 확인(불가 시 Playwright /preview + 정직히 미실행 명시). / .ralph/CONTRACT_APPROVED 없으면 격리(구현 금지).",
+    "phase": "P22",
+    "team": "T6",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P22-T6-13",
+    "desc": "[Tier3 계약의존 · chat · verdict=confirmed-undeveloped] Chat import (native JSON / ChatGPT export) not implemented. 구현: Full-stack feature crossing server (T1/T2) + web (T6), and it REQUIRES a new API contract plus a new shared schema, so it must be isolated/human-gated as team shared. (1) SHARED/BLOCKED: add import request/response Zod schemas to packages/shared/src/schemas (contract source of truth per 16-API-CONTRACT.md) e.g. ImportConversationsRequest{format:'native'|'chatgpt', payload} and ImportConversationsResponse{createdSessionIds:string[]}; regenerate via pnpm gen:api-docs; add the endpoint to 16-API-CONTRACT.md and any… files: apps/web/src/components/chat/ShareExportMenu.tsx. 구현방식·인터랙션·UI/UX 는 Open WebUI 를 레퍼런스(단 디자인은 apps/web/DESIGN.md 토큰·현대위아 CI 유지). ★계약의존(P22-C-01 승인 후) ★needsBrowser 상세근거: docs/P22-GAP-CATALOG.md §P22-T6-13",
+    "acceptance": "RED 우선. GIVEN a valid native export ({title,messages}) POSTed to the import endpoint, WHEN the request is processed, THEN a new session is created for the caller org and its user/assistant messages are persisted in order and… / GIVEN a ChatGPT conversations.json (array of conversations with a mapping graph), WHEN imported, THEN each conversation becomes one session with messages flattened via parent pointers, only user/assistant roles kept,… / GIVEN a user from org A importing, WHEN sessions are created, THEN they are scoped to org A only and not visible cross-org (isolation test). / GIVEN the chat UI (browser), WHEN the user picks Import in the share/export menu and selects a native or ChatGPT JSON file, THEN new sessions appear in the session list and open with the imported messages rendered. / ★실브라우저 UAT: 스택 기동 후 Claude-in-Chrome 로 실제 화면에서 동작 확인(불가 시 Playwright /preview + 정직히 미실행 명시). / .ralph/CONTRACT_APPROVED 없으면 격리(구현 금지).",
+    "phase": "P22",
+    "team": "T6",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P22-T6-14",
+    "desc": "[Tier3 계약의존 · models · verdict=confirmed-undeveloped] Add 'Connections' UI + backend to manage external OpenAI-compatible provider base-URL + API keys (enable/verify). 구현: Genuinely absent end-to-end; building it fully crosses SHARED boundaries so it MUST be human-gated/isolated per CLAUDE.md (packages/interfaces + new API contract). Concrete surface:\n1. SHARED (isolate): new ProviderConnection DTO in packages/interfaces (id, orgId/userId, name, provider kind, baseUrl, encrypted apiKey/keyPrefix, enabled, verifiedAt, models[]) — editing packages/interfaces triggers the human-gate rule.\n2. SHARED (isolate): new API contract in rebuild_plan/16-API-CONTRACT.md for /api/v1/connections… files: apps/web/src/components/settings/SettingsIndex.tsx, apps/web/src/components/admin/settings/ModelsGenerationTab.tsx. 구현방식·인터랙션·UI/UX 는 Open WebUI 를 레퍼런스(단 디자인은 apps/web/DESIGN.md 토큰·현대위아 CI 유지). ★계약의존(P22-C-01 승인 후) ★needsBrowser 상세근거: docs/P22-GAP-CATALOG.md §P22-T6-14",
+    "acceptance": "RED 우선. GIVEN an admin on the settings Connections screen, WHEN they enter an OpenAI-compatible base URL + API key and save, THEN a provider_connections row is persisted (key stored encrypted, only keyPrefix returned on… / GIVEN a saved connection, WHEN the admin clicks Verify, THEN the server performs a scoped probe to the base URL and the UI shows verified/failed status without leaking the full key. / GIVEN an enabled connection whose models are allowed, WHEN a user starts a chat selecting one of those models, THEN the orchestrator LLMProviderRegistry routes the turn through that connection's baseURL/key (not… / GIVEN cross-org isolation, WHEN org A requests org B's connection, THEN it returns 404/forbidden and RLS prevents access (verified via createApp integration test + browser check of the admin/settings Connections panel). / ★실브라우저 UAT: 스택 기동 후 Claude-in-Chrome 로 실제 화면에서 동작 확인(불가 시 Playwright /preview + 정직히 미실행 명시). / .ralph/CONTRACT_APPROVED 없으면 격리(구현 금지).",
+    "phase": "P22",
+    "team": "T6",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P22-T6-15",
+    "desc": "[Tier3 계약의존 · workspace · verdict=confirmed-undeveloped] No multi-language i18n framework (Korean-only UI). 구현: SHARED / MUST ISOLATE (human gate). The full done-definition \"i18n scaffolding + per-user language selection\" cannot be built by the loop because it requires: (a) adding a `language`/`preferredLanguage` field to the `User` interface in packages/interfaces/src/types.ts:115 (interface change → isolate per CLAUDE.md), (b) a matching REST contract addition in rebuild_plan/16-API-CONTRACT.md + server route (e.g. PATCH /api/me or /api/users/:id preferences) to persist it (new API contract → isolate), and (c) a new i18n… files: apps/web/src/. 구현방식·인터랙션·UI/UX 는 Open WebUI 를 레퍼런스(단 디자인은 apps/web/DESIGN.md 토큰·현대위아 CI 유지). ★계약의존(P22-C-01 승인 후) ★needsBrowser 상세근거: docs/P22-GAP-CATALOG.md §P22-T6-15",
+    "acceptance": "RED 우선. GIVEN a fresh apps/web build WHEN grepping for react-i18next|next-intl|i18next in apps/web/package.json THEN a declared i18n dependency exists and an apps/web/src/lib/i18n message-catalog module loads ko + at least one… / GIVEN a logged-in user in the browser WHEN they open Settings/Profile and switch language from Korean to English THEN visible UI labels (nav, settings, chat controls) re-render in English without a full page reload / GIVEN a user selected English and the User.language field + preferences API exist WHEN they log out and log back in THEN the app loads in English (choice persisted server-side per user, not just localStorage) / GIVEN the interface/contract/dependency changes are required WHEN the loop reaches this task THEN it is isolated to .ralph/blocked_tasks (packages/interfaces User.language + API contract + new dep) rather than… / ★실브라우저 UAT: 스택 기동 후 Claude-in-Chrome 로 실제 화면에서 동작 확인(불가 시 Playwright /preview + 정직히 미실행 명시). / .ralph/CONTRACT_APPROVED 없으면 격리(구현 금지).",
+    "phase": "P22",
+    "team": "T6",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P22-T6-16",
+    "desc": "[Tier3 계약의존 · chat · verdict=confirmed-undeveloped] No AI input autocomplete/copilot (ghost-text prompt completion). 구현: Full-stack candidate feature, currently absent. (1) NEW backend endpoint e.g. POST /api/v1/completions taking current draft + short context, calling a fast task model via LLMProvider.chat — reuse pattern in apps/server/src/orchestrator/followups.ts (generateFollowups) / session-title-tags.ts. Add route file under apps/server/src/routes/, mount in app.ts createApp, and add prefix to apps/server/src/__tests__/routes-mounted.test.ts EXPECTED_ROUTES. (2) FLAG-SHARED: requires a NEW API CONTRACT entry in… files: apps/web/src/components/chat/ChatInput.tsx. 구현방식·인터랙션·UI/UX 는 Open WebUI 를 레퍼런스(단 디자인은 apps/web/DESIGN.md 토큰·현대위아 CI 유지). ★계약의존(P22-C-01 승인 후) ★needsBrowser 상세근거: docs/P22-GAP-CATALOG.md §P22-T6-16",
+    "acceptance": "RED 우선. GIVEN autocomplete enabled at org+user level WHEN a user pauses while typing a partial prompt in ChatInput THEN a fast task-model completion is fetched and rendered as inline ghost text after the caret, and pressing Tab… / GIVEN the admin settings panel WHEN an admin toggles the autocomplete feature off THEN POST /api/v1/completions is gated (403/feature-disabled) and no ghost text appears for any user in that org (browser + API check) / GIVEN a completion request is in flight WHEN the user keeps typing or presses Escape THEN the pending request is cancelled/ignored and stale suggestions never overwrite newer input / GIVEN the endpoint and its request/response type do not yet exist in 16-API-CONTRACT.md / interfaces THEN the task is isolated (blocked_tasks / human gate) before any packages/interfaces or contract edit is made / ★실브라우저 UAT: 스택 기동 후 Claude-in-Chrome 로 실제 화면에서 동작 확인(불가 시 Playwright /preview + 정직히 미실행 명시). / .ralph/CONTRACT_APPROVED 없으면 격리(구현 금지).",
+    "phase": "P22",
+    "team": "T6",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P22-T6-17",
+    "desc": "[Tier3 계약의존 · workspace · verdict=confirmed-undeveloped] Notes document workspace (editor + AI enhance). 구현: FLAG: REQUIRES new shared contract — must be ISOLATED / human-gated (out-of-scope, not in plan). Building it would need: (1) packages/interfaces: new Note entity + NoteRecord + Note DTO Zod schema added to 14-INTERFACES.md (only ProjectDocument exists today). (2) rebuild_plan/16-API-CONTRACT.md: new /notes CRUD endpoints + an AI-enhance endpoint (no notes section today). (3) T1: apps/server/src/routes/notes.ts (mount in app.ts createApp + add prefix to apps/server/src/__tests__/routes-mounted.test.ts… files: apps/web/src/. 구현방식·인터랙션·UI/UX 는 Open WebUI 를 레퍼런스(단 디자인은 apps/web/DESIGN.md 토큰·현대위아 CI 유지). ★계약의존(P22-C-01 승인 후) ★needsBrowser 상세근거: docs/P22-GAP-CATALOG.md §P22-T6-17",
+    "acceptance": "RED 우선. GIVEN packages/interfaces has no Note type WHEN grepping for 'interface Note' or 'Note DTO' in 14-INTERFACES.md THEN nothing is found, confirming a new shared type is required (isolate). / GIVEN a logged-in user WHEN they navigate to a /notes route in the browser THEN they can create/edit a standalone note in a rich-text/markdown editor and it persists across reloads. / GIVEN a note being edited WHEN the user clicks AI-enhance THEN the note content is improved via the orchestrator, and WHEN they toggle context-inject THEN the note content is injected into the chat context and reachable… / GIVEN this is marked out-of-scope and needs packages/interfaces + API-contract changes THEN the task is appended to .ralph/blocked_tasks for human gate rather than implemented directly. / ★실브라우저 UAT: 스택 기동 후 Claude-in-Chrome 로 실제 화면에서 동작 확인(불가 시 Playwright /preview + 정직히 미실행 명시). / .ralph/CONTRACT_APPROVED 없으면 격리(구현 금지).",
+    "phase": "P22",
+    "team": "T6",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P22-T6-18",
+    "desc": "[Tier3 계약의존 · skills · verdict=confirmed-undeveloped] Skills screen is read-only (no create/upload/enable-disable). 구현: SHARED / MUST ISOLATE + HUMAN-GATE. Not a T6-only task: no backend authoring surface exists at any layer, and the current design treats skills as filesystem-immutable server-only assets. A full build requires all of: (1) NEW INTERFACE - add mutation methods to packages/interfaces/src/SkillRegistry.ts (create/upsert/delete + enable/disable state) or a new user-skill store interface [editing packages/interfaces => shared, must isolate]. (2) NEW API CONTRACT - add POST /skills (create/upload SKILL.md + assets),… files: apps/web/src/components/settings/SkillsManager.tsx. 구현방식·인터랙션·UI/UX 는 Open WebUI 를 레퍼런스(단 디자인은 apps/web/DESIGN.md 토큰·현대위아 CI 유지). ★계약의존(P22-C-01 승인 후) ★needsBrowser 상세근거: docs/P22-GAP-CATALOG.md §P22-T6-18",
+    "acceptance": "RED 우선. GIVEN an authenticated user on /settings/skills WHEN they click create/upload and submit a SKILL.md + assets THEN POST /skills persists it and it appears in the list after reload (browser check) / GIVEN a listed skill WHEN the user toggles enable/disable THEN a PATCH/toggle endpoint persists the state and the orchestrator only injects enabled skills (browser + server test) / GIVEN a user-authored skill WHEN the owner deletes it THEN DELETE /skills/:id removes it (and its assets) and it is gone from the list, with cross-org isolation enforced / GIVEN the SkillRegistry interface and 16-API-CONTRACT section 11 today define only read operations WHEN implementing THEN the new mutation interface + contract endpoints must be human-gated before coding (isolation… / ★실브라우저 UAT: 스택 기동 후 Claude-in-Chrome 로 실제 화면에서 동작 확인(불가 시 Playwright /preview + 정직히 미실행 명시). / .ralph/CONTRACT_APPROVED 없으면 격리(구현 금지).",
+    "phase": "P22",
+    "team": "T6",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P22-T6-19",
+    "desc": "[Tier3 계약의존 · admin · verdict=partial-refine] No per-model cost breakdown in usage/quota + tool-metrics source/trend. 구현: Two independent sub-features on an already-working base. (A) Per-model cost in QuotaPanel — data already present, needs NO packages/interfaces change: add a per-model aggregation branch to apps/server/src/routes/usage.ts GET /me (group by model, e.g. return byModel: Array<{model, costMicros, tokensIn, tokensOut}> alongside the existing daily array), extend the response shape in 16-API-CONTRACT.md section 12, extend apps/web/src/hooks/useQuota.ts (add byModel to DailyUsageEntry result), and render a per-model… files: apps/web/src/components/settings/QuotaPanel.tsx, apps/web/src/components/admin/ToolMetricsTable.tsx. 구현방식·인터랙션·UI/UX 는 Open WebUI 를 레퍼런스(단 디자인은 apps/web/DESIGN.md 토큰·현대위아 CI 유지). ★계약의존(P22-C-01 승인 후) ★needsBrowser 상세근거: docs/P22-GAP-CATALOG.md §P22-T6-19",
+    "acceptance": "RED 우선. GIVEN a user with usage across multiple models WHEN they open /settings/quota THEN QuotaPanel shows a per-model cost breakdown table (model name + cost) sourced from GET /usage/me byModel, and the sum of per-model costs… / GIVEN GET /admin/tool-metrics WHEN an admin opens /admin/tool-metrics THEN each row shows a 출처/source column and a 7-day trend sparkline populated from the extended contract fields (verify in browser). / GIVEN the tool_metrics migration adds a nullable source column WHEN the migration is rolled back THEN the down path drops the column cleanly and existing rows/queries are unaffected. / GIVEN ToolMetricEntry now carries source WHEN packages/interfaces is edited THEN the task is isolated/human-gated (blocked_tasks) rather than committed under a single team, per shared-contract rules. / ★실브라우저 UAT: 스택 기동 후 Claude-in-Chrome 로 실제 화면에서 동작 확인(불가 시 Playwright /preview + 정직히 미실행 명시). / .ralph/CONTRACT_APPROVED 없으면 격리(구현 금지).",
+    "phase": "P22",
+    "team": "T6",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P22-T6-20",
+    "desc": "[Tier3 계약의존 · media · verdict=UNVERIFIED] Hands-free voice/video call mode. 구현: No voice/video call UI. Plan defers full voice + computer-use to the E-tier follow-up phase. Listed as deferred. files: apps/web/src/components/chat/. 구현방식·인터랙션·UI/UX 는 Open WebUI 를 레퍼런스(단 디자인은 apps/web/DESIGN.md 토큰·현대위아 CI 유지). ★계약의존(P22-C-01 승인 후) ★needsBrowser △미검증(루프 시작 시 실재 확인) 상세근거: docs/P22-GAP-CATALOG.md §P22-T6-20",
+    "acceptance": "RED 우선. No voice/video call UI. Plan defers full voice + computer-use to the E-tier follow-up phase. Listed as deferred. / ★실브라우저 UAT: 스택 기동 후 Claude-in-Chrome 로 실제 화면에서 동작 확인(불가 시 Playwright /preview + 정직히 미실행 명시). / .ralph/CONTRACT_APPROVED 없으면 격리(구현 금지).",
+    "phase": "P22",
+    "team": "T6",
+    "passes": false,
+    "attempts": 0
   }
 ]
