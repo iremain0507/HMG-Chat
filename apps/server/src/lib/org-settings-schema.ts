@@ -74,6 +74,10 @@ export const OrgSettingsSchema = z.object({
 
   // API Keys — P20-T1-12: 전역 마스터 토글(off 면 신규 발급 거부, 기존 키는 영향 없음).
   enableApiKeys: z.boolean().optional(),
+
+  // Admin Notifications — P20-T1-14: 설정 시 신규가입 완료마다 new_user 페이로드를 이
+  // URL 로 POST(dev-stub, 실 네트워크 미발송). 미설정(빈 문자열)이면 미발송.
+  adminWebhookUrl: z.string().max(500).optional(),
 });
 
 export type OrgSettingsPatch = z.infer<typeof OrgSettingsSchema>;
@@ -116,4 +120,6 @@ export const DEFAULT_ORG_SETTINGS: ResolvedOrgSettings = {
 
   // 현행(마스터 토글 없음=누구나 발급 가능) 동작을 미조정 org 에서 보존(비파괴).
   enableApiKeys: true,
+
+  adminWebhookUrl: "",
 };

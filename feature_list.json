@@ -2219,8 +2219,8 @@
     "acceptance": "RED: webhook-signup.test.ts 가 'adminWebhookUrl 설정된 org 에서 signup→ fake dispatcher 가 new_user 페이로드로 1회 호출됨' 을 기대하면 배선 부재로 호출 0회 실패(RED). 미설정 org 는 미호출. L1 last-mile: 실 signup 라우트 흐름을 태워 fake dispatcher 가 실제 email/org 담은 payload 를 수신했는지 단언(단순 유닛 아님), dispatcher 실패해도 signup 200 유지(fire-and-forget) 단언. 검증: pnpm test webhook-signup + verify-gates exit 0.",
     "phase": "P20",
     "team": "T1",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P20-T1-15",

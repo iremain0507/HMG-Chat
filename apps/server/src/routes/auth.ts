@@ -17,6 +17,7 @@ import {
   DEFAULT_ORG_SETTINGS,
   type ResolvedOrgSettings,
 } from "../lib/org-settings-schema.js";
+import type { WebhookDispatcher } from "../lib/webhook-dispatcher.js";
 
 // P15-T1-01 — org-scoped enableSignup/defaultUserRole 조회 포트. settings-service.ts(T1)와
 // 동일 계약(resolve)만 의존해 순환을 피한다(messages.ts SettingsResolverPort 와 동일 idiom).
@@ -60,6 +61,9 @@ export interface AuthRouteDeps {
   // P15-T1-01 — org-scoped enableSignup/defaultUserRole 런타임 조회. 미주입 시 DEFAULT_ORG_SETTINGS
   // (enableSignup=true/defaultUserRole=member)로 fail-soft — 기존 동작 보존.
   settings?: AuthSettingsResolverPort;
+  // P20-T1-14 — 신규가입 완료 시 org.adminWebhookUrl 설정돼 있으면 new_user 페이로드를
+  // fire-and-forget 으로 전달(미주입/미설정 시 미발송, 인증흐름은 절대 차단하지 않음).
+  webhookDispatcher?: WebhookDispatcher;
 }
 
 const ACCESS_TTL_SECONDS = 15 * 60;
@@ -290,6 +294,19 @@ export function createAuthRoutes(deps: AuthRouteDeps): Hono {
         lastLoginAt: new Date(),
       });
       userId = user.id;
+
+      // P20-T1-14 — fire-and-forget: dispatch 실패해도 가입 완료(세션 발급) 흐름은 계속된다.
+      if (resolved.adminWebhookUrl && deps.webhookDispatcher) {
+        deps.webhookDispatcher
+          .dispatch(resolved.adminWebhookUrl, {
+            event: "new_user",
+            orgId: record.orgId,
+            email: user.email,
+            name: user.name,
+            createdAt: user.createdAt.toISOString(),
+          })
+          .catch(() => {});
+      }
     }
     if (!userId) return c.redirect(loginUrl("invalid"), 302);
 

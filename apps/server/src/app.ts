@@ -58,6 +58,7 @@ import { createPgHealthHistoryDataAccess } from "./db/health-history-data-access
 import { createPgAdminDataAccess } from "./db/admin-data-access.js";
 import { createPgOrgSettingsDataAccess } from "./db/org-settings-data-access.js";
 import { createSettingsService } from "./lib/settings-service.js";
+import { createDevStubWebhookDispatcher } from "./lib/webhook-dispatcher.js";
 import { deriveSessionTitle } from "./lib/session-title.js";
 import { DEFAULT_ORG_SETTINGS } from "./lib/org-settings-schema.js";
 import { createSkillRegistry } from "./tools/skills-engine.js";
@@ -173,6 +174,9 @@ export function createApp(env: Env) {
       // enableSignup=false 인 org 는 허용 도메인이라도 가입 거부, 생성 유저 role 은
       // defaultUserRole 로 반영(P15-T1-01). 미조회/실패 시 DEFAULT_ORG_SETTINGS 로 fail-soft.
       settings: settingsService,
+      // P20-T1-14 — LOCAL_ONLY: 실 Slack/Discord 미연동, in-memory dev-stub(호출 기록만,
+      // 실 네트워크 미발송)을 주입. 실 adapter 는 WebhookDispatcher 인터페이스 뒤에서 배포 시 교체.
+      webhookDispatcher: createDevStubWebhookDispatcher(),
     }),
   );
 
