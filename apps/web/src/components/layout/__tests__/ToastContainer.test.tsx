@@ -34,8 +34,12 @@ describe("ToastContainer", () => {
     expect(screen.queryByText("전송 실패")).not.toBeInTheDocument();
   });
 
-  it("토스트가 없으면 아무것도 렌더하지 않는다", () => {
+  it("토스트가 없어도 live-region 컨테이너는 상시 마운트된다(UX-22)", () => {
     render(<ToastContainer />);
-    expect(screen.queryByTestId("toast-container")).not.toBeInTheDocument();
+    const container = screen.getByTestId("toast-container");
+    expect(container).toBeInTheDocument();
+    expect(container).toHaveAttribute("aria-live", "polite");
+    expect(container).toHaveAttribute("role", "status");
+    expect(container.children).toHaveLength(0);
   });
 });

@@ -7,6 +7,8 @@ import {
   dismissToast,
   subscribeToasts,
   __resetToastsForTest,
+  MAX_TOASTS,
+  type ToastItem,
 } from "../toast";
 
 describe("toast store", () => {
@@ -47,5 +49,34 @@ describe("toast store", () => {
     unsubscribe();
     showToast("success", "완료", 0);
     expect(received).toHaveLength(1); // subscribe 시점의 초기 알림 1건뿐
+  });
+
+  it("상한(MAX_TOASTS) 초과 시 가장 오래된 토스트부터 evict 된다(UX-22)", () => {
+    const received: unknown[][] = [];
+    subscribeToasts((toasts) => received.push(toasts));
+
+    for (let i = 0; i < MAX_TOASTS + 2; i++) {
+      showToast("info", `메시지-${i}`, 0);
+    }
+
+    const last = received.at(-1) as ToastItem[];
+    expect(last).toHaveLength(MAX_TOASTS);
+    // 가장 오래된 두 건(0,1)은 evict, 최신 MAX_TOASTS 건만 남는다
+    expect(last.some((t) => t.message === "메시지-0")).toBe(false);
+    expect(last.some((t) => t.message === "메시지-1")).toBe(false);
+    expect(last.at(-1)?.message).toBe(`메시지-${MAX_TOASTS + 1}`);
+  });
+
+  it("동일 kind+message 의 토스트는 병합되어 누적되지 않는다(UX-22)", () => {
+    const received: unknown[][] = [];
+    subscribeToasts((toasts) => received.push(toasts));
+
+    const firstId = showToast("error", "연결이 끊어졌습니다", 0);
+    showToast("error", "연결이 끊어졌습니다", 0);
+    showToast("error", "연결이 끊어졌습니다", 0);
+
+    const last = received.at(-1) as ToastItem[];
+    expect(last).toHaveLength(1);
+    expect(last[0]?.id).toBe(firstId);
   });
 });

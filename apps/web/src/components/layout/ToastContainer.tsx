@@ -16,8 +16,6 @@ export function ToastContainer() {
 
   useEffect(() => subscribeToasts(setToasts), []);
 
-  if (toasts.length === 0) return null;
-
   return (
     <div
       data-testid="toast-container"

@@ -2390,8 +2390,8 @@
     "acceptance": "RED: toast.test/ToastContainer.test 가 (a)상한 초과 시 오래된 것 evict (b)동일 메시지 병합(중복 미누적) (c)빈 상태에도 live-region 상시 존재 를 단언 — 현재 실패(UX-22). RTL.",
     "phase": "P21",
     "team": "T6",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P21-T6-17",
