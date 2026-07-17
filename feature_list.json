@@ -1949,8 +1949,8 @@
     "acceptance": "RED: ephemeral-indexer.test.ts 가 샘플 문서(md/txt) 입력 시 N>0 chunk + 각 chunk 에 dim 일치 embedding + bm25 source 텍스트가 채워짐을 단언하나 함수 부재로 실패. L1 last-mile: 반환 행 shape 이 0014_uploads.sql ephemeral_chunks 컬럼(embedding vector dim, bm25_tsv 원문)과 정확히 매핑됨을 픽스처로 단언(후속 INSERT 가 바로 소비 가능). 검증: pnpm test knowledge/__tests__/ephemeral-indexer + typecheck.",
     "phase": "P20",
     "team": "T3",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P20-T1-01",
