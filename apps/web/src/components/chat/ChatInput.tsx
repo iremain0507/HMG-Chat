@@ -21,7 +21,7 @@ import React, {
   type FormEvent,
   type KeyboardEvent,
 } from "react";
-import { Plus, AtSign, Slash, ArrowUp, Square } from "lucide-react";
+import { Plus, AtSign, Slash, Hash, ArrowUp, Square } from "lucide-react";
 import { useAttachments } from "../../hooks/useAttachments";
 import type { SendOptions } from "../../hooks/useSessionStream";
 import {
@@ -85,15 +85,18 @@ const POLICY_BADGE: Record<
 };
 
 interface TriggerState {
-  type: "slash" | "mention";
+  type: "slash" | "mention" | "document";
   start: number;
   end: number;
   query: string;
 }
 
+// P20-T6-09 — `#` 는 업로드 문서 인라인 참조 트리거. `@` 와 동일하게 커서 위치 어디서든
+// 열리되(슬래시만 메시지 시작 위치 한정), 선택 시 attachments 는 그대로(useAttachments 가
+// 이미 완료 첨부 전부를 자동 포함) 두고 본문에 `#filename` 참조 텍스트만 삽입한다.
 function detectTrigger(value: string, cursor: number): TriggerState | null {
   let i = cursor - 1;
-  while (i >= 0 && value[i] !== "/" && value[i] !== "@") {
+  while (i >= 0 && value[i] !== "/" && value[i] !== "@" && value[i] !== "#") {
     if (/\s/.test(value[i] ?? "")) return null;
     i--;
   }
@@ -102,7 +105,7 @@ function detectTrigger(value: string, cursor: number): TriggerState | null {
   if (ch === undefined) return null;
   if (ch === "/" && i !== 0) return null;
   return {
-    type: ch === "/" ? "slash" : "mention",
+    type: ch === "/" ? "slash" : ch === "#" ? "document" : "mention",
     start: i,
     end: cursor,
     query: value.slice(i + 1, cursor).toLowerCase(),
@@ -212,6 +215,25 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
       [fileMentionEntities, mentionEntities],
     );
 
+    // P20-T6-09 — `#` 문서 피커: 업로드가 완료(uploadId 확보)된 첨부만 참조 가능하게 한다.
+    // id 를 uploadId 로 둬 attachments[].uploadId 와 대응이 명확하도록 한다.
+    const documentEntities = useMemo(
+      () =>
+        items
+          .filter((it) => it.status === "done" && it.uploadId !== null)
+          .map((it) => ({ id: it.uploadId as string, label: it.filename })),
+      [items],
+    );
+    const filteredDocumentEntities = useMemo(
+      () =>
+        trigger?.type === "document"
+          ? documentEntities.filter((e) =>
+              e.label.toLowerCase().includes(trigger.query),
+            )
+          : [],
+      [trigger, documentEntities],
+    );
+
     const filteredSlashCommands = useMemo(
       () =>
         trigger?.type === "slash"
@@ -247,7 +269,13 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
                 badgeVariant: policyBadge?.variant,
               };
             })
-          : [];
+          : trigger?.type === "document"
+            ? filteredDocumentEntities.map((e) => ({
+                id: e.id,
+                label: e.label,
+                subtitle: "문서",
+              }))
+            : [];
 
     function selectPopoverItem(item: ComposerPopoverItem) {
       if (!trigger) return;
@@ -256,6 +284,16 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
         setInput("");
         setTrigger(null);
         if (command) onSlashCommand?.(command);
+        taRef.current?.focus();
+        return;
+      }
+      if (trigger.type === "document") {
+        const doc = filteredDocumentEntities.find((e) => e.id === item.id);
+        if (!doc) return;
+        const before = input.slice(0, trigger.start);
+        const after = input.slice(trigger.end);
+        setInput(`${before}#${doc.label} ${after}`);
+        setTrigger(null);
         taRef.current?.focus();
         return;
       }
@@ -300,6 +338,23 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
       const nextCursor = cursor + 1;
       setInput(nextValue);
       setMentionCategory("all");
+      setTrigger(detectTrigger(nextValue, nextCursor));
+      setActiveIndex(0);
+      requestAnimationFrame(() => {
+        ta?.focus();
+        ta?.setSelectionRange(nextCursor, nextCursor);
+      });
+    }
+
+    // P20-T6-09 — [#] 액션바 버튼: @/mention 과 동일한 삽입 경로로 문서 피커를 연다.
+    function triggerDocument() {
+      const ta = taRef.current;
+      const cursor = ta?.selectionStart ?? input.length;
+      const before = input.slice(0, cursor);
+      const after = input.slice(cursor);
+      const nextValue = `${before}#${after}`;
+      const nextCursor = cursor + 1;
+      setInput(nextValue);
       setTrigger(detectTrigger(nextValue, nextCursor));
       setActiveIndex(0);
       requestAnimationFrame(() => {
@@ -437,7 +492,13 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
             activeIndex={activeIndex}
             onHover={setActiveIndex}
             onSelect={selectPopoverItem}
-            label={trigger.type === "slash" ? "명령 선택" : "멘션 선택"}
+            label={
+              trigger.type === "slash"
+                ? "명령 선택"
+                : trigger.type === "document"
+                  ? "문서 선택"
+                  : "멘션 선택"
+            }
             query={trigger.query}
             showFooterHints
             onDismiss={() => setTrigger(null)}
@@ -548,6 +609,16 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
             className="grid h-7 w-7 flex-none place-items-center rounded-md border border-border text-fg-muted hover:bg-bg hover:text-fg aria-pressed:border-primary-200 aria-pressed:bg-primary-50 aria-pressed:text-primary disabled:cursor-not-allowed disabled:opacity-40"
           >
             <Slash size={13} strokeWidth={2} aria-hidden="true" />
+          </button>
+          <button
+            type="button"
+            aria-label="문서 참조 삽입"
+            data-testid="composer-trigger-document"
+            onClick={triggerDocument}
+            aria-pressed={trigger?.type === "document"}
+            className="grid h-7 w-7 flex-none place-items-center rounded-md border border-border text-fg-muted hover:bg-bg hover:text-fg aria-pressed:border-primary-200 aria-pressed:bg-primary-50 aria-pressed:text-primary"
+          >
+            <Hash size={13} strokeWidth={2} aria-hidden="true" />
           </button>
           <ModelModePicker
             models={availableModels}

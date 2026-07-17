@@ -2156,8 +2156,8 @@
     "acceptance": "RED: ChatInput 컴포넌트 테스트 — `#` 입력 시 문서 피커가 렌더되고 선택 항목이 attachments 상태에 추가됨을 단언(구현 전 실패). L1 last-mile: 선택된 참조가 실제 전송 payload(body.attachments[].uploadId)까지 도달하는지 단언(UI-only 아님). needsBrowser=true: 실앱 Playwright E2E(dev-login→컴포저에 `#` 입력→문서 선택→전송→첨부 chip 표시 및 답변 인용) 또는 watchdog 브라우저 UAT 로 `#` 참조 실동작·무동작 여부 확인. 디자인 토큰 준수 확인. verify-gates exit 0.",
     "phase": "P20",
     "team": "T6",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P20-T2-04",

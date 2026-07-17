@@ -269,6 +269,64 @@ describe("ChatInput 슬래시/멘션", () => {
     expect(textarea.value).toBe("@knowledge_search ");
   });
 
+  it("# 입력 시 업로드 문서 피커가 뜨고 선택하면 참조 텍스트가 삽입되며 전송 시 attachments 에 uploadId 가 포함된다", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({
+        ok: true,
+        status: 201,
+        json: async () => ({
+          data: {
+            id: "upload-9",
+            filename: "report.pdf",
+            mimeType: "application/pdf",
+          },
+        }),
+      })),
+    );
+    const onSend = vi.fn();
+    render(
+      <ChatInput
+        sessionId="session-1"
+        isStreaming={false}
+        onSend={onSend}
+        onStop={vi.fn()}
+      />,
+    );
+
+    const dropzone = screen.getByTestId("composer-dropzone");
+    const file = new File(["hello"], "report.pdf", {
+      type: "application/pdf",
+    });
+    fireEvent.drop(dropzone, { dataTransfer: { files: [file] } });
+
+    await waitFor(() => {
+      expect(screen.getByText("report.pdf")).toBeInTheDocument();
+    });
+
+    const textarea = screen.getByLabelText(
+      "메시지 입력",
+    ) as HTMLTextAreaElement;
+    fireEvent.change(textarea, { target: { value: "#rep" } });
+
+    const popoverItem = screen.getByTestId("composer-popover-item-upload-9");
+    expect(popoverItem).toHaveTextContent("report.pdf");
+
+    fireEvent.click(popoverItem);
+    expect(textarea.value).toBe("#report.pdf ");
+
+    fireEvent.change(textarea, {
+      target: { value: "#report.pdf 이 문서 요약해줘" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "전송" }));
+
+    await waitFor(() => {
+      expect(onSend).toHaveBeenCalledWith("#report.pdf 이 문서 요약해줘", [
+        { uploadId: "upload-9" },
+      ]);
+    });
+  });
+
   it("Escape 키로 팝오버를 닫고 입력 텍스트는 유지한다", () => {
     render(
       <ChatInput
