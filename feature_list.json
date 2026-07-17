@@ -2030,8 +2030,8 @@
     "acceptance": "RED: 구현 전 admin-grants.integration.test.ts 가 POST /api/v1/admin/grants(admin JWT) 로 grant 생성→GET 으로 회수확인 시도 시 404(미마운트)로 실패해야 한다. 또 routes-mounted 가드가 새 prefix 부재로 RED. L1 last-mile: 생성한 grant 가 실제 DB resource_grants 행으로 INSERT 되고 GET 이 그 행을 반환하며, 비-admin JWT 는 403, 타 org subjectId 는 거부됨을 실 Postgres 통합테스트로 단언(canAccessResource 가 이 행을 실제로 소비하는지까지 후속 enforcement 태스크와 연결). 검증: pnpm test admin-grants + bash scripts/verify-gates.sh exit 0.",
     "phase": "P20",
     "team": "T1",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P20-T6-04",

@@ -124,6 +124,17 @@ const EXPECTED_ROUTES: Array<{ method: string; path: string; phase: string }> =
     { method: "POST", path: "/api/v1/api-keys", phase: "P19" },
     { method: "GET", path: "/api/v1/admin/groups", phase: "P19" },
     { method: "POST", path: "/api/v1/admin/groups", phase: "P19" },
+    {
+      method: "GET",
+      path: `/api/v1/admin/grants?resourceType=prompt&resourceId=${randomUUID()}`,
+      phase: "P20",
+    },
+    { method: "POST", path: "/api/v1/admin/grants", phase: "P20" },
+    {
+      method: "DELETE",
+      path: `/api/v1/admin/grants?resourceType=prompt&resourceId=${randomUUID()}&subjectType=user&subjectId=${randomUUID()}&access=read`,
+      phase: "P20",
+    },
     // GET /api/v1/share/:token 은 authMiddleware 밖(인증 우회) 이라 "미마운트 404" 와
     // "유효하지 않은 토큰 → 계약상 404 NOT_FOUND"(16-API-CONTRACT § 8) 를 상태코드로 구분할 수
     // 없어 이 가드에서 제외 — 실 마운트 검증은 routes/__tests__/public-share.test.ts(유효 토큰
