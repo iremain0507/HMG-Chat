@@ -138,6 +138,13 @@ export interface SessionTagsPort {
   add(orgId: string, sessionId: string, tag: string): Promise<unknown>;
 }
 
+// P20-T2-04 — per-turn 관련 도구 선택(tools/tool-router.ts selectRelevantTools 실배선).
+// 매 턴 조립된 전체 tools 대신 query 와 관련도 높은 subset 만 runTurn 에 노출해 도구
+// 노이즈/오호출을 줄인다. 미주입 시 필터링을 건너뛴다(기존 동작 보존, L2 fail-soft).
+export interface ToolRouterPort {
+  select(input: { tools: AgentTool[]; query: string }): Promise<AgentTool[]>;
+}
+
 // P20-T1-03 — 폴더 스코프 시스템 프롬프트 조회 포트(db/session-folder-data-access.ts
 // SessionFolderDataAccess.byIdForOwner 와 구조적으로 호환 — SessionFolder 가 systemPrompt
 // 를 포함하므로 app.ts 변경 없이 그대로 주입 가능).
@@ -258,6 +265,8 @@ export interface MessageRouteDeps {
   // (createPgUserMemoryDataAccess)의 UserMemoryReader 를 그대로 주입(구조적 타이핑). 미주입
   // 시 회상 생략(기존 동작 보존, L2).
   memories?: UserMemoryReader;
+  // P20-T2-04 — per-turn 관련 도구만 노출(ToolRouterPort 참고). 미주입 시 필터링 생략.
+  toolRouter?: ToolRouterPort;
 }
 
 function errorJson(code: string, message: string) {
@@ -494,6 +503,28 @@ export function createMessageRoutes(
     // runTurn 을 호출한다. 'agent'(기본, 미지정 포함)는 기존 도구 배선을 그대로 유지한다.
     if (body.mode === "chat") {
       tools = [];
+    }
+
+    // P20-T2-04 — per-turn 관련 도구만 노출: 전체 tools 대신 query 와 관련도 높은 subset
+    // 만 runTurn 에 전달한다(도구 노이즈/오호출 감소). 선택 결과가 비면(카탈로그 소진/임베딩
+    // 실패 등) 전체 tools 로 폴백하고, 라우팅 자체가 실패해도(reject) 전체 tools 를 그대로
+    // 유지한다(L2 fail-soft) — deps.toolRouter 미주입 시 기존 동작과 100% 동일.
+    if (deps.toolRouter && tools.length > 0) {
+      try {
+        const routedTools = await deps.toolRouter.select({
+          tools,
+          query: content,
+        });
+        if (routedTools.length > 0) {
+          tools = routedTools;
+        }
+      } catch (error) {
+        deps.logger?.warn({
+          category: "system",
+          msg: "tool 라우팅 실패 — 전체 tool set 유지",
+          context: { error: String(error) },
+        });
+      }
     }
 
     // P17-T1-01 — user 메시지를 messages 테이블에 영속(best-effort — 실패해도 turn 은 계속).

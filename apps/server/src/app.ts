@@ -69,6 +69,7 @@ import { createParserPipeline } from "./knowledge/parser-pipeline.js";
 import { withUsageTracking } from "./knowledge/embedding-provider.js";
 import { createDevStubEmbeddingProvider } from "./knowledge/embedding-provider-dev-stub.js";
 import { createKnowledgeRetrievalPgPort } from "./knowledge/knowledge-retrieval-pg.js";
+import { selectRelevantTools } from "./tools/tool-router.js";
 import { createPgAttachmentsPort } from "./db/ephemeral-chunk-search.js";
 import {
   authMiddleware,
@@ -117,6 +118,16 @@ function assembleOrgMcpTools(
     return tools;
   };
 }
+
+// P20-T2-04 — per-turn tool-routing top-k. 내장 도구(artifact_create/web_search/
+// code_interpreter/deep_research/knowledge_search/search_chats/view_chat/add_memory/
+// search_memories, 최대 9개)는 항상 topK 이하로 유지해 selectRelevantTools 가 임베딩
+// 호출 없이 그대로 통과시킨다(tool-router.ts L33 단락 회피) — dev-stub 임베딩(토큰 중복
+// 기반 근사, 실 Voyage 아님)의 낮은 의미 정밀도로 인해 소규모 내장 카탈로그에서 knowledge_search/
+// search_chats/view_chat 같은 필수 도구가 오탐 배제되는 회귀를 막기 위함(P20-T1-02/T2-01
+// 조립 통합테스트로 실측 확인됨). MCP 조립 결과(20-MULTI-AGENT-TOOL.md 가 말하는 200+ 카탈로그
+// 시나리오)까지 합쳐 이 값을 넘을 때만 실제로 필터링이 작동한다.
+const TOOL_ROUTER_TOP_K = 12;
 
 export function createApp(env: Env) {
   const app = new Hono<{ Variables: AuthedVariables }>();
@@ -284,6 +295,18 @@ export function createApp(env: Env) {
       folders: createPgSessionFolderDataAccess(),
       // P20-T1-09 — 영구 사용자 메모리 런타임 회상(저장→프롬프트 주입).
       memories: userMemoryDa,
+      // P20-T2-04 — per-turn 관련 도구만 노출: 조립된 tools(내장+MCP) 중 query 와
+      // 관련도 높은 top-k 만 runTurn 에 전달(tools/tool-router.ts, dev-stub embedding —
+      // 실 Voyage 는 배포 시 교체). 선택 결과가 비면 messages.ts 가 전체 tools 로 폴백한다.
+      toolRouter: {
+        select: (input) =>
+          selectRelevantTools({
+            tools: input.tools,
+            query: input.query,
+            topK: TOOL_ROUTER_TOP_K,
+            embeddingProvider: createDevStubEmbeddingProvider(),
+          }),
+      },
     }),
   );
   // P20-T1-08 — 대화 스냅샷 공유(불변) 발급/revoke. sessionDa/messageDa 싱글톤 재사용

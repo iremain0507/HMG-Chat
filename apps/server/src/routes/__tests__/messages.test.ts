@@ -12,6 +12,8 @@ import type { AuthedVariables } from "../../middleware/auth-middleware.js";
 import { listPendingHitl, resolveHitl } from "../../tools/hitl-manager.js";
 import { createMessageRoutes, type AttachmentsPort } from "../messages.js";
 import { DEFAULT_ORG_SETTINGS } from "../../lib/org-settings-schema.js";
+import { selectRelevantTools } from "../../tools/tool-router.js";
+import { createDevStubEmbeddingProvider } from "../../knowledge/embedding-provider-dev-stub.js";
 
 function fakeHelloProvider(): LLMProvider {
   return {
@@ -1156,5 +1158,190 @@ describe("POST /:id/messages — 영구 사용자 메모리 회상 배선(P20-T1
     expect(
       captured[0].systemBlocks.some((b: PromptBlock) => b.tier === "user"),
     ).toBe(false);
+  });
+});
+
+describe("POST /:id/messages — per-turn 관련 도구만 노출(selectRelevantTools 실배선) — P20-T2-04", () => {
+  function appWithAuth(routes: ReturnType<typeof createMessageRoutes>) {
+    const app = new Hono<{ Variables: AuthedVariables }>();
+    app.use("*", async (c, next) => {
+      c.set("auth", {
+        sub: "user-1",
+        org: "org-1",
+        role: "member",
+        scope: "access",
+        jti: "x",
+      });
+      await next();
+    });
+    app.route("/", routes);
+    return app;
+  }
+
+  function capturingProvider(captured: ChatInput[]): LLMProvider {
+    return {
+      name: "fake",
+      models: ["fake-model"],
+      async *chat(req) {
+        captured.push(req);
+        const events: ChatEvent[] = [
+          {
+            type: "message_start",
+            messageId: "msg-router-1",
+            meta: { provider: "fake", model: req.model },
+          },
+          { type: "text_delta", text: "ok" },
+          {
+            type: "stop",
+            reason: "end_turn",
+            usage: { inputTokens: 1, outputTokens: 1 },
+          },
+        ];
+        for (const event of events) yield event;
+      },
+    };
+  }
+
+  function makeTool(name: string, description: string): AgentTool {
+    return {
+      spec: {
+        name,
+        description,
+        inputSchema: { type: "object", properties: {} },
+        permissionTier: "tool",
+        defaultPolicy: "allow",
+      },
+      async invoke({ toolCallId }) {
+        return { toolCallId, content: { kind: "text", text: "unused" } };
+      },
+    };
+  }
+
+  const webSearchTool = makeTool(
+    "web_search",
+    "search the web for real time information and breaking news articles",
+  );
+  const distractorTools = [
+    makeTool("translate_text", "translate input text into another language"),
+    makeTool(
+      "unit_convert",
+      "convert units between kilometers miles celsius fahrenheit",
+    ),
+    makeTool(
+      "calendar_schedule",
+      "schedule and manage calendar events and reminders",
+    ),
+    makeTool(
+      "image_generate",
+      "generate an image from a text prompt using diffusion",
+    ),
+  ];
+  const allTools = [...distractorTools, webSearchTool];
+
+  it("질의와 관련된 도구만 runTurn/ChatInput.tools 로 노출된다(무관 도구 제외, 실 selectRelevantTools 경로)", async () => {
+    const captured: ChatInput[] = [];
+    const routes = createMessageRoutes({
+      provider: capturingProvider(captured),
+      model: "fake-model",
+      tools: allTools,
+      // web_search 는 기존 P19-T2-01 게이트(webSearchEnabled && body.webSearch)가 먼저
+      // 적용되므로, toolRouter 필터 대상에 web_search 가 남도록 게이트를 통과시켜 둔다.
+      settings: {
+        async resolve() {
+          return { ...DEFAULT_ORG_SETTINGS, webSearchEnabled: true };
+        },
+      },
+      toolRouter: {
+        select: (input) =>
+          selectRelevantTools({
+            tools: input.tools,
+            query: input.query,
+            topK: 1,
+            embeddingProvider: createDevStubEmbeddingProvider(),
+          }),
+      },
+    });
+    const app = appWithAuth(routes);
+
+    const res = await app.request("/session-router-1/messages", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "text/event-stream",
+      },
+      body: JSON.stringify({
+        content: "search the web for the latest breaking news",
+        webSearch: true,
+      }),
+    });
+    expect(res.status).toBe(200);
+    await res.text();
+
+    expect(captured).toHaveLength(1);
+    const names = captured[0].tools?.map((t) => t.name) ?? [];
+    expect(names).toEqual(["web_search"]);
+  });
+
+  it("selectRelevantTools 결과가 빈 배열이면 전체 tool set 으로 폴백한다(L2 fail-soft)", async () => {
+    const captured: ChatInput[] = [];
+    const routes = createMessageRoutes({
+      provider: capturingProvider(captured),
+      model: "fake-model",
+      tools: allTools,
+      settings: {
+        async resolve() {
+          return { ...DEFAULT_ORG_SETTINGS, webSearchEnabled: true };
+        },
+      },
+      toolRouter: {
+        select: async () => [],
+      },
+    });
+    const app = appWithAuth(routes);
+
+    const res = await app.request("/session-router-2/messages", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "text/event-stream",
+      },
+      body: JSON.stringify({ content: "hi", webSearch: true }),
+    });
+    expect(res.status).toBe(200);
+    await res.text();
+
+    expect(captured).toHaveLength(1);
+    const names = captured[0].tools?.map((t) => t.name) ?? [];
+    expect(names.sort()).toEqual(allTools.map((t) => t.spec.name).sort());
+  });
+
+  it("toolRouter 미주입 시 기존 동작(전체 tool set 그대로) 이 유지된다", async () => {
+    const captured: ChatInput[] = [];
+    const routes = createMessageRoutes({
+      provider: capturingProvider(captured),
+      model: "fake-model",
+      tools: allTools,
+      settings: {
+        async resolve() {
+          return { ...DEFAULT_ORG_SETTINGS, webSearchEnabled: true };
+        },
+      },
+    });
+    const app = appWithAuth(routes);
+
+    const res = await app.request("/session-router-3/messages", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "text/event-stream",
+      },
+      body: JSON.stringify({ content: "hi", webSearch: true }),
+    });
+    expect(res.status).toBe(200);
+    await res.text();
+
+    expect(captured).toHaveLength(1);
+    const names = captured[0].tools?.map((t) => t.name) ?? [];
+    expect(names.sort()).toEqual(allTools.map((t) => t.spec.name).sort());
   });
 });

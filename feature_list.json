@@ -2165,8 +2165,8 @@
     "acceptance": "RED: 오케스트레이터/messages 테스트 — 웹검색 무관 질의 시 runTurn 에 전달되는 tools 에서 web_search 가 제외되고 knowledge_search 등 관련 도구만 남음을 단언(배선 전 전체 노출로 실패). L1 last-mile: 필터가 실제 runTurn 진입 tools 배열에 반영(도구 스펙 이름 검사) — 미배선 selectRelevantTools 가 실 경로에 연결됨. 폴백: 선택 결과 0개면 전체 도구 유지 단언. needsBrowser=false. verify-gates exit 0.",
     "phase": "P20",
     "team": "T2",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P20-T6-10",
