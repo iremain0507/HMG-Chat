@@ -767,6 +767,49 @@ describe("useSessions", () => {
     expect(result.current.hasMore).toBe(false);
   });
 
+  it("loadMore 실패 시 무음으로 삼키지 않고 오류 토스트를 띄운다(P21-T6-18, UX-25)", async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === "/api/v1/sessions") {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            data: [
+              {
+                id: "sess-1",
+                title: "첫 페이지",
+                lastMessageAt: "2026-07-14T01:00:00Z",
+                projectId: null,
+                archived: false,
+              },
+            ],
+            meta: { requestId: "r1", nextCursor: "cursor-1" },
+          }),
+        };
+      }
+      return { ok: false, status: 500, json: async () => ({}) };
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const received: Array<{ kind: string }[]> = [];
+    subscribeToasts((toasts) => received.push(toasts as { kind: string }[]));
+
+    const { result } = renderHook(() => useSessions());
+    await waitFor(() => expect(result.current.hasMore).toBe(true));
+
+    await act(async () => {
+      await result.current.loadMore();
+    });
+
+    await waitFor(() => {
+      expect(
+        received.some((snapshot) => snapshot.some((t) => t.kind === "error")),
+      ).toBe(true);
+    });
+    // 실패한 페이지는 append 되지 않고 목록도 그대로 유지된다.
+    expect(result.current.sessions.map((s) => s.id)).toEqual(["sess-1"]);
+  });
+
   it("bulkArchiveSessions 가 선택된 id 각각에 PATCH /:id/archive 를 호출하고 목록에서 제거한다(P20-T6-08)", async () => {
     const archiveCalls: string[] = [];
     const fetchMock = vi.fn(

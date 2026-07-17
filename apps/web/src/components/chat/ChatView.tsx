@@ -317,10 +317,16 @@ export function ChatView({ sessionId }: { sessionId: string }) {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, []);
 
+  // P21-T6-18(UX-25) — 토큰 델타마다(messages 참조 변경) 강제 스크롤을 재실행하면
+  // 유저의 미세 스크롤(위 스크롤이 80px 임계값 안이라 autoFollow 는 아직 true)을
+  // 매 델타마다 하단으로 되감아버린다. 메시지 "개수"가 실제로 바뀐 순간에만 스크롤한다.
+  const prevMessageCountRef = useRef(messages.length);
   useEffect(() => {
     const el = scrollRef.current;
-    if (el && autoFollow) el.scrollTop = el.scrollHeight;
-  }, [messages, isStreaming, autoFollow]);
+    const countChanged = messages.length !== prevMessageCountRef.current;
+    prevMessageCountRef.current = messages.length;
+    if (el && autoFollow && countChanged) el.scrollTop = el.scrollHeight;
+  }, [messages.length, autoFollow]);
 
   // P17-T6-01(TS-08) — 세션을 열 때(마운트/세션 전환) 과거 대화를 서버에서 복원.
   useEffect(() => {

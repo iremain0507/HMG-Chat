@@ -2408,8 +2408,8 @@
     "acceptance": "RED: 테스트가 (a)토큰 델타(카운트 불변)에는 강제 스크롤 미발생 (b)유저가 위로 스크롤 시 낚아채지 않음 (c)loadMore 실패 표면화 를 단언 — 현재 실패(UX-25,26). RTL(scroll 목킹).",
     "phase": "P21",
     "team": "T6",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P21-T6-19",

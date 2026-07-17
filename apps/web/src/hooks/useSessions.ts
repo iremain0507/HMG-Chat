@@ -111,7 +111,10 @@ export function useSessions(): UseSessionsResult {
       `/api/v1/sessions?cursor=${encodeURIComponent(cursor)}`,
       { credentials: "include" },
     );
-    if (!res.ok) return;
+    if (!res.ok) {
+      showToast("error", "세션 목록을 더 불러오지 못했습니다.");
+      return;
+    }
     const body = (await res.json()) as {
       data: Array<
         SessionListItemDto & { folderId?: string | null; tags?: string[] }

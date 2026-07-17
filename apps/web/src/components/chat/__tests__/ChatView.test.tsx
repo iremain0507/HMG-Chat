@@ -474,6 +474,155 @@ describe("ChatView", () => {
     ).not.toBeInTheDocument();
   });
 
+  it("메시지 카운트가 그대로인 토큰 델타에는 강제 스크롤이 재실행되지 않는다(UX-25, P21-T6-18)", async () => {
+    const encoder = new TextEncoder();
+    let sendSecondDelta: (() => void) | undefined;
+    const streamingBody = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(
+          encoder.encode(sseFrame("message_start", { messageId: "msg-1" })),
+        );
+        controller.enqueue(
+          encoder.encode(sseFrame("text_delta", { text: "hel" })),
+        );
+        sendSecondDelta = () => {
+          controller.enqueue(
+            encoder.encode(sseFrame("text_delta", { text: "lo world" })),
+          );
+          controller.enqueue(
+            encoder.encode(sseFrame("stop", { reason: "end_turn" })),
+          );
+          controller.close();
+        };
+      },
+    });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({ body: streamingBody })),
+    );
+
+    render(<ChatView sessionId="session-1" />);
+    fireEvent.change(screen.getByLabelText("메시지 입력"), {
+      target: { value: "hi" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "전송" }));
+
+    await waitFor(() => {
+      expect(screen.getByText("hel")).toBeInTheDocument();
+    });
+
+    const scrollEl = screen.getByTestId("chat-scroll");
+    Object.defineProperty(scrollEl, "scrollHeight", {
+      value: 900,
+      configurable: true,
+    });
+    Object.defineProperty(scrollEl, "clientHeight", {
+      value: 500,
+      configurable: true,
+    });
+    let scrollTopSets = 0;
+    let scrollTopValue = 900;
+    Object.defineProperty(scrollEl, "scrollTop", {
+      configurable: true,
+      get() {
+        return scrollTopValue;
+      },
+      set(v) {
+        scrollTopSets++;
+        scrollTopValue = v;
+      },
+    });
+
+    sendSecondDelta?.();
+
+    await waitFor(() => {
+      expect(screen.getByText("hello world")).toBeInTheDocument();
+    });
+
+    // 메시지 개수는 그대로(user 1 + assistant 1)이고 내용만 자란 토큰 델타이므로
+    // 강제 scrollTop 대입이 재실행되면 안 된다(사용자의 미세 스크롤과 충돌 방지).
+    expect(scrollTopSets).toBe(0);
+  });
+
+  it("유저가 하단에서 벗어나 있으면 새 턴이 도착해도 하단으로 낚아채지 않는다(UX-25, P21-T6-18)", async () => {
+    const encoder = new TextEncoder();
+    const fetchMock = vi.fn(async () => ({
+      body: new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.enqueue(
+            encoder.encode(sseFrame("message_start", { messageId: "msg-1" })),
+          );
+          controller.enqueue(
+            encoder.encode(sseFrame("text_delta", { text: "hello" })),
+          );
+          controller.enqueue(
+            encoder.encode(sseFrame("stop", { reason: "end_turn" })),
+          );
+          controller.close();
+        },
+      }),
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<ChatView sessionId="session-1" />);
+    fireEvent.change(screen.getByLabelText("메시지 입력"), {
+      target: { value: "hi" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "전송" }));
+
+    await waitFor(() => {
+      expect(screen.getByText("hello")).toBeInTheDocument();
+    });
+
+    const scrollEl = screen.getByTestId("chat-scroll");
+    Object.defineProperty(scrollEl, "scrollHeight", {
+      value: 1000,
+      configurable: true,
+    });
+    Object.defineProperty(scrollEl, "clientHeight", {
+      value: 500,
+      configurable: true,
+    });
+    scrollEl.scrollTop = 0;
+    fireEvent.scroll(scrollEl);
+
+    // 자동추종 해제 확인('최신으로↓' pill 노출).
+    await screen.findByRole("button", { name: "최신으로↓" });
+    expect(scrollEl.scrollTop).toBe(0);
+
+    fetchMock.mockImplementationOnce(async () => ({
+      body: new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.enqueue(
+            encoder.encode(sseFrame("message_start", { messageId: "msg-2" })),
+          );
+          controller.enqueue(
+            encoder.encode(sseFrame("text_delta", { text: "world" })),
+          );
+          controller.enqueue(
+            encoder.encode(sseFrame("stop", { reason: "end_turn" })),
+          );
+          controller.close();
+        },
+      }),
+    }));
+    fireEvent.change(screen.getByLabelText("메시지 입력"), {
+      target: { value: "again" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "전송" }));
+
+    await waitFor(() => {
+      expect(screen.getByText("world")).toBeInTheDocument();
+    });
+
+    // 새 user+assistant 메시지(카운트 변화)가 도착해도 유저가 위로 스크롤해둔
+    // 상태(autoFollow=false)라면 하단으로 강제 이동시키지 않는다.
+    expect(scrollEl.scrollTop).toBe(0);
+    expect(
+      screen.getByRole("button", { name: "최신으로↓" }),
+    ).toBeInTheDocument();
+  });
+
   it("스트리밍 컨테이너에 role=log + aria-live=polite + aria-atomic=false 가 있다", () => {
     render(<ChatView sessionId="session-1" />);
 
