@@ -115,6 +115,53 @@ describe("CommandPalette", () => {
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
+  // P20-T1-07 — 검색 접두어(tag:/folder:/pinned:/archived:) 힌트칩.
+  it("힌트칩 4종(tag:/folder:/pinned:true/archived:true)이 렌더된다", () => {
+    render(<CommandPalette open={true} onClose={vi.fn()} />);
+    expect(screen.getByTestId("command-palette-hint-tag")).toHaveTextContent(
+      "tag:",
+    );
+    expect(screen.getByTestId("command-palette-hint-folder")).toHaveTextContent(
+      "folder:",
+    );
+    expect(screen.getByTestId("command-palette-hint-pinned")).toHaveTextContent(
+      "pinned:true",
+    );
+    expect(
+      screen.getByTestId("command-palette-hint-archived"),
+    ).toHaveTextContent("archived:true");
+  });
+
+  it("힌트칩 클릭 시 입력창에 접두어가 삽입되고 포커스가 유지된다", () => {
+    render(<CommandPalette open={true} onClose={vi.fn()} />);
+    const input = screen.getByTestId(
+      "command-palette-input",
+    ) as HTMLInputElement;
+    fireEvent.click(screen.getByTestId("command-palette-hint-tag"));
+    expect(input.value).toBe("tag:");
+    expect(input).toHaveFocus();
+
+    fireEvent.change(input, { target: { value: "tag:report" } });
+    fireEvent.click(screen.getByTestId("command-palette-hint-archived"));
+    expect(input.value).toBe("tag:report archived:true");
+  });
+
+  it("접두어가 포함된 쿼리를 서버로 그대로(잘리지 않고) 전달한다", async () => {
+    vi.mocked(searchSessions).mockResolvedValue([]);
+    render(<CommandPalette open={true} onClose={vi.fn()} />);
+    const input = screen.getByTestId("command-palette-input");
+    fireEvent.change(input, {
+      target: { value: "tag:report folder:업무 예산" },
+    });
+
+    await waitFor(() => {
+      expect(searchSessions).toHaveBeenCalledWith(
+        "tag:report folder:업무 예산",
+        expect.anything(),
+      );
+    });
+  });
+
   it("Escape 키로 닫힌다", () => {
     const onClose = vi.fn();
     render(<CommandPalette open={true} onClose={onClose} />);

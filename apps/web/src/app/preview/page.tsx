@@ -7,6 +7,7 @@ import React, { useState } from "react";
 import { ThemeToggle } from "../../components/layout/ThemeToggle";
 import { AppShell } from "../../components/layout/AppShell";
 import { SessionList } from "../../components/sessions/SessionList";
+import { CommandPalette } from "../../components/sessions/CommandPalette";
 import { Markdown } from "../../components/chat/Markdown";
 import { Reasoning } from "../../components/chat/Reasoning";
 import { MessageActions } from "../../components/chat/MessageActions";
@@ -117,6 +118,25 @@ function HitlPromptPreview() {
       className="rounded-md border border-border px-3 py-1.5 text-sm text-fg-muted hover:border-primary hover:text-fg"
     >
       HITL 카드 열기
+    </button>
+  );
+}
+
+// P20-T1-07 — CommandPalette(⌘K 검색)는 lib/sessionSearch.searchSessions 로 실 fetch 하므로
+// HitlPromptPreview 와 동일하게 토글 오픈으로 격리한다(전용 e2e 가 page.route() 로
+// /api/v1/sessions/search 를 목킹해 접두어 힌트칩+쿼리 그대로 전달을 검증한다).
+function CommandPalettePreview() {
+  const [open, setOpen] = useState(false);
+  return open ? (
+    <CommandPalette open={true} onClose={() => setOpen(false)} />
+  ) : (
+    <button
+      type="button"
+      data-testid="command-palette-preview-trigger"
+      onClick={() => setOpen(true)}
+      className="rounded-md border border-border px-3 py-1.5 text-sm text-fg-muted hover:border-primary hover:text-fg"
+    >
+      검색 팔레트 열기
     </button>
   );
 }
@@ -937,6 +957,10 @@ export default function PreviewGallery() {
 
       <Section name="hitl-prompt">
         <HitlPromptPreview />
+      </Section>
+
+      <Section name="command-palette">
+        <CommandPalettePreview />
       </Section>
 
       <Section name="project-documents">

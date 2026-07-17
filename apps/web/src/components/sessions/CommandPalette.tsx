@@ -11,6 +11,15 @@ import {
   type SessionSearchResultDto,
 } from "../../lib/sessionSearch";
 
+// P20-T1-07 — 검색 접두어(tag:/folder:/pinned:/archived:) 힌트칩. 클릭하면 입력창에 접두어를
+// 삽입한다(자유텍스트 결합은 db/session-data-access.ts#search 가 서버측에서 파싱).
+const SEARCH_PREFIX_HINTS = [
+  { key: "tag", value: "tag:" },
+  { key: "folder", value: "folder:" },
+  { key: "pinned", value: "pinned:true" },
+  { key: "archived", value: "archived:true" },
+] as const;
+
 export function CommandPalette({
   open,
   onClose,
@@ -93,6 +102,27 @@ export function CommandPalette({
           data-testid="command-palette-input"
           className="h-9 w-full rounded-md border border-border bg-bg px-2.5 text-sm text-fg outline-none placeholder:text-fg-muted"
         />
+        <div
+          data-testid="command-palette-hint"
+          className="mt-1.5 flex flex-wrap gap-1 px-0.5"
+        >
+          {SEARCH_PREFIX_HINTS.map((hint) => (
+            <button
+              key={hint.key}
+              type="button"
+              data-testid={`command-palette-hint-${hint.key}`}
+              onClick={() => {
+                setQuery((q) =>
+                  q.trim() ? `${q.trim()} ${hint.value}` : hint.value,
+                );
+                inputRef.current?.focus();
+              }}
+              className="rounded-full border border-border px-2 py-0.5 text-xs text-fg-muted hover:bg-bg hover:text-fg"
+            >
+              {hint.value}
+            </button>
+          ))}
+        </div>
         <div className="mt-2 max-h-80 overflow-y-auto">
           {results !== null && results.length === 0 ? (
             <p

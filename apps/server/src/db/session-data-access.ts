@@ -70,6 +70,44 @@ export interface SessionsDataAccess {
   ): Promise<SessionWithPin[]>;
 }
 
+// P20-T1-07 — 검색 접두어 필터(tag:/folder:/pinned:/archived:). 공백으로 토큰을 나눠 인식된
+// 접두어는 필터로 소비하고, 나머지 토큰은 기존 title/content/tag ILIKE 자유텍스트로 결합한다
+// (Open WebUI Prefix Filters 패턴). 각 접두어는 AND 로 좁히고, 마지막 등장이 우선한다.
+interface ParsedSearchQuery {
+  tag?: string;
+  folder?: string;
+  pinned?: boolean;
+  archived?: boolean;
+  text: string;
+}
+
+const SEARCH_PREFIX_RE = /^(tag|folder|pinned|archived):(.+)$/i;
+
+function parseSearchQuery(query: string): ParsedSearchQuery {
+  const rest: string[] = [];
+  const parsed: ParsedSearchQuery = { text: "" };
+  for (const token of query.split(/\s+/).filter(Boolean)) {
+    const match = token.match(SEARCH_PREFIX_RE);
+    if (!match) {
+      rest.push(token);
+      continue;
+    }
+    const key = (match[1] ?? "").toLowerCase();
+    const value = match[2] ?? "";
+    if (key === "tag") parsed.tag = value;
+    else if (key === "folder") parsed.folder = value;
+    else if (key === "pinned") parsed.pinned = value.toLowerCase() !== "false";
+    else if (key === "archived")
+      parsed.archived = value.toLowerCase() !== "false";
+  }
+  parsed.text = rest.join(" ");
+  return parsed;
+}
+
+function escapeIlike(value: string): string {
+  return value.replace(/([\\%_])/g, "\\$1");
+}
+
 export function createPgSessionDataAccess(): SessionsDataAccess {
   return {
     async list(filter, pagination) {
@@ -155,30 +193,70 @@ export function createPgSessionDataAccess(): SessionsDataAccess {
       return res.rows[0] ? toSession(res.rows[0]) : null;
     },
     async search(userId, query, limit = 20) {
-      // ILIKE 와일드카드(%, _, \) 는 리터럴로 매치되도록 이스케이프한다(0022 GIN trgm 인덱스 활용).
-      const escaped = query.replace(/([\\%_])/g, "\\$1");
-      const pattern = `%${escaped}%`;
+      // P20-T1-07 — tag:/folder:/pinned:/archived: 접두어를 먼저 파싱해 각각 AND 조건으로
+      // 좁히고, 잔여 자유텍스트(있을 때만)는 기존 title/content/tag ILIKE OR 로 결합한다.
+      // 접두어가 하나도 없으면 이전 동작(자유텍스트만)과 동일하다.
+      const parsed = parseSearchQuery(query);
+      const conditions: string[] = ["s.user_id = $1"];
+      const values: unknown[] = [userId];
+      let i = 2;
+
+      if (parsed.tag !== undefined) {
+        values.push(escapeIlike(parsed.tag));
+        conditions.push(
+          `EXISTS (SELECT 1 FROM session_tags t WHERE t.session_id = s.id AND t.tag ILIKE $${i} ESCAPE '\\')`,
+        );
+        i++;
+      }
+      if (parsed.folder !== undefined) {
+        values.push(`%${escapeIlike(parsed.folder)}%`);
+        conditions.push(
+          `EXISTS (SELECT 1 FROM session_folders f WHERE f.id = s.folder_id AND f.name ILIKE $${i} ESCAPE '\\')`,
+        );
+        i++;
+      }
+      if (parsed.pinned !== undefined) {
+        conditions.push(
+          parsed.pinned ? "s.pinned_at IS NOT NULL" : "s.pinned_at IS NULL",
+        );
+      }
+      if (parsed.archived !== undefined) {
+        conditions.push(
+          parsed.archived
+            ? "s.archived_at IS NOT NULL"
+            : "s.archived_at IS NULL",
+        );
+      }
+      const text = parsed.text.trim();
+      if (text) {
+        const pattern = `%${escapeIlike(text)}%`;
+        values.push(pattern);
+        conditions.push(
+          `(
+             s.title ILIKE $${i} ESCAPE '\\'
+             OR EXISTS (
+               SELECT 1 FROM messages m
+               WHERE m.session_id = s.id AND m.content::text ILIKE $${i} ESCAPE '\\'
+             )
+             OR EXISTS (
+               SELECT 1 FROM session_tags t2
+               WHERE t2.session_id = s.id AND t2.tag ILIKE $${i} ESCAPE '\\'
+             )
+           )`,
+        );
+        i++;
+      }
+      values.push(limit);
       const res = await pgPool.query(
         `SELECT s.*, COALESCE(
            (SELECT array_agg(t.tag ORDER BY t.tag) FROM session_tags t WHERE t.session_id = s.id),
            '{}'
          ) AS tags
          FROM sessions s
-         WHERE s.user_id = $1
-           AND (
-             s.title ILIKE $2 ESCAPE '\\'
-             OR EXISTS (
-               SELECT 1 FROM messages m
-               WHERE m.session_id = s.id AND m.content::text ILIKE $2 ESCAPE '\\'
-             )
-             OR EXISTS (
-               SELECT 1 FROM session_tags t2
-               WHERE t2.session_id = s.id AND t2.tag ILIKE $2 ESCAPE '\\'
-             )
-           )
+         WHERE ${conditions.join(" AND ")}
          ORDER BY COALESCE(s.last_message_at, s.created_at) DESC
-         LIMIT $3`,
-        [userId, pattern, limit],
+         LIMIT $${i}`,
+        values,
       );
       return res.rows.map(toSession);
     },

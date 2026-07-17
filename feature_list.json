@@ -2120,8 +2120,8 @@
     "acceptance": "RED: data-access 테스트가 'tag:report 예산' 쿼리 시 report 태그 + 예산 매칭 세션만 반환을 단언(현재 접두어 미파싱으로 실패). L1 last-mile: 실 검색창이 접두어를 end-to-end 존중(파서만 통과하고 UI 무반영 아님). needsBrowser=true(검색 UI 실반영) → 실앱 Playwright E2E(dev-login→검색창에 접두어 입력→스코프된 결과 단언) 또는 watchdog UAT.",
     "phase": "P20",
     "team": "T1",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P20-T1-08",
