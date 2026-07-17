@@ -2300,8 +2300,8 @@
     "acceptance": "RED: ProjectPicker.test 가 바깥클릭·Escape 닫힘 + trigger aria-expanded 토글 + ↓ 로 옵션 이동을 단언 — 현재 실패(UX-01,03,06,07). L1: /preview 또는 실앱 header [프로젝트▾]. needsBrowser=true.",
     "phase": "P21",
     "team": "T6",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P21-T6-07",

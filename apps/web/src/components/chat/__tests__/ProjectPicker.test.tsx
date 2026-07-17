@@ -101,4 +101,91 @@ describe("ProjectPicker", () => {
 
     expect(onSelect).toHaveBeenCalledWith(null);
   });
+
+  it("UX-07: trigger 는 aria-haspopup=listbox 이며 열림/닫힘에 따라 aria-expanded 가 토글된다", () => {
+    render(
+      <ProjectPicker
+        projects={PROJECTS}
+        projectId={null}
+        onSelect={() => {}}
+      />,
+    );
+    const trigger = screen.getByTestId("project-picker-trigger");
+    expect(trigger).toHaveAttribute("aria-haspopup", "listbox");
+    expect(trigger).toHaveAttribute("aria-expanded", "false");
+
+    fireEvent.click(trigger);
+    expect(trigger).toHaveAttribute("aria-expanded", "true");
+
+    fireEvent.click(trigger);
+    expect(trigger).toHaveAttribute("aria-expanded", "false");
+  });
+
+  it("UX-01: 메뉴와 트리거 밖을 pointerdown 하면 메뉴가 닫힌다", () => {
+    render(
+      <div>
+        <ProjectPicker
+          projects={PROJECTS}
+          projectId={null}
+          onSelect={() => {}}
+        />
+        <button type="button">바깥</button>
+      </div>,
+    );
+    fireEvent.click(screen.getByTestId("project-picker-trigger"));
+    expect(screen.getByRole("listbox")).toBeInTheDocument();
+
+    fireEvent.pointerDown(screen.getByText("바깥"));
+
+    expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
+  });
+
+  it("UX-03: Escape 시 메뉴가 닫히고 포커스가 트리거로 복귀한다", () => {
+    render(
+      <ProjectPicker
+        projects={PROJECTS}
+        projectId={null}
+        onSelect={() => {}}
+      />,
+    );
+    const trigger = screen.getByTestId("project-picker-trigger");
+    fireEvent.click(trigger);
+    expect(screen.getByRole("listbox")).toBeInTheDocument();
+
+    fireEvent.keyDown(document, { key: "Escape" });
+
+    expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
+    expect(document.activeElement).toBe(trigger);
+  });
+
+  it("UX-06: 트리거에서 ArrowDown 으로 메뉴가 열리고 첫 옵션이 활성화되며, ArrowDown/Up/Home/End 로 옵션 사이를 이동한다", () => {
+    render(
+      <ProjectPicker
+        projects={PROJECTS}
+        projectId={null}
+        onSelect={() => {}}
+      />,
+    );
+    const trigger = screen.getByTestId("project-picker-trigger");
+    fireEvent.keyDown(trigger, { key: "ArrowDown" });
+
+    const listbox = screen.getByRole("listbox");
+    const noneOption = screen.getByTestId("project-picker-item-none");
+    const opt1 = screen.getByTestId("project-picker-item-proj-1");
+    const opt2 = screen.getByTestId("project-picker-item-proj-2");
+
+    expect(listbox).toHaveAttribute("aria-activedescendant", noneOption.id);
+
+    fireEvent.keyDown(listbox, { key: "ArrowDown" });
+    expect(listbox).toHaveAttribute("aria-activedescendant", opt1.id);
+
+    fireEvent.keyDown(listbox, { key: "End" });
+    expect(listbox).toHaveAttribute("aria-activedescendant", opt2.id);
+
+    fireEvent.keyDown(listbox, { key: "ArrowUp" });
+    expect(listbox).toHaveAttribute("aria-activedescendant", opt1.id);
+
+    fireEvent.keyDown(listbox, { key: "Home" });
+    expect(listbox).toHaveAttribute("aria-activedescendant", noneOption.id);
+  });
 });
