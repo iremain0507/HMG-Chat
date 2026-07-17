@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 # Ralph-style fresh-context loop for Claude Code — autonomous phase progression.
-# usage: MAX_ITERS=100 BUDGET_USD=3 bash scripts/loop.sh
+# usage: MAX_ITERS=3 BUDGET_USD=15 MODEL=opus bash scripts/loop.sh
 #        HARD_GATES="P0.5 P9"  → 해당 phase 완료 시 무조건 정지
 #        NOTIFY_CMD='curl -s -X POST -d "loop stopped" https://hooks.slack.com/...'  → 정지 시 알림
 #        MAX_ITERS=1 → 태스크 하나만 수행하는 단발(next) 모드
 set -uo pipefail
 MAX_ITERS="${MAX_ITERS:-50}"
-BUDGET_USD="${BUDGET_USD:-3}"
+BUDGET_USD="${BUDGET_USD:-15}"
 MODEL="${MODEL:-sonnet}"
 HARD_GATES="${HARD_GATES:-P0.5}"
 NOTIFY_CMD="${NOTIFY_CMD:-}"
