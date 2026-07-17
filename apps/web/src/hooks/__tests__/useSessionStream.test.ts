@@ -1397,4 +1397,105 @@ describe("useSessionStream", () => {
       expect(result.current.artifacts).toEqual([]);
     });
   });
+
+  describe("세션 전환 시 상태 리셋 + 스트림 abort (P21-T6-04, UX-16)", () => {
+    it("sessionId 변경 시 이전 세션 메시지를 즉시 비우고, 새 세션 히스토리를 다시 불러온다", async () => {
+      const fetchMock = vi.fn(async (url: string) => {
+        if (url === "/api/v1/sessions/session-1/messages") {
+          return {
+            ok: true,
+            json: async () => ({
+              data: [{ id: "m-1", role: "user", content: "세션1 메시지" }],
+            }),
+          };
+        }
+        if (url === "/api/v1/sessions/session-2/messages") {
+          return {
+            ok: true,
+            json: async () => ({
+              data: [{ id: "m-2", role: "user", content: "세션2 메시지" }],
+            }),
+          };
+        }
+        throw new Error(`unexpected url ${url}`);
+      });
+      vi.stubGlobal("fetch", fetchMock);
+
+      const { result, rerender } = renderHook(
+        ({ sessionId }) => useSessionStream(sessionId),
+        { initialProps: { sessionId: "session-1" } },
+      );
+
+      await act(async () => {
+        await result.current.loadHistory();
+      });
+      expect(result.current.messages.map((m) => m.content)).toEqual([
+        "세션1 메시지",
+      ]);
+
+      rerender({ sessionId: "session-2" });
+
+      // 세션 전환 즉시 이전 세션(A) 메시지는 화면에서 사라져야 한다 — 현재는
+      // historyLoadedRef/treeRef 가 리셋되지 않아 A 메시지가 그대로 남는다(RED).
+      expect(result.current.messages).toEqual([]);
+
+      await act(async () => {
+        await result.current.loadHistory();
+      });
+      // historyLoadedRef 가 리셋되지 않으면 이 두번째 loadHistory 는 조용히 early-return
+      // 하고 새 세션의 히스토리를 fetch 하지 않는다(RED).
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/v1/sessions/session-2/messages",
+        expect.objectContaining({ credentials: "include" }),
+      );
+      expect(result.current.messages.map((m) => m.content)).toEqual([
+        "세션2 메시지",
+      ]);
+    });
+
+    it("세션 전환 시 진행 중이던 이전 세션의 스트림을 abort 한다", () => {
+      let capturedSignal: AbortSignal | undefined;
+      const fetchMock = vi.fn(async (_url: string, init?: RequestInit) => {
+        capturedSignal = init?.signal ?? undefined;
+        return { body: new ReadableStream<Uint8Array>({ start() {} }) };
+      });
+      vi.stubGlobal("fetch", fetchMock);
+
+      const { result, rerender } = renderHook(
+        ({ sessionId }) => useSessionStream(sessionId),
+        { initialProps: { sessionId: "session-1" } },
+      );
+
+      act(() => {
+        void result.current.send("hello");
+      });
+      expect(capturedSignal?.aborted).toBe(false);
+
+      rerender({ sessionId: "session-2" });
+
+      expect(capturedSignal?.aborted).toBe(true);
+    });
+
+    it("컴포넌트 언마운트 시 진행 중이던 스트림을 abort 한다", () => {
+      let capturedSignal: AbortSignal | undefined;
+      const fetchMock = vi.fn(async (_url: string, init?: RequestInit) => {
+        capturedSignal = init?.signal ?? undefined;
+        return { body: new ReadableStream<Uint8Array>({ start() {} }) };
+      });
+      vi.stubGlobal("fetch", fetchMock);
+
+      const { result, unmount } = renderHook(() =>
+        useSessionStream("session-1"),
+      );
+
+      act(() => {
+        void result.current.send("hello");
+      });
+      expect(capturedSignal?.aborted).toBe(false);
+
+      unmount();
+
+      expect(capturedSignal?.aborted).toBe(true);
+    });
+  });
 });

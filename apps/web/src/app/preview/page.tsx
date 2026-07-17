@@ -16,7 +16,7 @@ import { StatusChip } from "../../components/chat/StatusChip";
 import { ActivityPanel } from "../../components/chat/ActivityPanel";
 import { HitlPrompt } from "../../components/chat/HitlPrompt";
 import { ChatInput } from "../../components/chat/ChatInput";
-import { MessageItem } from "../../components/chat/ChatView";
+import { ChatView, MessageItem } from "../../components/chat/ChatView";
 import { ProjectPicker } from "../../components/chat/ProjectPicker";
 import { MemoryPanel } from "../../components/chat/MemoryPanel";
 import { ShareExportMenu } from "../../components/chat/ShareExportMenu";
@@ -542,6 +542,38 @@ const PREVIEW_PROJECTS: ProjectDto[] = [
     createdAt: "2026-04-02T00:00:00Z",
   },
 ];
+
+// P21-T6-04(UX-16) — 세션 전환 시 이전 대화가 그대로 남던 버그의 실앱 재현 하네스.
+//   실제 라우팅(App Router 클라이언트 내비게이션)과 동일하게 ChatView 를 언마운트하지 않고
+//   sessionId prop 만 바꿔 전환한다(버튼 클릭 = 사이드바에서 다른 세션 클릭과 동일 시나리오).
+function SessionSwitchPreview() {
+  const [sessionId, setSessionId] = useState("preview-session-a");
+  return (
+    <div className="flex h-[420px] flex-col gap-2">
+      <div className="flex gap-2">
+        <button
+          type="button"
+          data-testid="session-switch-a"
+          onClick={() => setSessionId("preview-session-a")}
+          className="rounded-md border border-border px-3 py-1 text-sm"
+        >
+          세션 A 열기
+        </button>
+        <button
+          type="button"
+          data-testid="session-switch-b"
+          onClick={() => setSessionId("preview-session-b")}
+          className="rounded-md border border-border px-3 py-1 text-sm"
+        >
+          세션 B 열기
+        </button>
+      </div>
+      <div className="min-h-0 flex-1 overflow-hidden rounded-md border border-border">
+        <ChatView sessionId={sessionId} />
+      </div>
+    </div>
+  );
+}
 
 function ProjectPickerPreview() {
   const [projectId, setProjectId] = useState<string | null>(null);
@@ -1108,6 +1140,10 @@ export default function PreviewGallery() {
 
       <Section name="message-branch">
         <MessageBranchPreview />
+      </Section>
+
+      <Section name="session-switch">
+        <SessionSwitchPreview />
       </Section>
 
       <Section name="project-picker">

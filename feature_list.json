@@ -2282,8 +2282,8 @@
     "acceptance": "RED: useSessionStream(또는 ChatView) 테스트가 sessionId A→B 변경 시 A 메시지 소거 + B 히스토리 fetch 발행을 단언 — 현재 early-return 로 A 유지(실패, 시나리오 UX-16). L1: Playwright /preview 또는 실앱 dev-login→세션A 열람→세션B 클릭→B 메시지만 표시(A 잔존 0) 단언. needsBrowser=true.",
     "phase": "P21",
     "team": "T6",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P21-T6-05",

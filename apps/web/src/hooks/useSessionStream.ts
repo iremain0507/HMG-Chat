@@ -306,6 +306,46 @@ export function useSessionStream(sessionId: string) {
   const lastActivityRef = useRef(0);
   const staleWatchdogRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // P21-T6-04(UX-16) — 세션 전환 시 이전 대화가 그대로 남던 버그: 이 컴포넌트 인스턴스가
+  // 재사용된 채(unmount 없이) sessionId prop 만 바뀌는 라우팅(App Router 클라이언트 내비게이션)
+  // 에서는 treeRef/historyLoadedRef/artifactsLoadedRef 가 이전 세션 값을 그대로 들고 있어
+  // loadHistory 가 조용히 early-return 했다. sessionId 가 실제로 바뀐 순간에만 트리/플래그를
+  // 리셋하고, 이전 세션에서 진행 중이던 스트림은 abort 해 전환 후 도착하는 이벤트가 새 세션의
+  // 상태를 오염시키지 않게 한다.
+  const prevSessionIdRef = useRef(sessionId);
+  useEffect(() => {
+    if (prevSessionIdRef.current === sessionId) return;
+    prevSessionIdRef.current = sessionId;
+
+    abortRef.current?.abort();
+    if (readerRef.current) {
+      readerRef.current.cancel().catch(() => {});
+      readerRef.current = null;
+    }
+
+    treeRef.current = createTree();
+    historyLoadedRef.current = false;
+    artifactsLoadedRef.current = false;
+    setArtifacts([]);
+    setHitlRequest(null);
+    setIsStreaming(false);
+    isStreamingRef.current = false;
+    setHistoryLoading(false);
+    bump();
+  }, [sessionId, bump]);
+
+  // 컴포넌트가 완전히 언마운트될 때(세션 전환이 아니라 화면을 떠날 때)도 in-flight 스트림을
+  // 정리한다 — 위 sessionId-변경 리셋과 별개로, 페이지 자체가 사라지는 경로를 커버.
+  useEffect(() => {
+    return () => {
+      abortRef.current?.abort();
+      if (readerRef.current) {
+        readerRef.current.cancel().catch(() => {});
+        readerRef.current = null;
+      }
+    };
+  }, []);
+
   useEffect(() => {
     // 서버 keep-alive 주기(10s)보다 넉넉히 큰 값 — 이보다 오래 무수신이면 죽은 연결로 판정.
     const STALE_MS = 14_000;
