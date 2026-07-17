@@ -89,6 +89,25 @@ describe("McpServersManager", () => {
     });
   });
 
+  it("도구 팝오버는 role=tooltip 이고 모달 z-index 를 남용하지 않는다(A10)", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({
+        ok: true,
+        json: async () => ({ data: [SERVER_1] }),
+      })),
+    );
+
+    render(<McpServersManager />);
+    await waitFor(() => screen.getByText("내부 도구 서버"));
+
+    fireEvent.mouseEnter(screen.getByTestId("mcp-tools-trigger-srv-1"));
+
+    const popover = await screen.findByTestId("mcp-tools-popover-srv-1");
+    expect(popover).toHaveAttribute("role", "tooltip");
+    expect(popover.className).not.toMatch(/z-\[var\(--z-modal\)\]/);
+  });
+
   it("degraded 상태는 재승인 배너와 변경 검토 버튼을 보여준다", async () => {
     const degraded = {
       ...SERVER_1,

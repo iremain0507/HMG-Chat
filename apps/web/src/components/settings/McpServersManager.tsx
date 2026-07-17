@@ -191,8 +191,9 @@ export function McpServersManager() {
                   · {formatSyncedAt(s.lastDiscoveredAt)}
                   {hoveredId === s.id && s.supportedTools.length > 0 && (
                     <div
+                      role="tooltip"
                       data-testid={`mcp-tools-popover-${s.id}`}
-                      className="absolute left-0 top-full z-[var(--z-modal)] mt-1.5 w-[250px] rounded-[10px] border border-border bg-bg p-2 shadow-lg"
+                      className="absolute left-0 top-full z-10 mt-1.5 w-[250px] rounded-[10px] border border-border bg-bg p-2 shadow-lg"
                     >
                       {s.supportedTools.map((t) => (
                         <div

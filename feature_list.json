@@ -2417,7 +2417,7 @@
     "acceptance": "RED: 테스트가 (a)키보드 포커스 시 인용 툴팁 표시 (b)Escape 로 dismiss (c)Mcp 툴팁 role=tooltip+z 낮춤 을 단언 — 현재 실패(UX-27, H55~59). RTL.",
     "phase": "P21",
     "team": "T6",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   }
 ]

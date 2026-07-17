@@ -2,7 +2,7 @@
 
 // components/chat/Markdown.tsx — 어시스턴트 응답을 마크다운으로 렌더(ChatGPT/Claude 스타일).
 // react-markdown + remark-gfm + rehype-highlight(코드 문법하이라이트). Hyundai WIA CI 토큰 기반.
-import React, { isValidElement } from "react";
+import React, { isValidElement, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
@@ -12,6 +12,7 @@ import "katex/dist/katex.min.css";
 import { CodeBlock, extractText } from "./CodeBlock";
 import { Mermaid } from "./Mermaid";
 import { remarkCitations } from "../../lib/citation-plugin";
+import { useDismiss } from "../../hooks/useDismiss";
 import type { Citation } from "../../hooks/useSessionStream";
 
 // 스트리밍 중 미닫힌 코드펜스(```)가 있으면 파서가 이후 텍스트를 통째로 삼켜버리므로,
@@ -30,8 +31,19 @@ function CitationChip({
   citation?: Citation;
   onClick?: (index: number) => void;
 }) {
+  const [open, setOpen] = useState(false);
+  const wrapperRef = useRef<HTMLElement>(null);
+  useDismiss(wrapperRef, () => setOpen(false), { enabled: open });
+
   return (
-    <sup className="group relative">
+    <sup
+      ref={wrapperRef}
+      className="relative"
+      onMouseEnter={() => setOpen(true)}
+      onMouseLeave={() => setOpen(false)}
+      onFocus={() => setOpen(true)}
+      onBlur={() => setOpen(false)}
+    >
       <button
         type="button"
         data-testid={`citation-chip-${index}`}
@@ -44,7 +56,8 @@ function CitationChip({
         <span
           role="tooltip"
           data-testid={`citation-tooltip-${index}`}
-          className="pointer-events-none absolute bottom-full left-1/2 z-10 mb-1 w-56 -translate-x-1/2 rounded-lg border border-border bg-surface p-2 text-left text-xs normal-case text-fg opacity-0 shadow-md transition-opacity group-hover:opacity-100"
+          data-open={open}
+          className={`pointer-events-none absolute bottom-full left-1/2 z-10 mb-1 w-56 -translate-x-1/2 rounded-lg border border-border bg-surface p-2 text-left text-xs normal-case text-fg shadow-md transition-opacity ${open ? "opacity-100" : "opacity-0"}`}
         >
           <span className="block font-semibold">{citation.filename}</span>
           {citation.page && (
