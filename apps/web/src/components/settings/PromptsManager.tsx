@@ -3,8 +3,9 @@
 // components/settings/PromptsManager.tsx — P19-T6-13: 프롬프트 라이브러리 CRUD 매니저.
 //   /api/v1/prompts(P19-T1-08) 를 usePrompts 로 소비 — command(`/명령`)·title·content·
 //   access(private/org) 를 편집. McpServersManager 와 동일한 카드형 레이아웃/토큰 컨벤션.
-import React, { useState } from "react";
+import React, { useRef, useState } from "react";
 import { usePrompts } from "../../hooks/usePrompts";
+import { useFocusTrap } from "../../hooks/useFocusTrap";
 import type { PromptAccess, PromptDto } from "../../lib/prompts";
 
 const FOCUS_RING =
@@ -30,6 +31,8 @@ export function PromptsManager() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
+  const dialogRef = useRef<HTMLDivElement>(null);
+  useFocusTrap(dialogRef, { active: showModal, onClose: closeModal });
 
   function openCreate() {
     setEditingId(null);
@@ -137,6 +140,7 @@ export function PromptsManager() {
           onClick={closeModal}
         >
           <div
+            ref={dialogRef}
             role="dialog"
             aria-label={editingId ? "프롬프트 편집" : "프롬프트 추가"}
             aria-modal="true"

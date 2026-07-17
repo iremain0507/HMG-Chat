@@ -9,8 +9,9 @@
 // 발견된 도구 확인). 실제 등록/삭제는 useMcpServers 의 기존 create/remove 그대로 사용 —
 // discovery 는 서버가 POST 응답에 동기 반환하므로 별도 폴링 없이 create() 완료 후 바로
 // 3단계로 전환한다.
-import React, { useState } from "react";
+import React, { useRef, useState } from "react";
 import { useMcpServers, type McpServerDto } from "../../hooks/useMcpServers";
+import { useFocusTrap } from "../../hooks/useFocusTrap";
 
 function scopeLabel(server: McpServerDto): string {
   if (server.userId) return "개인";
@@ -74,6 +75,7 @@ export function McpServersManager() {
     useState<McpServerDto["transport"]>("streamable_http");
   const [scope, setScope] = useState<"personal" | "project" | "org">("org");
   const [hoveredId, setHoveredId] = useState<string | null>(null);
+  const dialogRef = useRef<HTMLDivElement>(null);
 
   function openModal() {
     setStep("info");
@@ -96,6 +98,8 @@ export function McpServersManager() {
   }
 
   const registered = servers.find((s) => s.name === name && s.url === url);
+
+  useFocusTrap(dialogRef, { active: showModal, onClose: closeModal });
 
   return (
     <section>
@@ -233,6 +237,7 @@ export function McpServersManager() {
           onClick={closeModal}
         >
           <div
+            ref={dialogRef}
             role="dialog"
             aria-label="커넥터 등록"
             aria-modal="true"

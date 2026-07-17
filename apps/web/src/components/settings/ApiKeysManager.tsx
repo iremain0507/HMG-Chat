@@ -4,13 +4,14 @@
 //   /api/v1/api-keys(P19-T1-11) 를 lib/apiKeys.ts 로 소비 — 발급 직후에만 평문 키를
 //   배너로 1회 노출(재조회 시 서버가 마스킹된 keyPrefix 만 반환). PromptsManager 와
 //   동일한 카드형 레이아웃/토큰 컨벤션.
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   createApiKey,
   listApiKeys,
   revokeApiKey,
   type ApiKeyDto,
 } from "../../lib/apiKeys";
+import { useFocusTrap } from "../../hooks/useFocusTrap";
 
 const FOCUS_RING =
   "outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--focus-ring)] focus-visible:outline-offset-2";
@@ -22,6 +23,10 @@ export function ApiKeysManager() {
   const [name, setName] = useState("");
   const [saving, setSaving] = useState(false);
   const [createdKey, setCreatedKey] = useState<string | null>(null);
+  const dialogRef = useRef<HTMLDivElement>(null);
+
+  const closeModal = useCallback(() => setShowModal(false), []);
+  useFocusTrap(dialogRef, { active: showModal, onClose: closeModal });
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -45,7 +50,7 @@ export function ApiKeysManager() {
       if (created) {
         setCreatedKey(created.key);
         setName("");
-        setShowModal(false);
+        closeModal();
         await load();
       }
     } finally {
@@ -140,9 +145,10 @@ export function ApiKeysManager() {
       {showModal && (
         <div
           className="fixed inset-0 z-[var(--z-modal)] grid place-items-center bg-fg/40 px-4"
-          onClick={() => setShowModal(false)}
+          onClick={closeModal}
         >
           <div
+            ref={dialogRef}
             role="dialog"
             aria-label="API 키 발급"
             aria-modal="true"
@@ -168,7 +174,7 @@ export function ApiKeysManager() {
               </button>
               <button
                 type="button"
-                onClick={() => setShowModal(false)}
+                onClick={closeModal}
                 className={`mt-1.5 h-8 w-full rounded-md text-xs text-fg-muted ${FOCUS_RING}`}
               >
                 취소

@@ -171,6 +171,118 @@ describe("McpServersManager", () => {
     });
   });
 
+  describe("포커스 트랩(useFocusTrap)", () => {
+    function stubEmptyFetch() {
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async () => ({
+          ok: true,
+          json: async () => ({ data: [] }),
+        })),
+      );
+    }
+
+    it("모달 오픈 시 1단계 첫 포커스 가능 요소(서버 이름 입력)로 포커스가 이동한다", async () => {
+      stubEmptyFetch();
+      render(<McpServersManager />);
+      await waitFor(() => screen.getByText("등록된 커넥터가 없습니다."));
+
+      fireEvent.click(screen.getByRole("button", { name: "＋ 커넥터 등록" }));
+
+      await waitFor(() => {
+        expect(document.activeElement).toBe(screen.getByLabelText("서버 이름"));
+      });
+    });
+
+    it("Escape 를 누르면 모달이 닫힌다", async () => {
+      stubEmptyFetch();
+      render(<McpServersManager />);
+      await waitFor(() => screen.getByText("등록된 커넥터가 없습니다."));
+
+      fireEvent.click(screen.getByRole("button", { name: "＋ 커넥터 등록" }));
+      await waitFor(() => {
+        expect(document.activeElement).toBe(screen.getByLabelText("서버 이름"));
+      });
+
+      fireEvent.keyDown(document, { key: "Escape" });
+
+      await waitFor(() => {
+        expect(
+          screen.queryByRole("dialog", { name: "커넥터 등록" }),
+        ).not.toBeInTheDocument();
+      });
+    });
+
+    it("1단계에서 첫 요소에서 Shift+Tab 하면 마지막 요소(취소 버튼)로 순환한다", async () => {
+      stubEmptyFetch();
+      render(<McpServersManager />);
+      await waitFor(() => screen.getByText("등록된 커넥터가 없습니다."));
+
+      fireEvent.click(screen.getByRole("button", { name: "＋ 커넥터 등록" }));
+      await waitFor(() => {
+        expect(document.activeElement).toBe(screen.getByLabelText("서버 이름"));
+      });
+
+      fireEvent.keyDown(document.activeElement as Element, {
+        key: "Tab",
+        shiftKey: true,
+      });
+
+      await waitFor(() => {
+        expect(document.activeElement).toBe(
+          screen.getByRole("button", { name: "취소" }),
+        );
+      });
+    });
+
+    it("Escape 로 닫으면 트리거 버튼(＋ 커넥터 등록)으로 포커스가 복귀한다", async () => {
+      stubEmptyFetch();
+      render(<McpServersManager />);
+      await waitFor(() => screen.getByText("등록된 커넥터가 없습니다."));
+
+      const trigger = screen.getByRole("button", { name: "＋ 커넥터 등록" });
+      // jsdom 의 fireEvent.click 은 실제 브라우저와 달리 클릭 시 자동 포커스를 주지
+      // 않으므로, useFocusTrap 이 활성화 직전 activeElement(트리거)를 정확히 캡처하도록
+      // 실제 브라우저의 "버튼 클릭 시 포커스" 동작을 명시적으로 재현한다.
+      trigger.focus();
+      fireEvent.click(trigger);
+      await waitFor(() => {
+        expect(document.activeElement).toBe(screen.getByLabelText("서버 이름"));
+      });
+
+      fireEvent.keyDown(document, { key: "Escape" });
+
+      await waitFor(() => {
+        expect(
+          screen.queryByRole("dialog", { name: "커넥터 등록" }),
+        ).not.toBeInTheDocument();
+      });
+      expect(document.activeElement).toBe(trigger);
+    });
+
+    it("취소 버튼으로 닫으면 트리거 버튼(＋ 커넥터 등록)으로 포커스가 복귀한다", async () => {
+      stubEmptyFetch();
+      render(<McpServersManager />);
+      await waitFor(() => screen.getByText("등록된 커넥터가 없습니다."));
+
+      const trigger = screen.getByRole("button", { name: "＋ 커넥터 등록" });
+      trigger.focus();
+      fireEvent.click(trigger);
+      await waitFor(() => {
+        expect(document.activeElement).toBe(screen.getByLabelText("서버 이름"));
+      });
+
+      fireEvent.click(screen.getByRole("button", { name: "취소" }));
+
+      await waitFor(() => {
+        expect(
+          screen.queryByRole("dialog", { name: "커넥터 등록" }),
+        ).not.toBeInTheDocument();
+      });
+      expect(document.activeElement).toBe(trigger);
+    });
+  });
+
   it("비활성화 버튼으로 커넥터를 제거한다", async () => {
     const fetchMock = vi.fn(
       async (_input: RequestInfo | URL, init?: RequestInit) => {

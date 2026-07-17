@@ -2327,8 +2327,8 @@
     "acceptance": "RED: 각 매니저 테스트가 (a)오픈 시 다이얼로그 내부 포커스 (b)Escape 닫힘 (c)Tab 이 배경으로 새지 않음(트랩) (d)닫을 때 트리거 포커스 복귀 를 단언 — 현재 실패(UX-08~11). L1: 대응 pw 스펙(있으면) 확장. needsBrowser=true.",
     "phase": "P21",
     "team": "T6",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P21-T6-10",
