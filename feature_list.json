@@ -2093,8 +2093,8 @@
     "acceptance": "RED: 컴포넌트 테스트가 폴더 헤더 drop 이벤트 시 onAssignFolder(sessionId, folderId) 호출을 단언(현재 핸들러 부재로 실패). L1 last-mile: 실제 드래그로 세션이 폴더 그룹에 이동 + PATCH /:id {folderId} 서버 영속. needsBrowser=true → 실앱 Playwright E2E(dev-login→세션을 폴더로 드래그→그룹 이동+서버 반영 단언) 또는 watchdog 브라우저 UAT.",
     "phase": "P20",
     "team": "T6",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P20-T1-06",

@@ -102,6 +102,7 @@ function FolderGroupHeader({
   onRename,
   onEditSystemPrompt,
   onDelete,
+  onDropSession,
 }: {
   folder: SessionFolder;
   collapsed: boolean;
@@ -109,12 +110,14 @@ function FolderGroupHeader({
   onRename: (name: string) => void;
   onEditSystemPrompt: (systemPrompt: string | null) => void;
   onDelete: () => void;
+  onDropSession: (sessionId: string) => void;
 }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(folder.name);
   // P20-T1-03 — 폴더 스코프 시스템 프롬프트 편집(Open WebUI Folder System Prompt 참고).
   const [editingPrompt, setEditingPrompt] = useState(false);
   const [promptDraft, setPromptDraft] = useState(folder.systemPrompt ?? "");
+  const [dragOver, setDragOver] = useState(false);
 
   function submitEdit(e: React.FormEvent) {
     e.preventDefault();
@@ -170,7 +173,25 @@ function FolderGroupHeader({
   }
 
   return (
-    <div className="group flex items-center gap-1 rounded-md px-2 py-1">
+    <div
+      data-testid={`folder-header-${folder.id}`}
+      onDragOver={(e) => {
+        e.preventDefault();
+        setDragOver(true);
+      }}
+      onDragLeave={() => setDragOver(false)}
+      onDrop={(e) => {
+        e.preventDefault();
+        setDragOver(false);
+        const sessionId = e.dataTransfer.getData(
+          "application/x-wchat-session-id",
+        );
+        if (sessionId) onDropSession(sessionId);
+      }}
+      className={`group flex items-center gap-1 rounded-md px-2 py-1 ${
+        dragOver ? "bg-primary-50" : ""
+      }`}
+    >
       <button
         type="button"
         onClick={onToggleCollapse}
@@ -538,6 +559,9 @@ export function SessionList({ now }: { now?: Date } = {}) {
                       void updateFolderSystemPrompt(folder.id, systemPrompt)
                     }
                     onDelete={() => void deleteFolder(folder.id)}
+                    onDropSession={(sessionId) =>
+                      void assignFolder(sessionId, folder.id)
+                    }
                   />
                   {!collapsed && items.map(renderSessionCard)}
                 </div>

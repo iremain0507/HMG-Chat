@@ -51,6 +51,7 @@ export function SessionCard({
   const [folderMenuOpen, setFolderMenuOpen] = useState(false);
   const [tagMenuOpen, setTagMenuOpen] = useState(false);
   const [tagDraft, setTagDraft] = useState("");
+  const [contextMenuOpen, setContextMenuOpen] = useState(false);
   const label = session.title ?? "(제목 없음)";
 
   function submitNewTag(e: React.FormEvent) {
@@ -93,6 +94,15 @@ export function SessionCard({
   return (
     <div
       data-testid={`session-card-${session.id}`}
+      draggable
+      onDragStart={(e) => {
+        e.dataTransfer.setData("application/x-wchat-session-id", session.id);
+        e.dataTransfer.effectAllowed = "move";
+      }}
+      onContextMenu={(e) => {
+        e.preventDefault();
+        setContextMenuOpen((prev) => !prev);
+      }}
       className="group relative flex flex-col gap-0.5 rounded-md px-2 py-1.5 hover:bg-bg"
     >
       <div className="flex items-center gap-1">
@@ -251,6 +261,53 @@ export function SessionCard({
               폴더 해제
             </button>
           )}
+        </div>
+      )}
+      {contextMenuOpen && (
+        <div
+          data-testid={`context-menu-${session.id}`}
+          className="absolute right-0 top-full z-10 mt-1 w-36 rounded-[10px] border border-border bg-surface p-1 shadow-lg"
+        >
+          <button
+            type="button"
+            onClick={() => {
+              setContextMenuOpen(false);
+              setFolderMenuOpen(true);
+            }}
+            className="block w-full rounded-md px-2 py-1.5 text-left text-sm text-fg hover:bg-bg"
+          >
+            이동
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              onTogglePin(session.id);
+              setContextMenuOpen(false);
+            }}
+            className="block w-full rounded-md px-2 py-1.5 text-left text-sm text-fg hover:bg-bg"
+          >
+            {pinned ? "고정 해제" : "고정"}
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              onArchive(session.id);
+              setContextMenuOpen(false);
+            }}
+            className="block w-full rounded-md px-2 py-1.5 text-left text-sm text-fg hover:bg-bg"
+          >
+            {session.archived ? "복원" : "보관"}
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              onDelete(session.id);
+              setContextMenuOpen(false);
+            }}
+            className="block w-full rounded-md px-2 py-1.5 text-left text-sm text-fg hover:text-accent hover:bg-bg"
+          >
+            삭제
+          </button>
         </div>
       )}
     </div>
