@@ -2354,8 +2354,8 @@
     "acceptance": "RED: 테스트가 (a)언마운트 시 abort 호출 (b)스트리밍 중 send 재호출이 이전 controller 를 abort 하거나 무시됨을 단언 — 현재 겹쳐서 이중기록(실패, UX-20,21). SSE 스텁 controller.close() 로 RTL.",
     "phase": "P21",
     "team": "T6",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P21-T6-13",

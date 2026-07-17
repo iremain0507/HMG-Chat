@@ -1498,4 +1498,71 @@ describe("useSessionStream", () => {
       expect(capturedSignal?.aborted).toBe(true);
     });
   });
+
+  describe("스트리밍 중 겹침 가드 (P21-T6-12, UX-20/21)", () => {
+    it("스트리밍 도중 send 를 재호출하면 이전 leg 을 abort 하여 이중기록을 방지한다", () => {
+      const signals: AbortSignal[] = [];
+      const fetchMock = vi.fn(async (_url: string, init?: RequestInit) => {
+        if (init?.signal) signals.push(init.signal);
+        return { body: new ReadableStream<Uint8Array>({ start() {} }) };
+      });
+      vi.stubGlobal("fetch", fetchMock);
+
+      const { result } = renderHook(() => useSessionStream("session-1"));
+
+      act(() => {
+        void result.current.send("첫번째");
+      });
+      expect(signals[0]?.aborted).toBe(false);
+
+      act(() => {
+        void result.current.send("두번째");
+      });
+
+      // 겹침 가드가 없으면 이전 leg 의 controller 가 그대로 살아있어 두 스트림이
+      // 동시에 같은 트리에 기록된다(UX-20/21) — 새 진입 시 이전 leg 이 abort 돼야 한다.
+      expect(signals[0]?.aborted).toBe(true);
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+    });
+
+    it("스트리밍 도중 continueMessage 를 재호출하면 이전 leg 을 abort 한다", async () => {
+      const signals: AbortSignal[] = [];
+      let firstCall = true;
+      const fetchMock = vi.fn(async (_url: string, init?: RequestInit) => {
+        if (firstCall) {
+          firstCall = false;
+          return {
+            body: sseBody([
+              sseFrame("message_start", { messageId: "msg-1" }),
+              sseFrame("stop", { reason: "max_tokens" }),
+            ]),
+          };
+        }
+        if (init?.signal) signals.push(init.signal);
+        return { body: new ReadableStream<Uint8Array>({ start() {} }) };
+      });
+      vi.stubGlobal("fetch", fetchMock);
+
+      const { result } = renderHook(() => useSessionStream("session-1"));
+
+      await act(async () => {
+        await result.current.send("hello");
+      });
+      const assistantMessage = result.current.messages.find(
+        (m) => m.role === "assistant",
+      );
+      expect(assistantMessage?.truncated).toBe(true);
+
+      act(() => {
+        void result.current.continueMessage(assistantMessage!.id);
+      });
+      expect(signals[0]?.aborted).toBe(false);
+
+      act(() => {
+        void result.current.continueMessage(assistantMessage!.id);
+      });
+
+      expect(signals[0]?.aborted).toBe(true);
+    });
+  });
 });

@@ -498,6 +498,17 @@ export function useSessionStream(sessionId: string) {
       attachments?: Array<{ uploadId: string }>,
       options?: SendOptions,
     ) => {
+      // P21-T6-12(UX-20/21) — send/editMessage/regenerate 는 모두 이 함수를 거쳐 새 턴을
+      // 시작한다. 이전 leg 이 아직 스트리밍 중일 때 겹쳐 들어오면 두 leg 이 동시에 같은
+      // 트리에 기록돼 이중기록이 난다 — 새 진입 시 이전 leg 을 먼저 abort 한다.
+      if (isStreamingRef.current) {
+        abortRef.current?.abort();
+        if (readerRef.current) {
+          readerRef.current.cancel().catch(() => {});
+          readerRef.current = null;
+        }
+      }
+
       setIsStreaming(true);
       isStreamingRef.current = true;
 
@@ -1025,6 +1036,16 @@ export function useSessionStream(sessionId: string) {
     async (assistantMessageId: string) => {
       const target = treeRef.current.nodes[assistantMessageId];
       if (!target || target.role !== "assistant") return;
+
+      // P21-T6-12(UX-20/21) — 겹침 가드: 이어쓰기 재호출이 이전 leg 위로 겹치지 않게
+      // 먼저 이전 leg 을 abort 한다(streamTurn 과 동일 원칙).
+      if (isStreamingRef.current) {
+        abortRef.current?.abort();
+        if (readerRef.current) {
+          readerRef.current.cancel().catch(() => {});
+          readerRef.current = null;
+        }
+      }
 
       setIsStreaming(true);
       isStreamingRef.current = true;
