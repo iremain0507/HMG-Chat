@@ -16,6 +16,7 @@ import {
   type SessionFolder,
 } from "../lib/sessionFolders";
 import { addSessionTag, removeSessionTag } from "../lib/sessionTags";
+import { showToast } from "../lib/toast";
 
 export type { SessionFolder } from "../lib/sessionFolders";
 
@@ -176,7 +177,10 @@ export function useSessions(): UseSessionsResult {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ title }),
     });
-    if (!res.ok) return;
+    if (!res.ok) {
+      showToast("error", "세션 이름을 변경하지 못했습니다.");
+      return;
+    }
     setSessions((prev) => prev.map((s) => (s.id === id ? { ...s, title } : s)));
   }, []);
 
@@ -185,7 +189,10 @@ export function useSessions(): UseSessionsResult {
       method: "DELETE",
       credentials: "include",
     });
-    if (!res.ok && res.status !== 204) return;
+    if (!res.ok && res.status !== 204) {
+      showToast("error", "세션을 삭제하지 못했습니다.");
+      return;
+    }
     setSessions((prev) => prev.filter((s) => s.id !== id));
     setArchivedSessions((prev) => prev.filter((s) => s.id !== id));
   }, []);
@@ -216,7 +223,10 @@ export function useSessions(): UseSessionsResult {
 
   const archiveSession = useCallback(async (id: string) => {
     const archived = await toggleSessionArchive(id);
-    if (archived === null) return;
+    if (archived === null) {
+      showToast("error", "세션 보관 처리에 실패했습니다.");
+      return;
+    }
     if (archived) {
       setSessions((prev) => prev.filter((s) => s.id !== id));
     } else {
@@ -230,6 +240,10 @@ export function useSessions(): UseSessionsResult {
     );
     const archivedIds = new Set(ids.filter((_, i) => results[i] === true));
     setSessions((prev) => prev.filter((s) => !archivedIds.has(s.id)));
+    const failCount = ids.length - archivedIds.size;
+    if (failCount > 0) {
+      showToast("error", `${failCount}개 세션 보관에 실패했습니다.`);
+    }
   }, []);
 
   const bulkDeleteSessions = useCallback(async (ids: string[]) => {
@@ -245,6 +259,10 @@ export function useSessions(): UseSessionsResult {
     const deletedIds = new Set(ids.filter((_, i) => results[i]));
     setSessions((prev) => prev.filter((s) => !deletedIds.has(s.id)));
     setArchivedSessions((prev) => prev.filter((s) => !deletedIds.has(s.id)));
+    const failCount = ids.length - deletedIds.size;
+    if (failCount > 0) {
+      showToast("error", `${failCount}개 세션 삭제에 실패했습니다.`);
+    }
   }, []);
 
   const togglePin = useCallback(async (id: string) => {
@@ -257,6 +275,9 @@ export function useSessions(): UseSessionsResult {
       }),
     );
     const result = await toggleSessionPin(id);
+    if (result === null) {
+      showToast("error", "세션 고정 처리에 실패했습니다.");
+    }
     setSessions((prev) =>
       prev.map((s) =>
         s.id === id ? { ...s, pinned: result === null ? previous : result } : s,
@@ -266,20 +287,30 @@ export function useSessions(): UseSessionsResult {
 
   const createFolder = useCallback(async (name: string) => {
     const created = await createFolderApi(name);
-    if (created) setFolders((prev) => [...prev, created]);
+    if (!created) {
+      showToast("error", "폴더를 생성하지 못했습니다.");
+      return null;
+    }
+    setFolders((prev) => [...prev, created]);
     return created;
   }, []);
 
   const renameFolder = useCallback(async (id: string, name: string) => {
     const updated = await renameFolderApi(id, name);
-    if (!updated) return;
+    if (!updated) {
+      showToast("error", "폴더 이름을 변경하지 못했습니다.");
+      return;
+    }
     setFolders((prev) => prev.map((f) => (f.id === id ? updated : f)));
   }, []);
 
   const updateFolderSystemPrompt = useCallback(
     async (id: string, systemPrompt: string | null) => {
       const updated = await updateFolderSystemPromptApi(id, systemPrompt);
-      if (!updated) return;
+      if (!updated) {
+        showToast("error", "폴더 프롬프트를 저장하지 못했습니다.");
+        return;
+      }
       setFolders((prev) => prev.map((f) => (f.id === id ? updated : f)));
     },
     [],
@@ -287,7 +318,10 @@ export function useSessions(): UseSessionsResult {
 
   const deleteFolder = useCallback(async (id: string) => {
     const ok = await deleteFolderApi(id);
-    if (!ok) return;
+    if (!ok) {
+      showToast("error", "폴더를 삭제하지 못했습니다.");
+      return;
+    }
     setFolders((prev) => prev.filter((f) => f.id !== id));
     setSessions((prev) =>
       prev.map((s) => (s.folderId === id ? { ...s, folderId: null } : s)),
@@ -302,6 +336,7 @@ export function useSessions(): UseSessionsResult {
       );
       const updated = await moveFolderApi(id, parentFolderId);
       if (!updated) {
+        showToast("error", "폴더 이동에 실패했습니다.");
         setFolders((prev) =>
           prev.map((f) =>
             f.id === id ? { ...f, parentFolderId: previous } : f,
@@ -326,6 +361,7 @@ export function useSessions(): UseSessionsResult {
       );
       const result = await assignSessionFolder(id, folderId);
       if (result === undefined) {
+        showToast("error", "세션을 폴더에 배정하지 못했습니다.");
         setSessions((prev) =>
           prev.map((s) => (s.id === id ? { ...s, folderId: previous } : s)),
         );
@@ -344,6 +380,7 @@ export function useSessions(): UseSessionsResult {
     );
     const result = await addSessionTag(id, tag);
     if (result === undefined) {
+      showToast("error", "태그를 추가하지 못했습니다.");
       setSessions((prev) =>
         prev.map((s) =>
           s.id === id ? { ...s, tags: s.tags.filter((t) => t !== tag) } : s,
@@ -363,6 +400,7 @@ export function useSessions(): UseSessionsResult {
     );
     const ok = await removeSessionTag(id, tag);
     if (!ok) {
+      showToast("error", "태그를 삭제하지 못했습니다.");
       setSessions((prev) =>
         prev.map((s) => (s.id === id ? { ...s, tags: previous } : s)),
       );

@@ -2363,8 +2363,8 @@
     "acceptance": "RED: useSessions.test 가 rename/delete/archive 실패(fetch !ok) 시 showToast('error') 호출 + bulk 부분실패 시 실패수 보고를 단언 — 현재 무음(실패, UX-18). fetch 목킹 RTL.",
     "phase": "P21",
     "team": "T6",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P21-T6-14",

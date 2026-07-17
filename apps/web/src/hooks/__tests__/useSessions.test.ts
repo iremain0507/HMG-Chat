@@ -3,10 +3,12 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { renderHook, waitFor, act } from "@testing-library/react";
 import { useSessions } from "../useSessions";
+import { subscribeToasts, __resetToastsForTest } from "../../lib/toast";
 
 describe("useSessions", () => {
   afterEach(() => {
     vi.unstubAllGlobals();
+    __resetToastsForTest();
   });
 
   it("세션 목록을 GET /sessions 로 로드한다", async () => {
@@ -877,5 +879,265 @@ describe("useSessions", () => {
 
     expect(deleteCalls.sort()).toEqual(["sess-1", "sess-2"]);
     expect(result.current.sessions).toHaveLength(0);
+  });
+
+  it("renameSession 실패 시 오류 토스트를 띄운다(P21-T6-13)", async () => {
+    const fetchMock = vi.fn(
+      async (_input: RequestInfo | URL, init?: RequestInit) => {
+        if (init?.method === "PATCH") {
+          return { ok: false, status: 500, json: async () => ({}) };
+        }
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            data: [
+              {
+                id: "sess-1",
+                title: "old",
+                lastMessageAt: "2026-07-14T01:00:00Z",
+                projectId: null,
+                archived: false,
+              },
+            ],
+          }),
+        };
+      },
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const received: Array<{ kind: string }[]> = [];
+    subscribeToasts((toasts) => received.push(toasts as { kind: string }[]));
+
+    const { result } = renderHook(() => useSessions());
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    await act(async () => {
+      await result.current.renameSession("sess-1", "new title");
+    });
+
+    await waitFor(() => {
+      expect(
+        received.some((snapshot) => snapshot.some((t) => t.kind === "error")),
+      ).toBe(true);
+    });
+    expect(result.current.sessions[0]?.title).toBe("old");
+  });
+
+  it("deleteSession 실패 시 오류 토스트를 띄운다(P21-T6-13)", async () => {
+    const fetchMock = vi.fn(
+      async (_input: RequestInfo | URL, init?: RequestInit) => {
+        if (init?.method === "DELETE") {
+          return { ok: false, status: 500, json: async () => ({}) };
+        }
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            data: [
+              {
+                id: "sess-1",
+                title: "세션 A",
+                lastMessageAt: "2026-07-14T01:00:00Z",
+                projectId: null,
+                archived: false,
+              },
+            ],
+          }),
+        };
+      },
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const received: Array<{ kind: string }[]> = [];
+    subscribeToasts((toasts) => received.push(toasts as { kind: string }[]));
+
+    const { result } = renderHook(() => useSessions());
+    await waitFor(() => expect(result.current.sessions).toHaveLength(1));
+
+    await act(async () => {
+      await result.current.deleteSession("sess-1");
+    });
+
+    await waitFor(() => {
+      expect(
+        received.some((snapshot) => snapshot.some((t) => t.kind === "error")),
+      ).toBe(true);
+    });
+    expect(result.current.sessions).toHaveLength(1);
+  });
+
+  it("archiveSession 실패 시 오류 토스트를 띄운다(P21-T6-13)", async () => {
+    const fetchMock = vi.fn(
+      async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        if (
+          url === "/api/v1/sessions/sess-1/archive" &&
+          init?.method === "PATCH"
+        ) {
+          return { ok: false, status: 500, json: async () => ({}) };
+        }
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            data: [
+              {
+                id: "sess-1",
+                title: "세션 A",
+                lastMessageAt: "2026-07-14T01:00:00Z",
+                projectId: null,
+                archived: false,
+              },
+            ],
+          }),
+        };
+      },
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const received: Array<{ kind: string }[]> = [];
+    subscribeToasts((toasts) => received.push(toasts as { kind: string }[]));
+
+    const { result } = renderHook(() => useSessions());
+    await waitFor(() => expect(result.current.sessions).toHaveLength(1));
+
+    await act(async () => {
+      await result.current.archiveSession("sess-1");
+    });
+
+    await waitFor(() => {
+      expect(
+        received.some((snapshot) => snapshot.some((t) => t.kind === "error")),
+      ).toBe(true);
+    });
+    expect(result.current.sessions).toHaveLength(1);
+  });
+
+  it("bulkArchiveSessions 부분 실패 시 실패 건수를 토스트로 보고한다(P21-T6-13)", async () => {
+    const fetchMock = vi.fn(
+      async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        if (url === "/api/v1/sessions") {
+          return {
+            ok: true,
+            status: 200,
+            json: async () => ({
+              data: [
+                {
+                  id: "sess-1",
+                  title: "세션1",
+                  lastMessageAt: "2026-07-14T01:00:00Z",
+                  projectId: null,
+                  archived: false,
+                },
+                {
+                  id: "sess-2",
+                  title: "세션2",
+                  lastMessageAt: "2026-07-14T01:00:00Z",
+                  projectId: null,
+                  archived: false,
+                },
+              ],
+            }),
+          };
+        }
+        if (
+          url === "/api/v1/sessions/sess-1/archive" &&
+          init?.method === "PATCH"
+        ) {
+          return {
+            ok: true,
+            status: 200,
+            json: async () => ({ data: { id: "sess-1", archived: true } }),
+          };
+        }
+        if (
+          url === "/api/v1/sessions/sess-2/archive" &&
+          init?.method === "PATCH"
+        ) {
+          return { ok: false, status: 500, json: async () => ({}) };
+        }
+        return { ok: true, status: 200, json: async () => ({ data: [] }) };
+      },
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const received: Array<{ kind: string; message: string }[]> = [];
+    subscribeToasts((toasts) =>
+      received.push(toasts as { kind: string; message: string }[]),
+    );
+
+    const { result } = renderHook(() => useSessions());
+    await waitFor(() => expect(result.current.sessions).toHaveLength(2));
+
+    await act(async () => {
+      await result.current.bulkArchiveSessions(["sess-1", "sess-2"]);
+    });
+
+    await waitFor(() => {
+      expect(
+        received.some((snapshot) =>
+          snapshot.some((t) => t.kind === "error" && t.message.includes("1")),
+        ),
+      ).toBe(true);
+    });
+    expect(result.current.sessions.map((s) => s.id)).toEqual(["sess-2"]);
+  });
+
+  it("bulkDeleteSessions 부분 실패 시 실패 건수를 토스트로 보고한다(P21-T6-13)", async () => {
+    const fetchMock = vi.fn(
+      async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        if (url === "/api/v1/sessions") {
+          return {
+            ok: true,
+            status: 200,
+            json: async () => ({
+              data: [
+                {
+                  id: "sess-1",
+                  title: "세션1",
+                  lastMessageAt: "2026-07-14T01:00:00Z",
+                  projectId: null,
+                  archived: false,
+                },
+                {
+                  id: "sess-2",
+                  title: "세션2",
+                  lastMessageAt: "2026-07-14T01:00:00Z",
+                  projectId: null,
+                  archived: false,
+                },
+              ],
+            }),
+          };
+        }
+        if (url === "/api/v1/sessions/sess-1" && init?.method === "DELETE") {
+          return { ok: true, status: 204, json: async () => ({}) };
+        }
+        if (url === "/api/v1/sessions/sess-2" && init?.method === "DELETE") {
+          return { ok: false, status: 500, json: async () => ({}) };
+        }
+        return { ok: true, status: 200, json: async () => ({ data: [] }) };
+      },
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const received: Array<{ kind: string; message: string }[]> = [];
+    subscribeToasts((toasts) =>
+      received.push(toasts as { kind: string; message: string }[]),
+    );
+
+    const { result } = renderHook(() => useSessions());
+    await waitFor(() => expect(result.current.sessions).toHaveLength(2));
+
+    await act(async () => {
+      await result.current.bulkDeleteSessions(["sess-1", "sess-2"]);
+    });
+
+    await waitFor(() => {
+      expect(
+        received.some((snapshot) =>
+          snapshot.some((t) => t.kind === "error" && t.message.includes("1")),
+        ),
+      ).toBe(true);
+    });
+    expect(result.current.sessions.map((s) => s.id)).toEqual(["sess-2"]);
   });
 });
