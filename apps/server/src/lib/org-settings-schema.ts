@@ -71,6 +71,9 @@ export const OrgSettingsSchema = z.object({
   // Quota/Limits
   maxUploadSizeMb: z.number().int().min(1).max(1000).optional(),
   maxUploadCount: z.number().int().min(1).max(100).optional(),
+
+  // API Keys — P20-T1-12: 전역 마스터 토글(off 면 신규 발급 거부, 기존 키는 영향 없음).
+  enableApiKeys: z.boolean().optional(),
 });
 
 export type OrgSettingsPatch = z.infer<typeof OrgSettingsSchema>;
@@ -110,4 +113,7 @@ export const DEFAULT_ORG_SETTINGS: ResolvedOrgSettings = {
 
   maxUploadSizeMb: 25,
   maxUploadCount: 10,
+
+  // 현행(마스터 토글 없음=누구나 발급 가능) 동작을 미조정 org 에서 보존(비파괴).
+  enableApiKeys: true,
 };

@@ -519,9 +519,10 @@ export function createApp(env: Env) {
   app.route("/api/v1/config", configApp);
 
   // P19-T1-11 — API 키 발급/목록/폐기(self-service, migration 0025 api_keys).
+  // P20-T1-12 — settingsService 공유로 enableApiKeys 마스터 토글을 발급 시점에 반영.
   const apiKeysApp = new Hono<{ Variables: AuthedVariables }>();
   apiKeysApp.use("*", authMiddleware);
-  apiKeysApp.route("/", createApiKeyRoutes());
+  apiKeysApp.route("/", createApiKeyRoutes({ settings: settingsService }));
   app.route("/api/v1/api-keys", apiKeysApp);
 
   return app;

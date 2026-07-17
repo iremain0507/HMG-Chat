@@ -9,6 +9,7 @@ import {
   type ApiKey,
   type ApiKeyDataAccess,
 } from "../db/api-key-data-access.js";
+import type { SettingsService } from "../lib/settings-service.js";
 
 function errorJson(code: string, message: string) {
   return {
@@ -39,16 +40,32 @@ function isStringArray(value: unknown): value is string[] {
 
 export interface ApiKeyRoutesDeps {
   apiKeys?: ApiKeyDataAccess;
+  settings?: SettingsService;
 }
 
 export function createApiKeyRoutes(
   deps: ApiKeyRoutesDeps = {},
 ): Hono<{ Variables: AuthedVariables }> {
   const apiKeys = deps.apiKeys ?? createPgApiKeyDataAccess();
+  const settings = deps.settings;
   const app = new Hono<{ Variables: AuthedVariables }>();
 
   app.post("/", async (c) => {
     const auth = c.get("auth");
+    // P20-T1-12: 전역 마스터 토글(org_settings.enableApiKeys) — off 면 신규 발급 거부.
+    // settings 미주입(테스트 등)은 항상 허용(기존 동작 보존).
+    if (settings) {
+      const resolved = await settings.resolve(auth.org);
+      if (!resolved.enableApiKeys) {
+        return c.json(
+          errorJson(
+            "FORBIDDEN",
+            "이 조직은 API 키 발급이 비활성화되어 있습니다.",
+          ),
+          403,
+        );
+      }
+    }
     const body = await c.req
       .json<CreateApiKeyBody>()
       .catch(() => ({}) as CreateApiKeyBody);

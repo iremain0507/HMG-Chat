@@ -2201,8 +2201,8 @@
     "acceptance": "RED: api-key-scope.test.ts 가 'scopes=[chat:read] 키로 POST /api/v1/prompts 시도→403' 을 기대하면 현재 전권이라 통과해버려 실패(RED, 잘못된 통과=미배선 증거). 또 'enableApiKeys=false org 에서 POST /api-keys→403' RED. L1 last-mile: 하위호환(빈 scope 키는 기존대로 전권 200), scoped 키는 범위 밖 라우트 실제 403, 마스터 토글 off 시 발급 실제 차단 을 실 HTTP 통합테스트로 단언. 검증: pnpm test api-key-scope + verify-gates exit 0.",
     "phase": "P20",
     "team": "T1",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P20-T1-13",
