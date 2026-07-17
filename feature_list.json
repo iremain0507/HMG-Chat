@@ -2255,8 +2255,8 @@
     "acceptance": "RED: useDismiss 테스트가 (a)ref 밖 pointerdown 시 onDismiss 호출 (b)ref 내부 pointerdown 시 미호출 (c)Escape 시 호출 (d)닫힘(enabled=false) 시 리스너 미부착 을 단언 — 현재 훅 부재로 컴파일/실행 실패. 순수 훅이라 renderHook+fireEvent(RTL) 충분(needsBrowser 아님).",
     "phase": "P21",
     "team": "T6",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P21-T6-02",
