@@ -2426,8 +2426,8 @@
     "acceptance": "RED 우선. GIVEN an authenticated user WHEN they DELETE /api/v1/auth/me with body {confirmation: 'DELETE_MY_ACCOUNT'} THEN respond 202 with data.scheduledHardDeleteAt (ISO, ~now+30d) and data.ticketId, set user.status='deleted',… / GIVEN an authenticated user WHEN they DELETE /api/v1/auth/me with a missing or incorrect confirmation THEN respond 400 with error.code = INVALID_CONFIRMATION and leave the user status unchanged / GIVEN a request with no valid access-token cookie WHEN it hits DELETE /api/v1/auth/me THEN respond 401 UNAUTHENTICATED / GIVEN the route is added WHEN the routes-mounted test runs THEN EXPECTED_ROUTES includes { method: DELETE, path: /api/v1/auth/me } and the mount check passes",
     "phase": "P22",
     "team": "T1",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P22-T1-02",

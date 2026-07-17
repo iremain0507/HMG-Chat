@@ -639,4 +639,111 @@ describe("routes/auth", () => {
     const body = await res.json();
     expect(body.error.code).toBe("INVALID_INPUT");
   });
+
+  // P22-T1-01 — DELETE /me self-service account deletion (16-API-CONTRACT.md § DELETE /auth/me).
+  // 확인문자열 "DELETE_MY_ACCOUNT" 정확 입력 시 202 + status=deleted + 전 세션 강제로그아웃 + 쿠키 삭제.
+  function makeDevApp() {
+    return createAuthRoutes({
+      da,
+      emailSender,
+      allowedDomains: ["wchat.example.com"],
+      appOrigin: "http://localhost:3000",
+      secureCookies: false,
+      devLogin: true,
+    });
+  }
+  async function devLoginCookie(devApp: ReturnType<typeof createAuthRoutes>) {
+    const loginRes = await devApp.request("/dev-login", { redirect: "manual" });
+    const setCookies = loginRes.headers.getSetCookie
+      ? loginRes.headers.getSetCookie()
+      : [loginRes.headers.get("set-cookie") ?? ""];
+    return cookieValue(setCookies, "wchat_at");
+  }
+
+  it("P22-T1-01: DELETE /me — 확인문자열 정확 입력 → 202 + status=deleted + 세션 강제로그아웃 + 쿠키 삭제", async () => {
+    const devApp = makeDevApp();
+    const accessCookie = await devLoginCookie(devApp);
+
+    const meBefore = await devApp.request("/me", {
+      headers: { cookie: `wchat_at=${accessCookie}` },
+    });
+    const userId = (await meBefore.json()).data.user.id;
+
+    const res = await devApp.request("/me", {
+      method: "DELETE",
+      headers: {
+        cookie: `wchat_at=${accessCookie}`,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({ confirmation: "DELETE_MY_ACCOUNT" }),
+    });
+    expect(res.status).toBe(202);
+    const body = await res.json();
+    expect(typeof body.data.ticketId).toBe("string");
+    expect(body.data.ticketId.length).toBeGreaterThan(0);
+    // scheduledHardDeleteAt ~ now + 30d (허용오차 1분)
+    const scheduled = new Date(body.data.scheduledHardDeleteAt).getTime();
+    const expected = Date.now() + 30 * 24 * 60 * 60 * 1000;
+    expect(Number.isNaN(scheduled)).toBe(false);
+    expect(Math.abs(scheduled - expected)).toBeLessThan(60_000);
+    expect(typeof body.meta.requestId).toBe("string");
+
+    // 유저 상태가 deleted 로 소프트삭제됨
+    const deletedUser = await da.users.byId(userId);
+    expect(deletedUser?.status).toBe("deleted");
+
+    // 전 세션 강제 로그아웃 — 활성 refresh family 가 남지 않음
+    const families = await da.refreshTokenFamilies.list({
+      userId,
+      activeOnly: true,
+    });
+    expect(families.items.length).toBe(0);
+
+    // at/rt 쿠키 삭제(Max-Age=0 또는 만료)
+    const clearCookies = res.headers.getSetCookie
+      ? res.headers.getSetCookie()
+      : [res.headers.get("set-cookie") ?? ""];
+    expect(clearCookies.some((h) => h.startsWith("wchat_at="))).toBe(true);
+    expect(clearCookies.some((h) => h.startsWith("wchat_rt="))).toBe(true);
+  });
+
+  it("P22-T1-01: DELETE /me — 확인문자열 누락/오타 → 400 INVALID_CONFIRMATION + 상태 불변", async () => {
+    const devApp = makeDevApp();
+    const accessCookie = await devLoginCookie(devApp);
+    const meBefore = await devApp.request("/me", {
+      headers: { cookie: `wchat_at=${accessCookie}` },
+    });
+    const userId = (await meBefore.json()).data.user.id;
+
+    for (const badBody of [
+      {},
+      { confirmation: "delete" },
+      { confirmation: "" },
+    ]) {
+      const res = await devApp.request("/me", {
+        method: "DELETE",
+        headers: {
+          cookie: `wchat_at=${accessCookie}`,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify(badBody),
+      });
+      expect(res.status).toBe(400);
+      const body = await res.json();
+      expect(body.error.code).toBe("INVALID_CONFIRMATION");
+    }
+    const user = await da.users.byId(userId);
+    expect(user?.status).toBe("active");
+  });
+
+  it("P22-T1-01: DELETE /me — 인증 없이 호출 → 401 UNAUTHENTICATED", async () => {
+    const res = await app.request("/me", {
+      method: "DELETE",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ confirmation: "DELETE_MY_ACCOUNT" }),
+    });
+    expect(res.status).toBe(401);
+    const body = await res.json();
+    expect(body.error.code).toBe("UNAUTHENTICATED");
+  });
 });

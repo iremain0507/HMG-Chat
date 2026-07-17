@@ -479,6 +479,51 @@ export function createAuthRoutes(deps: AuthRouteDeps): Hono {
     });
   });
 
+  // P22-T1-01(GDPR) — 본인 계정 자율 삭제. 16-API-CONTRACT.md § DELETE /auth/me:
+  // 확인문자열 "DELETE_MY_ACCOUNT" 정확 입력 → 202 { scheduledHardDeleteAt(now+30d), ticketId }.
+  // 즉시: status='deleted' 소프트삭제 + 전 세션 강제 로그아웃(revokeAllForUser) + at/rt 쿠키 삭제.
+  // 30일 grace 후 hard-delete cascade 는 별도 백그라운드 잡(migration 필요) — 이 라우트는 in-plan 범위만.
+  app.delete("/me", async (c) => {
+    const auth = await authenticate(c);
+    if (!auth) {
+      return c.json(errorJson("UNAUTHENTICATED", "로그인이 필요합니다."), 401);
+    }
+    const body = await c.req
+      .json<{ confirmation?: string }>()
+      .catch(() => ({}) as { confirmation?: string });
+    if (body.confirmation !== "DELETE_MY_ACCOUNT") {
+      return c.json(
+        errorJson(
+          "INVALID_CONFIRMATION",
+          "삭제를 확정하려면 확인문자열 'DELETE_MY_ACCOUNT' 을 정확히 입력하세요.",
+        ),
+        400,
+      );
+    }
+
+    await deps.da.withRlsContext(
+      { userId: auth.sub, orgId: auth.org },
+      async () => {
+        await deps.da.users.update(auth.sub, { status: "deleted" });
+        await deps.da.refreshTokenFamilies.revokeAllForUser(auth.sub, "logout");
+      },
+    );
+
+    deleteCookie(c, atCookie, { path: "/" });
+    deleteCookie(c, rtCookie, { path: "/api/v1/auth/refresh" });
+
+    const scheduledHardDeleteAt = new Date(
+      Date.now() + REFRESH_TTL_SECONDS * 1000,
+    ).toISOString();
+    return c.json(
+      {
+        data: { scheduledHardDeleteAt, ticketId: randomUUID() },
+        meta: { requestId: randomUUID() },
+      },
+      202,
+    );
+  });
+
   app.post("/logout", (c) => {
     deleteCookie(c, atCookie, { path: "/" });
     deleteCookie(c, rtCookie, { path: "/api/v1/auth/refresh" });
