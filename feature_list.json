@@ -2048,8 +2048,8 @@
     "acceptance": "RED: sessions 통합테스트가 DELETE /:id/messages/:mid 후 해당 메시지(및 하위 형제/자식)가 GET /:id/messages 응답에서 사라짐을 단언하나 404(라우트 부재)로 실패. cross-org/타 유저 세션의 메시지 삭제 시도는 404. L1 last-mile: routes-mounted.test.ts 가 새 경로 등재를 강제(미마운트 시 실패). 검증: pnpm test + verify-gates exit 0.",
     "phase": "P20",
     "team": "T1",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P20-T6-05",

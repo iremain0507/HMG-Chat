@@ -88,6 +88,9 @@ export interface SessionMessagesPort {
   ): Promise<{ items: Message[]; nextCursor?: string }>;
   // P19-T1-07 — 메시지 평가 전 ownership 검증(message.sessionId === 요청 sessionId)에 사용.
   byId(id: string): Promise<Message | null>;
+  // P20-T1-05 — 개별 메시지(및 하위 서브트리) 삭제. createPgMessageDataAccess()(MessageRepo,
+  // 14-INTERFACES Repo<T,F> 상속)가 이미 delete(id) 를 구현하고 있어 포트만 넓힌다.
+  delete(id: string): Promise<void>;
 }
 
 export interface SessionRoutesDeps {
@@ -350,6 +353,40 @@ export function createSessionRoutes(
       data: { messageId, rating: existing?.rating ?? null },
       meta: { requestId: randomUUID() },
     });
+  });
+
+  // P20-T1-05 — 개별 메시지 삭제(하위 서브트리 prune). 자식이 있는 노드를 지우면 하위 전부를
+  // 하드 삭제(parent_message_id 는 0002 마이그레이션상 ON DELETE SET NULL 이라 DB 레벨 cascade
+  // 로는 트리가 끊어지지 않고 고아 노드로 남으므로, application 레벨에서 명시적으로 prune 한다).
+  app.delete("/:id/messages/:messageId", async (c) => {
+    const auth = c.get("auth");
+    const sessionId = c.req.param("id");
+    const messageId = c.req.param("messageId");
+    const owned = await verifyOwnedMessage(auth.sub, sessionId, messageId);
+    if (!owned) {
+      return c.json(errorJson("NOT_FOUND", "메시지를 찾을 수 없습니다."), 404);
+    }
+    const page = await sessionMessages.list({ sessionId }, { limit: 1000 });
+    const childrenByParent = new Map<string, string[]>();
+    for (const m of page.items) {
+      if (m.parentMessageId) {
+        const siblings = childrenByParent.get(m.parentMessageId) ?? [];
+        siblings.push(m.id);
+        childrenByParent.set(m.parentMessageId, siblings);
+      }
+    }
+    const toDelete: string[] = [];
+    const stack = [messageId];
+    while (stack.length > 0) {
+      const id = stack.pop();
+      if (id === undefined) break;
+      toDelete.push(id);
+      stack.push(...(childrenByParent.get(id) ?? []));
+    }
+    for (const id of toDelete) {
+      await sessionMessages.delete(id);
+    }
+    return c.body(null, 204);
   });
 
   // P17-T1-03(TS-09) — rename(title)/archived. pin 토글은 별도 PATCH /:id/pin(P19-T1-02) 참조

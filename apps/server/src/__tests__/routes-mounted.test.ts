@@ -72,6 +72,11 @@ const EXPECTED_ROUTES: Array<{ method: string; path: string; phase: string }> =
       path: `/api/v1/sessions/${sid}/active-run`,
       phase: "P2",
     },
+    {
+      method: "DELETE",
+      path: `/api/v1/sessions/${sid}/messages/${randomUUID()}`,
+      phase: "P20",
+    },
     { method: "GET", path: "/api/v1/projects", phase: "P3" },
     { method: "POST", path: "/api/v1/projects", phase: "P3" },
     { method: "GET", path: `/api/v1/projects/${pid}`, phase: "P3" },
