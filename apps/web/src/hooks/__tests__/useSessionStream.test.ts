@@ -66,6 +66,40 @@ describe("useSessionStream", () => {
     );
   });
 
+  it("stop.usage 와 message_start~stop 사이 경과시간을 assistant 메시지 meta 에 보존한다 (P20-T6-06)", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({
+        body: sseBody([
+          sseFrame("message_start", {
+            messageId: "msg-1",
+            meta: { provider: "fake", model: "fake-model" },
+          }),
+          sseFrame("text_delta", { text: "hello" }),
+          sseFrame("stop", {
+            reason: "end_turn",
+            usage: { inputTokens: 12, outputTokens: 34 },
+          }),
+        ]),
+      })),
+    );
+
+    const { result } = renderHook(() => useSessionStream("session-1"));
+
+    await act(async () => {
+      await result.current.send("hello");
+    });
+
+    const assistantMessage = result.current.messages.find(
+      (m) => m.role === "assistant",
+    );
+    expect(assistantMessage?.meta?.model).toBe("fake-model");
+    expect(assistantMessage?.meta?.provider).toBe("fake");
+    expect(assistantMessage?.meta?.inputTokens).toBe(12);
+    expect(assistantMessage?.meta?.outputTokens).toBe(34);
+    expect(assistantMessage?.meta?.elapsedMs).toBeGreaterThanOrEqual(0);
+  });
+
   it("send 에 attachments 를 전달하면 POST body 에 그대로 포함된다 (P10-T6-11)", async () => {
     vi.stubGlobal(
       "fetch",

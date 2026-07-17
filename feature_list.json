@@ -2066,8 +2066,8 @@
     "acceptance": "RED: 컴포넌트 테스트가 stop.usage(inputTokens/outputTokens) 수신 후 Info 팝오버에 토큰/경과시간이 렌더됨을 단언하나 미표시로 실패. L1 last-mile: 실제 stop 이벤트의 usage 필드가 UI 진입점(팝오버 DOM)까지 도달함을 단언(fixture 가 아닌 스트림 경로). needsBrowser=true: 실앱 Playwright E2E(dev-login→턴 완료→Info 열어 토큰/시간 노출) 또는 watchdog UAT 로 실사용 반영 확인. 검증: pnpm test + E2E/ UAT.",
     "phase": "P20",
     "team": "T6",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P20-T2-02",

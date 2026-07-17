@@ -248,6 +248,59 @@ describe("ChatView", () => {
     );
   });
 
+  it("실 stop 이벤트의 usage 가 Info 팝오버 DOM 까지 도달한다(L1 last-mile, P20-T6-06)", async () => {
+    const encoder = new TextEncoder();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({
+        body: new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.enqueue(
+              encoder.encode(
+                sseFrame("message_start", {
+                  messageId: "msg-1",
+                  meta: { provider: "fake", model: "fake-model" },
+                }),
+              ),
+            );
+            controller.enqueue(
+              encoder.encode(sseFrame("text_delta", { text: "hello" })),
+            );
+            controller.enqueue(
+              encoder.encode(
+                sseFrame("stop", {
+                  reason: "end_turn",
+                  usage: { inputTokens: 12, outputTokens: 34 },
+                }),
+              ),
+            );
+            controller.close();
+          },
+        }),
+      })),
+    );
+
+    render(<ChatView sessionId="session-1" />);
+    fireEvent.change(screen.getByLabelText("메시지 입력"), {
+      target: { value: "hi" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "전송" }));
+
+    await waitFor(() => {
+      expect(screen.getByText("hello")).toBeInTheDocument();
+    });
+
+    expect(
+      screen.queryByTestId("message-info-popover"),
+    ).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "정보" }));
+
+    const popover = screen.getByTestId("message-info-popover");
+    expect(popover).toHaveTextContent("12");
+    expect(popover).toHaveTextContent("34");
+    expect(popover).toHaveTextContent("fake-model");
+  });
+
   it("메시지 삭제 버튼을 두 번 클릭하면 DELETE 요청 후 해당 메시지가 화면에서 사라진다 (P20-T6-05)", async () => {
     const encoder = new TextEncoder();
     // 트리 노드 키는 서버 messageId 와 무관한 local-* 라(message_start 참고) deleteMessage 는

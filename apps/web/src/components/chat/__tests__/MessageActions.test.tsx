@@ -141,6 +141,40 @@ describe("MessageActions", () => {
     ).not.toBeInTheDocument();
   });
 
+  it("meta(토큰/경과시간)가 있으면 정보 버튼 클릭 시 팝오버에 토큰 수·경과시간·모델을 표시한다 (P20-T6-06)", () => {
+    render(
+      <MessageActions
+        role="assistant"
+        content="hi"
+        meta={{
+          model: "fake-model",
+          provider: "fake",
+          inputTokens: 12,
+          outputTokens: 34,
+          elapsedMs: 1834,
+        }}
+      />,
+    );
+    expect(
+      screen.queryByTestId("message-info-popover"),
+    ).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "정보" }));
+
+    const popover = screen.getByTestId("message-info-popover");
+    expect(popover).toHaveTextContent("12");
+    expect(popover).toHaveTextContent("34");
+    expect(popover).toHaveTextContent("1.8초");
+    expect(popover).toHaveTextContent("fake-model");
+  });
+
+  it("meta 가 없으면 정보 버튼이 렌더되지 않는다 (P20-T6-06)", () => {
+    render(<MessageActions role="assistant" content="hi" />);
+    expect(
+      screen.queryByRole("button", { name: "정보" }),
+    ).not.toBeInTheDocument();
+  });
+
   it("feedback API 실패 시 낙관적 업데이트를 롤백한다", async () => {
     vi.mocked(apiFetch).mockResolvedValue({
       ok: false,

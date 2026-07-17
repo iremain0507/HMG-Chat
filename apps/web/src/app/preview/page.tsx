@@ -878,7 +878,17 @@ export default function PreviewGallery() {
       </Section>
 
       <Section name="message-actions">
-        <MessageActions role="assistant" content="복사 대상 텍스트" />
+        <MessageActions
+          role="assistant"
+          content="복사 대상 텍스트"
+          meta={{
+            model: "fake-model",
+            provider: "fake",
+            inputTokens: 128,
+            outputTokens: 256,
+            elapsedMs: 1834,
+          }}
+        />
       </Section>
 
       <Section name="status-chip">

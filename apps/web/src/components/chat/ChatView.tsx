@@ -10,6 +10,7 @@ import {
   type MessagePart,
   type Citation,
   type MessageBranch,
+  type StreamMessageMeta,
   type ArtifactSummary,
 } from "../../hooks/useSessionStream";
 import { useCurrentUser } from "../../hooks/useCurrentUser";
@@ -531,6 +532,7 @@ export function ChatView({ sessionId }: { sessionId: string }) {
                       {...(m.citations ? { citations: m.citations } : {})}
                       {...(m.branch ? { branch: m.branch } : {})}
                       {...(m.truncated ? { truncated: m.truncated } : {})}
+                      {...(m.meta ? { meta: m.meta } : {})}
                       error={m.error ?? false}
                       {...(m.retryable !== undefined
                         ? { retryable: m.retryable }
@@ -715,6 +717,7 @@ export function MessageItem({
   citations,
   branch,
   truncated,
+  meta,
   streaming,
   error,
   retryable,
@@ -739,6 +742,7 @@ export function MessageItem({
   citations?: Citation[];
   branch?: MessageBranch;
   truncated?: boolean;
+  meta?: StreamMessageMeta;
   streaming: boolean;
   error?: boolean;
   retryable?: boolean;
@@ -1035,6 +1039,7 @@ export function MessageItem({
                   role="assistant"
                   content={content}
                   {...(sessionId && messageId ? { sessionId, messageId } : {})}
+                  {...(meta ? { meta } : {})}
                   {...(onRegenerate ? { onRegenerate } : {})}
                   {...(onDelete ? { onDelete } : {})}
                 />

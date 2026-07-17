@@ -8,12 +8,14 @@
 import React, { useState } from "react";
 import { copyText } from "../../lib/clipboard";
 import { sendMessageFeedback } from "../../lib/messageFeedback";
+import type { StreamMessageMeta } from "../../hooks/useSessionStream";
 
 export function MessageActions({
   role,
   content,
   sessionId,
   messageId,
+  meta,
   onRegenerate,
   onEdit,
   onDelete,
@@ -22,6 +24,7 @@ export function MessageActions({
   content: string;
   sessionId?: string;
   messageId?: string;
+  meta?: StreamMessageMeta;
   onRegenerate?: () => void;
   onEdit?: () => void;
   onDelete?: () => void;
@@ -31,6 +34,15 @@ export function MessageActions({
   // P20-T6-05 — 삭제는 실수 방지를 위해 두 번 클릭(확인) 필요. 첫 클릭은 확인 상태로만
   // 전환하고, 확인 상태에서 다시 클릭해야 실제 onDelete 를 호출한다.
   const [confirmingDelete, setConfirmingDelete] = useState(false);
+  // P20-T6-06 — 생성 메타(Info): stop ChatEvent.usage(토큰)·message_start~stop 경과시간을
+  // 클릭 시에만 노출하는 팝오버(항상 보이면 hover 액션바가 번잡해짐).
+  const [showInfo, setShowInfo] = useState(false);
+  const hasInfo =
+    role === "assistant" &&
+    meta !== undefined &&
+    (meta.inputTokens !== undefined ||
+      meta.outputTokens !== undefined ||
+      meta.elapsedMs !== undefined);
 
   function handleDeleteClick() {
     if (!confirmingDelete) {
@@ -123,6 +135,51 @@ export function MessageActions({
         >
           {confirmingDelete ? "정말 삭제?" : "삭제"}
         </button>
+      )}
+      {hasInfo && (
+        <div className="relative">
+          <button
+            type="button"
+            aria-label="정보"
+            aria-expanded={showInfo}
+            onClick={() => setShowInfo((v) => !v)}
+            onBlur={() => setShowInfo(false)}
+            className="rounded-md p-1 text-xs hover:bg-surface hover:text-fg"
+          >
+            정보
+          </button>
+          {showInfo && (
+            <div
+              data-testid="message-info-popover"
+              className="absolute bottom-full right-0 z-10 mb-1 w-44 space-y-1 rounded-md border border-border bg-bg p-2 text-xs text-fg shadow-md"
+            >
+              {meta?.model && (
+                <div className="flex justify-between gap-2">
+                  <span className="text-fg-muted">모델</span>
+                  <span>{meta.model}</span>
+                </div>
+              )}
+              {meta?.inputTokens !== undefined && (
+                <div className="flex justify-between gap-2">
+                  <span className="text-fg-muted">입력 토큰</span>
+                  <span>{meta.inputTokens}</span>
+                </div>
+              )}
+              {meta?.outputTokens !== undefined && (
+                <div className="flex justify-between gap-2">
+                  <span className="text-fg-muted">출력 토큰</span>
+                  <span>{meta.outputTokens}</span>
+                </div>
+              )}
+              {meta?.elapsedMs !== undefined && (
+                <div className="flex justify-between gap-2">
+                  <span className="text-fg-muted">응답 시간</span>
+                  <span>{(meta.elapsedMs / 1000).toFixed(1)}초</span>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
       )}
     </div>
   );

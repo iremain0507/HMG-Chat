@@ -47,6 +47,16 @@ export interface MessageBranch {
   count: number;
 }
 
+// P20-T6-06 — 생성 메타(Info): stop ChatEvent.usage 와 message_start~stop 사이 경과시간을
+// 클라이언트 전용으로 보존(wire format 은 그대로, 서버 필드 재가공 없음).
+export interface StreamMessageMeta {
+  provider?: string;
+  model?: string;
+  inputTokens?: number;
+  outputTokens?: number;
+  elapsedMs?: number;
+}
+
 export interface StreamMessage {
   id: string;
   role: "user" | "assistant";
@@ -60,6 +70,7 @@ export interface StreamMessage {
   errorCategory?: string;
   citations?: Citation[];
   branch?: MessageBranch;
+  meta?: StreamMessageMeta;
 }
 
 // 14-INTERFACES § ChatEvent.citation 과 1:1 (type 필드 제외).
@@ -449,6 +460,9 @@ export function useSessionStream(sessionId: string) {
       const controller = new AbortController();
       abortRef.current = controller;
       let assistantId: string | null = null;
+      // P20-T6-06 — 현재 leg 의 message_start 수신 시각(경과시간=stop 수신 시각과의 차).
+      // 멀티-leg(tool_use 중간 stop) 은 leg 마다 새 assistant 노드가 생기므로 leg 별로 갱신한다.
+      let legStartedAt: number | null = null;
       // P10-T6-17 — SSE 드롭 재연결/resume: message_start 가 발급한 서버 messageId 를
       // 기억해두면, stop/error 없이 스트림이 끊겼을 때 같은 messageId 로
       // GET .../messages/:messageId/stream (resume) 에 재연결할 수 있다.
@@ -483,10 +497,19 @@ export function useSessionStream(sessionId: string) {
           // 재사용될 수 있는 상황(테스트 목·서버 재사용 등)에서 이전 턴의
           // parent→child 포인터와 충돌해 트리에 사이클이 생긴다.
           assistantId = `local-a-${idCounterRef.current++}`;
+          legStartedAt = Date.now();
           addNode(assistantId, userNodeId, {
             id: assistantId,
             role: "assistant",
             content: "",
+            ...(event.meta
+              ? {
+                  meta: {
+                    provider: event.meta.provider,
+                    model: event.meta.model,
+                  },
+                }
+              : {}),
           });
         } else if (event.type === "message_replace" && assistantId) {
           // resume 스트림의 첫 이벤트 — 지금까지 누적된 content 로 동기화하되, 백그라운드
@@ -642,6 +665,24 @@ export function useSessionStream(sessionId: string) {
             receivedTerminal = true;
             setIsStreaming(false);
             notifyTurnComplete();
+            // P20-T6-06 — 생성 메타(Info): message_start~stop 경과시간 + usage 를 보존.
+            if (assistantId && legStartedAt !== null) {
+              const elapsedMs = Date.now() - legStartedAt;
+              const finishedAssistantId = assistantId;
+              updateNode(finishedAssistantId, (m) => ({
+                ...m,
+                meta: {
+                  ...m.meta,
+                  elapsedMs,
+                  ...(event.usage
+                    ? {
+                        inputTokens: event.usage.inputTokens,
+                        outputTokens: event.usage.outputTokens,
+                      }
+                    : {}),
+                },
+              }));
+            }
           }
           // P19-T6-08 — max_tokens 로 끊긴 응답은 truncated 로 표시해 이어쓰기 버튼을 노출한다.
           if (event.reason === "max_tokens" && assistantId) {
