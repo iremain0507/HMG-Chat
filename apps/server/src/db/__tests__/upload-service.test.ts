@@ -5,6 +5,9 @@ import { describe, it, expect, beforeEach } from "vitest";
 import { randomUUID } from "node:crypto";
 import type { UploadRecord } from "@wchat/interfaces";
 import { createInMemoryObjectStore } from "../../lib/object-store.js";
+import { createParserPipeline } from "../../knowledge/parser-pipeline.js";
+import { createDevStubEmbeddingProvider } from "../../knowledge/embedding-provider-dev-stub.js";
+import type { EphemeralChunkRow } from "../../knowledge/ephemeral-indexer.js";
 import {
   createUploadService,
   UploadServiceError,
@@ -130,5 +133,92 @@ describe("upload-service", () => {
     await expect(
       service.deleteUpload({ userId: userB }, upload.id),
     ).rejects.toThrow(UploadServiceError);
+  });
+});
+
+describe("upload-service — ephemeral 인덱싱 배선 (P20-T1-01)", () => {
+  let da: UploadDataAccess;
+  let objectStore: ReturnType<typeof createInMemoryObjectStore>;
+  const userA = randomUUID();
+  const parserPipeline = createParserPipeline();
+  const embeddingProvider = createDevStubEmbeddingProvider();
+
+  beforeEach(() => {
+    da = makeInMemoryUploadDataAccess();
+    objectStore = createInMemoryObjectStore();
+  });
+
+  it("sessionId + indexing deps 가 있으면 ephemeral_chunks row 를 만들어 bulkInsert 로 전달한다", async () => {
+    const inserted: EphemeralChunkRow[] = [];
+    const service = createUploadService(da, objectStore, {
+      parserPipeline,
+      embeddingProvider,
+      bulkInsert: async (rows) => {
+        inserted.push(...rows);
+      },
+    });
+    const sessionId = randomUUID();
+    const upload = await service.createUpload(
+      { userId: userA },
+      {
+        filename: "a.txt",
+        mimeType: "text/plain",
+        data: Buffer.from("분기 매출은 1000억원이며 전년 대비 12% 증가했다."),
+        sessionId,
+      },
+    );
+    expect(inserted.length).toBeGreaterThan(0);
+    expect(inserted[0]?.uploadId).toBe(upload.id);
+    expect(inserted[0]?.sessionId).toBe(sessionId);
+  });
+
+  it("indexing deps 를 주입하지 않으면 인덱서가 동작하지 않는다 (L1 조립 가드) — 업로드 자체는 성공", async () => {
+    const service = createUploadService(da, objectStore);
+    const upload = await service.createUpload(
+      { userId: userA },
+      {
+        filename: "a.txt",
+        mimeType: "text/plain",
+        data: Buffer.from("hello"),
+        sessionId: randomUUID(),
+      },
+    );
+    expect(upload.filename).toBe("a.txt");
+  });
+
+  it("sessionId 없이 업로드하면 인덱싱을 시도하지 않는다", async () => {
+    let called = false;
+    const service = createUploadService(da, objectStore, {
+      parserPipeline,
+      embeddingProvider,
+      bulkInsert: async () => {
+        called = true;
+      },
+    });
+    await service.createUpload(
+      { userId: userA },
+      { filename: "a.txt", mimeType: "text/plain", data: Buffer.from("hello") },
+    );
+    expect(called).toBe(false);
+  });
+
+  it("인덱싱 중 에러가 발생해도 업로드 자체는 성공한다 (fail-soft, 트랜잭션 분리)", async () => {
+    const service = createUploadService(da, objectStore, {
+      parserPipeline,
+      embeddingProvider,
+      bulkInsert: async () => {
+        throw new Error("db down");
+      },
+    });
+    const upload = await service.createUpload(
+      { userId: userA },
+      {
+        filename: "a.txt",
+        mimeType: "text/plain",
+        data: Buffer.from("hello world"),
+        sessionId: randomUUID(),
+      },
+    );
+    expect(upload.filename).toBe("a.txt");
   });
 });

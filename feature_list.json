@@ -1958,8 +1958,8 @@
     "acceptance": "RED: uploads 통합테스트가 POST /uploads(텍스트 파일) 후 해당 uploadId 의 ephemeral_chunks row 수>0 을 단언하나 INSERT 부재로 0건 실패. 그리고 createApp 기반 실HTTP: 업로드→같은 세션 턴 전송 시 첨부 근거로 citation ChatEvent 방출됨을 단언(현재는 빈 인덱스라 무방출). L1 last-mile: app.ts 주입 없이 route 를 마운트하면 인덱서 미동작임을 드러내는 조립 테스트(주입 후에만 rows 생성). 검증: pnpm test + scripts/verify-gates.sh exit 0.",
     "phase": "P20",
     "team": "T1",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P20-T3-02",

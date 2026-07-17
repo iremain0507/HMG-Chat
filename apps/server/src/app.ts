@@ -14,6 +14,7 @@ import { createProjectRoutes } from "./routes/projects.js";
 import { createPgProjectDataAccess } from "./db/project-data-access.js";
 import { createUploadRoutes } from "./routes/uploads.js";
 import { createPgUploadDataAccess } from "./db/upload-data-access.js";
+import { bulkInsertEphemeralChunks } from "./db/ephemeral-chunk-data-access.js";
 import { createDocumentRoutes } from "./routes/documents.js";
 import { createPgDocumentDataAccess } from "./db/project-document-data-access.js";
 import { createArtifactRoutes } from "./routes/artifacts.js";
@@ -283,6 +284,14 @@ export function createApp(env: Env) {
     createUploadRoutes({
       da: createPgUploadDataAccess(),
       objectStore: createLocalObjectStore(),
+      // P20-T1-01 — 업로드 시 ephemeral_chunks 실배선(첨부 RAG 인덱싱 생산측).
+      // 실패해도 업로드는 성공(fail-soft, upload-service.ts 내부에서 try/catch).
+      indexing: {
+        parserPipeline: createParserPipeline(),
+        embeddingProvider: withUsageTracking(createDevStubEmbeddingProvider()),
+        bulkInsert: bulkInsertEphemeralChunks,
+        logger: createLogger(),
+      },
     }),
   );
   app.route("/api/v1/uploads", uploadsApp);

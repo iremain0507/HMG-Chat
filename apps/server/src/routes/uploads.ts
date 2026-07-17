@@ -10,6 +10,7 @@ import {
   UploadServiceError,
   createUploadService,
   type UploadDataAccess,
+  type UploadIndexingDeps,
 } from "../db/upload-service.js";
 import type { ObjectStore } from "../lib/object-store.js";
 
@@ -33,9 +34,10 @@ function toDto(upload: UploadRecord) {
 export function createUploadRoutes(deps: {
   da: UploadDataAccess;
   objectStore: ObjectStore;
+  indexing?: UploadIndexingDeps;
 }): Hono<{ Variables: AuthedVariables }> {
   const app = new Hono<{ Variables: AuthedVariables }>();
-  const service = createUploadService(deps.da, deps.objectStore);
+  const service = createUploadService(deps.da, deps.objectStore, deps.indexing);
 
   function actorOf(c: { get(key: "auth"): AuthedVariables["auth"] }) {
     return { userId: c.get("auth").sub };
