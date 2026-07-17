@@ -71,6 +71,12 @@ export const OrgSettingsSchema = z.object({
   // Quota/Limits
   maxUploadSizeMb: z.number().int().min(1).max(1000).optional(),
   maxUploadCount: z.number().int().min(1).max(100).optional(),
+  // P20-T1-17: 업로드 허용 확장자 화이트리스트(소문자, 점 없이). routes/uploads.ts 가
+  // 업로드 시점에 filename 확장자를 이 목록과 대조해 강제한다.
+  allowedUploadExtensions: z
+    .array(z.string().min(1).max(20))
+    .max(50)
+    .optional(),
 
   // API Keys — P20-T1-12: 전역 마스터 토글(off 면 신규 발급 거부, 기존 키는 영향 없음).
   enableApiKeys: z.boolean().optional(),
@@ -81,7 +87,15 @@ export const OrgSettingsSchema = z.object({
 });
 
 export type OrgSettingsPatch = z.infer<typeof OrgSettingsSchema>;
-export type ResolvedOrgSettings = Required<OrgSettingsPatch>;
+// Required<> 만으로는 zod .optional() 필드의 값 타입(`X | undefined`)이 그대로 남아
+// DEFAULT_ORG_SETTINGS 병합으로 실제론 항상 채워지는 필드도 TS18048 을 유발한다 — 값 타입에서도
+// undefined 를 제거해 "resolve() 는 모든 필드가 채워짐을 보장" 이라는 실제 계약과 타입을 일치시킨다.
+export type ResolvedOrgSettings = {
+  [K in keyof Required<OrgSettingsPatch>]: Exclude<
+    Required<OrgSettingsPatch>[K],
+    undefined
+  >;
+};
 
 export const DEFAULT_ORG_SETTINGS: ResolvedOrgSettings = {
   maxTokens: 4096,
@@ -117,6 +131,25 @@ export const DEFAULT_ORG_SETTINGS: ResolvedOrgSettings = {
 
   maxUploadSizeMb: 25,
   maxUploadCount: 10,
+  // 일반 문서/이미지 셋(현행 parser-pipeline 지원 문서 포맷 + 텍스트/이미지) — 비파괴 기본값.
+  allowedUploadExtensions: [
+    "pdf",
+    "doc",
+    "docx",
+    "ppt",
+    "pptx",
+    "xls",
+    "xlsx",
+    "txt",
+    "md",
+    "csv",
+    "json",
+    "png",
+    "jpg",
+    "jpeg",
+    "gif",
+    "webp",
+  ],
 
   // 현행(마스터 토글 없음=누구나 발급 가능) 동작을 미조정 org 에서 보존(비파괴).
   enableApiKeys: true,

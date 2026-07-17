@@ -93,6 +93,24 @@ describe("OrgSettingsSchema", () => {
     expect(settings.enableSignup).toBe(true);
     expect(settings.maxUploadSizeMb).toBe(25);
     expect(settings.maxUploadCount).toBe(10);
+    expect(settings.allowedUploadExtensions).toEqual(
+      expect.arrayContaining(["pdf", "txt", "png"]),
+    );
+  });
+
+  it("allowedUploadExtensions 는 문자열 배열만 허용한다", () => {
+    const valid = OrgSettingsSchema.safeParse({
+      allowedUploadExtensions: ["pdf", "txt"],
+    });
+    expect(valid.success).toBe(true);
+    if (valid.success) {
+      expect(valid.data.allowedUploadExtensions).toEqual(["pdf", "txt"]);
+    }
+
+    const invalid = OrgSettingsSchema.safeParse({
+      allowedUploadExtensions: [123],
+    });
+    expect(invalid.success).toBe(false);
   });
 
   it("webSearchProvider 는 dev-stub/tavily 만 허용하고 그 외 값은 거부한다", () => {

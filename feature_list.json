@@ -2246,7 +2246,7 @@
     "acceptance": "RED: 화이트리스트 밖 확장자(예: .exe) 업로드가 현재 통과 → 거부(400) 기대 테스트로 실패. size/count 초과 거부도 함께 단언. L1: admin이 설정한 화이트리스트가 실제 업로드 라우트 검증까지 도달. needsBrowser=false(서버 enforcement 통합테스트로 충분, admin 칩 UI는 반영이면 부수).",
     "phase": "P20",
     "team": "T1",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   }
 ]

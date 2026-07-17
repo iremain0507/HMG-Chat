@@ -376,6 +376,8 @@ export function createApp(env: Env) {
         bulkInsert: bulkInsertEphemeralChunks,
         logger: createLogger(),
       },
+      // P20-T1-17 — 확장자 화이트리스트 + size/count enforcement.
+      settings: settingsService,
     }),
   );
   app.route("/api/v1/uploads", uploadsApp);
