@@ -2039,8 +2039,8 @@
     "acceptance": "RED: BrandingTab.test.tsx 에 '두 번째 배너 추가 + type=warning 선택 → onChange 가 length2 배열/type warning 로 호출' 기대를 추가하면 현재 평문 단일 input 구조에서 실패(RED). L1 last-mile: 저장한 typed 다중 배너가 GET /config 를 거쳐 Banner.tsx 로 실제 렌더되어 사용자 화면에 type별 색/title/dismiss 로 표시됨을 단언 — needsBrowser=true 이므로 실앱 Playwright E2E(dev-login admin→BrandingTab 에서 warning 배너 저작·저장→일반 세션 화면에서 해당 배너 실표시 확인) 또는 watchdog 브라우저 UAT 로 실사용 무동작 여부 확인. 검증: pnpm test BrandingTab + E2E.",
     "phase": "P20",
     "team": "T6",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P20-T1-05",

@@ -20,7 +20,12 @@ const SETTINGS = {
   webSearchResultCount: 3,
   enableDirectConnections: false,
   instanceName: "WChat",
-  banner: "",
+  banner: [] as Array<{
+    type: "info" | "success" | "warning" | "error";
+    title?: string;
+    content: string;
+    dismissible: boolean;
+  }>,
   responseWatermark: "",
   defaultUserRole: "member",
   enableSignup: false,
@@ -28,14 +33,20 @@ const SETTINGS = {
   maxUploadCount: 10,
 };
 
-async function mockBackend(page: import("@playwright/test").Page) {
-  await page.route("**/api/v1/admin/settings", (route) =>
-    route.fulfill({
+async function mockBackend(
+  page: import("@playwright/test").Page,
+  onPut?: (body: unknown) => void,
+) {
+  await page.route("**/api/v1/admin/settings", (route) => {
+    if (route.request().method() === "PUT") {
+      onPut?.(route.request().postDataJSON());
+    }
+    return route.fulfill({
       status: 200,
       contentType: "application/json",
       body: JSON.stringify({ data: SETTINGS }),
-    }),
-  );
+    });
+  });
   await page.route("**/api/v1/auth/me", (route) =>
     route.fulfill({
       status: 200,
@@ -174,6 +185,56 @@ test.describe("P14 preview — 관리자 설정(P14-T6-01) 핸드오프 정렬",
     await settingsScreen.scrollIntoViewIfNeeded();
     await settingsScreen.screenshot({
       path: "../../.ralph/screenshots/admin-settings-screen-dark.png",
+    });
+  });
+
+  test("P20-T6-04: General/Branding 탭에서 typed 배너를 저작해 저장한다", async ({
+    page,
+  }) => {
+    let putBody: unknown = null;
+    await mockBackend(page, (body) => {
+      putBody = body;
+    });
+    await page.goto("/preview");
+
+    const settingsScreen = page.getByTestId("preview-admin-settings-screen");
+    await settingsScreen
+      .getByTestId("admin-settings-screen-preview-trigger")
+      .click();
+    await settingsScreen.getByRole("tab", { name: "General/Branding" }).click();
+
+    await expect(
+      settingsScreen.getByText("등록된 배너가 없습니다."),
+    ).toBeVisible();
+
+    await settingsScreen.getByTestId("admin-settings-banner-add").click();
+    await expect(
+      settingsScreen.getByTestId("admin-settings-banner-0"),
+    ).toBeVisible();
+    await settingsScreen
+      .getByTestId("admin-settings-banner-0-type")
+      .selectOption("warning");
+    await settingsScreen
+      .getByTestId("admin-settings-banner-0-title")
+      .fill("점검 안내");
+    await settingsScreen
+      .getByTestId("admin-settings-banner-0-content")
+      .fill("오늘 밤 시스템 점검이 있습니다.");
+
+    await settingsScreen.getByTestId("admin-settings-save-button").click();
+
+    await expect
+      .poll(() => putBody, { message: "PUT /api/v1/admin/settings body" })
+      .not.toBeNull();
+    expect(putBody).toMatchObject({
+      banner: [
+        {
+          type: "warning",
+          title: "점검 안내",
+          content: "오늘 밤 시스템 점검이 있습니다.",
+          dismissible: true,
+        },
+      ],
     });
   });
 });

@@ -34,7 +34,7 @@ const VALUE = {
   webSearchApiKeyRef: "",
   enableDirectConnections: false,
   instanceName: "WChat",
-  banner: "",
+  banner: [],
   responseWatermark: "",
   defaultUserRole: "member" as const,
   enableSignup: false,

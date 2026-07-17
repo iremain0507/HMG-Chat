@@ -1,6 +1,7 @@
 "use client";
 import { useCallback, useEffect, useState } from "react";
 import { apiFetch } from "../lib/fetch-with-refresh";
+import type { AppBanner } from "../components/layout/Banner";
 
 export interface AdminOrgSettings {
   maxTokens: number;
@@ -26,7 +27,7 @@ export interface AdminOrgSettings {
   enableDirectConnections: boolean;
 
   instanceName: string;
-  banner: string;
+  banner: AppBanner[];
   responseWatermark: string;
 
   defaultUserRole: "member" | "admin" | "owner";

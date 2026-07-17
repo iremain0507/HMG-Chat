@@ -49,7 +49,7 @@ const SETTINGS = {
   webSearchApiKeyRef: "",
   enableDirectConnections: false,
   instanceName: "WChat",
-  banner: "",
+  banner: [],
   responseWatermark: "",
   defaultUserRole: "member",
   enableSignup: false,
