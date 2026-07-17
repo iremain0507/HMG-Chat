@@ -2174,8 +2174,8 @@
     "acceptance": "RED: 여러 버전 아티팩트 상태에서 '복원' 버튼 존재 + 클릭 시 선택 버전이 최신(v M/M)으로 승격됨을 단언하는 테스트를 구현 전 추가 → 버튼 부재로 실패. L1 last-mile: 실앱 Playwright E2E(dev-login→다버전 아티팩트 세션 열기→이전 버전으로 이동→복원 클릭→페이저가 해당 콘텐츠를 최신으로 표시하고 프리뷰가 복원 콘텐츠임을 단언) 또는 watchdog 브라우저 UAT로 실사용 무동작 여부 확인.",
     "phase": "P20",
     "team": "T6",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P20-T1-11",

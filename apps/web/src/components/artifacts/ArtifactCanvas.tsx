@@ -158,6 +158,25 @@ export function ArtifactCanvas({
   const [outerTab, setOuterTab] = useState<OuterTab>(
     focusTab?.tab ?? "artifacts",
   );
+  // '복원'(revert) 액션으로 승격된 버전 순서 — 서버 영속화 전까지는 클라 상태에서만
+  // sibling 배열을 재정렬한다. artifacts prop 의 id 구성이 실제로 바뀔 때(새 버전
+  // 생성/제거)만 리셋하고, 그 외 리렌더에서는 사용자가 승격한 순서를 유지한다.
+  const [orderedArtifacts, setOrderedArtifacts] =
+    useState<ArtifactCanvasArtifact[]>(artifacts);
+
+  useEffect(() => {
+    setOrderedArtifacts((prev) => {
+      const prevIds = prev
+        .map((a) => a.artifactId)
+        .sort()
+        .join(",");
+      const nextIds = artifacts
+        .map((a) => a.artifactId)
+        .sort()
+        .join(",");
+      return prevIds === nextIds ? prev : artifacts;
+    });
+  }, [artifacts]);
 
   // focusTab.tab 은 token 이 바뀔 때만 반영하면 되므로 의도적으로 token 만 의존한다.
   useEffect(() => {
@@ -165,10 +184,22 @@ export function ArtifactCanvas({
   }, [focusTab?.token]);
 
   const hasContent =
-    artifacts.length > 0 || citations.length > 0 || !!activityProgress;
+    orderedArtifacts.length > 0 || citations.length > 0 || !!activityProgress;
 
-  const safeIndex = Math.min(Math.max(activeIndex, 0), artifacts.length - 1);
-  const active = artifacts[safeIndex];
+  const safeIndex = Math.min(
+    Math.max(activeIndex, 0),
+    orderedArtifacts.length - 1,
+  );
+  const active = orderedArtifacts[safeIndex];
+
+  function handleRestore() {
+    const target = orderedArtifacts[safeIndex];
+    if (!target) return;
+    const rest = orderedArtifacts.filter((_, i) => i !== safeIndex);
+    const next = [...rest, target];
+    setOrderedArtifacts(next);
+    onActiveIndexChange(next.length - 1);
+  }
 
   useEffect(() => {
     setTab("preview");
@@ -308,7 +339,7 @@ export function ArtifactCanvas({
                 코드
               </button>
 
-              {artifacts.length > 1 && (
+              {orderedArtifacts.length > 1 && (
                 <div className="ml-auto flex items-center gap-1">
                   <button
                     type="button"
@@ -323,17 +354,26 @@ export function ArtifactCanvas({
                     data-testid="artifact-version-pager"
                     className="font-mono text-xs tabular-nums text-fg-muted"
                   >
-                    v{safeIndex + 1} / {artifacts.length}
+                    v{safeIndex + 1} / {orderedArtifacts.length}
                   </span>
                   <button
                     type="button"
                     aria-label="다음 버전"
-                    disabled={safeIndex === artifacts.length - 1}
+                    disabled={safeIndex === orderedArtifacts.length - 1}
                     onClick={() => onActiveIndexChange(safeIndex + 1)}
                     className="rounded-md px-1.5 py-0.5 text-fg-muted hover:text-fg disabled:opacity-30"
                   >
                     ›
                   </button>
+                  {safeIndex !== orderedArtifacts.length - 1 && (
+                    <button
+                      type="button"
+                      onClick={handleRestore}
+                      className="ml-1 rounded-md px-2 py-0.5 text-xs text-fg-muted hover:bg-bg hover:text-fg"
+                    >
+                      이 버전으로 복원
+                    </button>
+                  )}
                 </div>
               )}
             </div>

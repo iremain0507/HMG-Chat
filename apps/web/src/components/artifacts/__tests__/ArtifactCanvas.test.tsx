@@ -159,6 +159,58 @@ describe("ArtifactCanvas", () => {
     expect(screen.getByRole("button", { name: "이전 버전" })).toBeDisabled();
   });
 
+  it("이미 최신 버전을 보고 있으면 복원 버튼이 렌더되지 않는다", () => {
+    render(
+      <ArtifactCanvas
+        artifacts={makeArtifacts()}
+        activeIndex={1}
+        onActiveIndexChange={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+    expect(
+      screen.queryByRole("button", { name: "이 버전으로 복원" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("복원 버튼 클릭 시 선택 버전이 최신(v M/M)으로 승격되고 이후 콘텐츠도 승격된 버전을 반영한다", () => {
+    const onActiveIndexChange = vi.fn();
+    const { rerender } = render(
+      <ArtifactCanvas
+        artifacts={makeArtifacts()}
+        activeIndex={0}
+        onActiveIndexChange={onActiveIndexChange}
+        onClose={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByTestId("artifact-version-pager")).toHaveTextContent(
+      "v1 / 2",
+    );
+    expect(screen.getByTestId("artifact-panel-preview")).toHaveTextContent(
+      "report-v1.md",
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "이 버전으로 복원" }));
+    expect(onActiveIndexChange).toHaveBeenCalledWith(1);
+
+    rerender(
+      <ArtifactCanvas
+        artifacts={makeArtifacts()}
+        activeIndex={1}
+        onActiveIndexChange={onActiveIndexChange}
+        onClose={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByTestId("artifact-version-pager")).toHaveTextContent(
+      "v2 / 2",
+    );
+    expect(screen.getByTestId("artifact-panel-preview")).toHaveTextContent(
+      "report-v1.md",
+    );
+  });
+
   it("공유 버튼을 클릭하면 ShareDialog 가 열린다", () => {
     render(
       <ArtifactCanvas

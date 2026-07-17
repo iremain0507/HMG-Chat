@@ -26,6 +26,17 @@ test.describe("P10/P13 preview — ArtifactCanvas", () => {
     );
     await expect(panel).toContainText("report-v1.md");
 
+    // 버전 복원(P20-T6-10): 이전 버전을 보면서 '복원' 클릭 → 최신(v2/2)으로 승격,
+    // 승격된 콘텐츠(report-v1.md)가 프리뷰에 그대로 반영된다(무동작 아님을 확인).
+    await panel.getByRole("button", { name: "이 버전으로 복원" }).click();
+    await expect(panel.getByTestId("artifact-version-pager")).toHaveText(
+      "v2 / 2",
+    );
+    await expect(panel).toContainText("report-v1.md");
+    await expect(
+      panel.getByRole("button", { name: "이 버전으로 복원" }),
+    ).toHaveCount(0);
+
     // 미리보기/코드 토글
     await panel.getByRole("button", { name: "코드" }).click();
     await expect(panel.getByTestId("artifact-code-view")).toBeVisible();
