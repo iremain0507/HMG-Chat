@@ -115,6 +115,12 @@ export function createAnthropicLLMProvider(
         input.toolChoice,
         input.parallelToolCalls,
       );
+      // P20-T2-02/03 — reasoningEffort → Anthropic Claude 5 adaptive thinking(신 API).
+      //   Claude 5(sonnet-5 등)는 구 extended-thinking(type:enabled+budget_tokens)를 미지원하고
+      //   thinking:{type:'adaptive'} + output_config:{effort} 로 사고를 제어한다. 명시적 'high'
+      //   effort 에서만 opt-in 활성(기본 'medium'/'low' 는 기존 동작 보존 — 지연·비용). thinking
+      //   활성 시 커스텀 temperature/top_p 는 forward 안 함(제약 회피).
+      const thinkingEnabled = input.reasoningEffort === "high";
       const body: Anthropic.MessageStreamParams = {
         model: input.model,
         max_tokens: input.maxTokens,
@@ -130,11 +136,20 @@ export function createAnthropicLLMProvider(
           ? { tools: toAnthropicTools(input.tools) }
           : {}),
         ...(toolChoice ? { tool_choice: toolChoice } : {}),
-        ...(input.temperature !== undefined
+        ...(input.temperature !== undefined && !thinkingEnabled
           ? { temperature: input.temperature }
           : {}),
-        ...(input.topP !== undefined ? { top_p: input.topP } : {}),
+        ...(input.topP !== undefined && !thinkingEnabled
+          ? { top_p: input.topP }
+          : {}),
       };
+      // SDK 0.36.3 타입에 adaptive thinking/output_config 가 없어(런타임 passthrough) cast 로 주입.
+      if (thinkingEnabled) {
+        Object.assign(body as unknown as Record<string, unknown>, {
+          thinking: { type: "adaptive" },
+          output_config: { effort: input.reasoningEffort },
+        });
+      }
 
       let inputTokens = 0;
       let outputTokens = 0;
@@ -166,6 +181,17 @@ export function createAnthropicLLMProvider(
             case "content_block_delta":
               if (event.delta.type === "text_delta") {
                 yield { type: "text_delta", text: event.delta.text };
+              } else if (
+                // P20-T2-03 — extended thinking 스트림을 reasoning_delta 로 방출(접이식 표시).
+                //   SDK 0.36.3 delta union 이 thinking_delta 를 아직 모르므로(런타임 passthrough)
+                //   캐스트로 우회 — 실 API 는 thinking 활성 시 thinking_delta 를 스트리밍한다.
+                (event.delta as { type?: string }).type === "thinking_delta"
+              ) {
+                yield {
+                  type: "reasoning_delta",
+                  text: (event.delta as unknown as { thinking: string })
+                    .thinking,
+                };
               } else if (
                 event.delta.type === "input_json_delta" &&
                 toolUseBuffer
