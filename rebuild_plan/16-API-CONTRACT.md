@@ -1003,7 +1003,14 @@ Response 200: { data: { budgetMicros, usedMicros, periodEnd }, meta: { requestId
 
 ```
 일반 사용자 — 본인 usage 만. /settings/quota UI 가 사용 (18 § /settings/quota).
-Response 200: { data: Array<{ date, tokensIn, tokensOut, costMicros }>, meta: { requestId } }
+Response 200: {
+  data: Array<{ date, tokensIn, tokensOut, costMicros }>,          // 일별(과거→현재)
+  byModel: Array<{ model, tokensIn, tokensOut, costMicros }>,      // 모델별, costMicros 내림차순
+  meta: { requestId }
+}
+  · byModel 은 data 와 같은 원시 usage_logs row 를 model 단위로 집계한 것 —
+    sum(byModel[].costMicros) === sum(data[].costMicros). 사용 내역이 없으면 [].
+  · data 배열 형태는 불변(하위호환). byModel 은 순수 추가 필드. (P22-T6-19 / 계약단위 C17(A))
 ```
 
 ### `GET /usage?from&to`
@@ -1106,15 +1113,24 @@ Response 200: { data: { ok: true }, meta: { requestId } }
 ### `GET /admin/tool-metrics?from&to` — admin
 
 ```
-도구별 호출 통계 + 에러율 + 지연시간.
+도구별 호출 통계 + 에러율 + 지연시간 + 출처 + 7일 추이.
 Response 200: {
   data: Array<{
     toolName, count, errorCount, errorRate,
     p50DurationMs, p95DurationMs, p99DurationMs,
-    last24h: { count, errorRate }
+    last24h: { count, errorRate },
+    source: "builtin" | "mcp" | "skill" | "openapi",
+    trend: Array<{ date, count, errorCount }>
   }>,
   meta: { requestId }
 }
+  · source — 조회 윈도우 내 해당 툴의 최빈 출처(0039 tool_metrics.source).
+    기록 시점에 툴 이름 네임스페이스(mcp:/openapi:/skill:)에서 도출하며,
+    0039 이전 행(NULL)은 서버가 "builtin" 으로 해석해 응답에는 항상 존재한다.
+    (계약 타입 ToolMetricEntry.source 자체는 하위호환 위해 optional — 14-INTERFACES 참조)
+  · trend — from/to 윈도우와 무관하게 항상 정확히 7 포인트(과거→현재, to 기준),
+    기록 없는 날은 count/errorCount 0 으로 채운다. admin 스파크라인 단일 출처.
+    (P22-T6-19 / 계약단위 C17(B))
 ```
 
 ## 15. Errors (자체 리포팅)

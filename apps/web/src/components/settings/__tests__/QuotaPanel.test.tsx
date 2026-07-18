@@ -18,6 +18,33 @@ const DAILY = [
   { date: "2026-07-15", tokensIn: 120, tokensOut: 60, costMicros: 8_200_000 },
 ];
 
+const BY_MODEL = [
+  {
+    model: "claude-opus-4-6",
+    tokensIn: 1200,
+    tokensOut: 600,
+    costMicros: 120_000_000_000,
+  },
+  {
+    model: "claude-haiku-4-6",
+    tokensIn: 400,
+    tokensOut: 200,
+    costMicros: 21_000_000_000,
+  },
+];
+
+function stubUsageFetch(usageBody: unknown) {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (url: string) => {
+      if (url.startsWith("/api/v1/quota")) {
+        return { ok: true, json: async () => ({ data: QUOTA }) };
+      }
+      return { ok: true, json: async () => usageBody };
+    }),
+  );
+}
+
 describe("QuotaPanel", () => {
   afterEach(() => {
     cleanup();
@@ -70,6 +97,40 @@ describe("QuotaPanel", () => {
         screen.getByRole("img", { name: "최근 30일 일별 사용액 추이" }),
       ).toBeInTheDocument();
     });
+  });
+
+  it("byModel 이 있으면 모델별 비용 표를 렌더링하고 합계가 월 총액과 같다", async () => {
+    stubUsageFetch({ data: DAILY, byModel: BY_MODEL });
+
+    render(<QuotaPanel />);
+
+    await waitFor(() => {
+      expect(screen.getByText("모델별 비용")).toBeInTheDocument();
+    });
+
+    const rows = screen.getAllByTestId("quota-by-model-row");
+    expect(rows).toHaveLength(2);
+    expect(rows[0]).toHaveTextContent("claude-opus-4-6");
+    expect(rows[0]).toHaveTextContent("₩120,000");
+    expect(rows[1]).toHaveTextContent("claude-haiku-4-6");
+    expect(rows[1]).toHaveTextContent("₩21,000");
+
+    // 수용 기준: 모델별 비용 합 === 이번 달 총액(₩141,000).
+    expect(screen.getByTestId("quota-by-model-total")).toHaveTextContent(
+      "₩141,000",
+    );
+  });
+
+  it("byModel 이 비어 있으면 모델별 비용 표를 렌더링하지 않는다", async () => {
+    stubUsageFetch({ data: DAILY });
+
+    render(<QuotaPanel />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("quota-used-amount")).toBeInTheDocument();
+    });
+    expect(screen.queryByText("모델별 비용")).not.toBeInTheDocument();
+    expect(screen.queryAllByTestId("quota-by-model-row")).toHaveLength(0);
   });
 
   it("에러 시 에러 메시지를 보여준다", async () => {

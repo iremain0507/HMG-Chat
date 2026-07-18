@@ -23,6 +23,66 @@ export interface AdminToolMetricSummary {
   p95DurationMs: number;
   p99DurationMs: number;
   last24h: { count: number; errorRate: number };
+  /** 툴 출처(0039 tool_metrics.source). 해당 툴의 최빈 source — 기존 NULL 행은
+   *  'builtin' 으로 해석한다(하위호환). (P22-T6-19 / C17B) */
+  source: ToolMetricSource;
+  /** 최근 7일 일별 호출 추이. 항상 7 포인트(과거→현재), 기록 없는 날은 0 으로 채운다.
+   *  admin 화면의 스파크라인 단일 출처. (P22-T6-19) */
+  trend: Array<{ date: string; count: number; errorCount: number }>;
+}
+
+export type ToolMetricSource = "builtin" | "mcp" | "skill" | "openapi";
+
+const TREND_DAYS = 7;
+
+function toDayKey(d: Date): string {
+  return d.toISOString().slice(0, 10);
+}
+
+/** 툴별 source 분포 행에서 최빈 출처를 고른다. NULL(=0039 이전 행)은 'builtin'.
+ *  행이 없으면 'builtin'. 순수 함수 — DB 없이 단언 가능. (P22-T6-19) */
+export function pickPredominantSource(
+  rows: Array<{ source: string | null; count: number }>,
+): ToolMetricSource {
+  let best: ToolMetricSource = "builtin";
+  let bestCount = -1;
+  const tally = new Map<ToolMetricSource, number>();
+  for (const row of rows) {
+    const key = (row.source ?? "builtin") as ToolMetricSource;
+    tally.set(key, (tally.get(key) ?? 0) + row.count);
+  }
+  for (const [key, count] of tally) {
+    if (count > bestCount) {
+      best = key;
+      bestCount = count;
+    }
+  }
+  return best;
+}
+
+/** 일별 집계 행을 7 포인트(과거→현재)로 zero-fill 한다. 윈도우 밖 날짜는 버린다.
+ *  순수 함수 — DB 없이 단언 가능. (P22-T6-19) */
+export function buildToolMetricsTrend(
+  rows: Array<{ day: string; count: number; errorCount: number }>,
+  to: Date,
+): Array<{ date: string; count: number; errorCount: number }> {
+  const byDay = new Map(rows.map((r) => [r.day, r]));
+  const end = new Date(
+    Date.UTC(to.getUTCFullYear(), to.getUTCMonth(), to.getUTCDate()),
+  );
+  const points: Array<{ date: string; count: number; errorCount: number }> = [];
+  for (let offset = TREND_DAYS - 1; offset >= 0; offset -= 1) {
+    const day = new Date(end);
+    day.setUTCDate(day.getUTCDate() - offset);
+    const date = toDayKey(day);
+    const row = byDay.get(date);
+    points.push({
+      date,
+      count: row?.count ?? 0,
+      errorCount: row?.errorCount ?? 0,
+    });
+  }
+  return points;
 }
 
 export interface AdminDataAccess {
@@ -257,6 +317,29 @@ export function createPgAdminDataAccess(): AdminDataAccess {
          GROUP BY tool_name`,
         [orgId],
       );
+      // P22-T6-19(C17B) — 0039 tool_metrics.source 분포. NULL(기존 행)도 그대로 받아
+      //   pickPredominantSource 가 'builtin' 으로 해석한다.
+      const sources = await pgPool.query(
+        `SELECT tool_name, source, COUNT(*) AS count
+         FROM tool_metrics
+         WHERE org_id = $1 AND created_at BETWEEN $2 AND $3
+         GROUP BY tool_name, source`,
+        [orgId, from, to],
+      );
+      // P22-T6-19 — 최근 7일 일별 추이(스파크라인용). 조회 윈도우와 무관하게 항상 7일.
+      const daily = await pgPool.query(
+        `SELECT tool_name,
+           TO_CHAR(DATE_TRUNC('day', created_at AT TIME ZONE 'UTC'), 'YYYY-MM-DD') AS day,
+           COUNT(*) AS count,
+           COUNT(*) FILTER (WHERE status IN ('error','timeout')) AS error_count
+         FROM tool_metrics
+         WHERE org_id = $1
+           AND created_at >= $2::timestamptz - INTERVAL '6 days'
+           AND created_at <= $2::timestamptz
+         GROUP BY tool_name, day`,
+        [orgId, to],
+      );
+
       const last24hByTool = new Map<
         string,
         { count: number; errorCount: number }
@@ -267,6 +350,34 @@ export function createPgAdminDataAccess(): AdminDataAccess {
           errorCount: num(row.error_count),
         });
       }
+      const sourcesByTool = new Map<
+        string,
+        Array<{ source: string | null; count: number }>
+      >();
+      for (const row of sources.rows as Record<string, unknown>[]) {
+        const toolName = row.tool_name as string;
+        const list = sourcesByTool.get(toolName) ?? [];
+        list.push({
+          source: (row.source as string | null) ?? null,
+          count: num(row.count),
+        });
+        sourcesByTool.set(toolName, list);
+      }
+      const dailyByTool = new Map<
+        string,
+        Array<{ day: string; count: number; errorCount: number }>
+      >();
+      for (const row of daily.rows as Record<string, unknown>[]) {
+        const toolName = row.tool_name as string;
+        const list = dailyByTool.get(toolName) ?? [];
+        list.push({
+          day: row.day as string,
+          count: num(row.count),
+          errorCount: num(row.error_count),
+        });
+        dailyByTool.set(toolName, list);
+      }
+
       return (windowed.rows as Record<string, unknown>[]).map((row) => {
         const toolName = row.tool_name as string;
         const count = num(row.count);
@@ -287,6 +398,8 @@ export function createPgAdminDataAccess(): AdminDataAccess {
             count: bucket.count,
             errorRate: bucket.count > 0 ? bucket.errorCount / bucket.count : 0,
           },
+          source: pickPredominantSource(sourcesByTool.get(toolName) ?? []),
+          trend: buildToolMetricsTrend(dailyByTool.get(toolName) ?? [], to),
         };
       });
     },

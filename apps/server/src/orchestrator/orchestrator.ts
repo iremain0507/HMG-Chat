@@ -13,7 +13,7 @@ import type {
   ToolMetricRepo,
 } from "@wchat/interfaces";
 import { validateArgs } from "../tools/arg-validator.js";
-import { recordToolMetric } from "../lib/tool-metrics.js";
+import { recordToolMetric, toolSourceFromName } from "../lib/tool-metrics.js";
 import {
   DEFAULT_MAX_STEPS,
   DEFAULT_STEP_REPETITION_THRESHOLD,
@@ -129,6 +129,8 @@ async function instrumentedInvoke(
       durationMs,
       userId: ctx.userId,
       orgId: ctx.orgId,
+      // 출처는 기록 시점에 확정한다(툴이 사라진 뒤에도 집계 유지). P22-T6-19 / C17B.
+      source: toolSourceFromName(tool.spec.name),
     });
   }
 

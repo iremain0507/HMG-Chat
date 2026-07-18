@@ -380,6 +380,8 @@ export interface ToolMetricEntry {
   durationMs: number;
   userId?: string;
   orgId?: string;
+  /** 툴 출처. 기존 행은 null → UI 는 '내장'으로 표시(하위호환). (P22-T6-19 / C17B) */
+  source?: "builtin" | "mcp" | "skill" | "openapi";
 }
 
 export interface HealthCheckResult {

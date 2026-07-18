@@ -418,6 +418,7 @@ export interface ToolMetricEntry {
   durationMs: number;
   userId?: string;
   orgId?: string;
+  source?: "builtin"|"mcp"|"skill"|"openapi";   // 기존 행은 null → UI 는 '내장' 표시(P22-T6-19 / C17B).
 }
 
 export interface HealthCheckResult {

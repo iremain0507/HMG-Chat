@@ -2813,8 +2813,8 @@
     "acceptance": "RED 우선. GIVEN a user with usage across multiple models WHEN they open /settings/quota THEN QuotaPanel shows a per-model cost breakdown table (model name + cost) sourced from GET /usage/me byModel, and the sum of per-model costs… / GIVEN GET /admin/tool-metrics WHEN an admin opens /admin/tool-metrics THEN each row shows a 출처/source column and a 7-day trend sparkline populated from the extended contract fields (verify in browser). / GIVEN the tool_metrics migration adds a nullable source column WHEN the migration is rolled back THEN the down path drops the column cleanly and existing rows/queries are unaffected. / GIVEN ToolMetricEntry now carries source WHEN packages/interfaces is edited THEN the task is isolated/human-gated (blocked_tasks) rather than committed under a single team, per shared-contract rules. / ★실브라우저 UAT: 스택 기동 후 Claude-in-Chrome 로 실제 화면에서 동작 확인(불가 시 Playwright /preview + 정직히 미실행 명시). / .ralph/CONTRACT_APPROVED 없으면 격리(구현 금지).",
     "phase": "P22",
     "team": "T6",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P22-T6-20",

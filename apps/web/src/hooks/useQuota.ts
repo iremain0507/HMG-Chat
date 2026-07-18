@@ -2,8 +2,9 @@
 
 // hooks/useQuota.ts — design-reference F14(사용량/쿼터) 소비.
 //   16-API-CONTRACT § 12 GET /quota + GET /usage/me(둘 다 P9 에서 이미 마운트된 기존 라우트,
-//   신규 라우트 없음). /usage/me 는 date 단위로만 집계되어 모델별 breakdown 은 계약에 없다
-//   — QuotaPanel 은 합계만 렌더링한다(§ 09-TDD-GUIDE 정렬 원칙: 실 데이터만 표시).
+//   신규 라우트 없음). /usage/me 는 일별 집계 data 와 모델별 집계 byModel 을 함께 반환한다
+//   (계약단위 C17(A), P22-T6-19). byModel 은 추가 필드라 구버전 서버 응답에서는 없을 수 있어
+//   기본값 [] 로 방어한다(§ 09-TDD-GUIDE 정렬 원칙: 실 데이터만 표시).
 import { useEffect, useState } from "react";
 import { apiFetch } from "../lib/fetch-with-refresh";
 
@@ -20,9 +21,17 @@ export interface DailyUsageEntry {
   costMicros: number;
 }
 
+export interface ModelUsageEntry {
+  model: string;
+  tokensIn: number;
+  tokensOut: number;
+  costMicros: number;
+}
+
 interface UseQuotaResult {
   quota: QuotaInfo | null;
   daily: DailyUsageEntry[];
+  byModel: ModelUsageEntry[];
   loading: boolean;
   error: string | null;
 }
@@ -30,6 +39,7 @@ interface UseQuotaResult {
 export function useQuota(): UseQuotaResult {
   const [quota, setQuota] = useState<QuotaInfo | null>(null);
   const [daily, setDaily] = useState<DailyUsageEntry[]>([]);
+  const [byModel, setByModel] = useState<ModelUsageEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -49,11 +59,15 @@ export function useQuota(): UseQuotaResult {
         }
         const quotaBody = (await quotaRes.json()) as { data: QuotaInfo };
         const usageBody = usageRes.ok
-          ? ((await usageRes.json()) as { data: DailyUsageEntry[] })
-          : { data: [] };
+          ? ((await usageRes.json()) as {
+              data: DailyUsageEntry[];
+              byModel?: ModelUsageEntry[];
+            })
+          : { data: [], byModel: [] };
         if (!cancelled) {
           setQuota(quotaBody.data);
-          setDaily(usageBody.data);
+          setDaily(usageBody.data ?? []);
+          setByModel(usageBody.byModel ?? []);
         }
       } finally {
         if (!cancelled) setLoading(false);
@@ -65,5 +79,5 @@ export function useQuota(): UseQuotaResult {
     };
   }, []);
 
-  return { quota, daily, loading, error };
+  return { quota, daily, byModel, loading, error };
 }
