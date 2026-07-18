@@ -20,5 +20,14 @@ export interface ArtifactStore {
   ): Promise<{ content: Buffer; mimeType: string; truncated: boolean }>;
 
   remove(artifactId: string): Promise<void>;
-  cleanupExpired(): Promise<{ deletedCount: number }>;
+
+  /**
+   * 보존정책 cron 이 열거한 만료 artifact 의 **바이트**를 지운다. 어떤 artifact 가 만료인지는
+   * DataAccess 를 가진 호출자(lib/data-retention.ts)가 판단하고 id 목록만 넘긴다 —
+   * 이 포트는 Repo 의존 없는 바이트 저장소로 남는다. (P22-C-01 / C3)
+   * 인자 없이 호출하면 지울 대상이 없다는 뜻이라 {deletedCount:0} 이다.
+   */
+  cleanupExpired(input?: {
+    artifactIds: string[];
+  }): Promise<{ deletedCount: number }>;
 }

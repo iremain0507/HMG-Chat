@@ -489,13 +489,17 @@ export interface ProjectDocumentRepo extends Repo<
   ): Promise<void>;
 }
 
-// spec adaptation: § 0 writes `interface ArtifactRepo extends Repo<...> {}` (empty
-// body). An empty extending interface trips ESLint `no-empty-object-type`; a type
-// alias is semantically identical and is the recommended resolution.
-export type ArtifactRepo = Repo<
+export interface ArtifactRepo extends Repo<
   ArtifactRecord,
   { sessionId?: string; createdBy?: string }
->;
+> {
+  /**
+   * 보존정책 cron 전용. createdAt < cutoff 인 artifact 를 **시스템 스코프**로 열거한다
+   * (list() 는 RLS/사용자 스코프라 org 전체를 볼 수 없다).
+   * UploadRepo.expiredOlderThan 와 동일 계열. (P22-C-01 / C3)
+   */
+  expiredOlderThan(cutoff: Date): Promise<ArtifactRecord[]>;
+}
 
 export interface ArtifactRevisionRepo {
   insert(input: {

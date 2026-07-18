@@ -83,6 +83,33 @@ function fakeDataAccess(opts: {
         return opts.expiredUploads ?? [];
       },
     },
+    // 부록 H 2번 artifact 보존(P22-T4-03). 이 스케줄러 테스트의 관심사는 "스텝이 도는가"라
+    // 만료 artifact 는 비워 둔다 — 열거/삭제 규칙 자체는 data-retention.test.ts 가 검증한다.
+    artifacts: {
+      async insert(data) {
+        return artifact(data);
+      },
+      async bulkInsert(rows) {
+        return rows.map((r) => artifact(r));
+      },
+      async update() {
+        throw new Error("not implemented");
+      },
+      async delete() {
+        throw new Error("not implemented");
+      },
+      async byId() {
+        return null;
+      },
+      async list() {
+        throw new Error(
+          "artifacts.list 는 RLS 스코프 질의라 retention 에서 금지",
+        );
+      },
+      async expiredOlderThan() {
+        return [];
+      },
+    },
     artifactShares: {
       async insert(data) {
         return share(data);

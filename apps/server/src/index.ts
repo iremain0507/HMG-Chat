@@ -13,7 +13,8 @@ import { createPgUploadDataAccess } from "./db/upload-data-access.js";
 import { loadEnv } from "./env.js";
 import { createAlertNotifier } from "./lib/alert-engine.js";
 import { startAlertingScheduler } from "./lib/alerting-scheduler.js";
-import { createInlineArtifactStore } from "./lib/artifact-store.inline.js";
+import { createS3ArtifactStore } from "./lib/artifact-store.s3.js";
+import { createLocalObjectStore } from "./lib/object-store.js";
 import { createAuditRecorder } from "./lib/audit-recorder.js";
 import { createLogger } from "./lib/logger.js";
 import { activateRuntimeBusFromEnv } from "./orchestrator/runtime-bus.js";
@@ -79,12 +80,16 @@ const retentionHandle =
           healthHistory: createPgHealthHistoryDataAccess().healthHistory,
           messages: createPgMessageDataAccess(),
           organizations: createPgAuthDataAccess().organizations,
+          // 부록 H 2번 (P22-T4-03 / 계약배치 C3) — 90일 지난 artifact 열거·삭제
+          artifacts: createPgArtifactDataAccess().artifacts,
         },
         // 부록 H 3번 메시지 삭제는 org 단위 파괴적 작업이라 audit_log 에 남긴다(fail-soft).
         audit: createAuditRecorder(createPgAuditLogDataAccess(), logger),
-        artifactStore: createInlineArtifactStore(
-          createPgArtifactDataAccess().artifacts,
-        ),
+        // 보존 cron 이 지워야 할 **외부 바이트**는 s3 artifact 뿐이다 — inline artifact 의
+        // 바이트는 artifacts.inline_content 컬럼이라 DB row 삭제(data-retention.ts)로 함께
+        // 사라진다. 따라서 s3 store 를 주입한다(objectStore.remove 는 멱등이라 inline 건에
+        // 대한 호출도 무해). app.ts:458 과 동일하게 LOCAL_ONLY 로컬 오브젝트 스토어 사용.
+        artifactStore: createS3ArtifactStore(createLocalObjectStore()),
         alerting: {
           repo: createPgAlertEventDataAccess().alertEvents,
           notifier: createAlertNotifier(),

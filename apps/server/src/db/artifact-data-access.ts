@@ -111,6 +111,16 @@ export function createPgArtifactDataAccess(): ArtifactDataAccess {
         );
         return { items: res.rows.map(toArtifact) };
       },
+      // 보존정책 cron 전용 시스템 스코프 열거(P22-C-01 / C3). list() 와 달리 session/creator
+      // 필터 없이 org 전체를 본다 — 호출자는 auth context 가 없는 retention job 뿐이다.
+      // upload-data-access.ts:120 expiredOlderThan 와 동일 패턴.
+      async expiredOlderThan(cutoff) {
+        const res = await pgPool.query(
+          "SELECT * FROM artifacts WHERE created_at < $1 ORDER BY created_at ASC",
+          [cutoff],
+        );
+        return res.rows.map(toArtifact);
+      },
     },
   };
 }

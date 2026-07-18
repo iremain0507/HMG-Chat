@@ -2732,8 +2732,8 @@
     "acceptance": "RED 우선. GIVEN artifacts whose created_at is older than 90 days and that have no active (non-revoked, non-expired) share, WHEN runRetention/cleanupExpired runs, THEN each such artifact's DB row is deleted and its object bytes… / GIVEN an artifact older than 90 days that HAS an active (non-expired, non-revoked) artifact_share, WHEN cleanupExpired runs, THEN it is NOT deleted (kept until the share's expires_at) per 12-OPS-SECURITY.md:187. / GIVEN the current no-op implementations, WHEN a new test asserts deletedCount>0 for expired fixtures, THEN it fails (RED evidence the stub does nothing) and passes only after the real enumeration+deletion is implemented. / GIVEN the retention job runs with no per-user auth context, WHEN it enumerates expired artifacts, THEN it sees artifacts across all users via a system/BYPASSRLS-scoped DataAccess, not just the current caller's… / .ralph/CONTRACT_APPROVED 없으면 격리(구현 금지).",
     "phase": "P22",
     "team": "T4",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P22-T6-10",

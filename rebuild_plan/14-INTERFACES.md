@@ -304,7 +304,11 @@ export interface ProjectDocumentRepo extends Repo<ProjectDocumentRecord, { proje
   updateIndexStatus(id: string, status: ProjectDocumentRecord["indexStatus"], chunkCount?: number): Promise<void>;
 }
 
-export interface ArtifactRepo extends Repo<ArtifactRecord, { sessionId?: string; createdBy?: string }> {}
+export interface ArtifactRepo extends Repo<ArtifactRecord, { sessionId?: string; createdBy?: string }> {
+  /** 보존정책 cron 전용. createdAt < cutoff 인 artifact 를 시스템 스코프로 열거한다
+   *  (list() 는 RLS/사용자 스코프라 org 전체를 볼 수 없다). UploadRepo.expiredOlderThan 동일 계열. (P22-C-01 / C3) */
+  expiredOlderThan(cutoff: Date): Promise<ArtifactRecord[]>;
+}
 export interface ArtifactRevisionRepo {
   insert(input: { artifactId: string; version: number; s3Key: string; diffSummary?: string }): Promise<void>;
   list(artifactId: string): Promise<Array<{ version: number; s3Key: string; diffSummary: string | null; createdAt: Date }>>;
@@ -939,7 +943,12 @@ export interface ArtifactStore {
   }>;
 
   remove(artifactId: string): Promise<void>;
-  cleanupExpired(): Promise<{ deletedCount: number }>;
+  /** 보존정책 cron 이 열거한 만료 artifact 의 **바이트**를 지운다. 어떤 artifact 가 만료인지는
+   *  DataAccess 를 가진 호출자(lib/data-retention.ts)가 판단하고 id 목록만 넘긴다 —
+   *  이 포트는 Repo 의존 없는 바이트 저장소로 남는다. 인자 없이 호출하면 대상이 없다는 뜻. (P22-C-01 / C3) */
+  cleanupExpired(input?: {
+    artifactIds: string[];
+  }): Promise<{ deletedCount: number }>;
 }
 ```
 

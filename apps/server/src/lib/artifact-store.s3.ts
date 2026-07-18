@@ -47,8 +47,16 @@ export function createS3ArtifactStore(objectStore: ObjectStore): ArtifactStore {
       await objectStore.remove(keyFor(artifactId));
     },
 
-    async cleanupExpired() {
-      return { deletedCount: 0 };
+    // 보존정책 cron(lib/data-retention.ts)이 열거한 만료 id 의 오브젝트 바이트를 지운다.
+    // objectStore.remove 는 멱등(없는 key 도 성공) — 이미 지워진 건도 안전하게 재실행된다.
+    async cleanupExpired(input) {
+      const ids = input?.artifactIds ?? [];
+      let deletedCount = 0;
+      for (const id of ids) {
+        await objectStore.remove(keyFor(id));
+        deletedCount++;
+      }
+      return { deletedCount };
     },
   };
 }

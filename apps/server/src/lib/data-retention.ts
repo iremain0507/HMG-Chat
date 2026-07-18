@@ -21,6 +21,8 @@ import type { AuditRecorder } from "./audit-recorder.js";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 export const UPLOAD_RETENTION_DAYS = 30;
+/** 부록 H 2번 / 12-OPS-SECURITY.md:187 — artifact 보존기간(활성 share 는 예외). */
+export const ARTIFACT_RETENTION_DAYS = 90;
 /** 부록 H 4번 — error_logs 보존기간. */
 export const ERROR_LOG_RETENTION_DAYS = 90;
 /** 부록 H 5번 — health_history 보존기간. */
@@ -36,6 +38,7 @@ export interface RetentionStepResult {
 export type RetentionDataAccess = Pick<
   DataAccess,
   | "uploads"
+  | "artifacts"
   | "artifactShares"
   | "errorLogs"
   | "healthHistory"
@@ -72,9 +75,28 @@ export async function runRetention(
       for (const upload of expired) await da.uploads.delete(upload.id);
       return { deletedCount: expired.length };
     }),
-    await runStep("artifact-store-cleanup", () =>
-      artifactStore.cleanupExpired(),
-    ),
+    // 부록 H 2번 — 90일 지난 artifact. 12-OPS-SECURITY.md:187 에 따라 **활성(미만료·미취소)
+    // share 가 붙은 건은 남긴다**(share 의 expires_at 까지 공유 링크가 살아 있어야 하므로).
+    // 열거는 DataAccess 를 가진 여기서 시스템 스코프(expiredOlderThan)로 하고, store 는 바이트만
+    // 지운다 — DB row(및 inline_content) 삭제는 여기서 수행한다.
+    await runStep("artifact-store-cleanup", async () => {
+      const cutoff = new Date(Date.now() - ARTIFACT_RETENTION_DAYS * DAY_MS);
+      const expired = await da.artifacts.expiredOlderThan(cutoff);
+      const now = Date.now();
+      const targets: string[] = [];
+      for (const a of expired) {
+        const { items } = await da.artifactShares.list({ artifactId: a.id });
+        const hasActiveShare = items.some(
+          (s) => !s.revokedAt && s.expiresAt.getTime() > now,
+        );
+        if (!hasActiveShare) targets.push(a.id);
+      }
+      const result = await artifactStore.cleanupExpired({
+        artifactIds: targets,
+      });
+      for (const id of targets) await da.artifacts.delete(id);
+      return result;
+    }),
     await runStep("expired-artifact-shares", async () => {
       const now = Date.now();
       let revokedCount = 0;
