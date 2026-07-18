@@ -2804,8 +2804,8 @@
     "acceptance": "RED 우선. GIVEN an authenticated user on /settings/skills WHEN they click create/upload and submit a SKILL.md + assets THEN POST /skills persists it and it appears in the list after reload (browser check) / GIVEN a listed skill WHEN the user toggles enable/disable THEN a PATCH/toggle endpoint persists the state and the orchestrator only injects enabled skills (browser + server test) / GIVEN a user-authored skill WHEN the owner deletes it THEN DELETE /skills/:id removes it (and its assets) and it is gone from the list, with cross-org isolation enforced / GIVEN the SkillRegistry interface and 16-API-CONTRACT section 11 today define only read operations WHEN implementing THEN the new mutation interface + contract endpoints must be human-gated before coding (isolation… / ★실브라우저 UAT: 스택 기동 후 Claude-in-Chrome 로 실제 화면에서 동작 확인(불가 시 Playwright /preview + 정직히 미실행 명시). / .ralph/CONTRACT_APPROVED 없으면 격리(구현 금지).",
     "phase": "P22",
     "team": "T6",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P22-T6-19",

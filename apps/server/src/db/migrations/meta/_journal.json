@@ -260,6 +260,13 @@
       "when": 1783991800000,
       "tag": "0037_notes",
       "breakpoints": true
+    },
+    {
+      "idx": 37,
+      "version": "7",
+      "when": 1783995400000,
+      "tag": "0038_user_skills",
+      "breakpoints": true
     }
   ]
 }

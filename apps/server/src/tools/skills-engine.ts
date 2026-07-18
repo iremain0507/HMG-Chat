@@ -118,6 +118,18 @@ function buildEntry(
   };
 }
 
+/**
+ * SKILL.md 원문 하나를 SkillSpec 으로 파싱한다 (P22-T6-18 / 계약 C12).
+ * 파일시스템 로딩(loadEntries)과 **동일한 파서·검증 규칙**을 사용자 업로드 경로에서
+ * 재사용하기 위한 export — 사용자 스킬은 디렉토리가 아니라 DB 본문에서 온다.
+ * 검증 실패 시 loadEntries 와 같은 WChatError('SKILL_FRONTMATTER_INVALID') 를 던진다.
+ */
+export function parseSkillMarkdown(content: string, label: string): SkillSpec {
+  const fields = parseFrontmatter(content);
+  if (!fields) reject(label, "frontmatter missing");
+  return buildEntry(label, fields).spec;
+}
+
 function loadEntries(skillsDir: string): RegistryEntry[] {
   if (!existsSync(skillsDir)) return [];
   const entries: RegistryEntry[] = [];

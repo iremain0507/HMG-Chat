@@ -52,6 +52,7 @@ import { createConnectionProviderResolver } from "./orchestrator/connection-prov
 import { createOpenAILLMProvider } from "./orchestrator/llm-provider-openai.js";
 import OpenAI from "openai";
 import { createPgAgentDataAccess } from "./db/agent-data-access.js";
+import { createPgUserSkillStore } from "./db/user-skill-data-access.js";
 import { createPgNoteDataAccess } from "./db/note-data-access.js";
 import { assembleOrgOpenApiTools } from "./tools/openapi-tool-assembler.js";
 import { createOpenApiToolInvoker } from "./tools/openapi-tool-invoker.js";
@@ -609,6 +610,9 @@ export function createApp(env: Env) {
     createSkillRoutes({
       registry: createSkillRegistry({ skillsDir }),
       skillsDir,
+      // 사용자 작성 스킬(P22-T6-18 / 계약 C12) — 파일시스템 빌트인은 불변으로 두고
+      // 작성·활성화·삭제는 user_skills 테이블(0038)에서만 일어난다.
+      userSkills: createPgUserSkillStore(),
     }),
   );
   app.route("/api/v1/skills", skillsApp);

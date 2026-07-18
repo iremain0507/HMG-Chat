@@ -172,6 +172,9 @@ const EXPECTED_ROUTES: Array<{ method: string; path: string; phase: string }> =
       phase: "P22",
     },
     { method: "GET", path: "/api/v1/skills", phase: "P8" },
+    { method: "POST", path: "/api/v1/skills", phase: "P22" },
+    { method: "PATCH", path: `/api/v1/skills/${randomUUID()}`, phase: "P22" },
+    { method: "DELETE", path: `/api/v1/skills/${randomUUID()}`, phase: "P22" },
     {
       method: "GET",
       path: "/api/v1/skill-assets/some-skill@1.0.0/asset.png",

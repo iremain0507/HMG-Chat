@@ -13,3 +13,4 @@
 | P22-T6-14 Connections      | ✅     | ✅ connections.pw.ts          | ⏳          | 외부 provider 연결 admin              |
 | P22-T6-15 i18n             | ✅     | ✅ i18n-language-switch.pw.ts | ⏳          | 언어 전환                             |
 | P22-T6-17 Notes            | ✅     | ✅ notes.pw.ts                | ⏳          | 노트 워크스페이스                     |
+| P22-T6-18 스킬 작성/토글   | ✅     | ✅ skills-authoring.pw.ts     | ⏳          | 작성 모달·활성화 토글·삭제 실반영     |
