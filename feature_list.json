@@ -2691,15 +2691,6 @@
     "attempts": 1
   },
   {
-    "id": "P22-T1-11",
-    "desc": "[Tier3 계약의존 · auth · verdict=confirmed-undeveloped] LDAP / Active Directory auth. 구현: Genuinely absent AND explicitly deferred to the enterprise-governance phase - treat as ISOLATE/human-gated, do NOT build in a normal loop iteration. FLAGS forcing team=shared: (a) new packages/interfaces types required - LdapAuthConfig (server URL/TLS, bind DN + secret ref, baseDN, user/group search filters), attribute mapping, group-to-role mapping, and an AuthProvider/IdentityProvider abstraction the current magic-link User model lacks; (b) a new UNSPECIFIED dependency (e.g. ldapjs/ldapts) not authorized by any… files: apps/server/src/routes/auth.ts. 구현방식·인터랙션·UI/UX 는 Open WebUI 를 레퍼런스(단 디자인은 apps/web/DESIGN.md 토큰·현대위아 CI 유지). ★계약의존(P22-C-01 승인 후) ★needsBrowser 상세근거: docs/P22-GAP-CATALOG.md §P22-T1-11",
-    "acceptance": "RED 우선. GIVEN a configured LDAP/AD server and valid directory credentials, WHEN a user submits them to the directory-login endpoint, THEN the server performs an LDAP bind, maps attributes to a User, and issues the normal… / GIVEN an AD user belonging to a mapped security group, WHEN they log in, THEN their org role/permissions are derived from the group-to-role mapping (and login is rejected if bind fails or the user is outside the… / GIVEN an admin in the browser Settings/Identity panel, WHEN they enter LDAP connection details (host, baseDN, bind DN, group filters) and click Test/Save, THEN the config persists, a connection test succeeds, and… / GIVEN this is a shared/interfaces + new-dependency change, WHEN picked up, THEN it is isolated to blocked_tasks with rationale rather than implemented, because it requires packages/interfaces types, an unspecified… / ★실브라우저 UAT: 스택 기동 후 Claude-in-Chrome 로 실제 화면에서 동작 확인(불가 시 Playwright /preview + 정직히 미실행 명시). / .ralph/CONTRACT_APPROVED 없으면 격리(구현 금지).",
-    "phase": "P22",
-    "team": "T1",
-    "passes": false,
-    "attempts": 0
-  },
-  {
     "id": "P22-T1-12",
     "desc": "[Tier3 계약의존 · tools · verdict=confirmed-undeveloped] No OpenAPI tool-server ingestion. 구현: Full-stack, contract-first feature mirroring the existing MCP-servers stack. FLAG: requires a NEW API contract — a Zod schema for an OpenApiToolServer resource (register URL/spec, list, delete, per-endpoint enable) in packages/shared/src/schemas/*.ts — which is the source-of-truth that regenerates routes/OpenAPI/web types; this makes the task team=shared / human-gated and it MUST be isolated per CLAUDE.md path-ownership rules. Note the AgentTool/AgentToolSpec interface in packages/interfaces is already SUFFICIENT… files: apps/server/src/tools/. 구현방식·인터랙션·UI/UX 는 Open WebUI 를 레퍼런스(단 디자인은 apps/web/DESIGN.md 토큰·현대위아 CI 유지). ★계약의존(P22-C-01 승인 후) ★needsBrowser 상세근거: docs/P22-GAP-CATALOG.md §P22-T1-12",
     "acceptance": "RED 우선. GIVEN a valid OpenAPI 3.x spec URL/body, WHEN an admin registers it via the new route/admin panel, THEN each operation is persisted and exposed as an AgentToolSpec (operationId->name, params->inputSchema) discoverable… / GIVEN a registered OpenAPI tool server, WHEN the model calls one of its endpoints in a chat turn, THEN the server performs an SSRF-validated HTTP request (reusing mcp/url-validator.ts) and returns an AgentToolResult,… / GIVEN a spec URL pointing at a private/internal address, WHEN registration or invocation is attempted, THEN the url-validator rejects it and no request is made. / BROWSER: GIVEN the settings admin panel, WHEN a user opens the OpenAPI tool-servers manager, adds a spec, and starts a chat, THEN the imported endpoints appear as callable tools and a tool call round-trips end-to-end in… / ★실브라우저 UAT: 스택 기동 후 Claude-in-Chrome 로 실제 화면에서 동작 확인(불가 시 Playwright /preview + 정직히 미실행 명시). / .ralph/CONTRACT_APPROVED 없으면 격리(구현 금지).",
@@ -2736,24 +2727,6 @@
     "attempts": 0
   },
   {
-    "id": "P22-T1-16",
-    "desc": "[Tier3 계약의존 · auth · verdict=confirmed-undeveloped] SCIM 2.0 user/group provisioning. 구현: Genuinely absent AND explicitly deferred to the enterprise-governance phase (rebuild_plan/19-UIUX-UPGRADE.md lines 48, 195). SHARED/ISOLATE: implementing SCIM requires NEW shared types (SCIM User/Group resource schemas, PATCH ops) in packages/interfaces plus a NEW section in rebuild_plan/16-API-CONTRACT.md — both are human-gated per Path ownership rules (packages/interfaces + API contract changes must be isolated). Concretely it would need: new apps/server/src/routes/scim.ts implementing SCIM 2.0 endpoints… files: apps/server/src/routes/. 구현방식·인터랙션·UI/UX 는 Open WebUI 를 레퍼런스(단 디자인은 apps/web/DESIGN.md 토큰·현대위아 CI 유지). ★계약의존(P22-C-01 승인 후) 상세근거: docs/P22-GAP-CATALOG.md §P22-T1-16",
-    "acceptance": "RED 우선. GIVEN an IdP sends POST /scim/v2/Users with a valid SCIM 2.0 payload and a valid Bearer token, WHEN the endpoint processes it, THEN a corresponding user is created/linked via externalId and a 201 with the SCIM User… / GIVEN an existing SCIM-provisioned user, WHEN the IdP sends PATCH /scim/v2/Users/{id} with active=false, THEN the user is deactivated (soft-disabled, cannot auth) and 200 is returned / GIVEN a new scim route file is added, WHEN routes-mounted.test.ts runs, THEN /scim/v2 prefix is present in EXPECTED_ROUTES and the route is mounted in createApp (app.ts) / GIVEN SCIM group provisioning, WHEN the IdP creates/updates a Group with members, THEN membership is reflected in the existing admin-groups tables and reads back via GET /scim/v2/Groups/{id} / .ralph/CONTRACT_APPROVED 없으면 격리(구현 금지).",
-    "phase": "P22",
-    "team": "T1",
-    "passes": false,
-    "attempts": 0
-  },
-  {
-    "id": "P22-T1-17",
-    "desc": "[Tier3 계약의존 · auth · verdict=UNVERIFIED] SSO via OAuth/OIDC (and trusted-header). 구현: Auth is magic-link + JWT/refresh; no OAuth/OIDC SSO, role/group claim mapping, or trusted-proxy header auth. Plan defers SSO (SAML/OIDC) to the enterprise-governance phase. Listed as deferred. files: apps/server/src/routes/auth.ts. 구현방식·인터랙션·UI/UX 는 Open WebUI 를 레퍼런스(단 디자인은 apps/web/DESIGN.md 토큰·현대위아 CI 유지). ★계약의존(P22-C-01 승인 후) △미검증(루프 시작 시 실재 확인) 상세근거: docs/P22-GAP-CATALOG.md §P22-T1-17",
-    "acceptance": "RED 우선. Auth is magic-link + JWT/refresh; no OAuth/OIDC SSO, role/group claim mapping, or trusted-proxy header auth. Plan defers SSO (SAML/OIDC) to the enterprise-governance phase. Listed as deferred. / .ralph/CONTRACT_APPROVED 없으면 격리(구현 금지).",
-    "phase": "P22",
-    "team": "T1",
-    "passes": false,
-    "attempts": 0
-  },
-  {
     "id": "P22-T4-03",
     "desc": "[Tier3 계약의존 · infra · verdict=confirmed-incomplete] ArtifactStore.cleanupExpired is a no-op; 90-day artifact retention unimplemented. 구현: FLAG: SHARED-CONTRACT / MUST ISOLATE (human gate). A correct, spec-aligned fix requires editing packages/interfaces, which the CLAUDE.md path-ownership hard rule forbids doing inline. Concretely: (1) packages/interfaces/src/ArtifactStore.ts:23 - change cleanupExpired() to receive the deps it needs (a system-scoped ArtifactRepo + ArtifactShareRepo + cutoff), and/or (2) packages/interfaces/src/types.ts:467 - add ArtifactRepo.expiredOlderThan(cutoff) mirroring UploadRepo.expiredOlderThan (types.ts:507). Then T1 work:… files: apps/server/src/lib/artifact-store.s3.ts, apps/server/src/lib/artifact-store.inline.ts, apps/server/src/lib/data-retention.ts. 구현방식·인터랙션·UI/UX 는 Open WebUI 를 레퍼런스(단 디자인은 apps/web/DESIGN.md 토큰·현대위아 CI 유지). ★계약의존(P22-C-01 승인 후) 상세근거: docs/P22-GAP-CATALOG.md §P22-T4-03",
     "acceptance": "RED 우선. GIVEN artifacts whose created_at is older than 90 days and that have no active (non-revoked, non-expired) share, WHEN runRetention/cleanupExpired runs, THEN each such artifact's DB row is deleted and its object bytes… / GIVEN an artifact older than 90 days that HAS an active (non-expired, non-revoked) artifact_share, WHEN cleanupExpired runs, THEN it is NOT deleted (kept until the share's expires_at) per 12-OPS-SECURITY.md:187. / GIVEN the current no-op implementations, WHEN a new test asserts deletedCount>0 for expired fixtures, THEN it fails (RED evidence the stub does nothing) and passes only after the real enumeration+deletion is implemented. / GIVEN the retention job runs with no per-user auth context, WHEN it enumerates expired artifacts, THEN it sees artifacts across all users via a system/BYPASSRLS-scoped DataAccess, not just the current caller's… / .ralph/CONTRACT_APPROVED 없으면 격리(구현 금지).",
@@ -2775,15 +2748,6 @@
     "id": "P22-T6-11",
     "desc": "[Tier3 계약의존 · admin · verdict=UNVERIFIED] Arena models + ELO leaderboard / evaluation dashboard. 구현: No anonymous arena A/B models, thumbs-fed ELO leaderboard, or evaluation dashboard (message feedback rating exists but not the leaderboard/arena). Not in plan. Listed as out-of-scope. files: apps/web/src/components/admin/. 구현방식·인터랙션·UI/UX 는 Open WebUI 를 레퍼런스(단 디자인은 apps/web/DESIGN.md 토큰·현대위아 CI 유지). ★계약의존(P22-C-01 승인 후) ★needsBrowser △미검증(루프 시작 시 실재 확인) 상세근거: docs/P22-GAP-CATALOG.md §P22-T6-11",
     "acceptance": "RED 우선. No anonymous arena A/B models, thumbs-fed ELO leaderboard, or evaluation dashboard (message feedback rating exists but not the leaderboard/arena). Not in plan. Listed as out-of-scope. / ★실브라우저 UAT: 스택 기동 후 Claude-in-Chrome 로 실제 화면에서 동작 확인(불가 시 Playwright /preview + 정직히 미실행 명시). / .ralph/CONTRACT_APPROVED 없으면 격리(구현 금지).",
-    "phase": "P22",
-    "team": "T6",
-    "passes": false,
-    "attempts": 0
-  },
-  {
-    "id": "P22-T6-12",
-    "desc": "[Tier3 계약의존 · workspace · verdict=confirmed-undeveloped] Channels (real-time multi-user + @model collaboration). 구현: Genuinely absent and explicitly out-of-scope for v1 (not in rebuild_plan). FLAG: requires NEW shared types in packages/interfaces (Channel, ChannelMember, ChannelMessage, Reaction, Mention, Presence) AND a new section in rebuild_plan/16-API-CONTRACT.md AND new DB migrations — therefore team=shared, MUST be human-gated/isolated per CLAUDE.md path-ownership (no packages/interfaces or packages/shared edits without isolation). Repo also has NO real-time transport (no websocket/socket.io/presence infra anywhere);… files: apps/web/src/. 구현방식·인터랙션·UI/UX 는 Open WebUI 를 레퍼런스(단 디자인은 apps/web/DESIGN.md 토큰·현대위아 CI 유지). ★계약의존(P22-C-01 승인 후) ★needsBrowser 상세근거: docs/P22-GAP-CATALOG.md §P22-T6-12",
-    "acceptance": "RED 우선. GIVEN two authenticated users in the same org WHEN both open the same channel and one posts a message THEN the other sees it appear in real time without reload (browser check, needs_browser) / GIVEN a channel message WHEN a user adds a reaction or replies in a thread THEN the reaction/thread persists via a channels API + DB tables and is visible to all members / GIVEN a message mentioning @model WHEN posted THEN the orchestrator generates an assistant reply attributed to the model within the channel thread / GIVEN the shared-type/API-contract/migration requirement THEN the task is isolated to a human gate (packages/interfaces + 16-API-CONTRACT.md changes) rather than built inline / ★실브라우저 UAT: 스택 기동 후 Claude-in-Chrome 로 실제 화면에서 동작 확인(불가 시 Playwright /preview + 정직히 미실행 명시). / .ralph/CONTRACT_APPROVED 없으면 격리(구현 금지).",
     "phase": "P22",
     "team": "T6",
     "passes": false,
@@ -2856,6 +2820,42 @@
     "id": "P22-T6-20",
     "desc": "[Tier3 계약의존 · media · verdict=UNVERIFIED] Hands-free voice/video call mode. 구현: No voice/video call UI. Plan defers full voice + computer-use to the E-tier follow-up phase. Listed as deferred. files: apps/web/src/components/chat/. 구현방식·인터랙션·UI/UX 는 Open WebUI 를 레퍼런스(단 디자인은 apps/web/DESIGN.md 토큰·현대위아 CI 유지). ★계약의존(P22-C-01 승인 후) ★needsBrowser △미검증(루프 시작 시 실재 확인) 상세근거: docs/P22-GAP-CATALOG.md §P22-T6-20",
     "acceptance": "RED 우선. No voice/video call UI. Plan defers full voice + computer-use to the E-tier follow-up phase. Listed as deferred. / ★실브라우저 UAT: 스택 기동 후 Claude-in-Chrome 로 실제 화면에서 동작 확인(불가 시 Playwright /preview + 정직히 미실행 명시). / .ralph/CONTRACT_APPROVED 없으면 격리(구현 금지).",
+    "phase": "P22",
+    "team": "T6",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P22-T1-11",
+    "desc": "[Tier3 계약의존 · auth · verdict=confirmed-undeveloped] LDAP / Active Directory auth. 구현: Genuinely absent AND explicitly deferred to the enterprise-governance phase - treat as ISOLATE/human-gated, do NOT build in a normal loop iteration. FLAGS forcing team=shared: (a) new packages/interfaces types required - LdapAuthConfig (server URL/TLS, bind DN + secret ref, baseDN, user/group search filters), attribute mapping, group-to-role mapping, and an AuthProvider/IdentityProvider abstraction the current magic-link User model lacks; (b) a new UNSPECIFIED dependency (e.g. ldapjs/ldapts) not authorized by any… files: apps/server/src/routes/auth.ts. 구현방식·인터랙션·UI/UX 는 Open WebUI 를 레퍼런스(단 디자인은 apps/web/DESIGN.md 토큰·현대위아 CI 유지). ★계약의존(P22-C-01 승인 후) ★needsBrowser 상세근거: docs/P22-GAP-CATALOG.md §P22-T1-11",
+    "acceptance": "RED 우선. GIVEN a configured LDAP/AD server and valid directory credentials, WHEN a user submits them to the directory-login endpoint, THEN the server performs an LDAP bind, maps attributes to a User, and issues the normal… / GIVEN an AD user belonging to a mapped security group, WHEN they log in, THEN their org role/permissions are derived from the group-to-role mapping (and login is rejected if bind fails or the user is outside the… / GIVEN an admin in the browser Settings/Identity panel, WHEN they enter LDAP connection details (host, baseDN, bind DN, group filters) and click Test/Save, THEN the config persists, a connection test succeeds, and… / GIVEN this is a shared/interfaces + new-dependency change, WHEN picked up, THEN it is isolated to blocked_tasks with rationale rather than implemented, because it requires packages/interfaces types, an unspecified… / ★실브라우저 UAT: 스택 기동 후 Claude-in-Chrome 로 실제 화면에서 동작 확인(불가 시 Playwright /preview + 정직히 미실행 명시). / .ralph/CONTRACT_APPROVED 없으면 격리(구현 금지).",
+    "phase": "P22",
+    "team": "T1",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P22-T1-16",
+    "desc": "[Tier3 계약의존 · auth · verdict=confirmed-undeveloped] SCIM 2.0 user/group provisioning. 구현: Genuinely absent AND explicitly deferred to the enterprise-governance phase (rebuild_plan/19-UIUX-UPGRADE.md lines 48, 195). SHARED/ISOLATE: implementing SCIM requires NEW shared types (SCIM User/Group resource schemas, PATCH ops) in packages/interfaces plus a NEW section in rebuild_plan/16-API-CONTRACT.md — both are human-gated per Path ownership rules (packages/interfaces + API contract changes must be isolated). Concretely it would need: new apps/server/src/routes/scim.ts implementing SCIM 2.0 endpoints… files: apps/server/src/routes/. 구현방식·인터랙션·UI/UX 는 Open WebUI 를 레퍼런스(단 디자인은 apps/web/DESIGN.md 토큰·현대위아 CI 유지). ★계약의존(P22-C-01 승인 후) 상세근거: docs/P22-GAP-CATALOG.md §P22-T1-16",
+    "acceptance": "RED 우선. GIVEN an IdP sends POST /scim/v2/Users with a valid SCIM 2.0 payload and a valid Bearer token, WHEN the endpoint processes it, THEN a corresponding user is created/linked via externalId and a 201 with the SCIM User… / GIVEN an existing SCIM-provisioned user, WHEN the IdP sends PATCH /scim/v2/Users/{id} with active=false, THEN the user is deactivated (soft-disabled, cannot auth) and 200 is returned / GIVEN a new scim route file is added, WHEN routes-mounted.test.ts runs, THEN /scim/v2 prefix is present in EXPECTED_ROUTES and the route is mounted in createApp (app.ts) / GIVEN SCIM group provisioning, WHEN the IdP creates/updates a Group with members, THEN membership is reflected in the existing admin-groups tables and reads back via GET /scim/v2/Groups/{id} / .ralph/CONTRACT_APPROVED 없으면 격리(구현 금지).",
+    "phase": "P22",
+    "team": "T1",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P22-T1-17",
+    "desc": "[Tier3 계약의존 · auth · verdict=UNVERIFIED] SSO via OAuth/OIDC (and trusted-header). 구현: Auth is magic-link + JWT/refresh; no OAuth/OIDC SSO, role/group claim mapping, or trusted-proxy header auth. Plan defers SSO (SAML/OIDC) to the enterprise-governance phase. Listed as deferred. files: apps/server/src/routes/auth.ts. 구현방식·인터랙션·UI/UX 는 Open WebUI 를 레퍼런스(단 디자인은 apps/web/DESIGN.md 토큰·현대위아 CI 유지). ★계약의존(P22-C-01 승인 후) △미검증(루프 시작 시 실재 확인) 상세근거: docs/P22-GAP-CATALOG.md §P22-T1-17",
+    "acceptance": "RED 우선. Auth is magic-link + JWT/refresh; no OAuth/OIDC SSO, role/group claim mapping, or trusted-proxy header auth. Plan defers SSO (SAML/OIDC) to the enterprise-governance phase. Listed as deferred. / .ralph/CONTRACT_APPROVED 없으면 격리(구현 금지).",
+    "phase": "P22",
+    "team": "T1",
+    "passes": false,
+    "attempts": 0
+  },
+  {
+    "id": "P22-T6-12",
+    "desc": "[Tier3 계약의존 · workspace · verdict=confirmed-undeveloped] Channels (real-time multi-user + @model collaboration). 구현: Genuinely absent and explicitly out-of-scope for v1 (not in rebuild_plan). FLAG: requires NEW shared types in packages/interfaces (Channel, ChannelMember, ChannelMessage, Reaction, Mention, Presence) AND a new section in rebuild_plan/16-API-CONTRACT.md AND new DB migrations — therefore team=shared, MUST be human-gated/isolated per CLAUDE.md path-ownership (no packages/interfaces or packages/shared edits without isolation). Repo also has NO real-time transport (no websocket/socket.io/presence infra anywhere);… files: apps/web/src/. 구현방식·인터랙션·UI/UX 는 Open WebUI 를 레퍼런스(단 디자인은 apps/web/DESIGN.md 토큰·현대위아 CI 유지). ★계약의존(P22-C-01 승인 후) ★needsBrowser 상세근거: docs/P22-GAP-CATALOG.md §P22-T6-12",
+    "acceptance": "RED 우선. GIVEN two authenticated users in the same org WHEN both open the same channel and one posts a message THEN the other sees it appear in real time without reload (browser check, needs_browser) / GIVEN a channel message WHEN a user adds a reaction or replies in a thread THEN the reaction/thread persists via a channels API + DB tables and is visible to all members / GIVEN a message mentioning @model WHEN posted THEN the orchestrator generates an assistant reply attributed to the model within the channel thread / GIVEN the shared-type/API-contract/migration requirement THEN the task is isolated to a human gate (packages/interfaces + 16-API-CONTRACT.md changes) rather than built inline / ★실브라우저 UAT: 스택 기동 후 Claude-in-Chrome 로 실제 화면에서 동작 확인(불가 시 Playwright /preview + 정직히 미실행 명시). / .ralph/CONTRACT_APPROVED 없으면 격리(구현 금지).",
     "phase": "P22",
     "team": "T6",
     "passes": false,
