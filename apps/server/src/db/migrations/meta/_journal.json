@@ -281,6 +281,13 @@
       "when": 1784002600000,
       "tag": "0040_scim",
       "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "7",
+      "when": 1784006200000,
+      "tag": "0041_channels",
+      "breakpoints": true
     }
   ]
 }

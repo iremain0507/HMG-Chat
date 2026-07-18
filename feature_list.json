@@ -2858,7 +2858,7 @@
     "acceptance": "RED 우선. GIVEN two authenticated users in the same org WHEN both open the same channel and one posts a message THEN the other sees it appear in real time without reload (browser check, needs_browser) / GIVEN a channel message WHEN a user adds a reaction or replies in a thread THEN the reaction/thread persists via a channels API + DB tables and is visible to all members / GIVEN a message mentioning @model WHEN posted THEN the orchestrator generates an assistant reply attributed to the model within the channel thread / GIVEN the shared-type/API-contract/migration requirement THEN the task is isolated to a human gate (packages/interfaces + 16-API-CONTRACT.md changes) rather than built inline / ★실브라우저 UAT: 스택 기동 후 Claude-in-Chrome 로 실제 화면에서 동작 확인(불가 시 Playwright /preview + 정직히 미실행 명시). / .ralph/CONTRACT_APPROVED 없으면 격리(구현 금지).",
     "phase": "P22",
     "team": "T6",
-    "passes": false,
+    "passes": true,
     "attempts": 0
   }
 ]

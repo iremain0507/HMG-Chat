@@ -36,6 +36,7 @@ import { SkillsManager } from "../../components/settings/SkillsManager";
 import { AgentGallery } from "../../components/agents/AgentGallery";
 import { ConnectionsManager } from "../../components/settings/ConnectionsManager";
 import { NotesWorkspace } from "../../components/notes/NotesWorkspace";
+import { ChannelsWorkspace } from "../../components/channels/ChannelsWorkspace";
 import { MemoryManager } from "../../components/settings/MemoryManager";
 import { NavRail } from "../../components/layout/NavRail";
 import { ProfileManager } from "../../components/settings/ProfileManager";
@@ -268,6 +269,27 @@ function NotesWorkspacePreview() {
       className="rounded-md border border-border px-3 py-1.5 text-sm text-fg-muted hover:border-primary hover:text-fg"
     >
       노트 워크스페이스 열기
+    </button>
+  );
+}
+
+// P22-T6-12 — 채널(실시간 멀티유저 + @model). 마운트 시 /api/v1/channels 를 fetch 하고
+//   GET /:id/stream 으로 EventSource 를 연다. 위와 동일한 토글 격리 패턴 — 전용
+//   e2e(channels.pw.ts)만 page.route() 로 REST/SSE 를 목킹한 뒤 트리거를 클릭한다.
+function ChannelsWorkspacePreview() {
+  const [open, setOpen] = useState(false);
+  return open ? (
+    <div className="h-[32rem]">
+      <ChannelsWorkspace />
+    </div>
+  ) : (
+    <button
+      type="button"
+      data-testid="channels-workspace-preview-trigger"
+      onClick={() => setOpen(true)}
+      className="rounded-md border border-border px-3 py-1.5 text-sm text-fg-muted hover:border-primary hover:text-fg"
+    >
+      채널 워크스페이스 열기
     </button>
   );
 }
@@ -1440,6 +1462,10 @@ export default function PreviewGallery() {
 
       <Section name="notes-workspace">
         <NotesWorkspacePreview />
+      </Section>
+
+      <Section name="channels-workspace">
+        <ChannelsWorkspacePreview />
       </Section>
 
       <Section name="language-switch">

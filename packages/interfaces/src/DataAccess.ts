@@ -24,6 +24,10 @@ import type {
   OrgFilter,
   OrgUnit,
   NoteRepo,
+  ChannelRepo,
+  ChannelMemberRepo,
+  ChannelMessageRepo,
+  ChannelReactionRepo,
   OrgUnitFilter,
   ProjectDocumentRepo,
   ProjectMemberRepo,
@@ -61,6 +65,10 @@ export interface DataAccess {
   agents: AgentRepo; // C5 · P22-T6-10 커스텀 워크스페이스 에이전트
   providerConnections: ProviderConnectionRepo; // C6 · P22-T6-14 외부 provider 연결
   notes: NoteRepo; // C7 · P22-T6-17 노트 워크스페이스
+  channels: ChannelRepo; // C8 · P22-T6-12 실시간 다중사용자 채널
+  channelMembers: ChannelMemberRepo;
+  channelMessages: ChannelMessageRepo;
+  channelReactions: ChannelReactionRepo;
   skillAssets: SkillAssetRepo;
   userQuotas: UserQuotaRepo;
   usageLogs: UsageLogRepo;

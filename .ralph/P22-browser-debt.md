@@ -15,3 +15,4 @@
 | P22-T6-17 Notes            | ✅     | ✅ notes.pw.ts                                            | ⏳          | 노트 워크스페이스                                                                                                                       |
 | P22-T6-18 스킬 작성/토글   | ✅     | ✅ skills-authoring.pw.ts                                 | ⏳          | 작성 모달·활성화 토글·삭제 실반영                                                                                                       |
 | P22-T6-19 비용/툴지표      | ✅     | ✅ quota-by-model.pw.ts + tool-metrics-source-trend.pw.ts | ⏳          | 모델별 비용 합계 일치·출처/추이 실데이터. **추가 부채**: migration 0039 실 Postgres 미적용, tool_metrics 프로덕션 writer 미배선(app.ts) |
+| P22-T6-12 Channels         | ✅     | ✅ channels.pw.ts                                         | ⏳          | 실시간 다중사용자 채널(SSE)                                                                                                             |

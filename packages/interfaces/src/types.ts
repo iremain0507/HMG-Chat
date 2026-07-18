@@ -315,6 +315,54 @@ export interface Note {
   updatedAt: Date;
 }
 
+// Channel — 조직 공용 실시간 대화방(Open WebUI Channels 파리티, Discord 스타일).
+// 계약 승인: .ralph/CONTRACT_APPROVED C8 (docs/rfc/P22-contract-batch.md § C8, P22-T6-12).
+// Session(1:1 단일 사용자 대화)과는 별개 개념 — 이쪽은 같은 org 의 여러 사람 + @model 이
+// 하나의 방에서 함께 쓰는 다중 사용자 공간이다. 방 자체는 org 전체에 보이고(디렉터리),
+// 글쓰기는 멤버만 가능하다.
+export interface Channel {
+  id: string;
+  orgId: string;
+  name: string;
+  description: string;
+  createdBy: string; // User.id
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+// ChannelMember — 방 참여자. role=owner 는 생성자(방 수정·삭제 권한), 나머지는 member.
+export interface ChannelMember {
+  id: string;
+  orgId: string;
+  channelId: string;
+  userId: string;
+  role: "owner" | "member";
+  createdAt: Date;
+}
+
+// ChannelMessage — 방에 게시된 글. parentId 가 있으면 그 글에 달린 스레드 답글이다.
+// role="assistant" 는 @model 멘션에 대한 LLM 응답이며 userId 는 null(사람이 아니다).
+export interface ChannelMessage {
+  id: string;
+  orgId: string;
+  channelId: string;
+  userId: string | null; // assistant 메시지는 null
+  role: "user" | "assistant";
+  content: string;
+  parentId: string | null; // 최상위 글이면 null
+  createdAt: Date;
+}
+
+// ChannelReaction — 글에 붙은 이모지 반응. (messageId, userId, emoji) 조합이 유일하다.
+export interface ChannelReaction {
+  id: string;
+  orgId: string;
+  messageId: string;
+  userId: string;
+  emoji: string;
+  createdAt: Date;
+}
+
 // ProviderConnection — 외부 OpenAI 호환 provider 연결(base URL + API 키).
 // 계약 승인: .ralph/CONTRACT_APPROVED C6 (docs/rfc/P22-contract-batch.md § C6, P22-T6-14).
 // 중요: API 키 본문은 이 DTO 에 절대 담지 않는다 — 키는 provider_connections.api_key_encrypted
@@ -623,6 +671,21 @@ export type AgentRepo = Repo<
 
 // NoteRepo — C7 · P22-T6-17. org + 소유자(userId) 스코프 필터만 필요하다.
 export type NoteRepo = Repo<Note, { orgId?: string; userId?: string }>;
+
+// Channel* Repo — C8 · P22-T6-12. 전부 org 스코프 + 소속 스코프 필터.
+export type ChannelRepo = Repo<Channel, { orgId?: string }>;
+export type ChannelMemberRepo = Repo<
+  ChannelMember,
+  { orgId?: string; channelId?: string; userId?: string }
+>;
+export type ChannelMessageRepo = Repo<
+  ChannelMessage,
+  { orgId?: string; channelId?: string; parentId?: string }
+>;
+export type ChannelReactionRepo = Repo<
+  ChannelReaction,
+  { orgId?: string; messageId?: string; userId?: string }
+>;
 
 // ProviderConnectionRepo — C6 · P22-T6-14.
 // insert/update 의 apiKey(평문)는 DTO 밖 전용 인자로 받는다(구현체가 KEK 로 암호화해 저장).
