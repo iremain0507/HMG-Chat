@@ -143,6 +143,17 @@ const EXPECTED_ROUTES: Array<{ method: string; path: string; phase: string }> =
     { method: "GET", path: `/api/v1/agents/${randomUUID()}`, phase: "P22" },
     { method: "PATCH", path: `/api/v1/agents/${randomUUID()}`, phase: "P22" },
     { method: "DELETE", path: `/api/v1/agents/${randomUUID()}`, phase: "P22" },
+    // P22-T6-17 노트 워크스페이스(계약배치 C7)
+    { method: "GET", path: "/api/v1/notes", phase: "P22" },
+    { method: "POST", path: "/api/v1/notes", phase: "P22" },
+    { method: "GET", path: `/api/v1/notes/${randomUUID()}`, phase: "P22" },
+    { method: "PATCH", path: `/api/v1/notes/${randomUUID()}`, phase: "P22" },
+    { method: "DELETE", path: `/api/v1/notes/${randomUUID()}`, phase: "P22" },
+    {
+      method: "POST",
+      path: `/api/v1/notes/${randomUUID()}/enhance`,
+      phase: "P22",
+    },
     { method: "GET", path: "/api/v1/connections", phase: "P22" },
     { method: "POST", path: "/api/v1/connections", phase: "P22" },
     {

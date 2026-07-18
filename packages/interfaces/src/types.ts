@@ -301,6 +301,20 @@ export interface Agent {
   updatedAt: Date;
 }
 
+// Note — 독립 노트 워크스페이스 문서(마크다운 본문 + AI 개선 + 채팅 컨텍스트 주입).
+// 계약 승인: .ralph/CONTRACT_APPROVED C7 (docs/rfc/P22-contract-batch.md § C7, P22-T6-17).
+// ProjectDocument(RAG 업로드 파일)와는 별개 개념 — 이쪽은 사용자가 앱 안에서 직접 쓰는 문서다.
+// 소유권: org 스코프 + userId 소유자. 공유 개념은 이번 범위 밖(전부 작성자 전용).
+export interface Note {
+  id: string;
+  orgId: string;
+  userId: string;
+  title: string;
+  content: string; // markdown
+  createdAt: Date;
+  updatedAt: Date;
+}
+
 // ProviderConnection — 외부 OpenAI 호환 provider 연결(base URL + API 키).
 // 계약 승인: .ralph/CONTRACT_APPROVED C6 (docs/rfc/P22-contract-batch.md § C6, P22-T6-14).
 // 중요: API 키 본문은 이 DTO 에 절대 담지 않는다 — 키는 provider_connections.api_key_encrypted
@@ -604,6 +618,9 @@ export type AgentRepo = Repo<
   Agent,
   { orgId?: string; createdBy?: string; visibility?: Agent["visibility"] }
 >;
+
+// NoteRepo — C7 · P22-T6-17. org + 소유자(userId) 스코프 필터만 필요하다.
+export type NoteRepo = Repo<Note, { orgId?: string; userId?: string }>;
 
 // ProviderConnectionRepo — C6 · P22-T6-14.
 // insert/update 의 apiKey(평문)는 DTO 밖 전용 인자로 받는다(구현체가 KEK 로 암호화해 저장).

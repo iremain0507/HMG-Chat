@@ -12,3 +12,4 @@
 | P22-T6-05 message-queue    | ✅     | ✅ message-queue.pw.ts        | ⏳          | 응답 생성 중 메시지 큐잉              |
 | P22-T6-14 Connections      | ✅     | ✅ connections.pw.ts          | ⏳          | 외부 provider 연결 admin              |
 | P22-T6-15 i18n             | ✅     | ✅ i18n-language-switch.pw.ts | ⏳          | 언어 전환                             |
+| P22-T6-17 Notes            | ✅     | ✅ notes.pw.ts                | ⏳          | 노트 워크스페이스                     |

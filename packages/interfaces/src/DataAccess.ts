@@ -23,6 +23,7 @@ import type {
   Organization,
   OrgFilter,
   OrgUnit,
+  NoteRepo,
   OrgUnitFilter,
   ProjectDocumentRepo,
   ProjectMemberRepo,
@@ -59,6 +60,7 @@ export interface DataAccess {
   mcpServers: McpServerRepo;
   agents: AgentRepo; // C5 · P22-T6-10 커스텀 워크스페이스 에이전트
   providerConnections: ProviderConnectionRepo; // C6 · P22-T6-14 외부 provider 연결
+  notes: NoteRepo; // C7 · P22-T6-17 노트 워크스페이스
   skillAssets: SkillAssetRepo;
   userQuotas: UserQuotaRepo;
   usageLogs: UsageLogRepo;

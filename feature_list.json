@@ -2795,7 +2795,7 @@
     "acceptance": "RED 우선. GIVEN packages/interfaces has no Note type WHEN grepping for 'interface Note' or 'Note DTO' in 14-INTERFACES.md THEN nothing is found, confirming a new shared type is required (isolate). / GIVEN a logged-in user WHEN they navigate to a /notes route in the browser THEN they can create/edit a standalone note in a rich-text/markdown editor and it persists across reloads. / GIVEN a note being edited WHEN the user clicks AI-enhance THEN the note content is improved via the orchestrator, and WHEN they toggle context-inject THEN the note content is injected into the chat context and reachable… / GIVEN this is marked out-of-scope and needs packages/interfaces + API-contract changes THEN the task is appended to .ralph/blocked_tasks for human gate rather than implemented directly. / ★실브라우저 UAT: 스택 기동 후 Claude-in-Chrome 로 실제 화면에서 동작 확인(불가 시 Playwright /preview + 정직히 미실행 명시). / .ralph/CONTRACT_APPROVED 없으면 격리(구현 금지).",
     "phase": "P22",
     "team": "T6",
-    "passes": false,
+    "passes": true,
     "attempts": 0
   },
   {

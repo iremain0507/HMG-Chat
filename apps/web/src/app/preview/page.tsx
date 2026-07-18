@@ -35,6 +35,7 @@ import { McpServersManager } from "../../components/settings/McpServersManager";
 import { SkillsManager } from "../../components/settings/SkillsManager";
 import { AgentGallery } from "../../components/agents/AgentGallery";
 import { ConnectionsManager } from "../../components/settings/ConnectionsManager";
+import { NotesWorkspace } from "../../components/notes/NotesWorkspace";
 import { MemoryManager } from "../../components/settings/MemoryManager";
 import { NavRail } from "../../components/layout/NavRail";
 import { ProfileManager } from "../../components/settings/ProfileManager";
@@ -247,6 +248,26 @@ function ConnectionsManagerPreview() {
       className="rounded-md border border-border px-3 py-1.5 text-sm text-fg-muted hover:border-primary hover:text-fg"
     >
       연결 관리 열기
+    </button>
+  );
+}
+
+// P22-T6-17(C7) — NotesWorkspace 도 마운트 시 /api/v1/notes 를 fetch 한다. 위와 동일한
+//   토글 격리 패턴. 전용 e2e(notes.pw.ts)만 page.route() 로 API 를 목킹한 뒤 트리거를 클릭.
+function NotesWorkspacePreview() {
+  const [open, setOpen] = useState(false);
+  return open ? (
+    <div className="h-[32rem]">
+      <NotesWorkspace />
+    </div>
+  ) : (
+    <button
+      type="button"
+      data-testid="notes-workspace-preview-trigger"
+      onClick={() => setOpen(true)}
+      className="rounded-md border border-border px-3 py-1.5 text-sm text-fg-muted hover:border-primary hover:text-fg"
+    >
+      노트 워크스페이스 열기
     </button>
   );
 }
@@ -1415,6 +1436,10 @@ export default function PreviewGallery() {
 
       <Section name="connections-manager">
         <ConnectionsManagerPreview />
+      </Section>
+
+      <Section name="notes-workspace">
+        <NotesWorkspacePreview />
       </Section>
 
       <Section name="language-switch">

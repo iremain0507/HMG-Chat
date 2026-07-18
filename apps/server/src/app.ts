@@ -41,6 +41,7 @@ import { createPgMcpServerDataAccess } from "./db/mcp-server-data-access.js";
 import { createOpenApiToolServerRoutes } from "./routes/openapi-tool-servers.js";
 import { createPgOpenApiToolServerDataAccess } from "./db/openapi-tool-server-data-access.js";
 import { createAgentRoutes } from "./routes/agents.js";
+import { createNoteRoutes } from "./routes/notes.js";
 import {
   createConnectionRoutes,
   createDefaultProviderProbe,
@@ -51,6 +52,7 @@ import { createConnectionProviderResolver } from "./orchestrator/connection-prov
 import { createOpenAILLMProvider } from "./orchestrator/llm-provider-openai.js";
 import OpenAI from "openai";
 import { createPgAgentDataAccess } from "./db/agent-data-access.js";
+import { createPgNoteDataAccess } from "./db/note-data-access.js";
 import { assembleOrgOpenApiTools } from "./tools/openapi-tool-assembler.js";
 import { createOpenApiToolInvoker } from "./tools/openapi-tool-invoker.js";
 import { createMcpClientPool } from "./mcp/mcp-client-pool.js";
@@ -233,6 +235,8 @@ export function createApp(env: Env) {
   const openApiToolServerDa = createPgOpenApiToolServerDataAccess();
   // P22-T6-10 — 커스텀 워크스페이스 에이전트 레지스트리(0034_agents).
   const agentDa = createPgAgentDataAccess();
+  // P22-T6-17 — 노트 워크스페이스(0037_notes).
+  const noteDa = createPgNoteDataAccess();
   // P22-T6-14 — 외부 OpenAI 호환 provider 연결(0035_provider_connections).
   // 키는 KEK(계약 승인 C6: pluggable, 지금은 로컬 대칭키. 배포 시 KMS 구현으로 교체)로 봉인해
   // 저장하고 재조회 시 keyPrefix 만 노출한다(api_keys 마스킹 미러).
@@ -568,6 +572,18 @@ export function createApp(env: Env) {
   agentsApp.use("*", authMiddleware);
   agentsApp.route("/", createAgentRoutes({ da: agentDa }));
   app.route("/api/v1/agents", agentsApp);
+
+  // P22-T6-17 — 노트 워크스페이스(Open WebUI Notes 파리티). 노트는 작성자 전용이라
+  // org 경계 + 소유자 경계 모두 라우트가 강제한다(RLS superuser 우회 대비, 남의 것은 404).
+  // /:id/enhance 는 completions 와 같은 provider/model 을 쓰되 maxTokens 를 크게 잡는다
+  // (자동완성은 조각, 노트 개선은 문서 전체를 다시 쓴다).
+  const notesApp = new Hono<{ Variables: AuthedVariables }>();
+  notesApp.use("*", authMiddleware);
+  notesApp.route(
+    "/",
+    createNoteRoutes({ da: noteDa, provider, model: env.LLM_MODEL }),
+  );
+  app.route("/api/v1/notes", notesApp);
 
   // P22-T6-14 — Connections(Open WebUI Connections 파리티). org 경계는 라우트가 강제하고
   // baseUrl 은 등록/verify 양쪽에서 mcp/url-validator 로 SSRF 재검증한다(mcp-servers 미러).
