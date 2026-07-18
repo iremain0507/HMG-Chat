@@ -16,6 +16,7 @@ import {
   type SessionFolder,
 } from "../lib/sessionFolders";
 import { addSessionTag, removeSessionTag } from "../lib/sessionTags";
+import { SESSIONS_CHANGED_EVENT } from "../lib/importConversations";
 import { showToast } from "../lib/toast";
 
 export type { SessionFolder } from "../lib/sessionFolders";
@@ -143,6 +144,18 @@ export function useSessions(): UseSessionsResult {
     void load();
     void loadFolders();
   }, [load, loadFolders]);
+
+  // P22-T6-13(계약배치 C9) — 대화 가져오기(ShareExportMenu)가 세션을 생성한 뒤 발행하는
+  // 앱레벨 이벤트를 구독해 목록을 재조회한다. 구독이 없으면 가져온 세션이 수동 새로고침
+  // 전까지 목록에 보이지 않는다. 이벤트명 단일출처는 lib/importConversations.ts.
+  useEffect(() => {
+    const onSessionsChanged = () => {
+      void load();
+    };
+    window.addEventListener(SESSIONS_CHANGED_EVENT, onSessionsChanged);
+    return () =>
+      window.removeEventListener(SESSIONS_CHANGED_EVENT, onSessionsChanged);
+  }, [load]);
 
   const createSession = useCallback(async () => {
     const res = await apiFetch("/api/v1/sessions", {

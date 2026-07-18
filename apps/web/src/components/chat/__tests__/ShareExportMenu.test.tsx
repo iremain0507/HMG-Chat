@@ -4,11 +4,27 @@
 //   기존 ShareDialog(POST/DELETE /artifacts/:id/share)를 연다.
 import React from "react";
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { render, screen, fireEvent, cleanup } from "@testing-library/react";
+import {
+  render,
+  screen,
+  fireEvent,
+  cleanup,
+  waitFor,
+} from "@testing-library/react";
 import "@testing-library/jest-dom/vitest";
 
 const { downloadTextFile } = vi.hoisted(() => ({
   downloadTextFile: vi.fn(),
+}));
+
+// P22-T6-13 — 가져오기는 네트워크를 타므로 클라이언트 헬퍼를 목킹하고, 컴포넌트가
+// (1) 고른 File 을 그대로 넘기는지 (2) 성공시에만 목록 갱신 이벤트를 쏘는지를 단언한다.
+const { importConversationsFromFile } = vi.hoisted(() => ({
+  importConversationsFromFile: vi.fn(),
+}));
+vi.mock("../../../lib/importConversations", () => ({
+  importConversationsFromFile,
+  SESSIONS_CHANGED_EVENT: "wchat:sessions-changed",
 }));
 vi.mock("../../../lib/export-conversation", async () => {
   const actual = await vi.importActual<
@@ -428,5 +444,83 @@ describe("ShareExportMenu", () => {
     fireEvent.keyDown(document, { key: "Escape" });
     expect(screen.queryByTestId("share-confirm")).not.toBeInTheDocument();
     expect(document.activeElement).toBe(trigger);
+  });
+});
+
+// P22-T6-13(계약배치 C9) — 대화 가져오기. 메뉴에서 파일을 고르면 클라이언트가 JSON 을 읽어
+// 포맷을 판별하고 POST /api/v1/sessions/import 로 넘긴 뒤, 세션 목록 갱신 이벤트를 발행한다.
+describe("ShareExportMenu — 대화 가져오기 (P22-T6-13)", () => {
+  afterEach(() => {
+    cleanup();
+    importConversationsFromFile.mockReset();
+  });
+
+  function openImportMenu() {
+    render(
+      <ShareExportMenu
+        title="테스트 대화"
+        messages={MESSAGES}
+        artifacts={[]}
+        sessionId="session-1"
+      />,
+    );
+    fireEvent.click(screen.getByTestId("share-export-trigger"));
+  }
+
+  it("메뉴에 '대화 가져오기' 항목과 숨은 파일 입력이 있다", () => {
+    openImportMenu();
+    expect(
+      screen.getByRole("button", { name: "대화 가져오기" }),
+    ).toBeInTheDocument();
+    const input = screen.getByTestId("import-file-input") as HTMLInputElement;
+    expect(input.type).toBe("file");
+    expect(input.accept).toContain("json");
+  });
+
+  it("'대화 가져오기' 클릭은 숨은 파일 입력을 연다", () => {
+    openImportMenu();
+    const input = screen.getByTestId("import-file-input") as HTMLInputElement;
+    const click = vi.spyOn(input, "click");
+    fireEvent.click(screen.getByRole("button", { name: "대화 가져오기" }));
+    expect(click).toHaveBeenCalled();
+  });
+
+  it("파일을 고르면 import 를 호출하고 성공 시 세션 목록 갱신 이벤트를 발행한다", async () => {
+    importConversationsFromFile.mockResolvedValue({
+      ok: true,
+      createdSessionIds: ["s-1", "s-2"],
+    });
+    const listener = vi.fn();
+    window.addEventListener("wchat:sessions-changed", listener);
+    openImportMenu();
+    const file = new File(
+      [JSON.stringify({ title: "t", messages: [] })],
+      "c.json",
+      { type: "application/json" },
+    );
+    const input = screen.getByTestId("import-file-input") as HTMLInputElement;
+    fireEvent.change(input, { target: { files: [file] } });
+    await waitFor(() =>
+      expect(importConversationsFromFile).toHaveBeenCalledWith(file),
+    );
+    await waitFor(() => expect(listener).toHaveBeenCalled());
+    window.removeEventListener("wchat:sessions-changed", listener);
+  });
+
+  it("가져오기가 실패하면 갱신 이벤트를 발행하지 않는다", async () => {
+    importConversationsFromFile.mockResolvedValue({
+      ok: false,
+      createdSessionIds: [],
+    });
+    const listener = vi.fn();
+    window.addEventListener("wchat:sessions-changed", listener);
+    openImportMenu();
+    const input = screen.getByTestId("import-file-input") as HTMLInputElement;
+    fireEvent.change(input, {
+      target: { files: [new File(["{}"], "c.json")] },
+    });
+    await waitFor(() => expect(importConversationsFromFile).toHaveBeenCalled());
+    expect(listener).not.toHaveBeenCalled();
+    window.removeEventListener("wchat:sessions-changed", listener);
   });
 });

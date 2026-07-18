@@ -17,6 +17,11 @@ import {
   downloadTextFile,
   type ExportMessage,
 } from "../../lib/export-conversation";
+import {
+  importConversationsFromFile,
+  SESSIONS_CHANGED_EVENT,
+} from "../../lib/importConversations";
+import { showToast } from "../../lib/toast";
 
 type MenuState =
   "closed" | "menu" | "confirm" | "share-dialog" | "conversation-share-dialog";
@@ -47,6 +52,7 @@ export function ShareExportMenu({
   const triggerRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const confirmRef = useRef<HTMLDivElement>(null);
+  const importInputRef = useRef<HTMLInputElement>(null);
   const menuOverlay = useExclusiveOverlay(`share-export-menu-${sessionId}`);
 
   useEffect(() => {
@@ -96,6 +102,30 @@ export function ShareExportMenu({
     setState("closed");
   }
 
+  // P22-T6-13(계약배치 C9) — 가져오기. 메뉴 항목은 숨은 file input 을 대신 클릭할 뿐이고,
+  // 실제 읽기/포맷판별/POST 는 lib/importConversations.ts 가 담당(파싱 단일출처는 서버).
+  // 성공 시 SESSIONS_CHANGED_EVENT 를 발행해 SessionList 가 목록을 다시 읽게 한다.
+  async function onImportFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    // 같은 파일을 연속으로 고를 때도 change 가 다시 발화하도록 값을 비운다.
+    e.target.value = "";
+    if (!file) return;
+    setState("closed");
+    const result = await importConversationsFromFile(file);
+    if (!result.ok) {
+      showToast(
+        "error",
+        "대화를 가져오지 못했습니다. JSON 형식을 확인해주세요.",
+      );
+      return;
+    }
+    showToast(
+      "success",
+      `대화 ${result.createdSessionIds.length}건을 가져왔습니다.`,
+    );
+    window.dispatchEvent(new CustomEvent(SESSIONS_CHANGED_EVENT));
+  }
+
   function exportPdf() {
     setState("closed");
     setPrintRequested(true);
@@ -115,6 +145,15 @@ export function ShareExportMenu({
           ))}
         </div>
       )}
+      {/* 메뉴가 닫혀도 언마운트되지 않도록 메뉴 밖에 둔다(선택 중 메뉴가 닫혀도 change 수신). */}
+      <input
+        ref={importInputRef}
+        data-testid="import-file-input"
+        type="file"
+        accept="application/json,.json"
+        className="hidden"
+        onChange={onImportFileChange}
+      />
       <button
         ref={triggerRef}
         type="button"
@@ -154,6 +193,13 @@ export function ShareExportMenu({
             className={`block w-full rounded-md px-2 py-1.5 text-left text-sm text-fg hover:bg-bg ${FOCUS_RING}`}
           >
             PDF로 내보내기
+          </button>
+          <button
+            type="button"
+            onClick={() => importInputRef.current?.click()}
+            className={`block w-full rounded-md px-2 py-1.5 text-left text-sm text-fg hover:bg-bg ${FOCUS_RING}`}
+          >
+            대화 가져오기
           </button>
           <div className="my-1 border-t border-border" />
           <button

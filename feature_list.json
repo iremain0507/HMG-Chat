@@ -2759,8 +2759,8 @@
     "acceptance": "RED 우선. GIVEN a valid native export ({title,messages}) POSTed to the import endpoint, WHEN the request is processed, THEN a new session is created for the caller org and its user/assistant messages are persisted in order and… / GIVEN a ChatGPT conversations.json (array of conversations with a mapping graph), WHEN imported, THEN each conversation becomes one session with messages flattened via parent pointers, only user/assistant roles kept,… / GIVEN a user from org A importing, WHEN sessions are created, THEN they are scoped to org A only and not visible cross-org (isolation test). / GIVEN the chat UI (browser), WHEN the user picks Import in the share/export menu and selects a native or ChatGPT JSON file, THEN new sessions appear in the session list and open with the imported messages rendered. / ★실브라우저 UAT: 스택 기동 후 Claude-in-Chrome 로 실제 화면에서 동작 확인(불가 시 Playwright /preview + 정직히 미실행 명시). / .ralph/CONTRACT_APPROVED 없으면 격리(구현 금지).",
     "phase": "P22",
     "team": "T6",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P22-T6-14",

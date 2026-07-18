@@ -1239,4 +1239,56 @@ describe("useSessions", () => {
     });
     expect(result.current.sessions.map((s) => s.id)).toEqual(["sess-2"]);
   });
+
+  // P22-T6-13(계약배치 C9) — 가져오기가 끝나면 ShareExportMenu 가 wchat:sessions-changed 를
+  // 발행한다. 그 이벤트를 목록이 구독하지 않으면 "가져온 세션이 목록에 나타난다" acceptance 가
+  // 실제로는 성립하지 않으므로(수동 새로고침 필요), 여기서 재조회를 단언한다.
+  it("wchat:sessions-changed 이벤트를 받으면 목록을 다시 불러온다", async () => {
+    let call = 0;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        call += 1;
+        // 첫 로드는 1건, 가져오기 후 재조회는 2건(가져온 세션 포함).
+        const data =
+          call === 1
+            ? [
+                {
+                  id: "sess-1",
+                  title: "기존 대화",
+                  lastMessageAt: "2026-07-14T01:00:00Z",
+                  projectId: null,
+                  archived: false,
+                },
+              ]
+            : [
+                {
+                  id: "sess-1",
+                  title: "기존 대화",
+                  lastMessageAt: "2026-07-14T01:00:00Z",
+                  projectId: null,
+                  archived: false,
+                },
+                {
+                  id: "sess-imported",
+                  title: "가져온 대화",
+                  lastMessageAt: "2026-07-14T02:00:00Z",
+                  projectId: null,
+                  archived: false,
+                },
+              ];
+        return { ok: true, status: 200, json: async () => ({ data }) };
+      }),
+    );
+
+    const { result } = renderHook(() => useSessions());
+    await waitFor(() => expect(result.current.sessions).toHaveLength(1));
+
+    await act(async () => {
+      window.dispatchEvent(new CustomEvent("wchat:sessions-changed"));
+    });
+
+    await waitFor(() => expect(result.current.sessions).toHaveLength(2));
+    expect(result.current.sessions.map((s) => s.id)).toContain("sess-imported");
+  });
 });

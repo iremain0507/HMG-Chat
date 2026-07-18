@@ -422,6 +422,198 @@ describe("routes/sessions — POST /:id/clone 대화 복제 (P22-T6-01)", () => 
   });
 });
 
+describe("routes/sessions — POST /import 대화 가져오기 (P22-T6-13, 계약배치 C9)", () => {
+  interface ImportHarness {
+    app: ReturnType<typeof appWithAuth>;
+    created: Array<{ userId: string; title: string | null }>;
+    inserted: Array<{
+      sessionId: string;
+      role: string;
+      content: unknown;
+    }>;
+  }
+
+  function importApp(sub: string): ImportHarness {
+    const created: ImportHarness["created"] = [];
+    const inserted: ImportHarness["inserted"] = [];
+    let seq = 0;
+    const sessions: SessionsPort = {
+      byId: async () => null,
+      create: async (data) => {
+        seq += 1;
+        created.push({ userId: data.userId, title: data.title ?? null });
+        return sessionRow({
+          id: `imported-${seq}`,
+          userId: data.userId,
+          title: data.title ?? null,
+          projectId: data.projectId ?? null,
+        });
+      },
+      list: (() => {
+        throw new Error("not implemented");
+      }) as SessionsPort["list"],
+      updateForOwner: (() => {
+        throw new Error("not implemented");
+      }) as SessionsPort["updateForOwner"],
+      deleteForOwner: (() => {
+        throw new Error("not implemented");
+      }) as SessionsPort["deleteForOwner"],
+      togglePinForOwner: (() => {
+        throw new Error("not implemented");
+      }) as SessionsPort["togglePinForOwner"],
+      toggleArchiveForOwner: (() => {
+        throw new Error("not implemented");
+      }) as SessionsPort["toggleArchiveForOwner"],
+      search: (() => {
+        throw new Error("not implemented");
+      }) as SessionsPort["search"],
+    };
+    const sessionMessages: SessionMessagesPort = {
+      list: async () => ({ items: [] }),
+      byId: async () => null,
+      delete: async () => {},
+      insert: async (data) => {
+        inserted.push({
+          sessionId: data.sessionId as string,
+          role: data.role as string,
+          content: data.content,
+        });
+        return messageRow({
+          id: `im-${inserted.length}`,
+          sessionId: data.sessionId as string,
+        });
+      },
+    };
+    return {
+      app: appWithAuth(sub, { sessions, sessionMessages }),
+      created,
+      inserted,
+    };
+  }
+
+  function post(app: ImportHarness["app"], body: unknown) {
+    return app.request("/import", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+  }
+
+  it("native 내보내기 payload 를 201 + createdSessionIds 로 가져오고 메시지를 순서대로 저장한다", async () => {
+    const h = importApp("user-1");
+    const res = await post(h.app, {
+      format: "native",
+      payload: {
+        title: "가져온 대화",
+        messages: [
+          { role: "user", content: "안녕" },
+          { role: "assistant", content: "반가워요" },
+        ],
+      },
+    });
+    expect(res.status).toBe(201);
+    const json = (await res.json()) as {
+      data: { createdSessionIds: string[] };
+      meta: { requestId: string };
+    };
+    expect(json.data.createdSessionIds).toEqual(["imported-1"]);
+    expect(h.created).toEqual([{ userId: "user-1", title: "가져온 대화" }]);
+    expect(h.inserted).toEqual([
+      { sessionId: "imported-1", role: "user", content: "안녕" },
+      { sessionId: "imported-1", role: "assistant", content: "반가워요" },
+    ]);
+  });
+
+  it("ChatGPT conversations.json 은 대화마다 세션 1개를 만들고 mapping 을 평탄화한다", async () => {
+    const h = importApp("user-1");
+    const res = await post(h.app, {
+      format: "chatgpt",
+      payload: [
+        {
+          title: "첫 대화",
+          mapping: {
+            root: { id: "root", message: null, parent: null, children: ["a"] },
+            a: {
+              id: "a",
+              parent: "root",
+              children: ["b"],
+              message: {
+                author: { role: "user" },
+                content: { content_type: "text", parts: ["질문"] },
+              },
+            },
+            b: {
+              id: "b",
+              parent: "a",
+              children: [],
+              message: {
+                author: { role: "assistant" },
+                content: { content_type: "text", parts: ["답변"] },
+              },
+            },
+          },
+        },
+        {
+          title: "둘째 대화",
+          mapping: {
+            c: {
+              id: "c",
+              parent: null,
+              children: [],
+              message: {
+                author: { role: "user" },
+                content: { content_type: "text", parts: ["혼잣말"] },
+              },
+            },
+          },
+        },
+      ],
+    });
+    expect(res.status).toBe(201);
+    const json = (await res.json()) as {
+      data: { createdSessionIds: string[] };
+    };
+    expect(json.data.createdSessionIds).toEqual(["imported-1", "imported-2"]);
+    expect(h.created.map((c) => c.title)).toEqual(["첫 대화", "둘째 대화"]);
+    expect(h.inserted).toEqual([
+      { sessionId: "imported-1", role: "user", content: "질문" },
+      { sessionId: "imported-1", role: "assistant", content: "답변" },
+      { sessionId: "imported-2", role: "user", content: "혼잣말" },
+    ]);
+  });
+
+  it("payload 안의 userId 는 무시하고 항상 auth.sub 소유로 만든다(cross-org/cross-user 격리)", async () => {
+    const h = importApp("user-1");
+    const res = await post(h.app, {
+      format: "native",
+      payload: {
+        title: "남의 대화",
+        userId: "user-2",
+        orgId: "org-2",
+        messages: [{ role: "user", content: "x" }],
+      },
+    });
+    expect(res.status).toBe(201);
+    expect(h.created).toEqual([{ userId: "user-1", title: "남의 대화" }]);
+  });
+
+  it("잘못된 format 이나 파싱 불가 payload 는 400 INVALID_INPUT 이고 세션을 만들지 않는다", async () => {
+    const h = importApp("user-1");
+    const bad = await post(h.app, { format: "gemini", payload: {} });
+    expect(bad.status).toBe(400);
+    expect(((await bad.json()) as { error: { code: string } }).error.code).toBe(
+      "INVALID_INPUT",
+    );
+    const unparsable = await post(h.app, {
+      format: "native",
+      payload: { x: 1 },
+    });
+    expect(unparsable.status).toBe(400);
+    expect(h.created).toHaveLength(0);
+    expect(h.inserted).toHaveLength(0);
+  });
+});
+
 describe("routes/sessions — GET /:id 단일 세션 조회 (P22-T1-05, 16-API-CONTRACT §432)", () => {
   it("소유자는 200 과 {id,title,projectId,createdAt,archivedAt} + meta.requestId 를 받는다", async () => {
     const createdAt = new Date("2026-07-15T00:00:00Z");

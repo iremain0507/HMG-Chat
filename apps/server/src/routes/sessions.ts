@@ -26,6 +26,10 @@ import {
   type MessageFeedbackDataAccess,
 } from "../db/message-feedback-data-access.js";
 import type { AuthedVariables } from "../middleware/auth-middleware.js";
+import {
+  ImportConversationsRequestSchema,
+  parseImportPayload,
+} from "../lib/import-conversations.js";
 
 function errorJson(code: string, message: string) {
   return {
@@ -185,6 +189,59 @@ export function createSessionRoutes(
           projectId: created.projectId,
           createdAt: created.createdAt.toISOString(),
         },
+        meta: { requestId: randomUUID() },
+      },
+      201,
+    );
+  });
+
+  // P22-T6-13(계약배치 C9) — 대화 가져오기(POST /sessions/import). Open WebUI 의 chat import 대응.
+  // native(우리 내보내기 JSON) / ChatGPT conversations.json 을 lib/import-conversations.ts 로
+  // 정규화한 뒤, 대화마다 POST / 와 동일 생성 경로로 세션을 만들고 메시지를 순서대로 삽입한다.
+  // 격리: userId 는 auth 에서만 파생 — payload 안의 userId/orgId 는 절대 신뢰하지 않는다(POST /
+  // 와 동일 정책). 정적 단일 세그먼트라 "/:id/..." 계열과 충돌하지 않는다(GET /search 와 동일).
+  app.post("/import", async (c) => {
+    const auth = c.get("auth");
+    const body = await c.req.json().catch(() => null);
+    const req = ImportConversationsRequestSchema.safeParse(body);
+    if (!req.success) {
+      return c.json(
+        errorJson("INVALID_INPUT", "format 은 native|chatgpt 여야 합니다."),
+        400,
+      );
+    }
+    let conversations;
+    try {
+      conversations = parseImportPayload(req.data.format, req.data.payload);
+    } catch {
+      return c.json(
+        errorJson("INVALID_INPUT", "가져올 수 있는 대화가 없습니다."),
+        400,
+      );
+    }
+    const createdSessionIds: string[] = [];
+    for (const conv of conversations) {
+      const created = await sessions.create({
+        userId: auth.sub,
+        title: conv.title,
+        projectId: null,
+      });
+      createdSessionIds.push(created.id);
+      let parentMessageId: string | null = null;
+      for (const m of conv.messages) {
+        // 명시 주석 필수: parentMessageId 가 inserted.id 로 되먹임돼 추론이 순환한다(TS7022).
+        const inserted: Message = await sessionMessages.insert({
+          sessionId: created.id,
+          role: m.role,
+          content: m.content,
+          parentMessageId,
+        });
+        parentMessageId = inserted.id;
+      }
+    }
+    return c.json(
+      {
+        data: { createdSessionIds },
         meta: { requestId: randomUUID() },
       },
       201,
