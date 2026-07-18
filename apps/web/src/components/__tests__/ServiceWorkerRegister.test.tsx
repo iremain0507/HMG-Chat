@@ -11,7 +11,6 @@ afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
   // clean the injected serviceWorker between tests
-  // @ts-expect-error test cleanup
   delete (navigator as unknown as Record<string, unknown>).serviceWorker;
 });
 
@@ -30,8 +29,7 @@ describe("ServiceWorkerRegister", () => {
 
   it("does nothing and throws no error when serviceWorker is unsupported", () => {
     expect(
-      // @ts-expect-error serviceWorker intentionally absent
-      navigator.serviceWorker,
+      (navigator as unknown as Record<string, unknown>).serviceWorker,
     ).toBeUndefined();
     expect(() => render(<ServiceWorkerRegister />)).not.toThrow();
   });
