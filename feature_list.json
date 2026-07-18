@@ -2507,8 +2507,8 @@
     "acceptance": "RED 우선. GIVEN a session with an uploaded doc indexed into ephemeral_chunks and no project docs, WHEN the agent invokes knowledge_search with a matching query, THEN the tool returns at least one citation with source=\"ephemeral\"… / GIVEN a session whose project also has document_chunks, WHEN knowledge_search runs, THEN candidates from BOTH project_documents and ephemeral_chunks are merged and RRF-ranked together (a more-relevant ephemeral chunk… / GIVEN loadCandidates is called with a sessionId that has no ephemeral_chunks, WHEN it runs, THEN behavior is unchanged (project-only candidates, no error). / GIVEN the new behavior, WHEN the RED test runs before implementation, THEN it fails because loadCandidates ignores sessionId and returns zero ephemeral candidates.",
     "phase": "P22",
     "team": "T3",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P22-T3-02",
