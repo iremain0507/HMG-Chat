@@ -7,7 +7,7 @@
 // embedding 은 이 dev-stub 환경에서 실제로 관측되진 않지만, 14-INTERFACES 의 indexStatus
 // 전체 5종을 다루도록 렌더 분기는 유지한다(추후 비동기 큐 도입 시 그대로 동작).
 import React, { useRef } from "react";
-import { FileText, Plus } from "lucide-react";
+import { FileText, Plus, Trash2 } from "lucide-react";
 import {
   useDocuments,
   type ProjectDocumentDto,
@@ -55,8 +55,21 @@ export function DocumentsPanel({ projectId }: { projectId: string }) {
     upload,
     retryDocument,
     retryingId,
+    deleteDocument,
+    deletingId,
   } = useDocuments(projectId);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  async function handleDelete(doc: ProjectDocumentDto) {
+    if (
+      !window.confirm(
+        `"${doc.filename}" 문서를 삭제할까요? 되돌릴 수 없습니다.`,
+      )
+    ) {
+      return;
+    }
+    await deleteDocument(doc.id);
+  }
 
   async function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -166,6 +179,16 @@ export function DocumentsPanel({ projectId }: { projectId: string }) {
                           </button>
                         </>
                       )}
+                      <button
+                        type="button"
+                        onClick={() => handleDelete(doc)}
+                        disabled={deletingId === doc.id}
+                        aria-label="문서 삭제"
+                        title="문서 삭제"
+                        className="ml-auto inline-flex h-[26px] w-[26px] flex-none items-center justify-center rounded-md border border-border text-fg-muted outline-none hover:border-accent hover:text-accent focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--focus-ring)] focus-visible:outline-offset-2 disabled:opacity-60"
+                      >
+                        <Trash2 size={13} aria-hidden="true" />
+                      </button>
                     </div>
                   </td>
                 </tr>

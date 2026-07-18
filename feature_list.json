@@ -2615,8 +2615,8 @@
     "acceptance": "RED 우선. GIVEN an indexed document row in DocumentsPanel, WHEN the user clicks the delete/remove control and confirms the window.confirm prompt, THEN useDocuments.deleteDocument issues DELETE /api/v1/documents/:id with… / GIVEN the confirm dialog, WHEN the user cancels, THEN no DELETE request is sent and the row remains. / GIVEN the server returns a non-2xx error on delete, WHEN deleteDocument runs, THEN error state is set and surfaced in the panel's role=alert message and the row is not removed. / GIVEN a delete is in flight, WHEN deletingId===doc.id, THEN that row's delete button is disabled to prevent double submit.",
     "phase": "P22",
     "team": "T6",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P22-T6-04",
