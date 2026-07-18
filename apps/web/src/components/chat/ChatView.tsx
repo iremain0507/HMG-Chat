@@ -92,6 +92,8 @@ export function ChatView({ sessionId }: { sessionId: string }) {
     messages,
     isStreaming,
     send,
+    queuedMessages,
+    removeQueued,
     stop,
     hitlRequest,
     respondHitl,
@@ -647,6 +649,8 @@ export function ChatView({ sessionId }: { sessionId: string }) {
             onSend={(content, attachments, options) =>
               send(content, attachments, options)
             }
+            queuedMessages={queuedMessages}
+            onRemoveQueued={removeQueued}
             slashCommands={slashCommands}
             onSlashCommand={(command) => {
               if (command.id === "memories") {

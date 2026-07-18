@@ -1508,7 +1508,11 @@ describe("useSessionStream", () => {
   });
 
   describe("스트리밍 중 겹침 가드 (P21-T6-12, UX-20/21)", () => {
-    it("스트리밍 도중 send 를 재호출하면 이전 leg 을 abort 하여 이중기록을 방지한다", () => {
+    it("스트리밍 도중 send 를 재호출하면 이전 leg 을 abort 하지 않고 큐잉한다(P22-T6-05)", () => {
+      // P22-T6-05 로 사용자 send 의 겹침 정책이 abort → 큐잉으로 바뀌었다: in-flight 는
+      // 유지되고 두 번째 전송은 FIFO 큐로 들어가 스트림 종료 후 자동 디스패치된다(FIFO 상세는
+      // "메시지 큐" describe 참조). abort-on-overlap 은 아래 continueMessage(=edit/regenerate)
+      // 경로에만 남는다.
       const signals: AbortSignal[] = [];
       const fetchMock = vi.fn(async (_url: string, init?: RequestInit) => {
         if (init?.signal) signals.push(init.signal);
@@ -1527,10 +1531,12 @@ describe("useSessionStream", () => {
         void result.current.send("두번째");
       });
 
-      // 겹침 가드가 없으면 이전 leg 의 controller 가 그대로 살아있어 두 스트림이
-      // 동시에 같은 트리에 기록된다(UX-20/21) — 새 진입 시 이전 leg 이 abort 돼야 한다.
-      expect(signals[0]?.aborted).toBe(true);
-      expect(fetchMock).toHaveBeenCalledTimes(2);
+      // in-flight leg 은 abort 되지 않고 살아있으며, 두 번째는 디스패치 대신 큐로 들어간다.
+      expect(signals[0]?.aborted).toBe(false);
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(result.current.queuedMessages.map((q) => q.content)).toEqual([
+        "두번째",
+      ]);
     });
 
     it("스트리밍 도중 continueMessage 를 재호출하면 이전 leg 을 abort 한다", async () => {
@@ -1571,6 +1577,170 @@ describe("useSessionStream", () => {
       });
 
       expect(signals[0]?.aborted).toBe(true);
+    });
+  });
+
+  // P22-T6-05 — 응답 생성 중 추가 메시지를 큐잉(Open WebUI 파리티). in-flight 를 abort 하지
+  // 않고 FIFO 로 스트림 종료 후 자동 디스패치. edit/regenerate/continue 의 overlap-abort 는 유지.
+  describe("메시지 큐(응답 생성 중 전송)", () => {
+    // 컨트롤러를 잡아 열린 채로 두는 SSE 스트림 — 임의 시점에 프레임을 밀어넣고 닫을 수 있다.
+    function gatedStream() {
+      const encoder = new TextEncoder();
+      let controller: ReadableStreamDefaultController<Uint8Array>;
+      const stream = new ReadableStream<Uint8Array>({
+        start(c) {
+          controller = c;
+        },
+      });
+      return {
+        stream,
+        push(event: string, data: unknown) {
+          controller.enqueue(encoder.encode(sseFrame(event, data)));
+        },
+        close() {
+          controller.close();
+        },
+      };
+    }
+    const flush = () => new Promise((r) => setTimeout(r, 0));
+
+    it("스트리밍 중 send() 는 in-flight 를 abort 하지 않고 큐에 쌓고, 종료 시 FIFO 로 자동 디스패치한다", async () => {
+      const gate = gatedStream();
+      const fetchMock = vi
+        .fn()
+        .mockResolvedValueOnce({ body: gate.stream })
+        .mockResolvedValue({
+          body: sseBody([
+            sseFrame("message_start", {
+              messageId: "msg-2",
+              meta: { provider: "fake", model: "fake-model" },
+            }),
+            sseFrame("text_delta", { text: "second-answer" }),
+            sseFrame("stop", {
+              reason: "end_turn",
+              usage: { inputTokens: 1, outputTokens: 1 },
+            }),
+          ]),
+        });
+      vi.stubGlobal("fetch", fetchMock);
+
+      const { result } = renderHook(() => useSessionStream("session-1"));
+
+      // 첫 턴 시작 — 스트림을 열어둔 채 유지(닫지 않음)
+      await act(async () => {
+        void result.current.send("first");
+        await flush();
+      });
+      await act(async () => {
+        gate.push("message_start", {
+          messageId: "msg-1",
+          meta: { provider: "fake", model: "fake-model" },
+        });
+        gate.push("text_delta", { text: "streaming…" });
+        await flush();
+      });
+      expect(result.current.isStreaming).toBe(true);
+
+      // 생성 중 두 번째 전송 → 큐잉(디스패치 아님, in-flight abort 아님)
+      await act(async () => {
+        void result.current.send("second");
+        await flush();
+      });
+      expect(result.current.queuedMessages.map((q) => q.content)).toEqual([
+        "second",
+      ]);
+      expect(result.current.isStreaming).toBe(true);
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+
+      // 첫 스트림 종료 → 큐 헤드 자동 디스패치
+      await act(async () => {
+        gate.push("stop", {
+          reason: "end_turn",
+          usage: { inputTokens: 1, outputTokens: 1 },
+        });
+        gate.close();
+        await flush();
+        await flush();
+      });
+
+      expect(result.current.queuedMessages).toEqual([]);
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+      expect(fetchMock.mock.calls[1]?.[1]?.body).toContain("second");
+      // 두 유저 메시지 + 두 assistant 답변이 모두 렌더된다
+      const userContents = result.current.messages
+        .filter((m) => m.role === "user")
+        .map((m) => m.content);
+      expect(userContents).toEqual(["first", "second"]);
+    });
+
+    it("큐에 쌓인(아직 미전송) 메시지를 removeQueued 로 취소하면 드롭되어 전송되지 않는다", async () => {
+      const gate = gatedStream();
+      const fetchMock = vi
+        .fn()
+        .mockResolvedValueOnce({ body: gate.stream })
+        .mockResolvedValue({
+          body: sseBody([
+            sseFrame("message_start", {
+              messageId: "msg-x",
+              meta: { provider: "fake", model: "fake-model" },
+            }),
+            sseFrame("text_delta", { text: "kept" }),
+            sseFrame("stop", {
+              reason: "end_turn",
+              usage: { inputTokens: 1, outputTokens: 1 },
+            }),
+          ]),
+        });
+      vi.stubGlobal("fetch", fetchMock);
+
+      const { result } = renderHook(() => useSessionStream("session-1"));
+
+      await act(async () => {
+        void result.current.send("first");
+        await flush();
+      });
+      await act(async () => {
+        gate.push("message_start", {
+          messageId: "msg-1",
+          meta: { provider: "fake", model: "fake-model" },
+        });
+        await flush();
+      });
+
+      await act(async () => {
+        void result.current.send("drop-me");
+        void result.current.send("keep-me");
+        await flush();
+      });
+      expect(result.current.queuedMessages.map((q) => q.content)).toEqual([
+        "drop-me",
+        "keep-me",
+      ]);
+
+      const dropId = result.current.queuedMessages[0]!.id;
+      await act(async () => {
+        result.current.removeQueued(dropId);
+      });
+      expect(result.current.queuedMessages.map((q) => q.content)).toEqual([
+        "keep-me",
+      ]);
+
+      // 스트림 종료 → keep-me 만 디스패치, drop-me 는 전송되지 않음
+      await act(async () => {
+        gate.push("stop", {
+          reason: "end_turn",
+          usage: { inputTokens: 1, outputTokens: 1 },
+        });
+        gate.close();
+        await flush();
+        await flush();
+      });
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+      expect(fetchMock.mock.calls[1]?.[1]?.body).toContain("keep-me");
+      const allBodies = fetchMock.mock.calls
+        .map((c) => c[1]?.body ?? "")
+        .join("|");
+      expect(allBodies).not.toContain("drop-me");
     });
   });
 });

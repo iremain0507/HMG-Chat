@@ -9,3 +9,4 @@
 | P22-T1-07 groups grant     | ✅     | ✅ group-grants.pw.ts  | ⏳          | admin 그룹 grant 토글 실반영          |
 | P22-T1-08 image-generation | ✅     | ⏳                     | ⏳          | 채팅 내 이미지 생성 + admin 설정      |
 | P22-T6-01 session-clone    | ✅     | ✅ session-clone.pw.ts | ⏳          | 컨텍스트메뉴 복제→목록 최상단 prepend |
+| P22-T6-05 message-queue    | ✅     | ✅ message-queue.pw.ts | ⏳          | 응답 생성 중 메시지 큐잉              |

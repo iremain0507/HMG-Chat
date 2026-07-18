@@ -768,4 +768,54 @@ describe("ChatInput 액션바 F05 핸드오프 (P13-T6-04)", () => {
       screen.queryByTestId("composer-context-gauge"),
     ).not.toBeInTheDocument();
   });
+
+  // P22-T6-05 — 응답 생성 중(Stop 표시 중)에도 Enter 로 메시지를 큐잉하고, 큐 칩을 렌더/취소한다.
+  it("스트리밍 중 Enter 로 메시지를 전송하면 onSend 로 큐잉 요청이 전달된다(early-return 하지 않음)", async () => {
+    const onSend = vi.fn();
+    render(
+      <ChatInput
+        sessionId="session-1"
+        isStreaming={true}
+        onSend={onSend}
+        onStop={vi.fn()}
+      />,
+    );
+
+    // 생성 중에도 Stop 버튼은 유지된다
+    expect(screen.getByRole("button", { name: "Stop" })).toBeInTheDocument();
+
+    const textarea = screen.getByLabelText("메시지 입력");
+    fireEvent.change(textarea, { target: { value: "대기 메시지" } });
+    fireEvent.keyDown(textarea, { key: "Enter" });
+
+    await waitFor(() => {
+      // availableModels 미지정 경로는 onSend(content, attachments) 2-인자 계약(위 :152 참조).
+      // 핵심은 스트리밍 중 Enter 가 early-return 하지 않고 큐잉 대상 content 로 onSend 를 부른다는 것.
+      expect(onSend).toHaveBeenCalledWith("대기 메시지", expect.any(Array));
+    });
+  });
+
+  it("queuedMessages 를 칩 행으로 렌더하고 취소 버튼이 onRemoveQueued 를 호출한다", () => {
+    const onRemoveQueued = vi.fn();
+    render(
+      <ChatInput
+        sessionId="session-1"
+        isStreaming={true}
+        onSend={vi.fn()}
+        onStop={vi.fn()}
+        queuedMessages={[
+          { id: "q-1", content: "첫 대기" },
+          { id: "q-2", content: "둘째 대기" },
+        ]}
+        onRemoveQueued={onRemoveQueued}
+      />,
+    );
+
+    expect(screen.getByTestId("queued-messages")).toBeInTheDocument();
+    expect(screen.getByText("첫 대기")).toBeInTheDocument();
+    expect(screen.getByText("둘째 대기")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByLabelText("첫 대기 대기열에서 제거"));
+    expect(onRemoveQueued).toHaveBeenCalledWith("q-1");
+  });
 });

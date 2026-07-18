@@ -135,6 +135,14 @@ export interface SendOptions {
   temporary?: boolean;
 }
 
+// P22-T6-05 — 응답 생성 중 대기열에 쌓인(아직 미전송) 사용자 메시지. 스트림 종료 시
+// FIFO 로 자동 디스패치되며, 그 전까지 컴포저에 취소 가능한 칩으로 표시된다.
+export interface QueuedMessage {
+  id: string;
+  content: string;
+  attachments?: MessageAttachment[];
+}
+
 type ChatStreamEvent =
   | {
       type: "message_start";
@@ -316,6 +324,33 @@ export function useSessionStream(sessionId: string) {
   const isStreamingRef = useRef(false);
   const lastActivityRef = useRef(0);
   const staleWatchdogRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // P22-T6-05 — 응답 생성 중 추가 메시지 큐잉(Open WebUI 파리티). send() 가 스트리밍 중
+  // 호출되면 in-flight leg 을 abort 하는 대신 큐(FIFO)에 쌓고, 스트림 종료 시 헤드를 자동
+  // 디스패치한다. edit/regenerate/continue 의 overlap-abort 는 그대로 유지(사용자 큐잉만 예외).
+  const queueRef = useRef<
+    Array<{
+      id: string;
+      content: string;
+      attachments?: MessageAttachment[];
+      options?: SendOptions;
+    }>
+  >([]);
+  const [queuedMessages, setQueuedMessages] = useState<QueuedMessage[]>([]);
+  // streamTurn 은 send/dispatchSend 보다 먼저 정의되므로(순환 참조 회피) ref 로 드레인 함수를
+  // 노출해 finally 에서 호출한다.
+  const drainQueueRef = useRef<() => void>(() => {});
+  const syncQueueState = useCallback(() => {
+    setQueuedMessages(
+      queueRef.current.map((q) => ({
+        id: q.id,
+        content: q.content,
+        ...(q.attachments && q.attachments.length > 0
+          ? { attachments: q.attachments }
+          : {}),
+      })),
+    );
+  }, []);
 
   // P21-T6-04(UX-16) — 세션 전환 시 이전 대화가 그대로 남던 버그: 이 컴포넌트 인스턴스가
   // 재사용된 채(unmount 없이) sessionId prop 만 바뀌는 라우팅(App Router 클라이언트 내비게이션)
@@ -990,12 +1025,16 @@ export function useSessionStream(sessionId: string) {
           readerRef.current.cancel().catch(() => {});
           readerRef.current = null;
         }
+        // P22-T6-05 — 이 leg 이 끝났으니 대기열 헤드를 FIFO 로 자동 디스패치한다.
+        drainQueueRef.current();
       }
     },
     [sessionId, addNode, updateNode],
   );
 
-  const send = useCallback(
+  // P22-T6-05 — 실제 턴 디스패치(낙관적 유저 버블 추가 + streamTurn). send() 와 큐 드레인이
+  // 공유한다. send() 는 스트리밍 중이면 큐잉만 하고, 이 함수는 실제 전송을 담당한다.
+  const dispatchSend = useCallback(
     async (
       content: string,
       attachments?: MessageAttachment[],
@@ -1014,6 +1053,50 @@ export function useSessionStream(sessionId: string) {
     },
     [addNode, streamTurn],
   );
+
+  const send = useCallback(
+    async (
+      content: string,
+      attachments?: MessageAttachment[],
+      options?: SendOptions,
+    ) => {
+      // P22-T6-05 — 응답 생성 중이면 in-flight leg 을 abort 하지 않고 큐(FIFO)에 쌓는다.
+      // 스트림 종료 시 streamTurn.finally 의 drainQueueRef 가 헤드를 자동 디스패치한다.
+      if (isStreamingRef.current) {
+        queueRef.current.push({
+          id: `local-q-${idCounterRef.current++}`,
+          content,
+          ...(attachments && attachments.length > 0 ? { attachments } : {}),
+          ...(options ? { options } : {}),
+        });
+        syncQueueState();
+        return;
+      }
+      await dispatchSend(content, attachments, options);
+    },
+    [dispatchSend, syncQueueState],
+  );
+
+  // P22-T6-05 — 큐에 쌓인(아직 미전송) 메시지를 취소하면 드롭되어 영구히 전송되지 않는다.
+  const removeQueued = useCallback(
+    (id: string) => {
+      queueRef.current = queueRef.current.filter((q) => q.id !== id);
+      syncQueueState();
+    },
+    [syncQueueState],
+  );
+
+  // P22-T6-05 — 스트림 종료 시(streamTurn.finally) 호출되는 드레인. 큐 헤드를 FIFO 로 하나
+  // 꺼내 디스패치하고, 그 턴이 끝나면 다시 finally 가 이 함수를 불러 큐가 빌 때까지 이어간다.
+  useEffect(() => {
+    drainQueueRef.current = () => {
+      if (isStreamingRef.current) return;
+      const next = queueRef.current.shift();
+      if (!next) return;
+      syncQueueState();
+      void dispatchSend(next.content, next.attachments, next.options);
+    };
+  }, [dispatchSend, syncQueueState]);
 
   const editMessage = useCallback(
     async (messageId: string, newContent: string) => {
@@ -1346,6 +1429,9 @@ export function useSessionStream(sessionId: string) {
     messages,
     isStreaming,
     send,
+    // P22-T6-05 — 응답 생성 중 대기열(FIFO)과 취소 핸들.
+    queuedMessages,
+    removeQueued,
     stop,
     hitlRequest,
     respondHitl,

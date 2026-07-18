@@ -24,7 +24,7 @@ import React, {
 import { Plus, AtSign, Slash, Hash, ArrowUp, Square } from "lucide-react";
 import { useAttachments } from "../../hooks/useAttachments";
 import { useDismiss } from "../../hooks/useDismiss";
-import type { SendOptions } from "../../hooks/useSessionStream";
+import type { QueuedMessage, SendOptions } from "../../hooks/useSessionStream";
 import {
   ComposerPopover,
   optionDomId,
@@ -146,6 +146,10 @@ export interface ChatInputProps {
     options?: SendOptions,
   ) => void | Promise<void>;
   onStop: () => void;
+  // P22-T6-05 — 응답 생성 중 대기열에 쌓인(아직 미전송) 메시지. 컴포저에 취소 가능한 칩으로
+  // 렌더하고, 취소 시 onRemoveQueued(id) 로 상위(useSessionStream)에 드롭을 위임한다.
+  queuedMessages?: QueuedMessage[];
+  onRemoveQueued?: (id: string) => void;
   slashCommands?: SlashCommand[];
   onSlashCommand?: (command: SlashCommand) => void;
   mentionEntities?: MentionEntity[];
@@ -165,6 +169,8 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
       isStreaming,
       onSend,
       onStop,
+      queuedMessages = [],
+      onRemoveQueued,
       slashCommands = [],
       onSlashCommand,
       mentionEntities = [],
@@ -400,8 +406,9 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
     }
 
     const uploading = items.some((it) => it.status === "uploading");
-    const canSend =
-      input.trim().length > 0 && !isStreaming && !uploading && !disabled;
+    // P22-T6-05 — 생성 중에도 전송을 막지 않는다: onSend 가 스트리밍 중이면 큐잉하고(early-return
+    // 하지 않음), 종료 시 FIFO 로 자동 디스패치한다. isStreaming 은 canSend 조건에서 제외.
+    const canSend = input.trim().length > 0 && !uploading && !disabled;
 
     async function submit() {
       if (!canSend) return;
@@ -535,6 +542,33 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
                 }
               : {})}
           />
+        )}
+        {queuedMessages.length > 0 && (
+          // P22-T6-05 — 응답 생성 중 큐잉된 메시지: 종료 후 FIFO 로 전송된다. 각 칩은 취소(제거)
+          // 가능. Open WebUI 의 "대기 중 메시지" 파리티(시각은 우리 토큰/현대위아 CI).
+          <ul
+            aria-label="대기 중 메시지"
+            data-testid="queued-messages"
+            className="flex flex-wrap gap-2 px-1"
+          >
+            {queuedMessages.map((q) => (
+              <li
+                key={q.id}
+                data-testid={`queued-message-${q.id}`}
+                className="flex items-center gap-1.5 rounded-full border border-primary-200 bg-primary-50 py-1 pl-2.5 pr-2 text-xs text-primary"
+              >
+                <span className="max-w-[12rem] truncate">{q.content}</span>
+                <button
+                  type="button"
+                  aria-label={`${q.content} 대기열에서 제거`}
+                  onClick={() => onRemoveQueued?.(q.id)}
+                  className="grid h-4 w-4 flex-none place-items-center rounded-full text-primary hover:bg-primary-200/60"
+                >
+                  ×
+                </button>
+              </li>
+            ))}
+          </ul>
         )}
         {items.length > 0 && (
           <ul

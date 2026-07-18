@@ -2633,8 +2633,8 @@
     "acceptance": "RED 우선. GIVEN a response is currently streaming, WHEN the user types a message and presses Enter, THEN the message is added to a visible queue (not discarded) and the in-flight stream continues uninterrupted (not aborted). / GIVEN one or more queued messages, WHEN the current response finishes streaming, THEN the next queued message is automatically dispatched as a new turn in FIFO order until the queue drains. / GIVEN a queued (not-yet-sent) message, WHEN the user removes/cancels it, THEN it is dropped and never sent. / BROWSER: GIVEN the chat UI, WHEN two messages are entered during generation, THEN both appear as queued and are delivered sequentially after the active response completes, each producing its own assistant turn. / ★실브라우저 UAT: 스택 기동 후 Claude-in-Chrome 로 실제 화면에서 동작 확인(불가 시 Playwright /preview + 정직히 미실행 명시).",
     "phase": "P22",
     "team": "T6",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P22-T6-06",

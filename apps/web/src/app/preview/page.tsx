@@ -631,6 +631,110 @@ function MessageBranchPreview() {
   );
 }
 
+// P22-T6-05 — 응답 생성 중 메시지 큐잉(Open WebUI 파리티) 실브라우저 검증 하네스.
+//   MessageBranchPreview/SessionSwitchPreview 와 동일하게 useSessionStream 의 큐 로직을
+//   로컬 state 로 흉내내 SSE 백엔드 없이도 실제 ChatInput 의 큐 인터랙션(생성 중 Enter→칩 큐잉,
+//   취소, 종료 시 FIFO 자동 디스패치)을 결정론적으로 재현한다(e2e/message-queue.pw.ts).
+function MessageQueuePreview() {
+  type Turn = {
+    id: string;
+    role: "user" | "assistant";
+    content: string;
+    streaming: boolean;
+  };
+  const [turns, setTurns] = useState<Turn[]>([]);
+  const [isStreaming, setIsStreaming] = useState(false);
+  const [queued, setQueued] = useState<{ id: string; content: string }[]>([]);
+  const idRef = React.useRef(0);
+
+  // 새 턴 디스패치: 낙관적 유저 버블 + 스트리밍 중 assistant 버블(실 useSessionStream 과 동형).
+  function dispatch(content: string) {
+    const uid = `mq-u-${idRef.current++}`;
+    const aid = `mq-a-${idRef.current++}`;
+    setTurns((t) => [
+      ...t,
+      { id: uid, role: "user", content, streaming: false },
+      {
+        id: aid,
+        role: "assistant",
+        content: `“${content}” 응답 생성 중…`,
+        streaming: true,
+      },
+    ]);
+    setIsStreaming(true);
+  }
+
+  // 생성 중이면 abort 하지 않고 큐잉(FIFO), 아니면 즉시 디스패치(send() 계약과 동형).
+  function handleSend(content: string) {
+    if (isStreaming) {
+      setQueued((q) => [...q, { id: `mq-q-${idRef.current++}`, content }]);
+      return;
+    }
+    dispatch(content);
+  }
+
+  // 현재 스트림 종료 → streamTurn.finally 의 drainQueueRef 처럼 큐 헤드를 FIFO 로 자동 디스패치.
+  function finishResponse() {
+    setTurns((t) =>
+      t.map((m) =>
+        m.streaming
+          ? {
+              ...m,
+              streaming: false,
+              content: m.content.replace("응답 생성 중…", "응답 완료"),
+            }
+          : m,
+      ),
+    );
+    setIsStreaming(false);
+    if (queued.length > 0) {
+      const [head, ...rest] = queued;
+      setQueued(rest);
+      if (head) dispatch(head.content);
+    }
+  }
+
+  return (
+    <div className="space-y-3">
+      <ul data-testid="mq-messages" className="space-y-2">
+        {turns.map((m) => (
+          <li
+            key={m.id}
+            data-testid={`mq-turn-${m.role}`}
+            data-streaming={m.streaming}
+            className="rounded-md border border-border px-3 py-2 text-sm text-fg"
+          >
+            <span className="mr-2 text-xs uppercase text-fg-muted">
+              {m.role}
+            </span>
+            {m.content}
+          </li>
+        ))}
+      </ul>
+      {isStreaming && (
+        <button
+          type="button"
+          data-testid="mq-finish-response"
+          onClick={finishResponse}
+          className="rounded-md border border-border px-3 py-1.5 text-sm text-fg-muted hover:border-primary hover:text-fg"
+        >
+          응답 완료(스트림 종료)
+        </button>
+      )}
+      <ChatInput
+        sessionId="preview-queue"
+        isStreaming={isStreaming}
+        onSend={(content) => handleSend(content)}
+        onStop={() => {}}
+        queuedMessages={queued}
+        onRemoveQueued={(id) =>
+          setQueued((q) => q.filter((item) => item.id !== id))
+        }
+      />
+    </div>
+  );
+}
+
 function MemoryPanelPreview() {
   const [open, setOpen] = useState(true);
   return open ? (
@@ -1140,6 +1244,10 @@ export default function PreviewGallery() {
 
       <Section name="message-branch">
         <MessageBranchPreview />
+      </Section>
+
+      <Section name="message-queue">
+        <MessageQueuePreview />
       </Section>
 
       <Section name="message-attachments">
