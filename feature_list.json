@@ -2489,8 +2489,8 @@
     "acceptance": "RED 우선. GIVEN an authenticated user WHEN they GET /api/v1/notifications with Accept: text/event-stream THEN response is 200 with content-type text/event-stream and a periodic ping heartbeat (~30s) keeps the connection open / GIVEN a subscribed user's project document finishes indexing WHEN indexStatus reaches 'indexed' THEN the stream emits event: document_indexed with data { documentId, projectId, indexStatus } matching the frozen… / GIVEN two users A and B each connected WHEN a document belonging to A is indexed THEN only A's stream receives the document_indexed event and B receives none (cross-user isolation) / GIVEN the route is added WHEN the routes-mounted gate runs THEN EXPECTED_ROUTES includes GET /api/v1/notifications and the app mounts it (no 404), verified by createApp HTTP integration test",
     "phase": "P22",
     "team": "T2",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P22-T2-03",

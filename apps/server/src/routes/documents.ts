@@ -6,7 +6,10 @@
 // indexStatus='indexed' 로 응답한다(실 큐/워커 인프라 미도입 — LOCAL_ONLY dev-stub, 배포 시 비동기 큐로 교체).
 import { randomUUID } from "node:crypto";
 import { Hono } from "hono";
-import type { ProjectDocumentRecord } from "@wchat/interfaces";
+import type {
+  NotificationEvent,
+  ProjectDocumentRecord,
+} from "@wchat/interfaces";
 import type { AuthedVariables } from "../middleware/auth-middleware.js";
 import {
   DocumentServiceError,
@@ -48,6 +51,8 @@ export function createDocumentRoutes(
     da: DocumentDataAccess;
     objectStore: ObjectStore;
     grants?: ResourceGrantsDataAccess;
+    // 인덱싱 완료 시 소유 사용자에게 document_indexed push (P22-T2-02). 미주입 시 no-op.
+    notify?: (userId: string, event: NotificationEvent) => void;
   } & Partial<DocumentIndexingDeps>,
 ): Hono<{ Variables: AuthedVariables }> {
   const app = new Hono<{ Variables: AuthedVariables }>();
@@ -65,6 +70,21 @@ export function createDocumentRoutes(
   function actorOf(c: { get(key: "auth"): AuthedVariables["auth"] }) {
     const auth = c.get("auth");
     return { userId: auth.sub, orgId: auth.org };
+  }
+
+  // 인덱싱 완료(dev-stub 동기) 후 소유 사용자에게 document_indexed push (P22-T2-02).
+  // indexStatus 가 'indexed' 일 때만 — 실패/보류 상태는 알리지 않는다.
+  function notifyDocumentIndexed(
+    userId: string,
+    doc: ProjectDocumentRecord,
+  ): void {
+    if (!deps.notify || doc.indexStatus !== "indexed") return;
+    deps.notify(userId, {
+      type: "document_indexed",
+      documentId: doc.id,
+      projectId: doc.projectId,
+      indexStatus: doc.indexStatus,
+    });
   }
 
   function handleServiceError(err: unknown): {
@@ -130,12 +150,14 @@ export function createDocumentRoutes(
       );
     }
     const data = Buffer.from(await file.arrayBuffer());
+    const actor = actorOf(c);
     try {
-      const doc = await service.indexDocument(actorOf(c), projectId, {
+      const doc = await service.indexDocument(actor, projectId, {
         filename: file.name,
         mimeType: file.type || "application/octet-stream",
         data,
       });
+      notifyDocumentIndexed(actor.userId, doc);
       return c.json(
         { data: toDto(doc), meta: { requestId: randomUUID() } },
         201,
@@ -172,7 +194,9 @@ export function createDocumentRoutes(
 
   app.post("/:id/retry", async (c) => {
     try {
-      const doc = await service.retryDocument(actorOf(c), c.req.param("id"));
+      const actor = actorOf(c);
+      const doc = await service.retryDocument(actor, c.req.param("id"));
+      notifyDocumentIndexed(actor.userId, doc);
       return c.json({ data: toDto(doc), meta: { requestId: randomUUID() } });
     } catch (err) {
       const { body, status } = handleServiceError(err);

@@ -114,6 +114,7 @@ const EXPECTED_ROUTES: Array<{ method: string; path: string; phase: string }> =
       path: "/api/v1/skill-assets/some-skill@1.0.0/asset.png",
       phase: "P8",
     },
+    { method: "GET", path: "/api/v1/notifications", phase: "P22" },
     { method: "GET", path: "/api/v1/quota", phase: "P9" },
     { method: "GET", path: "/api/v1/usage/me", phase: "P9" },
     { method: "GET", path: "/api/v1/usage", phase: "P9" },

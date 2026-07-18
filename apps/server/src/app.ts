@@ -17,6 +17,8 @@ import { createUploadRoutes } from "./routes/uploads.js";
 import { createPgUploadDataAccess } from "./db/upload-data-access.js";
 import { bulkInsertEphemeralChunks } from "./db/ephemeral-chunk-data-access.js";
 import { createDocumentRoutes } from "./routes/documents.js";
+import { createNotificationRoutes } from "./routes/notifications.js";
+import { publishNotification } from "./orchestrator/notification-registry.js";
 import { createPgDocumentDataAccess } from "./db/project-document-data-access.js";
 import { createArtifactRoutes } from "./routes/artifacts.js";
 import { createPgArtifactDataAccess } from "./db/artifact-data-access.js";
@@ -393,9 +395,17 @@ export function createApp(env: Env) {
       parserPipeline: createParserPipeline(),
       embeddingProvider: withUsageTracking(createDevStubEmbeddingProvider()),
       grants: resourceGrantsDa,
+      // 인덱싱 완료(dev-stub 은 동기) 후 소유 사용자에게 document_indexed push (P22-T2-02).
+      notify: publishNotification,
     }),
   );
   app.route("/api/v1/documents", documentsApp);
+
+  // P22-T2-02 — GET /notifications SSE 사용자 단위 push 채널(계약 § 906).
+  const notificationsApp = new Hono<{ Variables: AuthedVariables }>();
+  notificationsApp.use("*", authMiddleware);
+  notificationsApp.route("/", createNotificationRoutes());
+  app.route("/api/v1/notifications", notificationsApp);
 
   const artifactsApp = new Hono<{ Variables: AuthedVariables }>();
   artifactsApp.use("*", authMiddleware);
