@@ -32,8 +32,11 @@ const pid = randomUUID();
 const EXPECTED_ROUTES: Array<{ method: string; path: string; phase: string }> =
   [
     // auth 라우터 마운트 확인은 확실히 존재하는 /me 로 (auth-protected → 401).
-    // 주의: 계약(16 §273)의 POST /auth/login(password fallback)은 현재 미구현 — 별도 gap(PROGRESS 기록).
+    // 계약(16 §273) POST /auth/login(비밀번호) 은 P22-T1-13 에서 구현·마운트됨.
     { method: "GET", path: "/api/v1/auth/me", phase: "P1" },
+    { method: "POST", path: "/api/v1/auth/login", phase: "P22" },
+    // P22-T1-11(C14) — LDAP/AD 디렉터리 로그인. body 없으면 400(마운트 확인).
+    { method: "POST", path: "/api/v1/auth/login/directory", phase: "P22" },
     { method: "PATCH", path: "/api/v1/auth/me", phase: "P17" },
     { method: "DELETE", path: "/api/v1/auth/me", phase: "P22" },
     { method: "GET", path: "/api/v1/sessions", phase: "P17" },
@@ -194,6 +197,8 @@ const EXPECTED_ROUTES: Array<{ method: string; path: string; phase: string }> =
     { method: "GET", path: "/api/v1/config", phase: "P11" },
     { method: "GET", path: "/api/v1/admin/settings", phase: "P14" },
     { method: "PUT", path: "/api/v1/admin/settings", phase: "P14" },
+    // P22-T1-11(C14) — LDAP 연결 테스트. 미인증이라 401(마운트 확인만).
+    { method: "POST", path: "/api/v1/admin/settings/ldap/test", phase: "P22" },
     { method: "GET", path: "/api/v1/admin/models", phase: "P19" },
     { method: "PUT", path: "/api/v1/admin/models", phase: "P19" },
     { method: "GET", path: "/api/v1/admin/tools", phase: "P22" },

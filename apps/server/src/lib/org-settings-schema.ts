@@ -86,6 +86,25 @@ export const OrgSettingsSchema = z.object({
     .max(50)
     .optional(),
 
+  // Identity/LDAP — P22-T1-11(계약배치 C14): LDAP/AD 디렉터리 로그인.
+  // ldapEnabled=false 가 기본이라 미설정 org 는 기존 매직링크/비밀번호 경로 그대로(비파괴).
+  ldapEnabled: z.boolean().optional(),
+  ldapUrl: z.string().max(500).optional(), // ldap:// | ldaps://host:port
+  ldapBindDn: z.string().max(500).optional(), // 검색용 서비스 계정 DN(빈 값=익명 bind)
+  // 비밀번호 자체가 아니라 서버가 읽을 env 변수 **이름**만 저장한다(LDAP_ 접두만 허용).
+  // webSearchApiKeyRef 와 동일한 "비밀은 DB 밖" 원칙 — lib/ldap-client.ts resolveLdapConfig 참조.
+  ldapBindPasswordRef: z.string().max(200).optional(),
+  ldapBaseDn: z.string().max(500).optional(), // 이 서브트리 밖 사용자는 로그인 불가
+  ldapUserFilter: z.string().max(500).optional(), // {{username}} 자리표시자(RFC 4515 이스케이프됨)
+  ldapEmailAttribute: z.string().max(100).optional(),
+  ldapNameAttribute: z.string().max(100).optional(),
+  ldapGroupAttribute: z.string().max(100).optional(),
+  // 그룹 DN → org 롤. 비어 있으면 그룹 게이트 미적용(디렉터리 인증만으로 허용).
+  ldapGroupRoleMap: z
+    .record(z.string().max(500), z.enum(["member", "admin", "owner"]))
+    .optional(),
+  ldapTlsRejectUnauthorized: z.boolean().optional(),
+
   // API Keys — P20-T1-12: 전역 마스터 토글(off 면 신규 발급 거부, 기존 키는 영향 없음).
   enableApiKeys: z.boolean().optional(),
 
@@ -163,6 +182,20 @@ export const DEFAULT_ORG_SETTINGS: ResolvedOrgSettings = {
     "gif",
     "webp",
   ],
+
+  // P22-T1-11(C14) — 디렉터리 로그인은 명시적으로 켜야 활성(기존 인증 경로 무변경).
+  // 속성 기본값은 Active Directory 관례를 따른다.
+  ldapEnabled: false,
+  ldapUrl: "",
+  ldapBindDn: "",
+  ldapBindPasswordRef: "",
+  ldapBaseDn: "",
+  ldapUserFilter: "(|(sAMAccountName={{username}})(mail={{username}}))",
+  ldapEmailAttribute: "mail",
+  ldapNameAttribute: "displayName",
+  ldapGroupAttribute: "memberOf",
+  ldapGroupRoleMap: {},
+  ldapTlsRejectUnauthorized: true,
 
   // 현행(마스터 토글 없음=누구나 발급 가능) 동작을 미조정 org 에서 보존(비파괴).
   enableApiKeys: true,

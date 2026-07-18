@@ -5,6 +5,7 @@ import type { Env } from "./env.js";
 import { createPgAuthDataAccess } from "./db/auth-data-access.js";
 import { createEmailSender } from "./lib/email-sender.js";
 import { createAuthRoutes } from "./routes/auth.js";
+import { createLdaptsDirectoryClient } from "./lib/ldap-client.js";
 import { createSessionRoutes } from "./routes/sessions.js";
 import { createFolderRoutes } from "./routes/folders.js";
 import { createPgSessionFolderDataAccess } from "./db/session-folder-data-access.js";
@@ -189,9 +190,14 @@ export function createApp(env: Env) {
   });
 
   const authDa = createPgAuthDataAccess();
+  // P22-T1-11(C14) — LDAP/AD 디렉터리 클라이언트. org_settings.ldapEnabled 기본 false 라
+  // 미설정 org 는 기존 매직링크/비밀번호 경로 그대로다(비파괴). ldapts 미설치 환경에서는
+  // 실제 호출 시점에 LdapConnectionError 로 실패해 503 으로 표면화된다(createEmailSender 패턴).
+  const directoryClient = createLdaptsDirectoryClient();
   app.route(
     "/api/v1/auth",
     createAuthRoutes({
+      directoryClient,
       da: authDa,
       emailSender: createEmailSender(env.EMAIL_SENDER_KIND),
       allowedDomains: env.ALLOWED_DOMAINS.split(",").map((d) => d.trim()),
@@ -662,6 +668,8 @@ export function createApp(env: Env) {
       da: orgSettingsDa,
       settingsService,
       audit: auditRecorder,
+      // P22-T1-11(C14) — POST /admin/settings/ldap/test 연결 확인용(같은 클라이언트 공유).
+      directoryClient,
     }),
   );
   adminApp.route(

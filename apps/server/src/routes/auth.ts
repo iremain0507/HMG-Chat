@@ -19,6 +19,12 @@ import {
   type ResolvedOrgSettings,
 } from "../lib/org-settings-schema.js";
 import type { WebhookDispatcher } from "../lib/webhook-dispatcher.js";
+import {
+  LdapConnectionError,
+  mapGroupsToRole,
+  resolveLdapConfig,
+  type LdapDirectoryClient,
+} from "../lib/ldap-client.js";
 
 // P15-T1-01 — org-scoped enableSignup/defaultUserRole 조회 포트. settings-service.ts(T1)와
 // 동일 계약(resolve)만 의존해 순환을 피한다(messages.ts SettingsResolverPort 와 동일 idiom).
@@ -67,6 +73,11 @@ export interface AuthRouteDeps {
   webhookDispatcher?: WebhookDispatcher;
   // P22-T1-13 — POST /login brute-force 임계. 미주입 시 DEFAULT_LOGIN_RATE_LIMIT.
   loginRateLimit?: { maxAttempts: number; windowMs: number };
+  // P22-T1-11(C14) — LDAP/AD 디렉터리 로그인. 미주입이면 POST /login/directory 는
+  // 항상 403 DIRECTORY_AUTH_DISABLED (기존 배포 동작 무변경).
+  directoryClient?: LdapDirectoryClient;
+  // ldapBindPasswordRef 가 가리키는 비밀을 읽을 환경. 미주입 시 process.env.
+  env?: Record<string, string | undefined>;
 }
 
 const ACCESS_TTL_SECONDS = 15 * 60;
@@ -280,6 +291,202 @@ export function createAuthRoutes(deps: AuthRouteDeps): Hono {
           role: user.role,
           customInstructions: user.customInstructions,
           // P22-T6-15(C11) — UI 언어. null = 서버 기본(ko).
+          language: user.language ?? null,
+          createdAt: user.createdAt.toISOString(),
+        },
+        org: {
+          id: org.id,
+          name: org.name,
+          domain: org.domain,
+          plan: org.plan,
+          allowedModels: org.allowedModels,
+          allowedTools: org.allowedTools,
+          defaultTokenBudgetMicros: org.defaultTokenBudgetMicros,
+          createdAt: org.createdAt.toISOString(),
+          updatedAt: org.updatedAt.toISOString(),
+        },
+      },
+      meta: { requestId: randomUUID() },
+    });
+  });
+
+  // ── P22-T1-11(계약배치 C14) — POST /login/directory (LDAP/AD) ──────────────
+  // 조직은 body.orgDomain > username 의 이메일 도메인 > 단일 allowedDomain 순으로 결정한다
+  // (설정 조회가 bind 보다 먼저라 org 를 알아야 한다). 최종 권한은 디렉터리가 돌려준
+  // 이메일 도메인으로 다시 검증하므로 body 로 org 를 갈아탈 수 없다.
+  // 400 INVALID_INPUT / 401 INVALID_CREDENTIALS / 403 DIRECTORY_AUTH_DISABLED ·
+  // DIRECTORY_GROUP_FORBIDDEN · EMAIL_DOMAIN_FORBIDDEN / 429 RATE_LIMITED / 503 DIRECTORY_UNAVAILABLE
+  app.post("/login/directory", async (c) => {
+    type DirectoryLoginBody = {
+      username?: string;
+      password?: string;
+      orgDomain?: string;
+    };
+    const body = await c.req
+      .json<DirectoryLoginBody>()
+      .catch(() => ({}) as DirectoryLoginBody);
+    const username = body.username?.trim();
+    const password = body.password;
+    if (!username || !password) {
+      return c.json(
+        errorJson("INVALID_INPUT", "사용자명/비밀번호를 확인하세요."),
+        400,
+      );
+    }
+
+    const disabled = () =>
+      c.json(
+        errorJson(
+          "DIRECTORY_AUTH_DISABLED",
+          "이 조직은 디렉터리(LDAP/AD) 로그인이 활성화되어 있지 않습니다.",
+        ),
+        403,
+      );
+
+    const hintDomain = (
+      body.orgDomain ??
+      (username.includes("@") ? emailDomain(username) : undefined) ??
+      (deps.allowedDomains.length === 1 ? deps.allowedDomains[0] : undefined)
+    )?.toLowerCase();
+    if (!hintDomain) return disabled();
+
+    const settingsOrg = await findOrgByDomain(hintDomain);
+    if (!settingsOrg) return disabled();
+
+    const resolved = await resolveAuthSettingsSafely(
+      deps.settings,
+      settingsOrg.id,
+    );
+    const config = resolveLdapConfig(resolved, deps.env ?? process.env);
+    if (!deps.directoryClient || !config) return disabled();
+
+    // 비밀번호 로그인과 동일한 brute-force 카운터를 공유한다(같은 계정 표면).
+    const rateKey = `ldap:${hintDomain}:${username.toLowerCase()}`;
+    if (rateLimited(rateKey)) {
+      return c.json(
+        errorJson(
+          "RATE_LIMITED",
+          "로그인 시도가 너무 많습니다. 잠시 후 다시 시도하세요.",
+          true,
+        ),
+        429,
+      );
+    }
+
+    let entry;
+    try {
+      entry = await deps.directoryClient.authenticate(
+        config,
+        username,
+        password,
+      );
+    } catch (err) {
+      // 인프라 실패는 자격증명 오류와 구분한다 — 재시도 가능(503).
+      if (err instanceof LdapConnectionError) {
+        return c.json(
+          errorJson(
+            "DIRECTORY_UNAVAILABLE",
+            "디렉터리 서버에 연결할 수 없습니다. 잠시 후 다시 시도하세요.",
+            true,
+          ),
+          503,
+        );
+      }
+      throw err;
+    }
+
+    if (!entry) {
+      recordFailure(rateKey);
+      return c.json(
+        errorJson(
+          "INVALID_CREDENTIALS",
+          "사용자명 또는 비밀번호가 올바르지 않습니다.",
+        ),
+        401,
+      );
+    }
+
+    const email = entry.email.trim().toLowerCase();
+    if (!isValidEmail(email)) {
+      recordFailure(rateKey);
+      return c.json(
+        errorJson(
+          "INVALID_CREDENTIALS",
+          "디렉터리 계정에 유효한 이메일이 없습니다.",
+        ),
+        401,
+      );
+    }
+
+    // 디렉터리가 돌려준 이메일 도메인이 최종 권위 — 허용목록 + org 를 여기서 다시 판정.
+    const domain = emailDomain(email);
+    if (!deps.allowedDomains.includes(domain)) {
+      return c.json(
+        errorJson(
+          "EMAIL_DOMAIN_FORBIDDEN",
+          `${deps.allowedDomains.join(", ")} 도메인만 로그인 가능합니다.`,
+        ),
+        403,
+      );
+    }
+    const org = await findOrgByDomain(domain);
+    if (!org) {
+      return c.json(
+        errorJson("EMAIL_DOMAIN_FORBIDDEN", "등록된 조직을 찾을 수 없습니다."),
+        403,
+      );
+    }
+
+    // 그룹→롤 매핑: undefined = 게이트 미설정(기본 롤), null = 매핑된 그룹 없음(거부).
+    const mappedRole = mapGroupsToRole(entry.groups, resolved.ldapGroupRoleMap);
+    if (mappedRole === null) {
+      return c.json(
+        errorJson(
+          "DIRECTORY_GROUP_FORBIDDEN",
+          "이 서비스에 접근이 허용된 디렉터리 그룹에 속해 있지 않습니다.",
+        ),
+        403,
+      );
+    }
+    const role = mappedRole ?? resolved.defaultUserRole ?? "member";
+
+    const existing = await deps.da.users.list({
+      orgId: org.id,
+      emailEq: email,
+    });
+    let user = existing.items[0] ?? null;
+    if (user) {
+      // 디렉터리가 권위 있는 출처 — 롤/이름을 로그인 때마다 동기화한다.
+      user = await deps.da.users.update(user.id, {
+        role,
+        name: entry.name ?? user.name,
+        lastLoginAt: new Date(),
+      });
+    } else {
+      user = await deps.da.users.insert({
+        orgId: org.id,
+        email,
+        name: entry.name ?? email,
+        role,
+        customInstructions: null,
+        language: null,
+        status: "active",
+        lastLoginAt: new Date(),
+      });
+    }
+
+    loginFailures.delete(rateKey);
+    await issueSession(c, user.id, user.orgId, user.role);
+
+    return c.json({
+      data: {
+        user: {
+          id: user.id,
+          email: user.email,
+          name: user.name,
+          orgId: user.orgId,
+          role: user.role,
+          customInstructions: user.customInstructions,
           language: user.language ?? null,
           createdAt: user.createdAt.toISOString(),
         },

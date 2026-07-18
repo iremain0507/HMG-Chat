@@ -17,6 +17,8 @@ import {
   DEFAULT_ORG_SETTINGS,
   type ResolvedOrgSettings,
 } from "../../lib/org-settings-schema.js";
+// P22-T1-11(C14) — LDAP/AD 디렉터리 로그인 테스트용 dev-stub 클라이언트.
+import { createInMemoryLdapDirectoryClient } from "../../lib/ldap-client.js";
 
 process.env.JWT_SECRET = "test-only-jwt-secret-32chars-minimum-xxxx";
 process.env.PROJECT_SLUG = "wchat";
@@ -1035,5 +1037,235 @@ describe("routes/auth", () => {
     expect(res.status).toBe(401);
     const body = await res.json();
     expect(body.error.code).toBe("UNAUTHENTICATED");
+  });
+});
+
+// ── P22-T1-11(계약배치 C14) — LDAP/AD 디렉터리 로그인 ──────────────────────────
+// 실 디렉터리 서버는 LOCAL_ONLY 라 in-memory dev-stub 클라이언트를 주입한다.
+describe("routes/auth — POST /login/directory (LDAP/AD)", () => {
+  const BASE_DN = "ou=People,dc=corp,dc=example,dc=com";
+  const ADMIN_GROUP = "cn=wchat-admins,ou=Groups,dc=corp,dc=example,dc=com";
+  const STAFF_GROUP = "cn=all-staff,ou=Groups,dc=corp,dc=example,dc=com";
+  const LDAP_SETTINGS: Partial<ResolvedOrgSettings> = {
+    ldapEnabled: true,
+    ldapUrl: "ldaps://dc.corp.example.com:636",
+    ldapBindDn: "cn=svc-wchat,dc=corp,dc=example,dc=com",
+    ldapBindPasswordRef: "LDAP_BIND_PASSWORD",
+    ldapBaseDn: BASE_DN,
+    ldapGroupRoleMap: { [ADMIN_GROUP]: "admin", [STAFF_GROUP]: "member" },
+  };
+
+  let da: AuthDataAccess;
+  let emailSender: InMemoryEmailSenderStub;
+  let org: Organization;
+
+  function directoryClient() {
+    return createInMemoryLdapDirectoryClient({
+      url: "ldaps://dc.corp.example.com:636",
+      bindDn: "cn=svc-wchat,dc=corp,dc=example,dc=com",
+      bindPassword: "svc-secret",
+      entries: [
+        {
+          dn: `cn=Kim,${BASE_DN}`,
+          usernames: ["kim", "kim@wchat.example.com"],
+          password: "directory-pw",
+          attributes: {
+            mail: "kim@wchat.example.com",
+            displayName: "김위아",
+            memberOf: [ADMIN_GROUP, STAFF_GROUP],
+          },
+        },
+        {
+          dn: `cn=Guest,${BASE_DN}`,
+          usernames: ["guest"],
+          password: "directory-pw",
+          attributes: {
+            mail: "guest@wchat.example.com",
+            displayName: "게스트",
+            memberOf: ["cn=guests,ou=Groups,dc=corp,dc=example,dc=com"],
+          },
+        },
+        {
+          // baseDn 밖 — 검색범위 밖이라 로그인 불가여야 한다.
+          dn: "cn=Contractor,ou=External,dc=corp,dc=example,dc=com",
+          usernames: ["contractor"],
+          password: "directory-pw",
+          attributes: { mail: "contractor@wchat.example.com" },
+        },
+      ],
+    });
+  }
+
+  function makeApp(
+    overrides: Partial<ResolvedOrgSettings> = LDAP_SETTINGS,
+    extra: Partial<Parameters<typeof createAuthRoutes>[0]> = {},
+  ) {
+    return createAuthRoutes({
+      da,
+      emailSender,
+      allowedDomains: ["wchat.example.com"],
+      appOrigin: "http://localhost:3000",
+      secureCookies: false,
+      settings: makeSettingsResolver(overrides),
+      directoryClient: directoryClient(),
+      env: { LDAP_BIND_PASSWORD: "svc-secret" },
+      ...extra,
+    });
+  }
+
+  function login(
+    app: ReturnType<typeof createAuthRoutes>,
+    body: Record<string, unknown>,
+  ) {
+    return app.request("/login/directory", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    });
+  }
+
+  beforeEach(async () => {
+    da = makeInMemoryDataAccess();
+    emailSender = new InMemoryEmailSenderStub();
+    org = await da.organizations.insert({
+      name: "WChat Inc",
+      domain: "wchat.example.com",
+      plan: "team",
+      allowedModels: [],
+      allowedTools: [],
+      defaultTokenBudgetMicros: null,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+  });
+
+  it("ldapEnabled=false(기본값) → 403 DIRECTORY_AUTH_DISABLED (기존 동작 보존)", async () => {
+    const res = await login(makeApp({ ldapEnabled: false }), {
+      username: "kim",
+      password: "directory-pw",
+    });
+    expect(res.status).toBe(403);
+    expect((await res.json()).error.code).toBe("DIRECTORY_AUTH_DISABLED");
+  });
+
+  it("유효한 디렉터리 자격증명 → bind 성공 → 유저 자동 프로비저닝 + 세션 쿠키 발급", async () => {
+    const app = makeApp();
+    const res = await login(app, { username: "kim", password: "directory-pw" });
+    expect(res.status).toBe(200);
+
+    const body = await res.json();
+    expect(body.data.user.email).toBe("kim@wchat.example.com");
+    expect(body.data.user.name).toBe("김위아");
+    expect(body.data.org.id).toBe(org.id);
+
+    const cookies = res.headers.getSetCookie();
+    expect(cookieValue(cookies, "wchat_at")).toBeTruthy();
+    expect(cookieValue(cookies, "wchat_rt")).toBeTruthy();
+
+    const created = await da.users.list({ emailEq: "kim@wchat.example.com" });
+    expect(created.items).toHaveLength(1);
+    expect(created.items[0].orgId).toBe(org.id);
+  });
+
+  it("AD 보안그룹 매핑 → org 롤이 그룹에서 파생된다(admins → admin)", async () => {
+    const res = await login(makeApp(), {
+      username: "kim",
+      password: "directory-pw",
+    });
+    expect((await res.json()).data.user.role).toBe("admin");
+  });
+
+  it("이미 존재하는 유저는 중복 생성하지 않고 롤/lastLoginAt 만 갱신한다", async () => {
+    const existing = await da.users.insert({
+      orgId: org.id,
+      email: "kim@wchat.example.com",
+      name: "김위아",
+      role: "member",
+      customInstructions: null,
+      status: "active",
+      lastLoginAt: null,
+    });
+    const res = await login(makeApp(), {
+      username: "kim",
+      password: "directory-pw",
+    });
+    expect(res.status).toBe(200);
+    const all = await da.users.list({ emailEq: "kim@wchat.example.com" });
+    expect(all.items).toHaveLength(1);
+    const after = await da.users.byId(existing.id);
+    expect(after?.role).toBe("admin");
+    expect(after?.lastLoginAt).not.toBeNull();
+  });
+
+  it("bind 실패(비밀번호 오류) → 401 INVALID_CREDENTIALS", async () => {
+    const res = await login(makeApp(), { username: "kim", password: "nope" });
+    expect(res.status).toBe(401);
+    expect((await res.json()).error.code).toBe("INVALID_CREDENTIALS");
+  });
+
+  it("baseDN 밖의 사용자 → 401 INVALID_CREDENTIALS", async () => {
+    const res = await login(makeApp(), {
+      username: "contractor",
+      password: "directory-pw",
+    });
+    expect(res.status).toBe(401);
+  });
+
+  it("매핑된 그룹이 없는 사용자 → 403 DIRECTORY_GROUP_FORBIDDEN (유저 미생성)", async () => {
+    const res = await login(makeApp(), {
+      username: "guest",
+      password: "directory-pw",
+    });
+    expect(res.status).toBe(403);
+    expect((await res.json()).error.code).toBe("DIRECTORY_GROUP_FORBIDDEN");
+    const created = await da.users.list({ emailEq: "guest@wchat.example.com" });
+    expect(created.items).toHaveLength(0);
+  });
+
+  it("디렉터리 서버 도달 불가 → 503 DIRECTORY_UNAVAILABLE(retryable)", async () => {
+    const res = await login(
+      makeApp({ ...LDAP_SETTINGS, ldapUrl: "ldaps://unreachable.example.com" }),
+      { username: "kim", password: "directory-pw" },
+    );
+    expect(res.status).toBe(503);
+    const body = await res.json();
+    expect(body.error.code).toBe("DIRECTORY_UNAVAILABLE");
+    expect(body.error.retryable).toBe(true);
+  });
+
+  it("반복 실패는 비밀번호 로그인과 동일한 brute-force 임계로 429", async () => {
+    const app = makeApp(LDAP_SETTINGS, {
+      loginRateLimit: { maxAttempts: 2, windowMs: 60_000 },
+    });
+    await login(app, { username: "kim", password: "x" });
+    await login(app, { username: "kim", password: "x" });
+    const res = await login(app, { username: "kim", password: "directory-pw" });
+    expect(res.status).toBe(429);
+    expect((await res.json()).error.code).toBe("RATE_LIMITED");
+  });
+
+  it("디렉터리 이메일 도메인이 허용목록 밖 → 403 EMAIL_DOMAIN_FORBIDDEN", async () => {
+    const app = createAuthRoutes({
+      da,
+      emailSender,
+      allowedDomains: ["other.example.com"],
+      appOrigin: "http://localhost:3000",
+      secureCookies: false,
+      settings: makeSettingsResolver(LDAP_SETTINGS),
+      directoryClient: directoryClient(),
+      env: { LDAP_BIND_PASSWORD: "svc-secret" },
+    });
+    const res = await login(app, {
+      username: "kim@wchat.example.com",
+      password: "directory-pw",
+    });
+    expect(res.status).toBe(403);
+    expect((await res.json()).error.code).toBe("EMAIL_DOMAIN_FORBIDDEN");
+  });
+
+  it("username/password 누락 → 400 INVALID_INPUT", async () => {
+    const res = await login(makeApp(), { username: "kim" });
+    expect(res.status).toBe(400);
+    expect((await res.json()).error.code).toBe("INVALID_INPUT");
   });
 });
