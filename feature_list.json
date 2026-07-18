@@ -2444,8 +2444,8 @@
     "acceptance": "RED 우선. GIVEN the server bootstrap (index.ts), WHEN the process starts, THEN startRetentionScheduler is invoked and a timer is registered that will run runRetention on a daily cadence (~03:00 KST), with the scheduler wired to… / GIVEN the scheduler with an injected fake clock/timer, WHEN the scheduled tick fires, THEN runRetention is called exactly once with { uploads, artifactShares }, the artifact store (cleanupExpired), and alerting; a unit… / GIVEN a tick where the repos contain expired uploads and expired artifact_shares, WHEN runRetention runs via the scheduler, THEN expired uploads are deleted, artifactStore.cleanupExpired runs, and expired shares are… / GIVEN a partial-failure tick (one step throws), WHEN runRetention completes, THEN the scheduler does not crash the process and a data-retention-failure alert is triggered (assert via alert notifier spy).",
     "phase": "P22",
     "team": "T1",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P22-T1-04",

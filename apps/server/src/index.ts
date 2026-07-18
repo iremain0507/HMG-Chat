@@ -2,11 +2,16 @@ import { serve } from "@hono/node-server";
 import { createApp } from "./app.js";
 import { pgPool } from "./db/client.js";
 import { createPgAlertEventDataAccess } from "./db/alert-event-data-access.js";
+import { createPgArtifactDataAccess } from "./db/artifact-data-access.js";
+import { createPgArtifactShareDataAccess } from "./db/artifact-share-data-access.js";
 import { createPgHealthHistoryDataAccess } from "./db/health-history-data-access.js";
+import { createPgUploadDataAccess } from "./db/upload-data-access.js";
 import { loadEnv } from "./env.js";
 import { createAlertNotifier } from "./lib/alert-engine.js";
 import { startAlertingScheduler } from "./lib/alerting-scheduler.js";
+import { createInlineArtifactStore } from "./lib/artifact-store.inline.js";
 import { createLogger } from "./lib/logger.js";
+import { startRetentionScheduler } from "./lib/retention-scheduler.js";
 
 const env = loadEnv();
 const app = createApp(env);
@@ -44,10 +49,40 @@ const alertingHandle =
         },
       });
 
+// 12-OPS-SECURITY.md § 부록 H — 데이터 retention job(만료 uploads/artifact-share/store 정리)을
+//   매일 03:00 KST 부근에 실행하도록 부트스트랩에서 배선한다. RETENTION_ENABLED=false 로 opt-out
+//   가능(테스트/로컬). 실 upload/artifactShare DataAccess·artifact store·alert engine 을 주입한다.
+const retentionHandle =
+  process.env.RETENTION_ENABLED === "false"
+    ? null
+    : startRetentionScheduler({
+        da: {
+          uploads: createPgUploadDataAccess().uploads,
+          artifactShares: createPgArtifactShareDataAccess().artifactShares,
+        },
+        artifactStore: createInlineArtifactStore(
+          createPgArtifactDataAccess().artifacts,
+        ),
+        alerting: {
+          repo: createPgAlertEventDataAccess().alertEvents,
+          notifier: createAlertNotifier(),
+        },
+        logger: {
+          error(message, meta) {
+            logger.error({
+              category: "system",
+              msg: message,
+              ...(meta ? { context: meta } : {}),
+            });
+          },
+        },
+      });
+
 // clean shutdown — 등록한 타이머를 반드시 해제(누수 방지) 후 서버 종료.
 function shutdown(signal: string): void {
   console.warn(`[server] ${signal} received, shutting down`);
   alertingHandle?.stop();
+  retentionHandle?.stop();
   server.close();
   process.exit(0);
 }
