@@ -1,6 +1,7 @@
 import "./globals.css";
 import type { Metadata, Viewport } from "next";
 import { ServiceWorkerRegister } from "../components/ServiceWorkerRegister";
+import { THEME_INIT_SCRIPT } from "../lib/theme-init";
 
 // P22-T6-07: PWA 설치 가능 메타데이터 — manifest(route: /manifest.webmanifest),
 //   홈스크린 아이콘, iOS standalone(appleWebApp). 색상은 현대위아 CI primary #00287A
@@ -38,6 +39,8 @@ export default function RootLayout({
   return (
     <html lang="ko" suppressHydrationWarning>
       <body suppressHydrationWarning>
+        {/* pre-hydration 테마 스탬프 — 첫 페인트 전에 저장 테마(wchat-theme)로 data-theme 확정(FOUC 방지). */}
+        <script dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT }} />
         <ServiceWorkerRegister />
         {children}
       </body>
