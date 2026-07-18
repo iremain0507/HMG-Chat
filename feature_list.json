@@ -2579,8 +2579,8 @@
     "acceptance": "RED 우선. GIVEN a reachable public URL, WHEN the model invokes web_fetch with that url, THEN the handler fetches the page, extracts cleaned main text, and returns tool_result JSON containing {url,title,content} plus a Citation… / GIVEN an internal/link-local URL (e.g. http://10.0.0.1 or http://169.254.169.254), WHEN web_fetch is invoked, THEN validateMcpUrl rejects it (INTERNAL_IP_FORBIDDEN) BEFORE any network call and the tool returns a… / GIVEN assembleBuiltinTools() is called with standard deps, WHEN the returned AgentTool[] is inspected, THEN a tool named web_fetch is present (assembly test) so the model can actually see and call it. / GIVEN pnpm test + pnpm run typecheck, WHEN scripts/verify-gates.sh runs, THEN it exits 0 with the new RED->GREEN handler and assembly tests passing.",
     "phase": "P22",
     "team": "T1",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P22-T3-05",

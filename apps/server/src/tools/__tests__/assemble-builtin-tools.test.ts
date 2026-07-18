@@ -102,7 +102,7 @@ function fakeRetrieval(): KnowledgeRetrievalPort {
 }
 
 describe("tools/assembleBuiltinTools", () => {
-  it("내장 도구 8종을 조립한다(artifact_create/web_search/code_interpreter/deep_research/search_chats/view_chat/add_memory/search_memories)", () => {
+  it("내장 도구 9종을 조립한다(artifact_create/web_search/web_fetch/code_interpreter/deep_research/search_chats/view_chat/add_memory/search_memories)", () => {
     const names = assembleBuiltinTools(base())
       .map((t) => t.spec.name)
       .sort();
@@ -114,8 +114,14 @@ describe("tools/assembleBuiltinTools", () => {
       "search_chats",
       "search_memories",
       "view_chat",
+      "web_fetch",
       "web_search",
     ]);
+  });
+
+  it("web_fetch 는 항상 조립된다(P22-T1-09 — 외부 키 불필요, web_search 와 동일하게 무조건 배선)", () => {
+    const names = assembleBuiltinTools(base()).map((t) => t.spec.name);
+    expect(names).toContain("web_fetch");
   });
 
   it("search_chats/view_chat 은 sessions/sessionMessages 없이도 생략되지 않고 항상 조립된다(P20-T2-01 L1 last-mile)", () => {
@@ -159,6 +165,7 @@ describe("tools/assembleBuiltinTools", () => {
       "search_chats",
       "search_memories",
       "view_chat",
+      "web_fetch",
       "web_search",
     ]);
   });

@@ -22,6 +22,7 @@ import {
   type ImageGenSettingsResolverPort,
 } from "./handlers/image-generate-handler.js";
 import { createArtifactCreateTool } from "./handlers/artifact-create-handler.js";
+import { createWebFetchTool } from "./handlers/web-fetch-handler.js";
 import { createS3ArtifactStore } from "../lib/artifact-store.s3.js";
 import { createCodeInterpreterTool } from "./handlers/code-interpreter-handler.js";
 import {
@@ -138,6 +139,12 @@ export function assembleBuiltinTools(
         })
       : undefined;
 
+  // P22-T1-09 — web_fetch: 외부 키 불필요(전역 fetch + SSRF 검증)라 web_search 처럼 무조건 조립.
+  // nodeEnv 를 넘겨 dev/test 는 http 도 허용(prod 는 https-only, url-validator 기본값).
+  const webFetchTool = createWebFetchTool({
+    ...(process.env.NODE_ENV ? { nodeEnv: process.env.NODE_ENV } : {}),
+  });
+
   const searchChatsTool = createSearchChatsTool({ sessions: deps.sessions });
   const viewChatTool = createViewChatTool({
     sessions: deps.sessions,
@@ -165,6 +172,7 @@ export function assembleBuiltinTools(
       s3Store: createS3ArtifactStore(deps.objectStore),
     }),
     webSearchTool,
+    webFetchTool,
     createCodeInterpreterTool({
       transport: sandboxTransport,
       da: deps.artifactDa,
@@ -178,10 +186,10 @@ export function assembleBuiltinTools(
       leadModel: deps.model,
       workerProvider: deps.provider,
       workerModel: deps.model,
-      // researcher 스코프 = read-only web_search/knowledge_search 만(20-MULTI-AGENT-TOOL.md §20.4-3).
+      // researcher 스코프 = read-only web_search/web_fetch/knowledge_search 만(20-MULTI-AGENT-TOOL.md §20.4-3).
       workerTools: knowledgeSearchTool
-        ? [webSearchTool, knowledgeSearchTool]
-        : [webSearchTool],
+        ? [webSearchTool, webFetchTool, knowledgeSearchTool]
+        : [webSearchTool, webFetchTool],
       maxTokens: deps.maxTokens,
       da: deps.artifactDa,
       ...(deps.settings ? { settings: deps.settings } : {}),
