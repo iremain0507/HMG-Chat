@@ -19,3 +19,13 @@
 | P22-T6-21 OpenAPI 툴서버   | ✅     | ✅ openapi-tool-servers.pw.ts                             | ⏳          | admin `/admin/tool-servers` 에서 실 spec URL 등록 → 도구 발견 확인 → 채팅에서 해당 openapi:\* 툴 호출 라운드트립(= P22-T1-12 4번째 acceptance) |
 | P22-T6-21 OpenAPI admin    | ✅     | ✅                                                        | ⏳          | 툴서버 등록 패널                                                                                                                               |
 | P22-T6-22 LDAP admin       | ✅     | ✅ identity-ldap.pw.ts                                    | ⏳          | LDAP 설정+연결테스트                                                                                                                           |
+
+## 실앱 UAT 실행 결과 (2026-07-18, running stack wchat_dev + Claude-in-Chrome)
+
+- 마이그레이션 0032~0041 을 wchat_dev 에 적용(additive/nullable-first).
+- ✅ Agent 레지스트리(/settings/agents) 렌더
+- ✅ Connections(/settings/connections) 렌더(키 암호화·앞자리만 안내)
+- ✅ Notes(/notes) 렌더 + **새 노트 생성 write-path 검증**(DB notes 1행 실제 생성 후 정리)
+- ✅ 관리자 설정: 툴서버(OpenAPI, T6-21) 탭 + Identity/LDAP(T6-22) 탭 렌더(비번=env참조, RFC4515 필터, ldapEnabled 기본 off)
+- ✅ 홈: PWA '앱 설치', i18n 언어 스위처, 커넥터/에이전트/스킬 카운트, 이미지생성 admin 토글 노출
+- 나머지 needsBrowser(Channels 멀티유저·STT/TTS·이미지생성 실호출 등)는 대표검증으로 대체, 실 외부시스템(LDAP/IdP)·멀티유저는 배포 스테이징에서.
