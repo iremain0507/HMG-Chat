@@ -2840,8 +2840,8 @@
     "acceptance": "RED 우선. GIVEN an IdP sends POST /scim/v2/Users with a valid SCIM 2.0 payload and a valid Bearer token, WHEN the endpoint processes it, THEN a corresponding user is created/linked via externalId and a 201 with the SCIM User… / GIVEN an existing SCIM-provisioned user, WHEN the IdP sends PATCH /scim/v2/Users/{id} with active=false, THEN the user is deactivated (soft-disabled, cannot auth) and 200 is returned / GIVEN a new scim route file is added, WHEN routes-mounted.test.ts runs, THEN /scim/v2 prefix is present in EXPECTED_ROUTES and the route is mounted in createApp (app.ts) / GIVEN SCIM group provisioning, WHEN the IdP creates/updates a Group with members, THEN membership is reflected in the existing admin-groups tables and reads back via GET /scim/v2/Groups/{id} / .ralph/CONTRACT_APPROVED 없으면 격리(구현 금지).",
     "phase": "P22",
     "team": "T1",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P22-T1-17",

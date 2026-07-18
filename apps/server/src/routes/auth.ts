@@ -277,6 +277,19 @@ export function createAuthRoutes(deps: AuthRouteDeps): Hono {
       );
     }
 
+    // P22-T1-16(C15) — SCIM deprovision(status='suspended') / 계정삭제(status='deleted')
+    // 는 자격증명 검증을 통과해도 세션을 주지 않는다. 자격증명이 맞은 뒤라 계정 열거
+    // 위험이 없으므로 401 로 뭉개지 않고 원인을 알 수 있는 403 으로 구분한다.
+    if (user.status !== "active") {
+      return c.json(
+        errorJson(
+          "ACCOUNT_INACTIVE",
+          "비활성화된 계정입니다. 관리자에게 문의하세요.",
+        ),
+        403,
+      );
+    }
+
     loginFailures.delete(email);
     await deps.da.users.update(user.id, { lastLoginAt: new Date() });
     await issueSession(c, user.id, user.orgId, user.role);
@@ -455,6 +468,17 @@ export function createAuthRoutes(deps: AuthRouteDeps): Hono {
       emailEq: email,
     });
     let user = existing.items[0] ?? null;
+    // P22-T1-16(C15) — 디렉터리는 롤/이름의 권위 출처지만, 프로비저닝 상태(status)의
+    // 권위 출처는 SCIM/관리자다. bind 성공만으로 비활성 계정이 되살아나면 안 된다.
+    if (user && user.status !== "active") {
+      return c.json(
+        errorJson(
+          "ACCOUNT_INACTIVE",
+          "비활성화된 계정입니다. 관리자에게 문의하세요.",
+        ),
+        403,
+      );
+    }
     if (user) {
       // 디렉터리가 권위 있는 출처 — 롤/이름을 로그인 때마다 동기화한다.
       user = await deps.da.users.update(user.id, {
@@ -729,7 +753,9 @@ export function createAuthRoutes(deps: AuthRouteDeps): Hono {
       return c.json(errorJson("UNAUTHENTICATED", "로그인이 필요합니다."), 401);
     }
     const user = await deps.da.users.byId(auth.sub);
-    if (!user) {
+    // P22-T1-16(C15) — 비활성 계정은 아직 만료되지 않은 access token 을 들고 와도
+    // 세션 확인에 실패한다(프론트는 /me 401 을 로그아웃 신호로 다룬다).
+    if (!user || user.status !== "active") {
       return c.json(
         errorJson("UNAUTHENTICATED", "사용자를 찾을 수 없습니다."),
         401,
@@ -965,6 +991,19 @@ export function createAuthRoutes(deps: AuthRouteDeps): Hono {
         {
           "WWW-Authenticate": "re-login",
         },
+      );
+    }
+
+    // P22-T1-16(C15) — 로그인 이후 비활성화된 계정은 세션을 연장할 수 없다.
+    // family 까지 revoke 해서 남은 refresh token 세대를 전부 죽인다(DELETE /me 와 동일 취급).
+    if (user.status !== "active") {
+      await deps.da.refreshTokenFamilies.revoke(family.familyId, "logout");
+      deleteCookie(c, atCookie, { path: "/" });
+      deleteCookie(c, rtCookie, { path: "/api/v1/auth/refresh" });
+      return c.json(
+        errorJson("UNAUTHENTICATED", "비활성화된 계정입니다."),
+        401,
+        { "WWW-Authenticate": "re-login" },
       );
     }
 

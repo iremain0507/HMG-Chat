@@ -1026,6 +1026,58 @@ describe("routes/auth", () => {
       expect(me.status).toBe(200);
       expect((await me.json()).data.user.email).toBe(EMAIL);
     });
+
+    // ── P22-T1-16(계약배치 C15) — SCIM deprovision 이 실제로 인증을 막는지 ──────
+    // SCIM PATCH /Users/{id} {active:false} 는 users.status='suspended' 로 내려쓴다
+    // (db/scim-data-access.ts updateUser). acceptance 는 "비활성(soft-disabled,
+    // 인증 불가)" 이므로, 상태만 바뀌고 로그인이 계속 되면 deprovision 이 무의미하다.
+    describe("비활성(suspended/deleted) 계정은 인증할 수 없다", () => {
+      it("status=suspended + 올바른 비밀번호 → 403 ACCOUNT_INACTIVE + 쿠키 미발급", async () => {
+        await da.users.update(userId, { status: "suspended" });
+        const res = await login({ email: EMAIL, password: PASSWORD });
+        expect(res.status).toBe(403);
+        expect((await res.json()).error.code).toBe("ACCOUNT_INACTIVE");
+        expect(res.headers.getSetCookie()).toHaveLength(0);
+      });
+
+      it("status=deleted + 올바른 비밀번호 → 403 ACCOUNT_INACTIVE", async () => {
+        await da.users.update(userId, { status: "deleted" });
+        const res = await login({ email: EMAIL, password: PASSWORD });
+        expect(res.status).toBe(403);
+        expect((await res.json()).error.code).toBe("ACCOUNT_INACTIVE");
+      });
+
+      it("로그인 뒤 비활성화되면 refresh 로 세션을 연장할 수 없다(401 + 쿠키 삭제)", async () => {
+        const ok = await login({ email: EMAIL, password: PASSWORD });
+        const rt = cookieValue(ok.headers.getSetCookie(), "wchat_rt");
+        expect(rt).toBeTruthy();
+
+        await da.users.update(userId, { status: "suspended" });
+
+        const res = await app.request("/refresh", {
+          method: "POST",
+          headers: { cookie: `wchat_rt=${rt}` },
+        });
+        expect(res.status).toBe(401);
+        expect((await res.json()).error.code).toBe("UNAUTHENTICATED");
+        // 새 access/refresh 쿠키가 재발급되면 안 된다(삭제만 허용).
+        const reissued = res.headers
+          .getSetCookie()
+          .filter((ck) => /^wchat_(at|rt)=[^;]+/.test(ck));
+        expect(reissued).toHaveLength(0);
+      });
+
+      it("비활성 계정은 기존 access 쿠키로도 GET /me 를 통과하지 못한다", async () => {
+        const ok = await login({ email: EMAIL, password: PASSWORD });
+        const at = cookieValue(ok.headers.getSetCookie(), "wchat_at");
+        await da.users.update(userId, { status: "suspended" });
+
+        const me = await app.request("/me", {
+          headers: { cookie: `wchat_at=${at}` },
+        });
+        expect(me.status).toBe(401);
+      });
+    });
   });
 
   it("P22-T1-01: DELETE /me — 인증 없이 호출 → 401 UNAUTHENTICATED", async () => {
@@ -1195,6 +1247,27 @@ describe("routes/auth — POST /login/directory (LDAP/AD)", () => {
     const after = await da.users.byId(existing.id);
     expect(after?.role).toBe("admin");
     expect(after?.lastLoginAt).not.toBeNull();
+  });
+
+  // P22-T1-16(C15) — SCIM 으로 비활성화한 계정이 LDAP 경로로 되살아나면 안 된다.
+  // 디렉터리는 롤/이름의 권위 출처지만 프로비저닝 상태(status)의 권위 출처는 SCIM/관리자다.
+  it("SCIM 으로 비활성화된 계정은 디렉터리 bind 가 성공해도 403 ACCOUNT_INACTIVE", async () => {
+    await da.users.insert({
+      orgId: org.id,
+      email: "kim@wchat.example.com",
+      name: "김위아",
+      role: "member",
+      customInstructions: null,
+      status: "suspended",
+      lastLoginAt: null,
+    });
+    const res = await login(makeApp(), {
+      username: "kim",
+      password: "directory-pw",
+    });
+    expect(res.status).toBe(403);
+    expect((await res.json()).error.code).toBe("ACCOUNT_INACTIVE");
+    expect(res.headers.getSetCookie()).toHaveLength(0);
   });
 
   it("bind 실패(비밀번호 오류) → 401 INVALID_CREDENTIALS", async () => {

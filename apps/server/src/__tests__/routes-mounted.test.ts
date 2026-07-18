@@ -240,6 +240,12 @@ const EXPECTED_ROUTES: Array<{ method: string; path: string; phase: string }> =
       path: `/api/v1/sessions/${sid}/share-snapshot/${randomUUID()}`,
       phase: "P20",
     },
+    // P22-T1-16(C15) — SCIM 2.0. authMiddleware 밖 마운트지만 인증-우회 share 라우트와 달리
+    // 상태코드가 모호하지 않다: 디스커버리는 토큰 없이 200, /Users 는 토큰 없이 401 —
+    // 둘 다 404 와 명확히 구분되므로 이 가드로 마운트를 직접 검증할 수 있다.
+    { method: "GET", path: "/scim/v2/ServiceProviderConfig", phase: "P22" },
+    { method: "POST", path: "/scim/v2/Users", phase: "P22" },
+    { method: "GET", path: "/scim/v2/Groups", phase: "P22" },
     // GET /api/v1/conversation-shares/:token(P20-T1-08)은 authMiddleware 밖(인증 우회) 이라
     // "미마운트 404" 와 "유효하지 않은 토큰 → 계약상 404 NOT_FOUND" 를 상태코드로 구분할 수 없어
     // 이 가드에서 제외 — 실 마운트 검증은

@@ -30,6 +30,7 @@ import { pgPool } from "./db/client.js";
 import { createArtifactShareRoutes } from "./routes/artifact-shares.js";
 import { createPgArtifactShareDataAccess } from "./db/artifact-share-data-access.js";
 import { createPublicShareRoutes } from "./routes/public-share.js";
+import { createScimRoutes } from "./routes/scim.js";
 import {
   createConversationShareRoutes,
   createPublicConversationShareRoutes,
@@ -539,6 +540,11 @@ export function createApp(env: Env) {
       s3Store: s3ArtifactStore,
     }),
   );
+
+  // P22-T1-16(C15) — SCIM 2.0 프로비저닝. IdP 가 서버-대-서버로 호출하므로 사용자 JWT
+  // (authMiddleware) 밖에 마운트하고, 라우트가 전용 Bearer 토큰(scim_tokens, 0040)으로
+  // 인증하며 org 를 토큰에서만 파생한다(public-share 와 같은 인증-우회 mount 형태).
+  app.route("/scim/v2", createScimRoutes());
 
   const memoriesApp = new Hono<{ Variables: AuthedVariables }>();
   memoriesApp.use("*", authMiddleware);
