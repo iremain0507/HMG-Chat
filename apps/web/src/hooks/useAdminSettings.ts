@@ -30,6 +30,20 @@ export interface AdminOrgSettings {
 
   enableDirectConnections: boolean;
 
+  // P22-T1-11(계약배치 C14) Identity/LDAP — 서버 resolve 가 기본값을 항상 채워 내려주지만
+  // 기존 픽스처 비파괴 위해 optional(imageGenEnabled 와 동일 처리). IdentityLdapTab 이 소비.
+  ldapEnabled?: boolean;
+  ldapUrl?: string;
+  ldapBindDn?: string;
+  ldapBindPasswordRef?: string;
+  ldapBaseDn?: string;
+  ldapUserFilter?: string;
+  ldapEmailAttribute?: string;
+  ldapNameAttribute?: string;
+  ldapGroupAttribute?: string;
+  ldapGroupRoleMap?: Record<string, "member" | "admin" | "owner">;
+  ldapTlsRejectUnauthorized?: boolean;
+
   instanceName: string;
   banner: AppBanner[];
   responseWatermark: string;

@@ -2831,7 +2831,7 @@
     "acceptance": "RED 우선. GIVEN a configured LDAP/AD server and valid directory credentials, WHEN a user submits them to the directory-login endpoint, THEN the server performs an LDAP bind, maps attributes to a User, and issues the normal… / GIVEN an AD user belonging to a mapped security group, WHEN they log in, THEN their org role/permissions are derived from the group-to-role mapping (and login is rejected if bind fails or the user is outside the… / GIVEN an admin in the browser Settings/Identity panel, WHEN they enter LDAP connection details (host, baseDN, bind DN, group filters) and click Test/Save, THEN the config persists, a connection test succeeds, and… / GIVEN this is a shared/interfaces + new-dependency change, WHEN picked up, THEN it is isolated to blocked_tasks with rationale rather than implemented, because it requires packages/interfaces types, an unspecified… / ★실브라우저 UAT: 스택 기동 후 Claude-in-Chrome 로 실제 화면에서 동작 확인(불가 시 Playwright /preview + 정직히 미실행 명시). / .ralph/CONTRACT_APPROVED 없으면 격리(구현 금지).",
     "phase": "P22",
     "team": "T1",
-    "passes": false,
+    "passes": true,
     "attempts": 1
   },
   {
@@ -2874,7 +2874,7 @@
     "id": "P22-T6-22",
     "phase": "P22",
     "team": "T6",
-    "passes": false,
+    "passes": true,
     "attempts": 0,
     "desc": "[마무리 · admin UI · T1-11 완성용] LDAP/Identity admin 설정 패널. 서버 API(org-settings ldap* 필드 + POST /api/v1/admin/ldap/test, 이미 완료 — P22-T1-11 af1d0b4)를 소비하는 apps/web/src/components/admin/settings/** 패널: host/port/baseDN/bindDN/bindPassword/그룹필터/그룹-롤매핑 입력 + '연결 테스트'(/ldap/test) 버튼 + 저장(기존 admin-settings PATCH 로 persist) + ldapEnabled 토글. 기존 admin settings 탭(예: ConnectorsTab/ModelsGenerationTab) 패턴 미러. 인터랙션은 Open WebUI admin 인증 설정 참조, 디자인 토큰 준수. FROZEN·서버 미접촉. ★needsBrowser. 완료 시 P22-T1-11 도 passes=true 로 마감 가능. 상세근거: .ralph/blocked_tasks P22-T1-11.",
     "acceptance": "RED 우선. (A) RTL: 패널이 현재 ldap 설정 렌더, 필드 입력 변경, '연결 테스트' 클릭 시 POST /ldap/test 호출+결과(성공/503) 표면화, 저장 시 PATCH 호출 단언. 이중제출 가드. (B) Playwright /preview: 패널 등록 후 입력→테스트→저장 상호작용 목킹 단언. (C) 실앱 admin UAT browser-debt 이월."
