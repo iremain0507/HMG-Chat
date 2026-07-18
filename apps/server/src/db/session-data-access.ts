@@ -2,6 +2,7 @@
 // P17-T1-02, TS-08/10)의 pg 구현. dev/test DATABASE_URL role 은 superuser 라
 // RLS(0002_sessions_messages.sql)를 우회한다 — user_id = $1 조건으로 application 레벨
 // 격리를 강제한다(message-data-access.ts 와 동일 사유/패턴).
+import { randomUUID } from "node:crypto";
 import type { Session } from "@wchat/interfaces";
 import { pgPool } from "./client.js";
 
@@ -43,6 +44,14 @@ export interface SessionsDataAccess {
     pagination?: { cursor?: string; limit?: number },
   ): Promise<{ items: SessionWithPin[]; nextCursor?: string }>;
   byId(id: string): Promise<SessionWithPin | null>;
+  // P22-T1-04 — 명시적 세션 생성(POST /sessions, 16-API-CONTRACT §418). id 는 서버생성
+  // (client UUID 로 upsert 하는 lazy ensureSession 과 달리 계약대로 서버가 부여), userId 는
+  // 라우트에서 auth 로만 파생해 넘긴다(body 미신뢰).
+  create(data: {
+    userId: string;
+    title?: string | null;
+    projectId?: string | null;
+  }): Promise<SessionWithPin>;
   updateForOwner(
     userId: string,
     id: string,
@@ -136,6 +145,16 @@ export function createPgSessionDataAccess(): SessionsDataAccess {
         id,
       ]);
       return res.rows[0] ? toSession(res.rows[0]) : null;
+    },
+    async create(data) {
+      const id = randomUUID();
+      const res = await pgPool.query(
+        `INSERT INTO sessions (id, user_id, title, project_id)
+         VALUES ($1, $2, $3, $4)
+         RETURNING *`,
+        [id, data.userId, data.title ?? null, data.projectId ?? null],
+      );
+      return toSession(res.rows[0]);
     },
     async updateForOwner(userId, id, data) {
       const fields: string[] = [];

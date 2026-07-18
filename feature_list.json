@@ -2453,8 +2453,8 @@
     "acceptance": "RED 우선. GIVEN an authenticated user WHEN POST /api/v1/sessions with body {} THEN respond 201 with { data:{ id, title:null, projectId:null, createdAt }, meta:{ requestId } } and a row exists in sessions for that user (id… / GIVEN body { title:'Plan', projectId:<owned> } WHEN POST /api/v1/sessions THEN 201 data.title==='Plan' and data.projectId===<owned>; a subsequent GET /api/v1/sessions lists the new session / GIVEN a session created by user A WHEN user B (different org/user) lists sessions THEN B does not see A's session (userId derived from auth only, never request body) / GIVEN the new POST handler WHEN routes-mounted.test.ts runs THEN POST /api/v1/sessions is in EXPECTED_ROUTES and resolves (not 404), and `pnpm test`/typecheck/lint gates pass",
     "phase": "P22",
     "team": "T1",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P22-T1-05",

@@ -54,6 +54,12 @@ export interface SessionsPort {
     pagination?: { cursor?: string; limit?: number },
   ): Promise<{ items: SessionWithPin[]; nextCursor?: string }>;
   byId(id: string): Promise<SessionWithPin | null>;
+  // P22-T1-04 — 명시적 세션 생성(POST /sessions). userId 는 auth 파생만 신뢰(body 미신뢰).
+  create(data: {
+    userId: string;
+    title?: string | null;
+    projectId?: string | null;
+  }): Promise<SessionWithPin>;
   // P17-T1-03(TS-09) — ownership 이 쿼리 조건에 직접 포함(WHERE id=.. AND user_id=..)돼 있어
   // 별도 조회 없이 원자적으로 cross-org/타 사용자 변경을 차단한다.
   updateForOwner(
@@ -152,6 +158,33 @@ export function createSessionRoutes(
         ...(page.nextCursor ? { nextCursor: page.nextCursor } : {}),
       },
     });
+  });
+
+  // P22-T1-04 — 명시적 세션 생성(16-API-CONTRACT §418). id 는 서버생성(lazy ensureSession 의
+  // client UUID upsert 와 달리 계약대로 서버가 부여). userId 는 auth 에서만 파생(body 미신뢰 →
+  // cross-user 생성 불가, GET / 목록과 동일 정책). title/projectId 는 optional body.
+  app.post("/", async (c) => {
+    const auth = c.get("auth");
+    const body = await c.req
+      .json<{ title?: string; projectId?: string }>()
+      .catch(() => ({}) as { title?: string; projectId?: string });
+    const created = await sessions.create({
+      userId: auth.sub,
+      title: body.title ?? null,
+      projectId: body.projectId ?? null,
+    });
+    return c.json(
+      {
+        data: {
+          id: created.id,
+          title: created.title,
+          projectId: created.projectId,
+          createdAt: created.createdAt.toISOString(),
+        },
+        meta: { requestId: randomUUID() },
+      },
+      201,
+    );
   });
 
   // P19-T1-06 — 제목+메시지 내용 검색. userId 는 auth 에서만 파생(body/query 미수신 →
