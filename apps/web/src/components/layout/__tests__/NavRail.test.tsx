@@ -10,6 +10,18 @@ vi.mock("next/navigation", () => ({
 }));
 
 import { NavRail } from "../NavRail";
+import { LocaleProvider } from "../../i18n/LocaleProvider";
+
+// P22-T6-15(C11): NavRail 라벨은 nav.<key> 카탈로그에서 오므로 next-intl 컨텍스트가 필요하다.
+// 실앱에서는 AppShell 이 LocaleProvider 를 씌운다. 테스트는 로케일을 ko 로 고정해
+// (기존 한국어 단언 유지) /auth/me 초기 조회를 건너뛴다.
+function renderNavRail() {
+  return render(
+    <LocaleProvider initialLocale="ko">
+      <NavRail />
+    </LocaleProvider>,
+  );
+}
 
 function stubCurrentUser(role: "member" | "admin" | "owner") {
   vi.stubGlobal(
@@ -42,7 +54,7 @@ describe("NavRail", () => {
 
   it("핵심 5개 항목을 렌더하고 현재 경로를 활성 표시한다", () => {
     stubCurrentUser("member");
-    render(<NavRail />);
+    renderNavRail();
 
     expect(screen.getByTestId("nav-rail-home")).toBeInTheDocument();
     expect(screen.getByTestId("nav-rail-projects")).toHaveAttribute(
@@ -59,7 +71,7 @@ describe("NavRail", () => {
 
   it("설정 항목은 인덱스(/settings)를 가리킨다(갭9: /settings/memories 하드코딩 제거)", () => {
     stubCurrentUser("member");
-    render(<NavRail />);
+    renderNavRail();
 
     expect(screen.getByTestId("nav-rail-settings")).toHaveAttribute(
       "href",
@@ -71,7 +83,7 @@ describe("NavRail", () => {
   // P22-T6-10 에서 Agent registry 화면(/settings/agents)이 생겨 본래 목적지로 되돌린다.
   it("에이전트 항목은 에이전트 갤러리(/settings/agents)를 가리킨다(P22-T6-10)", () => {
     stubCurrentUser("member");
-    render(<NavRail />);
+    renderNavRail();
 
     expect(screen.getByTestId("nav-rail-agents")).toHaveAttribute(
       "href",
@@ -81,7 +93,7 @@ describe("NavRail", () => {
 
   it("일반 멤버에게는 관리 항목을 숨긴다", async () => {
     stubCurrentUser("member");
-    render(<NavRail />);
+    renderNavRail();
 
     await waitFor(() => {
       expect(screen.getByTestId("nav-rail-avatar")).toHaveTextContent("관");
@@ -91,7 +103,7 @@ describe("NavRail", () => {
 
   it("admin 에게는 관리 항목을 노출한다", async () => {
     stubCurrentUser("admin");
-    render(<NavRail />);
+    renderNavRail();
 
     await waitFor(() => {
       expect(screen.getByTestId("nav-rail-admin")).toBeInTheDocument();

@@ -13,6 +13,7 @@ import { ShortcutSheet } from "./ShortcutSheet";
 import { Banner } from "./Banner";
 import { useAppConfig } from "../../hooks/useAppConfig";
 import { CommandPalette } from "../sessions/CommandPalette";
+import { LocaleProvider } from "../i18n/LocaleProvider";
 import { InstallPwaButton } from "../InstallPwaButton";
 
 const DISMISSED_BANNERS_KEY = "wchat:dismissedBanners";
@@ -127,166 +128,170 @@ export function AppShell({ sidebar, rightPanel, children }: AppShellProps) {
   }
 
   return (
-    <div
-      data-testid="app-shell"
-      className="flex h-[100dvh] w-full flex-col overflow-hidden bg-bg text-fg"
-    >
-      {mobileSidebarOpen && (
-        <button
-          type="button"
-          aria-label="사이드바 닫기"
-          title="사이드바 닫기"
-          onClick={() => setMobileSidebarOpen(false)}
-          className="fixed inset-0 z-[var(--z-modal)] bg-fg/40 md:hidden"
-        />
-      )}
-
-      <header
-        data-testid="app-shell-header"
-        className="flex h-12 shrink-0 items-center gap-3 border-b border-border px-3.5"
+    // P22-T6-15(C11): 인증 라우트 전역 트리에 LocaleProvider 를 걸어 NavRail·설정 등
+    // 모든 하위 컴포넌트가 useTranslations 를 쓸 수 있게 한다(언어 전환 = 리로드 없는 재렌더).
+    <LocaleProvider>
+      <div
+        data-testid="app-shell"
+        className="flex h-[100dvh] w-full flex-col overflow-hidden bg-bg text-fg"
       >
-        <button
-          type="button"
-          aria-label="사이드바 열기"
-          title="사이드바 열기"
-          onClick={() => setMobileSidebarOpen(true)}
-          className="rounded p-1.5 text-fg-muted hover:bg-surface md:hidden"
-        >
-          ☰
-        </button>
-        <button
-          type="button"
-          aria-label="사이드바 접기/펼치기 (⌘B)"
-          title="사이드바 접기/펼치기 (⌘B)"
-          aria-pressed={!sidebarCollapsed}
-          onClick={() => setSidebarCollapsed((collapsed) => !collapsed)}
-          data-testid="app-shell-sidebar-toggle"
-          className="hidden h-7 w-7 items-center justify-center rounded-md border border-border text-fg-muted hover:border-primary hover:text-fg md:flex"
-        >
-          <PanelLeft size={14} strokeWidth={1.8} />
-        </button>
-        <div
-          aria-hidden="true"
-          data-testid="app-shell-signature-placeholder"
-          className="flex h-[22px] w-24 shrink-0 items-center justify-center rounded-sm border border-dashed border-fg-subtle px-1 text-center text-[7.5px] leading-tight text-fg-subtle"
-        >
-          HYUNDAI WIA
-          <br />
-          시그니처 원본
-        </div>
-        <div className="h-[18px] w-px shrink-0 bg-border" />
-        <span className="text-[15px] font-semibold tracking-tight text-fg">
-          WChat
-        </span>
-        <div className="flex-1" />
-        <button
-          ref={cmdkButtonRef}
-          type="button"
-          onClick={openCommandSearch}
-          aria-label="검색 (⌘K)"
-          title="검색 (⌘K)"
-          data-testid="app-shell-cmdk-button"
-          className="flex h-7 items-center gap-1.5 rounded-md border border-border px-2.5 text-xs text-fg-subtle hover:border-primary hover:text-fg-muted"
-        >
-          <Search size={12} strokeWidth={2} />
-          검색
-          <span className="rounded-sm border border-border bg-surface px-1 font-mono text-[10px]">
-            ⌘K
-          </span>
-        </button>
-        <InstallPwaButton />
-        <ThemeToggle />
-        <button
-          type="button"
-          onClick={() => setShortcutSheetOpen(true)}
-          aria-label="단축키 도움말 (⌘/)"
-          title="단축키 도움말 (⌘/)"
-          data-testid="app-shell-shortcuts-button"
-          className="flex h-7 w-7 items-center justify-center rounded-md border border-border text-fg-muted hover:border-primary hover:text-fg"
-        >
-          <HelpCircle size={14} strokeWidth={1.8} />
-        </button>
-        <button
-          type="button"
-          onClick={() => setRightPanelOpen((open) => !open)}
-          aria-label="우패널 토글 (⌘\)"
-          title="우패널 토글 (⌘\)"
-          aria-pressed={rightPanelOpen}
-          data-testid="app-shell-panel-toggle"
-          className={`flex h-7 w-7 items-center justify-center rounded-md border ${
-            rightPanelOpen
-              ? "border-primary text-primary"
-              : "border-border text-fg-muted"
-          }`}
-        >
-          <PanelRight size={14} strokeWidth={1.8} />
-        </button>
-      </header>
-
-      <Banner
-        banners={banner}
-        dismissedKeys={dismissedBannerKeys}
-        onDismiss={dismissBanner}
-      />
-
-      <div className="flex min-h-0 flex-1">
-        <div className="hidden md:flex">
-          <NavRail />
-        </div>
-
-        <aside
-          data-testid="app-shell-sidebar"
-          data-mobile-open={mobileSidebarOpen}
-          data-collapsed={sidebarCollapsed}
-          className={`fixed inset-y-0 left-0 z-[var(--z-modal)] flex w-[280px] shrink-0 flex-col overflow-y-auto border-r border-border bg-surface transition-all duration-200 md:static md:z-auto md:translate-x-0 ${
-            mobileSidebarOpen ? "translate-x-0" : "-translate-x-full"
-          } ${
-            sidebarCollapsed
-              ? "md:w-0 md:border-r-0 md:opacity-0 md:pointer-events-none"
-              : "md:w-[280px] md:opacity-100"
-          }`}
-        >
-          {sidebar}
-        </aside>
-
-        <main
-          data-testid="app-shell-main"
-          className="min-w-0 flex-1 overflow-y-auto"
-        >
-          {children}
-        </main>
-
-        {rightPanel && rightPanelOpen && (
-          <aside
-            data-testid="app-shell-right-panel"
-            style={{
-              ["--right-panel-width" as string]: `${rightPanelWidth}px`,
-            }}
-            className="fixed inset-0 z-[var(--z-modal)] flex shrink-0 border-l border-border bg-surface md:static md:inset-auto md:z-auto md:h-full md:w-[var(--right-panel-width)]"
-          >
-            <button
-              type="button"
-              aria-label="우패널 크기 조절"
-              title="우패널 크기 조절"
-              data-testid="app-shell-right-panel-resize-handle"
-              onMouseDown={startResize}
-              className="absolute inset-y-0 left-0 z-10 hidden w-1 cursor-col-resize bg-transparent hover:bg-primary/30 md:block"
-            />
-            <div className="min-w-0 flex-1 pl-1">{rightPanel}</div>
-          </aside>
+        {mobileSidebarOpen && (
+          <button
+            type="button"
+            aria-label="사이드바 닫기"
+            title="사이드바 닫기"
+            onClick={() => setMobileSidebarOpen(false)}
+            className="fixed inset-0 z-[var(--z-modal)] bg-fg/40 md:hidden"
+          />
         )}
-      </div>
 
-      <ToastContainer />
-      <ShortcutSheet
-        open={shortcutSheetOpen}
-        onClose={() => setShortcutSheetOpen(false)}
-      />
-      <CommandPalette
-        open={paletteOpen}
-        onClose={() => setPaletteOpen(false)}
-        triggerRef={cmdkButtonRef}
-      />
-    </div>
+        <header
+          data-testid="app-shell-header"
+          className="flex h-12 shrink-0 items-center gap-3 border-b border-border px-3.5"
+        >
+          <button
+            type="button"
+            aria-label="사이드바 열기"
+            title="사이드바 열기"
+            onClick={() => setMobileSidebarOpen(true)}
+            className="rounded p-1.5 text-fg-muted hover:bg-surface md:hidden"
+          >
+            ☰
+          </button>
+          <button
+            type="button"
+            aria-label="사이드바 접기/펼치기 (⌘B)"
+            title="사이드바 접기/펼치기 (⌘B)"
+            aria-pressed={!sidebarCollapsed}
+            onClick={() => setSidebarCollapsed((collapsed) => !collapsed)}
+            data-testid="app-shell-sidebar-toggle"
+            className="hidden h-7 w-7 items-center justify-center rounded-md border border-border text-fg-muted hover:border-primary hover:text-fg md:flex"
+          >
+            <PanelLeft size={14} strokeWidth={1.8} />
+          </button>
+          <div
+            aria-hidden="true"
+            data-testid="app-shell-signature-placeholder"
+            className="flex h-[22px] w-24 shrink-0 items-center justify-center rounded-sm border border-dashed border-fg-subtle px-1 text-center text-[7.5px] leading-tight text-fg-subtle"
+          >
+            HYUNDAI WIA
+            <br />
+            시그니처 원본
+          </div>
+          <div className="h-[18px] w-px shrink-0 bg-border" />
+          <span className="text-[15px] font-semibold tracking-tight text-fg">
+            WChat
+          </span>
+          <div className="flex-1" />
+          <button
+            ref={cmdkButtonRef}
+            type="button"
+            onClick={openCommandSearch}
+            aria-label="검색 (⌘K)"
+            title="검색 (⌘K)"
+            data-testid="app-shell-cmdk-button"
+            className="flex h-7 items-center gap-1.5 rounded-md border border-border px-2.5 text-xs text-fg-subtle hover:border-primary hover:text-fg-muted"
+          >
+            <Search size={12} strokeWidth={2} />
+            검색
+            <span className="rounded-sm border border-border bg-surface px-1 font-mono text-[10px]">
+              ⌘K
+            </span>
+          </button>
+          <InstallPwaButton />
+          <ThemeToggle />
+          <button
+            type="button"
+            onClick={() => setShortcutSheetOpen(true)}
+            aria-label="단축키 도움말 (⌘/)"
+            title="단축키 도움말 (⌘/)"
+            data-testid="app-shell-shortcuts-button"
+            className="flex h-7 w-7 items-center justify-center rounded-md border border-border text-fg-muted hover:border-primary hover:text-fg"
+          >
+            <HelpCircle size={14} strokeWidth={1.8} />
+          </button>
+          <button
+            type="button"
+            onClick={() => setRightPanelOpen((open) => !open)}
+            aria-label="우패널 토글 (⌘\)"
+            title="우패널 토글 (⌘\)"
+            aria-pressed={rightPanelOpen}
+            data-testid="app-shell-panel-toggle"
+            className={`flex h-7 w-7 items-center justify-center rounded-md border ${
+              rightPanelOpen
+                ? "border-primary text-primary"
+                : "border-border text-fg-muted"
+            }`}
+          >
+            <PanelRight size={14} strokeWidth={1.8} />
+          </button>
+        </header>
+
+        <Banner
+          banners={banner}
+          dismissedKeys={dismissedBannerKeys}
+          onDismiss={dismissBanner}
+        />
+
+        <div className="flex min-h-0 flex-1">
+          <div className="hidden md:flex">
+            <NavRail />
+          </div>
+
+          <aside
+            data-testid="app-shell-sidebar"
+            data-mobile-open={mobileSidebarOpen}
+            data-collapsed={sidebarCollapsed}
+            className={`fixed inset-y-0 left-0 z-[var(--z-modal)] flex w-[280px] shrink-0 flex-col overflow-y-auto border-r border-border bg-surface transition-all duration-200 md:static md:z-auto md:translate-x-0 ${
+              mobileSidebarOpen ? "translate-x-0" : "-translate-x-full"
+            } ${
+              sidebarCollapsed
+                ? "md:w-0 md:border-r-0 md:opacity-0 md:pointer-events-none"
+                : "md:w-[280px] md:opacity-100"
+            }`}
+          >
+            {sidebar}
+          </aside>
+
+          <main
+            data-testid="app-shell-main"
+            className="min-w-0 flex-1 overflow-y-auto"
+          >
+            {children}
+          </main>
+
+          {rightPanel && rightPanelOpen && (
+            <aside
+              data-testid="app-shell-right-panel"
+              style={{
+                ["--right-panel-width" as string]: `${rightPanelWidth}px`,
+              }}
+              className="fixed inset-0 z-[var(--z-modal)] flex shrink-0 border-l border-border bg-surface md:static md:inset-auto md:z-auto md:h-full md:w-[var(--right-panel-width)]"
+            >
+              <button
+                type="button"
+                aria-label="우패널 크기 조절"
+                title="우패널 크기 조절"
+                data-testid="app-shell-right-panel-resize-handle"
+                onMouseDown={startResize}
+                className="absolute inset-y-0 left-0 z-10 hidden w-1 cursor-col-resize bg-transparent hover:bg-primary/30 md:block"
+              />
+              <div className="min-w-0 flex-1 pl-1">{rightPanel}</div>
+            </aside>
+          )}
+        </div>
+
+        <ToastContainer />
+        <ShortcutSheet
+          open={shortcutSheetOpen}
+          onClose={() => setShortcutSheetOpen(false)}
+        />
+        <CommandPalette
+          open={paletteOpen}
+          onClose={() => setPaletteOpen(false)}
+          triggerRef={cmdkButtonRef}
+        />
+      </div>
+    </LocaleProvider>
   );
 }

@@ -124,6 +124,11 @@ export interface User {
   name: string | null;
   role: "member" | "admin" | "owner";
   customInstructions: string | null;
+  /**
+   * P22-T6-15(계약배치 C11) — 사용자별 UI 언어(BCP-47 태그, 예: "ko"·"en").
+   * null = 서버 기본(ko). 기존 사용자는 전부 null 이라 현행 동작 유지(additive).
+   */
+  language: string | null;
   status: "active" | "suspended" | "deleted";
   lastLoginAt: Date | null;
   createdAt: Date;

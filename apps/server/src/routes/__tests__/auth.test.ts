@@ -633,6 +633,107 @@ describe("routes/auth", () => {
     expect(meBody.data.user.customInstructions).toBe("항상 한국어로 답해줘");
   });
 
+  // P22-T6-15(C11) — 사용자별 UI 언어(User.language, BCP-47). NULL = 서버 기본(ko).
+  // 언어 선택은 localStorage 가 아니라 서버에 영속돼야 재로그인 후에도 유지된다.
+  it("P22-T6-15: PATCH /me — language 저장 → GET /me 에 반영(서버 영속)", async () => {
+    const devApp = createAuthRoutes({
+      da,
+      emailSender,
+      allowedDomains: ["wchat.example.com"],
+      appOrigin: "http://localhost:3000",
+      secureCookies: false,
+      devLogin: true,
+    });
+    const loginRes = await devApp.request("/dev-login", { redirect: "manual" });
+    const setCookies = loginRes.headers.getSetCookie
+      ? loginRes.headers.getSetCookie()
+      : [loginRes.headers.get("set-cookie") ?? ""];
+    const accessCookie = cookieValue(setCookies, "wchat_at");
+
+    const meBefore = await (
+      await devApp.request("/me", {
+        headers: { cookie: `wchat_at=${accessCookie}` },
+      })
+    ).json();
+    expect(meBefore.data.user.language).toBeNull();
+
+    const patchRes = await devApp.request("/me", {
+      method: "PATCH",
+      headers: {
+        cookie: `wchat_at=${accessCookie}`,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({ language: "en" }),
+    });
+    expect(patchRes.status).toBe(200);
+    expect((await patchRes.json()).data.language).toBe("en");
+
+    const meRes = await devApp.request("/me", {
+      headers: { cookie: `wchat_at=${accessCookie}` },
+    });
+    expect((await meRes.json()).data.user.language).toBe("en");
+  });
+
+  it("P22-T6-15: PATCH /me — language null → 서버 기본(ko) 으로 되돌림", async () => {
+    const devApp = createAuthRoutes({
+      da,
+      emailSender,
+      allowedDomains: ["wchat.example.com"],
+      appOrigin: "http://localhost:3000",
+      secureCookies: false,
+      devLogin: true,
+    });
+    const loginRes = await devApp.request("/dev-login", { redirect: "manual" });
+    const setCookies = loginRes.headers.getSetCookie
+      ? loginRes.headers.getSetCookie()
+      : [loginRes.headers.get("set-cookie") ?? ""];
+    const accessCookie = cookieValue(setCookies, "wchat_at");
+    const headers = {
+      cookie: `wchat_at=${accessCookie}`,
+      "content-type": "application/json",
+    };
+
+    await devApp.request("/me", {
+      method: "PATCH",
+      headers,
+      body: JSON.stringify({ language: "en" }),
+    });
+    const cleared = await devApp.request("/me", {
+      method: "PATCH",
+      headers,
+      body: JSON.stringify({ language: null }),
+    });
+    expect(cleared.status).toBe(200);
+    expect((await cleared.json()).data.language).toBeNull();
+  });
+
+  it("P22-T6-15: PATCH /me — BCP-47 아닌 language → 400 INVALID_INPUT", async () => {
+    const devApp = createAuthRoutes({
+      da,
+      emailSender,
+      allowedDomains: ["wchat.example.com"],
+      appOrigin: "http://localhost:3000",
+      secureCookies: false,
+      devLogin: true,
+    });
+    const loginRes = await devApp.request("/dev-login", { redirect: "manual" });
+    const setCookies = loginRes.headers.getSetCookie
+      ? loginRes.headers.getSetCookie()
+      : [loginRes.headers.get("set-cookie") ?? ""];
+    const accessCookie = cookieValue(setCookies, "wchat_at");
+
+    const res = await devApp.request("/me", {
+      method: "PATCH",
+      headers: {
+        cookie: `wchat_at=${accessCookie}`,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({ language: "not a locale!" }),
+    });
+    expect(res.status).toBe(400);
+    expect((await res.json()).error.code).toBe("INVALID_INPUT");
+  });
+
   it("P17-T1-04: PATCH /me — 인증 없이 호출 → 401", async () => {
     const res = await app.request("/me", {
       method: "PATCH",

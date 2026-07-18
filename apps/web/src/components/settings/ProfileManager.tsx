@@ -4,13 +4,24 @@
 // name·customInstructions 를 수정할 표면이 없던 문제 해소. PATCH /auth/me
 // (16-API-CONTRACT §1 `PATCH /auth/me`) 배선 — name 1~100자, customInstructions max 2000자.
 import React, { useEffect, useState } from "react";
+import { useTranslations } from "next-intl";
 import { apiFetch } from "../../lib/fetch-with-refresh";
 import { showToast } from "../../lib/toast";
+import { useLocaleSetting } from "../i18n/LocaleProvider";
+import {
+  LOCALE_LABELS,
+  SUPPORTED_LOCALES,
+  isSupportedLocale,
+} from "../../lib/i18n";
 
 const FOCUS_RING =
   "outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--focus-ring)] focus-visible:outline-offset-2";
 
 export function ProfileManager() {
+  const t = useTranslations("settings.profile");
+  const tCommon = useTranslations("common");
+  // P22-T6-15(C11): 언어는 저장 버튼과 무관하게 선택 즉시 적용·저장한다(Open WebUI 와 동일).
+  const { locale, setLocale, loading: localeLoading } = useLocaleSetting();
   const [name, setName] = useState("");
   const [customInstructions, setCustomInstructions] = useState("");
   const [loading, setLoading] = useState(true);
@@ -52,10 +63,10 @@ export function ProfileManager() {
         }),
       });
       if (!res.ok) {
-        showToast("error", "프로필 저장에 실패했습니다.");
+        showToast("error", t("saveFailed"));
         return;
       }
-      showToast("success", "프로필을 저장했습니다.");
+      showToast("success", t("saved"));
     } finally {
       setSaving(false);
     }
@@ -64,14 +75,14 @@ export function ProfileManager() {
   return (
     <section>
       <div className="flex items-center gap-2.5">
-        <h2 className="text-xl font-bold text-fg">프로필</h2>
+        <h2 className="text-xl font-bold text-fg">{t("title")}</h2>
         <span className="font-mono text-[11px] text-fg-subtle">
           /settings/profile
         </span>
       </div>
 
       {loading ? (
-        <p className="mt-4 text-sm text-fg-muted">불러오는 중…</p>
+        <p className="mt-4 text-sm text-fg-muted">{tCommon("loading")}</p>
       ) : (
         <form onSubmit={handleSave} className="mt-4 max-w-[480px] space-y-4">
           <div>
@@ -79,7 +90,7 @@ export function ProfileManager() {
               htmlFor="profile-name"
               className="block text-xs font-semibold text-fg-muted"
             >
-              이름
+              {t("name")}
             </label>
             <input
               id="profile-name"
@@ -96,7 +107,7 @@ export function ProfileManager() {
               htmlFor="profile-instructions"
               className="block text-xs font-semibold text-fg-muted"
             >
-              커스텀 지침
+              {t("customInstructions")}
             </label>
             <textarea
               id="profile-instructions"
@@ -108,12 +119,40 @@ export function ProfileManager() {
             />
           </div>
 
+          {/* P22-T6-15(C11) 언어 — 저장 버튼과 독립. 선택 즉시 UI 가 리로드 없이 재렌더되고
+              PATCH /auth/me 로 계정에 저장돼 재로그인 후에도 유지된다. */}
+          <div>
+            <label
+              htmlFor="profile-language"
+              className="block text-xs font-semibold text-fg-muted"
+            >
+              {t("language")}
+            </label>
+            <select
+              id="profile-language"
+              value={locale}
+              disabled={localeLoading}
+              onChange={(e) => {
+                const next = e.target.value;
+                if (isSupportedLocale(next)) void setLocale(next);
+              }}
+              className={`mt-1.5 h-9 w-full rounded-md border border-border bg-bg px-2.5 text-[13.5px] text-fg disabled:opacity-60 ${FOCUS_RING}`}
+            >
+              {SUPPORTED_LOCALES.map((loc) => (
+                <option key={loc} value={loc}>
+                  {LOCALE_LABELS[loc]}
+                </option>
+              ))}
+            </select>
+            <p className="mt-1.5 text-xs text-fg-subtle">{t("languageHint")}</p>
+          </div>
+
           <button
             type="submit"
             disabled={saving}
             className={`h-9 rounded-md bg-primary px-4 text-[13px] font-semibold text-primary-fg disabled:opacity-60 ${FOCUS_RING}`}
           >
-            저장
+            {saving ? t("saving") : t("save")}
           </button>
         </form>
       )}

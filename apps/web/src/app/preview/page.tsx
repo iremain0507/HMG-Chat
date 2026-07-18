@@ -36,6 +36,9 @@ import { SkillsManager } from "../../components/settings/SkillsManager";
 import { AgentGallery } from "../../components/agents/AgentGallery";
 import { ConnectionsManager } from "../../components/settings/ConnectionsManager";
 import { MemoryManager } from "../../components/settings/MemoryManager";
+import { NavRail } from "../../components/layout/NavRail";
+import { ProfileManager } from "../../components/settings/ProfileManager";
+import { LocaleProvider } from "../../components/i18n/LocaleProvider";
 import { QuotaPanel } from "../../components/settings/QuotaPanel";
 import { AdminDashboard } from "../../components/admin/AdminDashboard";
 import { ToolMetricsTable } from "../../components/admin/ToolMetricsTable";
@@ -244,6 +247,34 @@ function ConnectionsManagerPreview() {
       className="rounded-md border border-border px-3 py-1.5 text-sm text-fg-muted hover:border-primary hover:text-fg"
     >
       연결 관리 열기
+    </button>
+  );
+}
+
+// P22-T6-15(C11) — 언어 전환. ProfileManager 의 언어 선택기와 NavRail 을 같은 LocaleProvider
+//   아래 둔다: 선택기를 바꾸면 *다른* 컴포넌트(NavRail)의 라벨까지 페이지 리로드 없이 즉시
+//   다시 그려지는지를 실 브라우저로 확인하기 위함(acceptance #2). initialLocale 을 주지 않아
+//   실제 앱과 동일하게 GET /auth/me 로 초기 언어를 읽고 PATCH /auth/me 로 저장한다 —
+//   e2e(i18n-language-switch.pw.ts)가 두 호출을 page.route() 로 목킹한다.
+function LanguageSwitchPreview() {
+  const [open, setOpen] = useState(false);
+  return open ? (
+    <LocaleProvider>
+      <div className="flex gap-4">
+        <NavRail />
+        <div className="min-w-0 flex-1">
+          <ProfileManager />
+        </div>
+      </div>
+    </LocaleProvider>
+  ) : (
+    <button
+      type="button"
+      data-testid="language-switch-preview-trigger"
+      onClick={() => setOpen(true)}
+      className="rounded-md border border-border px-3 py-1.5 text-sm text-fg-muted hover:border-primary hover:text-fg"
+    >
+      언어 설정 열기
     </button>
   );
 }
@@ -1384,6 +1415,10 @@ export default function PreviewGallery() {
 
       <Section name="connections-manager">
         <ConnectionsManagerPreview />
+      </Section>
+
+      <Section name="language-switch">
+        <LanguageSwitchPreview />
       </Section>
 
       <Section name="memory-manager">

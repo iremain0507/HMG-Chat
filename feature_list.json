@@ -2777,8 +2777,8 @@
     "acceptance": "RED 우선. GIVEN a fresh apps/web build WHEN grepping for react-i18next|next-intl|i18next in apps/web/package.json THEN a declared i18n dependency exists and an apps/web/src/lib/i18n message-catalog module loads ko + at least one… / GIVEN a logged-in user in the browser WHEN they open Settings/Profile and switch language from Korean to English THEN visible UI labels (nav, settings, chat controls) re-render in English without a full page reload / GIVEN a user selected English and the User.language field + preferences API exist WHEN they log out and log back in THEN the app loads in English (choice persisted server-side per user, not just localStorage) / GIVEN the interface/contract/dependency changes are required WHEN the loop reaches this task THEN it is isolated to .ralph/blocked_tasks (packages/interfaces User.language + API contract + new dep) rather than… / ★실브라우저 UAT: 스택 기동 후 Claude-in-Chrome 로 실제 화면에서 동작 확인(불가 시 Playwright /preview + 정직히 미실행 명시). / .ralph/CONTRACT_APPROVED 없으면 격리(구현 금지).",
     "phase": "P22",
     "team": "T6",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P22-T6-16",

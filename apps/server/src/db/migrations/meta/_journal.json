@@ -246,6 +246,13 @@
       "when": 1783984600000,
       "tag": "0035_provider_connections",
       "breakpoints": true
+    },
+    {
+      "idx": 35,
+      "version": "7",
+      "when": 1783988200000,
+      "tag": "0036_user_language",
+      "breakpoints": true
     }
   ]
 }

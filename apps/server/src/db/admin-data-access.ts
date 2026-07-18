@@ -68,6 +68,8 @@ function toUser(row: Record<string, unknown>): User {
     name: (row.name as string | null) ?? null,
     role: row.role as User["role"],
     customInstructions: (row.custom_instructions as string | null) ?? null,
+    // 0036_user_language — NULL = 서버 기본(ko).
+    language: (row.language as string | null) ?? null,
     status: row.status as User["status"],
     lastLoginAt: (row.last_login_at as Date | null) ?? null,
     createdAt: row.created_at as Date,

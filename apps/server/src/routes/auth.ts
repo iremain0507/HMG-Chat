@@ -279,6 +279,8 @@ export function createAuthRoutes(deps: AuthRouteDeps): Hono {
           orgId: user.orgId,
           role: user.role,
           customInstructions: user.customInstructions,
+          // P22-T6-15(C11) — UI 언어. null = 서버 기본(ko).
+          language: user.language ?? null,
           createdAt: user.createdAt.toISOString(),
         },
         org: {
@@ -424,6 +426,7 @@ export function createAuthRoutes(deps: AuthRouteDeps): Hono {
         // `| undefined` 가 Required<> 에도 남는다(messages.ts SAFE_DEFAULT_MAX_TOKENS 와 동일 사유).
         role: resolved.defaultUserRole ?? "member",
         customInstructions: null,
+        language: null,
         status: "active",
         lastLoginAt: new Date(),
       });
@@ -504,6 +507,7 @@ export function createAuthRoutes(deps: AuthRouteDeps): Hono {
         name: "Dev User",
         role: "owner",
         customInstructions: null,
+        language: null,
         status: "active",
         lastLoginAt: new Date(),
       });
@@ -540,6 +544,8 @@ export function createAuthRoutes(deps: AuthRouteDeps): Hono {
           orgId: user.orgId,
           role: user.role,
           customInstructions: user.customInstructions,
+          // P22-T6-15(C11) — UI 언어. null = 서버 기본(ko).
+          language: user.language ?? null,
           createdAt: user.createdAt.toISOString(),
         },
         org: {
@@ -565,13 +571,20 @@ export function createAuthRoutes(deps: AuthRouteDeps): Hono {
     if (!auth) {
       return c.json(errorJson("UNAUTHENTICATED", "로그인이 필요합니다."), 401);
     }
+    type MePatchBody = {
+      name?: string;
+      customInstructions?: string | null;
+      language?: string | null;
+    };
     const body = await c.req
-      .json<{ name?: string; customInstructions?: string | null }>()
-      .catch(
-        () => ({}) as { name?: string; customInstructions?: string | null },
-      );
+      .json<MePatchBody>()
+      .catch(() => ({}) as MePatchBody);
 
-    const patch: { name?: string; customInstructions?: string | null } = {};
+    const patch: {
+      name?: string;
+      customInstructions?: string | null;
+      language?: string | null;
+    } = {};
     if (body.name !== undefined) {
       const trimmed = body.name.trim();
       if (trimmed.length < 1 || trimmed.length > 100) {
@@ -597,6 +610,20 @@ export function createAuthRoutes(deps: AuthRouteDeps): Hono {
       }
       patch.customInstructions = body.customInstructions;
     }
+    // P22-T6-15(C11) — UI 언어. null = 서버 기본(ko) 으로 되돌림.
+    // migration 0036 의 CHECK 제약과 동일한 BCP-47 형태만 허용(이중 방어).
+    if (body.language !== undefined) {
+      if (
+        body.language !== null &&
+        !/^[a-zA-Z]{2,3}(-[a-zA-Z0-9]{2,8})*$/.test(body.language)
+      ) {
+        return c.json(
+          errorJson("INVALID_INPUT", "language 는 BCP-47 태그여야 합니다."),
+          400,
+        );
+      }
+      patch.language = body.language;
+    }
 
     const updated = await deps.da.users.update(auth.sub, patch);
     return c.json({
@@ -607,6 +634,7 @@ export function createAuthRoutes(deps: AuthRouteDeps): Hono {
         orgId: updated.orgId,
         role: updated.role,
         customInstructions: updated.customInstructions,
+        language: updated.language ?? null,
         createdAt: updated.createdAt.toISOString(),
       },
       meta: { requestId: randomUUID() },
