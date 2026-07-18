@@ -36,6 +36,12 @@ export interface ModelModePickerProps {
   onWebSearchChange: (webSearch: boolean) => void;
   temporary: boolean;
   onTemporaryChange: (temporary: boolean) => void;
+  // P22-T6-06 — 멀티모델 비교(Open WebUI 파리티). 비교 토글을 켜면 단일 select 대신 모델
+  // 체크박스를 노출해 2+ 모델을 고를 수 있다. 옵셔널이라 미전달 시 토글이 렌더되지 않는다.
+  compareMode?: boolean;
+  onCompareModeChange?: (compareMode: boolean) => void;
+  compareModels?: string[];
+  onCompareModelsChange?: (models: string[]) => void;
 }
 
 const CHIP_CLASSNAME =
@@ -54,27 +60,87 @@ export function ModelModePicker({
   onWebSearchChange,
   temporary,
   onTemporaryChange,
+  compareMode = false,
+  onCompareModeChange,
+  compareModels = [],
+  onCompareModelsChange,
 }: ModelModePickerProps) {
   if (models.length === 0) return null;
+
+  // P22-T6-06 — 비교 토글은 콜백이 주입됐고 모델이 2개 이상일 때만 의미가 있다.
+  const compareAvailable = !!onCompareModeChange && models.length >= 2;
+
+  function toggleCompareModel(m: string) {
+    if (!onCompareModelsChange) return;
+    onCompareModelsChange(
+      compareModels.includes(m)
+        ? compareModels.filter((x) => x !== m)
+        : [...compareModels, m],
+    );
+  }
 
   return (
     <div
       data-testid="model-mode-picker"
       className="flex flex-wrap items-center gap-1.5"
     >
-      <select
-        aria-label="모델 선택"
-        data-testid="model-picker-model"
-        value={model}
-        onChange={(e) => onModelChange(e.target.value)}
-        className={CHIP_CLASSNAME}
-      >
-        {models.map((m) => (
-          <option key={m} value={m}>
-            {m}
-          </option>
-        ))}
-      </select>
+      {compareMode ? (
+        // 비교 모드: 모델 체크박스(2+ 선택). 시각 스타일은 시맨틱 토큰만(현대위아 CI).
+        <span
+          role="group"
+          aria-label="비교할 모델 선택"
+          data-testid="compare-model-list"
+          className="inline-flex flex-wrap items-center gap-1 rounded-md border border-border bg-surface p-0.5"
+        >
+          {models.map((m) => {
+            const checked = compareModels.includes(m);
+            return (
+              <button
+                key={m}
+                type="button"
+                role="checkbox"
+                aria-checked={checked}
+                aria-label={`${m} 비교 선택`}
+                data-testid={`compare-model-${m}`}
+                onClick={() => toggleCompareModel(m)}
+                className={`rounded px-2 py-1 text-xs font-medium transition-colors ${
+                  checked
+                    ? "bg-primary text-white"
+                    : "text-fg-muted hover:text-fg"
+                }`}
+              >
+                {m}
+              </button>
+            );
+          })}
+        </span>
+      ) : (
+        <select
+          aria-label="모델 선택"
+          data-testid="model-picker-model"
+          value={model}
+          onChange={(e) => onModelChange(e.target.value)}
+          className={CHIP_CLASSNAME}
+        >
+          {models.map((m) => (
+            <option key={m} value={m}>
+              {m}
+            </option>
+          ))}
+        </select>
+      )}
+      {compareAvailable && (
+        <button
+          type="button"
+          aria-label="모델 비교 토글"
+          aria-pressed={compareMode}
+          data-testid="model-picker-compare"
+          onClick={() => onCompareModeChange?.(!compareMode)}
+          className="inline-flex h-7 items-center gap-1.5 rounded-md border border-border px-2 text-xs text-fg-muted transition hover:text-fg aria-pressed:border-primary-200 aria-pressed:bg-primary-50 aria-pressed:text-primary"
+        >
+          ⚖️ 비교
+        </button>
+      )}
       <select
         aria-label="추론 강도"
         data-testid="model-picker-effort"

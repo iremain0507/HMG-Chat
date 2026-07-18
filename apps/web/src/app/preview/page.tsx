@@ -16,7 +16,12 @@ import { StatusChip } from "../../components/chat/StatusChip";
 import { ActivityPanel } from "../../components/chat/ActivityPanel";
 import { HitlPrompt } from "../../components/chat/HitlPrompt";
 import { ChatInput } from "../../components/chat/ChatInput";
-import { ChatView, MessageItem } from "../../components/chat/ChatView";
+import {
+  ChatView,
+  MessageItem,
+  CompareColumns,
+} from "../../components/chat/ChatView";
+import type { CompareGroup } from "../../hooks/useSessionStream";
 import { ProjectPicker } from "../../components/chat/ProjectPicker";
 import { MemoryPanel } from "../../components/chat/MemoryPanel";
 import { ShareExportMenu } from "../../components/chat/ShareExportMenu";
@@ -735,6 +740,144 @@ function MessageQueuePreview() {
   );
 }
 
+// P22-T6-06 — 멀티모델 병렬 비교(Open WebUI 파리티) 실브라우저 검증 하네스.
+//   MessageQueuePreview 와 동일하게 useSessionStream 의 팬아웃 로직을 로컬 state 로 흉내내
+//   SSE 백엔드 없이도 실제 ChatInput 의 비교 토글(⚖️ 비교 → 모델 체크박스 2+ 선택 → 전송)과
+//   실제 CompareColumns 렌더(병렬 컬럼·컬럼별 재생성 형제 페이저)를 결정론적으로 재현한다
+//   (e2e/compare-columns.pw.ts). 시각/인터랙션은 Open WebUI 참조, 스타일은 시맨틱 토큰.
+const COMPARE_PREVIEW_MODELS = ["model-a", "model-b"];
+
+function CompareColumnsPreview() {
+  const [groups, setGroups] = useState<CompareGroup[]>([]);
+  const [isStreaming, setIsStreaming] = useState(false);
+  const idRef = React.useRef(0);
+
+  // onSendCompare: 선택 모델마다 스트리밍 중 컬럼(빈 답변) 하나로 그룹을 만든다.
+  function handleSendCompare(content: string, models: string[]) {
+    const gid = `cmp-${idRef.current++}`;
+    setGroups((prev) => [
+      ...prev,
+      {
+        id: gid,
+        userContent: content,
+        columns: models.map((m) => ({
+          model: m,
+          activeIndex: 0,
+          answers: [
+            {
+              id: `${gid}-${m}-${idRef.current++}`,
+              content: "",
+              streaming: true,
+            },
+          ],
+        })),
+      },
+    ]);
+    setIsStreaming(true);
+  }
+
+  // 스트림 종료: 모든 컬럼의 활성 답변에 모델명이 박힌 콘텐츠를 채우고 streaming 을 내린다.
+  function finishStreams() {
+    setGroups((prev) =>
+      prev.map((g) => ({
+        ...g,
+        columns: g.columns.map((col) => ({
+          ...col,
+          answers: col.answers.map((a, i) =>
+            i === col.activeIndex && a.streaming
+              ? { ...a, content: `${col.model} 응답`, streaming: false }
+              : a,
+          ),
+        })),
+      })),
+    );
+    setIsStreaming(false);
+  }
+
+  function regenerate(groupId: string, model: string) {
+    const aid = `re-${idRef.current++}`;
+    setGroups((prev) =>
+      prev.map((g) =>
+        g.id !== groupId
+          ? g
+          : {
+              ...g,
+              columns: g.columns.map((col) =>
+                col.model !== model
+                  ? col
+                  : {
+                      ...col,
+                      answers: [
+                        ...col.answers,
+                        {
+                          id: aid,
+                          content: `${model} 재생성`,
+                          streaming: false,
+                        },
+                      ],
+                      activeIndex: col.answers.length,
+                    },
+              ),
+            },
+      ),
+    );
+  }
+
+  function switchBranch(
+    groupId: string,
+    model: string,
+    direction: "prev" | "next",
+  ) {
+    setGroups((prev) =>
+      prev.map((g) =>
+        g.id !== groupId
+          ? g
+          : {
+              ...g,
+              columns: g.columns.map((col) => {
+                if (col.model !== model) return col;
+                const next =
+                  direction === "prev"
+                    ? col.activeIndex - 1
+                    : col.activeIndex + 1;
+                if (next < 0 || next >= col.answers.length) return col;
+                return { ...col, activeIndex: next };
+              }),
+            },
+      ),
+    );
+  }
+
+  return (
+    <div className="space-y-3">
+      <CompareColumns
+        groups={groups}
+        isStreaming={isStreaming}
+        onRegenerate={regenerate}
+        onSwitchBranch={switchBranch}
+      />
+      {isStreaming && (
+        <button
+          type="button"
+          data-testid="compare-finish"
+          onClick={finishStreams}
+          className="rounded-md border border-border px-3 py-1.5 text-sm text-fg-muted hover:border-primary hover:text-fg"
+        >
+          스트림 종료(응답 채움)
+        </button>
+      )}
+      <ChatInput
+        sessionId="preview-compare"
+        isStreaming={isStreaming}
+        onSend={() => {}}
+        onSendCompare={handleSendCompare}
+        onStop={() => {}}
+        availableModels={COMPARE_PREVIEW_MODELS}
+      />
+    </div>
+  );
+}
+
 function MemoryPanelPreview() {
   const [open, setOpen] = useState(true);
   return open ? (
@@ -1248,6 +1391,10 @@ export default function PreviewGallery() {
 
       <Section name="message-queue">
         <MessageQueuePreview />
+      </Section>
+
+      <Section name="compare-columns">
+        <CompareColumnsPreview />
       </Section>
 
       <Section name="message-attachments">

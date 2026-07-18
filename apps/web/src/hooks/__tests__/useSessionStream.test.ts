@@ -1743,4 +1743,113 @@ describe("useSessionStream", () => {
       expect(allBodies).not.toContain("drop-me");
     });
   });
+
+  // P22-T6-06 — 멀티모델 병렬 비교(Open WebUI 파리티).
+  describe("멀티모델 비교(sendCompare)", () => {
+    it("선택한 2개 모델로 병렬 팬아웃해 각 컬럼에 message_start.meta.model 로 구분된 스트림을 누적한다", async () => {
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async (_url: string, init?: RequestInit) => {
+          const body = JSON.parse((init?.body as string) ?? "{}") as {
+            model?: string;
+            content?: string;
+          };
+          const model = body.model ?? "unknown";
+          return {
+            body: sseBody([
+              sseFrame("message_start", {
+                messageId: `msg-${model}`,
+                meta: { provider: "fake", model },
+              }),
+              sseFrame("text_delta", { text: `answer-from-${model}` }),
+              sseFrame("stop", {
+                reason: "end_turn",
+                usage: { inputTokens: 1, outputTokens: 2 },
+              }),
+            ]),
+          };
+        }),
+      );
+
+      const { result } = renderHook(() => useSessionStream("session-1"));
+
+      await act(async () => {
+        await result.current.sendCompare("compare this", [
+          "model-a",
+          "model-b",
+        ]);
+      });
+
+      expect(result.current.isStreaming).toBe(false);
+      const group = result.current.compareGroups[0]!;
+      expect(group.userContent).toBe("compare this");
+      expect(group.columns).toHaveLength(2);
+      const colA = group.columns.find((c) => c.model === "model-a")!;
+      const colB = group.columns.find((c) => c.model === "model-b")!;
+      expect(colA.answers[colA.activeIndex]!.content).toBe(
+        "answer-from-model-a",
+      );
+      expect(colB.answers[colB.activeIndex]!.content).toBe(
+        "answer-from-model-b",
+      );
+      expect(colA.answers[colA.activeIndex]!.streaming).toBe(false);
+      // 각 모델이 자기 컬럼에만 기록되고 서로 섞이지 않는다.
+      expect(colA.answers[colA.activeIndex]!.content).not.toContain("model-b");
+    });
+
+    it("regenerateCompare 는 해당 컬럼에만 형제 답변을 추가하고, switchCompareBranch 는 컬럼별로 독립 네비게이션한다", async () => {
+      let call = 0;
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async (_url: string, init?: RequestInit) => {
+          const body = JSON.parse((init?.body as string) ?? "{}") as {
+            model?: string;
+          };
+          const model = body.model ?? "unknown";
+          call += 1;
+          const text = `${model}-r${call}`;
+          return {
+            body: sseBody([
+              sseFrame("message_start", {
+                messageId: `m${call}`,
+                meta: { provider: "fake", model },
+              }),
+              sseFrame("text_delta", { text }),
+              sseFrame("stop", { reason: "end_turn" }),
+            ]),
+          };
+        }),
+      );
+
+      const { result } = renderHook(() => useSessionStream("session-1"));
+      await act(async () => {
+        await result.current.sendCompare("q", ["model-a", "model-b"]);
+      });
+      const groupId = result.current.compareGroups[0]!.id;
+      await act(async () => {
+        await result.current.regenerateCompare(groupId, "model-a");
+      });
+
+      const g = result.current.compareGroups[0]!;
+      const colA = g.columns.find((c) => c.model === "model-a")!;
+      const colB = g.columns.find((c) => c.model === "model-b")!;
+      expect(colA.answers).toHaveLength(2);
+      expect(colB.answers).toHaveLength(1);
+      expect(colA.activeIndex).toBe(1);
+
+      act(() => {
+        result.current.switchCompareBranch(groupId, "model-a", "prev");
+      });
+      const after = result.current.compareGroups[0]!.columns.find(
+        (c) => c.model === "model-a",
+      )!;
+      expect(after.activeIndex).toBe(0);
+      // model-b 컬럼은 영향받지 않는다.
+      expect(
+        result.current.compareGroups[0]!.columns.find(
+          (c) => c.model === "model-b",
+        )!.activeIndex,
+      ).toBe(0);
+    });
+  });
 });

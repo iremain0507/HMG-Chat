@@ -2642,8 +2642,8 @@
     "acceptance": "RED 우선. GIVEN a user in a chat session WHEN they enable compare mode and select 2+ allowed models and send one prompt THEN each selected model streams its answer into its own parallel column simultaneously / GIVEN two model columns rendered side by side WHEN each column has multiple regenerated answers THEN per-column prev/next sibling controls navigate that column's answers independently without affecting the other column / GIVEN a browser session (needs_browser) WHEN compare mode is toggled and a prompt is sent THEN the column UI, live streaming per model, and message_start.meta.model labeling are visually verified in the running app / GIVEN a single selected model WHEN a prompt is sent THEN behavior is unchanged (single-column) confirming backward compatibility / ★실브라우저 UAT: 스택 기동 후 Claude-in-Chrome 로 실제 화면에서 동작 확인(불가 시 Playwright /preview + 정직히 미실행 명시).",
     "phase": "P22",
     "team": "T6",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P22-T6-07",

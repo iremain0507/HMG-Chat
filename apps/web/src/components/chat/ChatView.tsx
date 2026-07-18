@@ -13,6 +13,7 @@ import {
   type StreamMessageMeta,
   type ArtifactSummary,
   type MessageAttachment,
+  type CompareGroup,
 } from "../../hooks/useSessionStream";
 import { useCurrentUser } from "../../hooks/useCurrentUser";
 import { usePrompts } from "../../hooks/usePrompts";
@@ -94,6 +95,10 @@ export function ChatView({ sessionId }: { sessionId: string }) {
     send,
     queuedMessages,
     removeQueued,
+    compareGroups,
+    sendCompare,
+    regenerateCompare,
+    switchCompareBranch,
     stop,
     hitlRequest,
     respondHitl,
@@ -435,7 +440,9 @@ export function ChatView({ sessionId }: { sessionId: string }) {
     setAutoFollow(true);
   }
 
-  const empty = messages.length === 0;
+  // P22-T6-06 — 비교 그룹은 messages 트리와 분리된 별도 흐름이라, 메시지가 비어도 비교
+  // 컬럼이 있으면 빈 상태(추천 칩)를 띄우지 않는다.
+  const empty = messages.length === 0 && compareGroups.length === 0;
 
   return (
     <div className="flex h-full">
@@ -605,6 +612,15 @@ export function ChatView({ sessionId }: { sessionId: string }) {
                 })}
               </ul>
             )}
+            {/* P22-T6-06 — 멀티모델 병렬 비교 컬럼(트리 메시지와 별도 흐름). */}
+            <CompareColumns
+              groups={compareGroups}
+              isStreaming={isStreaming}
+              onRegenerate={(groupId, model) =>
+                void regenerateCompare(groupId, model)
+              }
+              onSwitchBranch={switchCompareBranch}
+            />
           </div>
           {!autoFollow && (
             <button
@@ -648,6 +664,9 @@ export function ChatView({ sessionId }: { sessionId: string }) {
             onStop={() => void stop()}
             onSend={(content, attachments, options) =>
               send(content, attachments, options)
+            }
+            onSendCompare={(content, models, options) =>
+              sendCompare(content, models, options)
             }
             queuedMessages={queuedMessages}
             onRemoveQueued={removeQueued}
@@ -1128,5 +1147,138 @@ export function MessageItem({
         )}
       </div>
     </li>
+  );
+}
+
+// P22-T6-06 — 멀티모델 병렬 비교(Open WebUI 파리티). 하나의 프롬프트를 2+ 모델로 팬아웃한
+// 결과를 나란한 컬럼으로 렌더한다. 컬럼마다 model_start.meta.model 로 구분된 답변을 그리고,
+// 형제 답변(재생성)이 2개 이상이면 그 컬럼 전용 prev/next 페이저를, 항상 컬럼별 재생성 버튼을
+// 노출한다(다른 컬럼과 독립). 시각 스타일은 시맨틱 토큰만(현대위아 CI), 라이트/다크 공용.
+export function CompareColumns({
+  groups,
+  isStreaming,
+  onRegenerate,
+  onSwitchBranch,
+}: {
+  groups: CompareGroup[];
+  isStreaming: boolean;
+  onRegenerate: (groupId: string, model: string) => void;
+  onSwitchBranch: (
+    groupId: string,
+    model: string,
+    direction: "prev" | "next",
+  ) => void;
+}) {
+  if (groups.length === 0) return null;
+  return (
+    <div
+      data-testid="compare-groups"
+      className="mx-auto max-w-5xl space-y-8 px-4 py-6"
+    >
+      {groups.map((g) => (
+        <div
+          key={g.id}
+          data-testid={`compare-group-${g.id}`}
+          className="space-y-3"
+        >
+          <div className="flex justify-end">
+            <div className="max-w-[80%] whitespace-pre-wrap rounded-[10px] bg-primary-50 px-4 py-2.5 text-fg">
+              {g.userContent}
+            </div>
+          </div>
+          <div
+            role="group"
+            aria-label="모델 비교 응답"
+            className="grid gap-3"
+            style={{
+              gridTemplateColumns: `repeat(${g.columns.length}, minmax(0, 1fr))`,
+            }}
+          >
+            {g.columns.map((col) => {
+              const active = col.answers[col.activeIndex];
+              const busy = isStreaming || !!active?.streaming;
+              return (
+                <div
+                  key={col.model}
+                  data-testid={`compare-column-${col.model}`}
+                  className="flex min-w-0 flex-col rounded-xl border border-border bg-surface p-3"
+                >
+                  <div className="mb-2 flex items-center justify-between gap-2">
+                    <span
+                      data-testid={`compare-column-label-${col.model}`}
+                      className="truncate text-xs font-semibold text-primary"
+                    >
+                      {col.model}
+                    </span>
+                    {col.answers.length > 1 && (
+                      <div className="flex flex-none items-center gap-1 text-fg-muted">
+                        <button
+                          type="button"
+                          aria-label={`${col.model} 이전 응답`}
+                          disabled={col.activeIndex === 0}
+                          onClick={() =>
+                            onSwitchBranch(g.id, col.model, "prev")
+                          }
+                          className="rounded-md px-1 py-0.5 text-xs hover:text-fg disabled:opacity-30"
+                        >
+                          ‹
+                        </button>
+                        <span
+                          data-testid={`compare-pager-${col.model}`}
+                          className="text-xs"
+                        >
+                          {col.activeIndex + 1} / {col.answers.length}
+                        </span>
+                        <button
+                          type="button"
+                          aria-label={`${col.model} 다음 응답`}
+                          disabled={col.activeIndex === col.answers.length - 1}
+                          onClick={() =>
+                            onSwitchBranch(g.id, col.model, "next")
+                          }
+                          className="rounded-md px-1 py-0.5 text-xs hover:text-fg disabled:opacity-30"
+                        >
+                          ›
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                  <div className="min-w-0 flex-1 text-sm">
+                    {active?.error ? (
+                      <p className="text-accent">{active.content}</p>
+                    ) : active?.content ? (
+                      <Markdown streaming={!!active.streaming}>
+                        {active.content}
+                      </Markdown>
+                    ) : active?.streaming ? (
+                      <div
+                        data-testid={`compare-shimmer-${col.model}`}
+                        aria-label="응답 생성 중"
+                        className="space-y-2"
+                      >
+                        <div className="h-3.5 w-3/4 animate-pulse rounded bg-bg" />
+                        <div className="h-3.5 w-1/2 animate-pulse rounded bg-bg" />
+                      </div>
+                    ) : null}
+                  </div>
+                  <div className="mt-2 flex justify-end">
+                    <button
+                      type="button"
+                      aria-label={`${col.model} 재생성`}
+                      data-testid={`compare-regenerate-${col.model}`}
+                      disabled={busy}
+                      onClick={() => onRegenerate(g.id, col.model)}
+                      className="rounded-full border border-border px-2.5 py-0.5 text-xs text-fg-muted transition hover:border-primary hover:text-fg disabled:opacity-40"
+                    >
+                      ↻ 재생성
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      ))}
+    </div>
   );
 }

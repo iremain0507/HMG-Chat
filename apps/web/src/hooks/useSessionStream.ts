@@ -143,6 +143,31 @@ export interface QueuedMessage {
   attachments?: MessageAttachment[];
 }
 
+// P22-T6-06 — 멀티모델 병렬 비교(Open WebUI 파리티). 하나의 프롬프트를 2+ 모델로 팬아웃해
+// 각 모델 답변을 병렬 컬럼으로 스트리밍한다. 컬럼마다 독립적인 재생성(형제 답변)과 prev/next
+// 네비게이션을 갖는다. 클라이언트 사이드 팬아웃(모델별 개별 POST /messages 를 병렬 발사)이라
+// 서버 계약(16-API-CONTRACT)·packages/interfaces 변경 없이 T6 안에서 완결된다. 기존 단일경로
+// 트리(messages)와 완전히 분리된 별도 상태라 단일모델 스트리밍 동작에는 전혀 영향이 없다.
+export interface CompareAnswer {
+  id: string;
+  content: string;
+  reasoning?: string;
+  error?: boolean;
+  streaming: boolean;
+  meta?: StreamMessageMeta;
+}
+export interface CompareColumn {
+  model: string;
+  // 컬럼별 형제 답변(재생성 누적). activeIndex 가 화면에 보이는 답변.
+  answers: CompareAnswer[];
+  activeIndex: number;
+}
+export interface CompareGroup {
+  id: string;
+  userContent: string;
+  columns: CompareColumn[];
+}
+
 type ChatStreamEvent =
   | {
       type: "message_start";
@@ -352,6 +377,45 @@ export function useSessionStream(sessionId: string) {
     );
   }, []);
 
+  // P22-T6-06 — 멀티모델 병렬 비교 상태. compareGroupsRef 를 단일 진실원으로 두고 setter 에서
+  // ref+state 를 함께 갱신해(트리 treeRef 와 동일 패턴), 병렬 leg 이 동시에 최신값 위에 함수형
+  // 업데이트를 쌓아도 서로 덮어쓰지 않게 한다. compareControllersRef 는 진행 중 leg 의
+  // AbortController 목록 — stop()/세션전환/언마운트 시 일괄 취소한다.
+  const [compareGroups, setCompareGroups] = useState<CompareGroup[]>([]);
+  const compareGroupsRef = useRef<CompareGroup[]>([]);
+  const compareControllersRef = useRef<AbortController[]>([]);
+  const setCompareGroupsSynced = useCallback(
+    (updater: (prev: CompareGroup[]) => CompareGroup[]) => {
+      compareGroupsRef.current = updater(compareGroupsRef.current);
+      setCompareGroups(compareGroupsRef.current);
+    },
+    [],
+  );
+  const updateCompareAnswer = useCallback(
+    (
+      groupId: string,
+      answerId: string,
+      updater: (a: CompareAnswer) => CompareAnswer,
+    ) => {
+      setCompareGroupsSynced((prev) =>
+        prev.map((g) =>
+          g.id !== groupId
+            ? g
+            : {
+                ...g,
+                columns: g.columns.map((col) => ({
+                  ...col,
+                  answers: col.answers.map((a) =>
+                    a.id !== answerId ? a : updater(a),
+                  ),
+                })),
+              },
+        ),
+      );
+    },
+    [setCompareGroupsSynced],
+  );
+
   // P21-T6-04(UX-16) — 세션 전환 시 이전 대화가 그대로 남던 버그: 이 컴포넌트 인스턴스가
   // 재사용된 채(unmount 없이) sessionId prop 만 바뀌는 라우팅(App Router 클라이언트 내비게이션)
   // 에서는 treeRef/historyLoadedRef/artifactsLoadedRef 가 이전 세션 값을 그대로 들고 있어
@@ -369,6 +433,12 @@ export function useSessionStream(sessionId: string) {
       readerRef.current = null;
     }
 
+    // P22-T6-06 — 세션 전환 시 진행 중 비교 leg 취소 + 컬럼 상태 초기화.
+    for (const c of compareControllersRef.current) c.abort();
+    compareControllersRef.current = [];
+    compareGroupsRef.current = [];
+    setCompareGroups([]);
+
     treeRef.current = createTree();
     historyLoadedRef.current = false;
     artifactsLoadedRef.current = false;
@@ -385,6 +455,9 @@ export function useSessionStream(sessionId: string) {
   useEffect(() => {
     return () => {
       abortRef.current?.abort();
+      // P22-T6-06 — 화면 이탈 시 진행 중 비교 leg 도 정리.
+      for (const c of compareControllersRef.current) c.abort();
+      compareControllersRef.current = [];
       if (readerRef.current) {
         readerRef.current.cancel().catch(() => {});
         readerRef.current = null;
@@ -1098,6 +1171,249 @@ export function useSessionStream(sessionId: string) {
     };
   }, [dispatchSend, syncQueueState]);
 
+  // P22-T6-06 — 단일 모델 비교 leg 하나를 스트리밍한다. 기존 단일경로 POST /messages 엔드포인트를
+  // 그대로 재사용하되(모델을 body.model 로 지정), 이벤트를 트리가 아니라 지정된 컬럼 답변에 기록한다.
+  // message_start.meta.model 이 이미 모델을 실어오므로 컬럼 구분에 그대로 활용한다.
+  const streamCompareLeg = useCallback(
+    async (
+      groupId: string,
+      answerId: string,
+      content: string,
+      model: string,
+      options?: SendOptions,
+    ): Promise<void> => {
+      const controller = new AbortController();
+      compareControllersRef.current.push(controller);
+      let legStartedAt: number | null = null;
+      let sawTerminal = false;
+      try {
+        const res = await apiFetch(`/api/v1/sessions/${sessionId}/messages`, {
+          method: "POST",
+          credentials: "include",
+          signal: controller.signal,
+          headers: {
+            "Content-Type": "application/json",
+            Accept: "text/event-stream",
+          },
+          body: JSON.stringify({
+            content,
+            model,
+            ...(options?.mode ? { mode: options.mode } : {}),
+            ...(options?.reasoningEffort
+              ? { reasoningEffort: options.reasoningEffort }
+              : {}),
+            ...(options?.webSearch !== undefined
+              ? { webSearch: options.webSearch }
+              : {}),
+          }),
+        });
+        const reader = res.body?.getReader();
+        if (!reader) return;
+        const decoder = new TextDecoder();
+        let buffer = "";
+        for (;;) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+          let sep = buffer.indexOf("\n\n");
+          while (sep !== -1) {
+            const frame = buffer.slice(0, sep);
+            buffer = buffer.slice(sep + 2);
+            const event = parseSseFrame(frame);
+            sep = buffer.indexOf("\n\n");
+            if (!event) continue;
+            if (event.type === "message_start") {
+              legStartedAt = Date.now();
+              updateCompareAnswer(groupId, answerId, (a) => ({
+                ...a,
+                ...(event.meta
+                  ? {
+                      meta: {
+                        provider: event.meta.provider,
+                        model: event.meta.model,
+                      },
+                    }
+                  : {}),
+              }));
+            } else if (event.type === "text_delta") {
+              updateCompareAnswer(groupId, answerId, (a) => ({
+                ...a,
+                content: a.content + event.text,
+              }));
+            } else if (event.type === "reasoning_delta") {
+              updateCompareAnswer(groupId, answerId, (a) => ({
+                ...a,
+                reasoning: (a.reasoning ?? "") + event.text,
+              }));
+            } else if (event.type === "stop") {
+              if (event.reason !== "tool_use") {
+                sawTerminal = true;
+                const elapsedMs =
+                  legStartedAt !== null ? Date.now() - legStartedAt : undefined;
+                updateCompareAnswer(groupId, answerId, (a) => ({
+                  ...a,
+                  streaming: false,
+                  meta: {
+                    ...a.meta,
+                    ...(elapsedMs !== undefined ? { elapsedMs } : {}),
+                    ...(event.usage
+                      ? {
+                          inputTokens: event.usage.inputTokens,
+                          outputTokens: event.usage.outputTokens,
+                        }
+                      : {}),
+                  },
+                }));
+              }
+            } else if (event.type === "error") {
+              sawTerminal = true;
+              updateCompareAnswer(groupId, answerId, (a) => ({
+                ...a,
+                streaming: false,
+                error: true,
+                content:
+                  a.content || (event.error?.message ?? "알 수 없는 오류"),
+              }));
+            }
+          }
+        }
+        // 종단 이벤트 없이 reader 가 끝났으면(드롭) 스트리밍 표시만 정리한다.
+        if (!sawTerminal) {
+          updateCompareAnswer(groupId, answerId, (a) =>
+            a.streaming ? { ...a, streaming: false } : a,
+          );
+        }
+      } catch (err) {
+        if ((err as Error).name === "AbortError") {
+          updateCompareAnswer(groupId, answerId, (a) => ({
+            ...a,
+            streaming: false,
+          }));
+        } else {
+          updateCompareAnswer(groupId, answerId, (a) => ({
+            ...a,
+            streaming: false,
+            error: true,
+            content: a.content || "연결이 끊어졌습니다. 다시 시도해주세요.",
+          }));
+        }
+      } finally {
+        compareControllersRef.current = compareControllersRef.current.filter(
+          (c) => c !== controller,
+        );
+      }
+    },
+    [sessionId, updateCompareAnswer],
+  );
+
+  // P22-T6-06 — 하나의 프롬프트를 N개 모델로 병렬 팬아웃. 각 모델마다 컬럼(초기 답변 1개)을
+  // 만들고 Promise.all 로 동시에 스트리밍한다. 모든 leg 이 끝나면 isStreaming 을 내린다.
+  const sendCompare = useCallback(
+    async (content: string, models: string[], options?: SendOptions) => {
+      if (models.length === 0) return;
+      const groupId = `cmp-${idCounterRef.current++}`;
+      const columns: CompareColumn[] = models.map((m) => ({
+        model: m,
+        answers: [
+          {
+            id: `${groupId}-a-${idCounterRef.current++}`,
+            content: "",
+            streaming: true,
+          },
+        ],
+        activeIndex: 0,
+      }));
+      setCompareGroupsSynced((prev) => [
+        ...prev,
+        { id: groupId, userContent: content, columns },
+      ]);
+      setIsStreaming(true);
+      isStreamingRef.current = true;
+      try {
+        await Promise.all(
+          columns.map((col) =>
+            streamCompareLeg(
+              groupId,
+              col.answers[0]!.id,
+              content,
+              col.model,
+              options,
+            ),
+          ),
+        );
+      } finally {
+        setIsStreaming(false);
+        isStreamingRef.current = false;
+      }
+    },
+    [setCompareGroupsSynced, streamCompareLeg],
+  );
+
+  // P22-T6-06 — 특정 컬럼(모델)만 재생성: 그 컬럼에 새 형제 답변을 추가하고 활성 인덱스를 그리로
+  // 옮긴 뒤 스트리밍한다. 다른 컬럼은 건드리지 않는다(독립 재생성).
+  const regenerateCompare = useCallback(
+    async (groupId: string, model: string) => {
+      const group = compareGroupsRef.current.find((g) => g.id === groupId);
+      if (!group) return;
+      const answerId = `${groupId}-a-${idCounterRef.current++}`;
+      setCompareGroupsSynced((prev) =>
+        prev.map((g) =>
+          g.id !== groupId
+            ? g
+            : {
+                ...g,
+                columns: g.columns.map((col) =>
+                  col.model !== model
+                    ? col
+                    : {
+                        ...col,
+                        answers: [
+                          ...col.answers,
+                          { id: answerId, content: "", streaming: true },
+                        ],
+                        activeIndex: col.answers.length,
+                      },
+                ),
+              },
+        ),
+      );
+      setIsStreaming(true);
+      isStreamingRef.current = true;
+      try {
+        await streamCompareLeg(groupId, answerId, group.userContent, model);
+      } finally {
+        setIsStreaming(false);
+        isStreamingRef.current = false;
+      }
+    },
+    [setCompareGroupsSynced, streamCompareLeg],
+  );
+
+  // P22-T6-06 — 컬럼별 형제 답변 prev/next 네비게이션(다른 컬럼에 영향 없음).
+  const switchCompareBranch = useCallback(
+    (groupId: string, model: string, direction: "prev" | "next") => {
+      setCompareGroupsSynced((prev) =>
+        prev.map((g) =>
+          g.id !== groupId
+            ? g
+            : {
+                ...g,
+                columns: g.columns.map((col) => {
+                  if (col.model !== model) return col;
+                  const next =
+                    direction === "prev"
+                      ? col.activeIndex - 1
+                      : col.activeIndex + 1;
+                  if (next < 0 || next >= col.answers.length) return col;
+                  return { ...col, activeIndex: next };
+                }),
+              },
+        ),
+      );
+    },
+    [setCompareGroupsSynced],
+  );
+
   const editMessage = useCallback(
     async (messageId: string, newContent: string) => {
       const t = treeRef.current;
@@ -1383,6 +1699,9 @@ export function useSessionStream(sessionId: string) {
 
   const stop = useCallback(async () => {
     abortRef.current?.abort();
+    // P22-T6-06 — 비교 모드 진행 중이면 모든 컬럼 leg 도 함께 취소한다.
+    for (const c of compareControllersRef.current) c.abort();
+    compareControllersRef.current = [];
     setIsStreaming(false);
     isStreamingRef.current = false;
     const t = treeRef.current;
@@ -1432,6 +1751,11 @@ export function useSessionStream(sessionId: string) {
     // P22-T6-05 — 응답 생성 중 대기열(FIFO)과 취소 핸들.
     queuedMessages,
     removeQueued,
+    // P22-T6-06 — 멀티모델 병렬 비교.
+    compareGroups,
+    sendCompare,
+    regenerateCompare,
+    switchCompareBranch,
     stop,
     hitlRequest,
     respondHitl,

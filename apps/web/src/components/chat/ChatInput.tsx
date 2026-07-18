@@ -145,6 +145,13 @@ export interface ChatInputProps {
     }>,
     options?: SendOptions,
   ) => void | Promise<void>;
+  // P22-T6-06 — 멀티모델 비교 전송. 비교 모드에서 2+ 모델이 선택되면 onSend 대신 이 콜백으로
+  // 프롬프트를 팬아웃한다. 미주입 시 비교 토글 자체가 렌더되지 않는다(하위호환).
+  onSendCompare?: (
+    content: string,
+    models: string[],
+    options?: SendOptions,
+  ) => void | Promise<void>;
   onStop: () => void;
   // P22-T6-05 — 응답 생성 중 대기열에 쌓인(아직 미전송) 메시지. 컴포저에 취소 가능한 칩으로
   // 렌더하고, 취소 시 onRemoveQueued(id) 로 상위(useSessionStream)에 드롭을 위임한다.
@@ -168,6 +175,7 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
       sessionId,
       isStreaming,
       onSend,
+      onSendCompare,
       onStop,
       queuedMessages = [],
       onRemoveQueued,
@@ -191,6 +199,9 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
     const [mode, setMode] = useState<ChatMode>("agent");
     const [webSearch, setWebSearch] = useState(false);
     const [temporary, setTemporary] = useState(false);
+    // P22-T6-06 — 멀티모델 비교 모드 + 선택 모델 집합.
+    const [compareMode, setCompareMode] = useState(false);
+    const [compareModels, setCompareModels] = useState<string[]>([]);
     const taRef = useRef<HTMLTextAreaElement>(null);
     const popoverRef = useRef<HTMLDivElement>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
@@ -418,7 +429,15 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
       setTrigger(null);
       if (taRef.current) taRef.current.style.height = "auto";
       clear();
-      if (availableModels.length > 0) {
+      // P22-T6-06 — 비교 모드 + 2+ 모델 선택 시엔 팬아웃 전송(컬럼 스트리밍). 그 외엔 기존 단일
+      // 전송 경로를 그대로 태워 단일모델 동작을 보존한다(하위호환).
+      if (onSendCompare && compareMode && compareModels.length >= 2) {
+        await onSendCompare(content, compareModels, {
+          mode,
+          reasoningEffort: effort,
+          ...(webSearchAvailable ? { webSearch } : {}),
+        });
+      } else if (availableModels.length > 0) {
         await onSend(content, attachments, {
           model,
           mode,
@@ -703,6 +722,20 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
             onWebSearchChange={setWebSearch}
             temporary={temporary}
             onTemporaryChange={setTemporary}
+            {...(onSendCompare
+              ? {
+                  compareMode,
+                  onCompareModeChange: (next: boolean) => {
+                    setCompareMode(next);
+                    // 비교 켜는 순간 현재 단일 모델을 기본 선택에 포함(2+ 유도).
+                    if (next && compareModels.length === 0 && model) {
+                      setCompareModels([model]);
+                    }
+                  },
+                  compareModels,
+                  onCompareModelsChange: setCompareModels,
+                }
+              : {})}
           />
           <span className="flex-1" />
           {contextUsagePercent !== undefined && (
