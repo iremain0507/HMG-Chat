@@ -40,6 +40,21 @@ import {
 } from "../lib/org-settings-schema.js";
 import type { Citation } from "../knowledge/citation-helper.js";
 
+// 구조화 content({text,parts})/문자열 content 모두에서 사람이 읽는 텍스트를 뽑는다.
+//   도구 호출 영속화 이후 assistant content 가 구조화될 수 있어, LLM 히스토리/이어쓰기 등
+//   기존 문자열 소비처가 빈 문자열로 떨어지지 않도록 단일 출처로 추출한다.
+function messageText(content: unknown): string {
+  if (typeof content === "string") return content;
+  if (
+    content &&
+    typeof content === "object" &&
+    typeof (content as { text?: unknown }).text === "string"
+  ) {
+    return (content as { text: string }).text;
+  }
+  return "";
+}
+
 // abort flow (L06) — Stop 클릭(routes/sessions.ts DELETE /:id/active-run) 이 run-registry 를 통해
 // 이 run 의 signal 을 abort() 시킨 뒤, 여기서 sessions_active_runs.status 를 갱신한다.
 // 실제 DB 구현(db/active-runs-service.ts) 연결은 app.ts 조립 시점 소관 — P2-T2-04 와 동일 사유로 이번 태스크 범위 밖.
@@ -610,6 +625,30 @@ export function createMessageRoutes(
       let assistantText = "";
       let assistantUsage:
         { inputTokens: number; outputTokens: number } | undefined;
+      // 도구 호출 카드가 새로고침/세션이동 후에도 복원되도록, 텍스트뿐 아니라 도구 호출
+      // (tool_use/result/progress)을 순서대로 parts 로 누적해 구조화 content 로 영속한다.
+      type PersistedTurnPart =
+        | { type: "text"; text: string }
+        | {
+            type: "tool";
+            toolCallId: string;
+            name: string;
+            args: unknown;
+            status: "running" | "done" | "error";
+            result?: unknown;
+            progress?: unknown;
+          };
+      const turnParts: PersistedTurnPart[] = [];
+      const appendTurnText = (t: string) => {
+        const last = turnParts[turnParts.length - 1];
+        if (last && last.type === "text") last.text += t;
+        else turnParts.push({ type: "text", text: t });
+      };
+      const turnToolPart = (id: string) =>
+        turnParts.find(
+          (p): p is Extract<PersistedTurnPart, { type: "tool" }> =>
+            p.type === "tool" && p.toolCallId === id,
+        );
       try {
         const events = runTurn({
           provider: turnProvider,
@@ -658,6 +697,35 @@ export function createMessageRoutes(
           }
           if (event.type === "text_delta") {
             assistantText += event.text;
+            appendTurnText(event.text);
+          } else if (event.type === "tool_use") {
+            turnParts.push({
+              type: "tool",
+              toolCallId: event.toolCallId,
+              name: event.name,
+              args: event.args,
+              status: "running",
+            });
+          } else if (event.type === "tool_result") {
+            const p = turnToolPart(event.toolCallId);
+            if (p) {
+              p.result = event.content;
+              p.status =
+                event.content &&
+                typeof event.content === "object" &&
+                (event.content as { kind?: string }).kind === "error"
+                  ? "error"
+                  : "done";
+            }
+          } else if (event.type === "tool_progress") {
+            const p = turnToolPart(event.toolCallId);
+            if (p) {
+              p.progress = {
+                stage: event.stage,
+                ...(event.label !== undefined ? { label: event.label } : {}),
+                ...(event.tasks !== undefined ? { tasks: event.tasks } : {}),
+              };
+            }
           } else if (event.type === "stop") {
             assistantUsage = event.usage;
           }
@@ -705,7 +773,11 @@ export function createMessageRoutes(
             ?.insert({
               sessionId,
               role: "assistant",
-              content: assistantText,
+              // 도구 호출이 있으면 구조화(content={text,parts})로 저장해 새로고침 후 도구 카드
+              // 복원. 없으면 기존처럼 순수 텍스트(하위호환 — 소비처는 문자열/구조화 모두 처리).
+              content: turnParts.some((p) => p.type === "tool")
+                ? { text: assistantText, parts: turnParts }
+                : assistantText,
               parentMessageId: userMessage?.id ?? null,
               tokensIn: assistantUsage?.inputTokens ?? null,
               tokensOut: assistantUsage?.outputTokens ?? null,
@@ -785,7 +857,7 @@ export function createMessageRoutes(
         400,
       );
     }
-    const priorText = typeof prior.content === "string" ? prior.content : "";
+    const priorText = messageText(prior.content);
 
     const resolvedSettings = await resolveSettingsSafely(
       deps.settings,
@@ -930,7 +1002,7 @@ export function createMessageRoutes(
           return { items: [] as Message[] };
         });
       for (const m of page.items) {
-        const text = typeof m.content === "string" ? m.content : "";
+        const text = messageText(m.content);
         if (m.role === "user") lastUserText = text;
         else if (m.role === "assistant") lastAssistantText = text;
       }

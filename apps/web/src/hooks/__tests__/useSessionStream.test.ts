@@ -894,6 +894,69 @@ describe("useSessionStream", () => {
     );
   });
 
+  it("구조화 content({text,parts})로 저장된 assistant 메시지를 loadHistory 가 복원해 도구 카드(parts)를 살린다 — 새로고침 후 도구 호출 유지", async () => {
+    const fetchMock = vi.fn(async (url: unknown, init?: RequestInit) => {
+      const u = String(url);
+      if (u.endsWith("/messages") && (!init || init.method === undefined)) {
+        return {
+          ok: true,
+          json: async () => ({
+            data: [
+              {
+                id: "h-u-1",
+                role: "user",
+                content: "위스키 조사해줘",
+                parentMessageId: null,
+              },
+              {
+                id: "h-a-1",
+                role: "assistant",
+                parentMessageId: "h-u-1",
+                content: {
+                  text: "조사해드리겠습니다.",
+                  parts: [
+                    { type: "text", text: "조사해드리겠습니다." },
+                    {
+                      type: "tool",
+                      toolCallId: "tc-1",
+                      name: "deep_research",
+                      args: { query: "위스키" },
+                      status: "done",
+                      result: {
+                        message: "완료",
+                        citations: [],
+                        subQuestions: [],
+                      },
+                    },
+                  ],
+                },
+              },
+            ],
+          }),
+        };
+      }
+      return { ok: false, status: 404 };
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { result } = renderHook(() => useSessionStream("session-1"));
+    await act(async () => {
+      await result.current.loadHistory();
+    });
+
+    const assistant = result.current.messages.find(
+      (m) => m.role === "assistant",
+    );
+    expect(assistant?.content).toBe("조사해드리겠습니다."); // 텍스트는 유지
+    // parts 가 복원되어 도구 파트(deep_research)가 살아난다 → ChatView 가 ToolCallRenderer 로 렌더.
+    const toolPart = assistant?.parts?.find((p) => p.type === "tool");
+    expect(toolPart).toMatchObject({
+      toolCallId: "tc-1",
+      name: "deep_research",
+      status: "done",
+    });
+  });
+
   it("deleteMessage 는 대상 user 메시지를 지우면 하위 assistant 응답도 함께 트리에서 제거한다 (P20-T6-05)", async () => {
     const fetchMock = deleteFlowFetchMock(true);
     vi.stubGlobal("fetch", fetchMock);

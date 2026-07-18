@@ -527,12 +527,27 @@ export function useSessionStream(sessionId: string) {
       let previousId: string | null = null;
       for (const row of body.data) {
         if (row.role !== "user" && row.role !== "assistant") continue;
-        const content =
-          typeof row.content === "string"
-            ? row.content
-            : row.content == null
-              ? ""
-              : JSON.stringify(row.content);
+        // 서버가 도구 호출이 있는 assistant 메시지를 {text,parts} 구조화로 저장한 경우, parts 를
+        // 복원해 새로고침/세션이동 후에도 도구 카드(deep_research 등)를 유지한다. 그 외(문자열/레거시)
+        // 는 기존처럼 텍스트로.
+        const raw = row.content;
+        let content: string;
+        let restoredParts: MessagePart[] | undefined;
+        if (typeof raw === "string") {
+          content = raw;
+        } else if (
+          raw &&
+          typeof raw === "object" &&
+          Array.isArray((raw as { parts?: unknown }).parts)
+        ) {
+          const structured = raw as { text?: unknown; parts?: unknown };
+          content = typeof structured.text === "string" ? structured.text : "";
+          restoredParts = structured.parts as MessagePart[];
+        } else if (raw == null) {
+          content = "";
+        } else {
+          content = JSON.stringify(raw);
+        }
         // parentMessageId 필드 자체가 없는 레거시 응답은 이전 메시지를 부모로 삼아 선형 체인으로
         // 복원한다(하위호환) — 필드가 있으면(null 포함) 서버가 준 실제 부모 포인터를 그대로 쓴다.
         const parentId = Object.prototype.hasOwnProperty.call(
@@ -541,7 +556,12 @@ export function useSessionStream(sessionId: string) {
         )
           ? (row.parentMessageId ?? null)
           : previousId;
-        addNode(row.id, parentId, { id: row.id, role: row.role, content });
+        addNode(row.id, parentId, {
+          id: row.id,
+          role: row.role,
+          content,
+          ...(restoredParts ? { parts: restoredParts } : {}),
+        });
         previousId = row.id;
       }
     } catch {
