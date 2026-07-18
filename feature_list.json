@@ -2480,8 +2480,8 @@
     "acceptance": "RED 우선. GIVEN a ChatInput with temperature=0.3 and topP=0.9 WHEN google provider.chat is invoked THEN receivedRequest().generationConfig.temperature === 0.3 and .topP === 0.9 (alongside maxOutputTokens) / GIVEN a ChatInput with temperature and topP omitted WHEN google provider.chat is invoked THEN generationConfig has neither temperature nor topP keys (undefined), preserving Gemini defaults / GIVEN the new test written before the fix WHEN pnpm test runs THEN it fails (RED) because the current provider only sets maxOutputTokens, then passes (GREEN) after the two spreads are added / GIVEN the change WHEN bash scripts/verify-gates.sh runs THEN typecheck+lint+test exit 0 (topP camelCase matches Gemini GenerationConfig type)",
     "phase": "P22",
     "team": "T2",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P22-T2-02",

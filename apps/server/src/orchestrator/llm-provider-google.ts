@@ -114,7 +114,15 @@ export function createGoogleLLMProvider(
       ) as GenerateContentRequest["toolConfig"];
       const request: GenerateContentRequest = {
         contents: toGeminiContents(input.messages),
-        generationConfig: { maxOutputTokens: input.maxTokens },
+        generationConfig: {
+          maxOutputTokens: input.maxTokens,
+          // Gemini GenerationConfig 는 topP(camelCase) 을 쓴다(OpenAI 의 top_p 와 다름).
+          // org-scoped sampling 파라미터를 설정 시에만 forward(미설정 시 Gemini 기본 보존).
+          ...(input.temperature !== undefined
+            ? { temperature: input.temperature }
+            : {}),
+          ...(input.topP !== undefined ? { topP: input.topP } : {}),
+        },
         ...(input.systemBlocks.length > 0
           ? {
               systemInstruction: input.systemBlocks

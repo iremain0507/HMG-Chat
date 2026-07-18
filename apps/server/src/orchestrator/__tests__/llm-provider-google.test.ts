@@ -131,6 +131,53 @@ describe("createGoogleLLMProvider", () => {
     expect(receivedSignal()).toBe(controller.signal);
   });
 
+  it("temperature/topP 를 generationConfig 로 forward 한다(설정 시)", async () => {
+    const { client, receivedRequest } = fakeClient([]);
+    const provider = createGoogleLLMProvider({ client });
+
+    for await (const event of provider.chat(
+      {
+        model: "gemini-2.5-pro",
+        systemBlocks: [],
+        messages: [{ role: "user", content: "안녕" }],
+        maxTokens: 1024,
+        temperature: 0.3,
+        topP: 0.9,
+      },
+      new AbortController().signal,
+    )) {
+      void event;
+    }
+
+    expect(receivedRequest()?.generationConfig).toEqual({
+      maxOutputTokens: 1024,
+      temperature: 0.3,
+      topP: 0.9,
+    });
+  });
+
+  it("temperature/topP 미설정 시 generationConfig 에 해당 키를 넣지 않는다(Gemini 기본 보존)", async () => {
+    const { client, receivedRequest } = fakeClient([]);
+    const provider = createGoogleLLMProvider({ client });
+
+    for await (const event of provider.chat(
+      {
+        model: "gemini-2.5-pro",
+        systemBlocks: [],
+        messages: [{ role: "user", content: "안녕" }],
+        maxTokens: 512,
+      },
+      new AbortController().signal,
+    )) {
+      void event;
+    }
+
+    const gc = receivedRequest()?.generationConfig;
+    expect(gc).toEqual({ maxOutputTokens: 512 });
+    expect(gc && "temperature" in gc).toBe(false);
+    expect(gc && "topP" in gc).toBe(false);
+  });
+
   it("functionCall 파트를 ChatEvent tool_use(정규화된 args) 로 emit 하고 stop reason='tool_use' 를 전달한다", async () => {
     const chunks = [
       chunk({
