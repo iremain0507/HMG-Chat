@@ -2786,8 +2786,8 @@
     "acceptance": "RED 우선. GIVEN autocomplete enabled at org+user level WHEN a user pauses while typing a partial prompt in ChatInput THEN a fast task-model completion is fetched and rendered as inline ghost text after the caret, and pressing Tab… / GIVEN the admin settings panel WHEN an admin toggles the autocomplete feature off THEN POST /api/v1/completions is gated (403/feature-disabled) and no ghost text appears for any user in that org (browser + API check) / GIVEN a completion request is in flight WHEN the user keeps typing or presses Escape THEN the pending request is cancelled/ignored and stale suggestions never overwrite newer input / GIVEN the endpoint and its request/response type do not yet exist in 16-API-CONTRACT.md / interfaces THEN the task is isolated (blocked_tasks / human gate) before any packages/interfaces or contract edit is made / ★실브라우저 UAT: 스택 기동 후 Claude-in-Chrome 로 실제 화면에서 동작 확인(불가 시 Playwright /preview + 정직히 미실행 명시). / .ralph/CONTRACT_APPROVED 없으면 격리(구현 금지).",
     "phase": "P22",
     "team": "T6",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P22-T6-17",

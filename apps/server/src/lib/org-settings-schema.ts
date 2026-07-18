@@ -52,6 +52,10 @@ export const OrgSettingsSchema = z.object({
   // IMAGE_GEN_DISABLED 로 거절한다(admin 설정에서 토글, webSearchEnabled 와 동일 패턴).
   imageGenEnabled: z.boolean().optional(),
 
+  // Chat — P22-T6-16: 입력 자동완성(ghost text). off 면 POST /completions 가 invoke 시점에
+  // FEATURE_DISABLED 로 거절한다(webSearchEnabled/imageGenEnabled 와 동일한 org 게이트 패턴).
+  autocompleteEnabled: z.boolean().optional(),
+
   // Connectors/MCP
   enableDirectConnections: z.boolean().optional(),
 
@@ -123,6 +127,9 @@ export const DEFAULT_ORG_SETTINGS: ResolvedOrgSettings = {
   webSearchApiKeyRef: "",
 
   imageGenEnabled: false,
+
+  // 현행(자동완성 기능 자체가 없었음) 동작 보존 — org 관리자가 명시적으로 켜야 활성(비파괴).
+  autocompleteEnabled: false,
 
   enableDirectConnections: false,
 

@@ -66,6 +66,7 @@ import { createErrorRoutes } from "./routes/errors.js";
 import { createPgErrorLogDataAccess } from "./db/error-log-data-access.js";
 import { createAdminRoutes } from "./routes/admin.js";
 import { createAdminSettingsRoutes } from "./routes/admin-settings.js";
+import { createCompletionRoutes } from "./routes/completions.js";
 import { createAdminModelsRoutes } from "./routes/admin-models.js";
 import { createAdminToolsRoutes } from "./routes/admin-tools.js";
 import { createAdminGroupsRoutes } from "./routes/admin-groups.js";
@@ -478,6 +479,21 @@ export function createApp(env: Env) {
   notificationsApp.use("*", authMiddleware);
   notificationsApp.route("/", createNotificationRoutes());
   app.route("/api/v1/notifications", notificationsApp);
+
+  // P22-T6-16 — POST /completions 입력 자동완성(ghost text). 컴포저가 debounce 호출한다.
+  // org_settings.autocompleteEnabled 게이트는 라우트가 요청 시점에 settingsService 로 확인.
+  const completionsApp = new Hono<{ Variables: AuthedVariables }>();
+  completionsApp.use("*", authMiddleware);
+  completionsApp.route(
+    "/",
+    createCompletionRoutes({
+      provider,
+      // 턴 생성과 같은 모델을 쓰되 maxTokens 를 작게 잡아 "빠른 task 모델" 처럼 동작시킨다.
+      model: env.LLM_MODEL,
+      settings: settingsService,
+    }),
+  );
+  app.route("/api/v1/completions", completionsApp);
 
   const artifactsApp = new Hono<{ Variables: AuthedVariables }>();
   artifactsApp.use("*", authMiddleware);

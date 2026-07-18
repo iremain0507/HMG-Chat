@@ -167,6 +167,7 @@ const EXPECTED_ROUTES: Array<{ method: string; path: string; phase: string }> =
       phase: "P8",
     },
     { method: "GET", path: "/api/v1/notifications", phase: "P22" },
+    { method: "POST", path: "/api/v1/completions", phase: "P22" },
     { method: "GET", path: "/api/v1/quota", phase: "P9" },
     { method: "GET", path: "/api/v1/usage/me", phase: "P9" },
     { method: "GET", path: "/api/v1/usage", phase: "P9" },

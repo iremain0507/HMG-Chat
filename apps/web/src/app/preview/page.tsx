@@ -1476,6 +1476,20 @@ export default function PreviewGallery() {
         />
       </Section>
 
+      <Section name="composer-autocomplete">
+        {/* P22-T6-16 — 입력 자동완성(ghost text) 실브라우저 검증 하네스.
+            autocompleteEnabled 를 켠 실제 ChatInput 을 그대로 쓰고, e2e 는 page.route() 로
+            POST /api/v1/completions 를 목킹한다. delay 는 짧게 잡아 테스트를 결정론적으로. */}
+        <ChatInput
+          sessionId="preview-autocomplete"
+          isStreaming={false}
+          onSend={() => {}}
+          onStop={() => {}}
+          autocompleteEnabled
+          autocompleteDelayMs={50}
+        />
+      </Section>
+
       <Section name="message-branch">
         <MessageBranchPreview />
       </Section>
