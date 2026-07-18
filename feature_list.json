@@ -2435,8 +2435,8 @@
     "acceptance": "RED 우선. GIVEN the server bootstrap (index.ts/createApp) WHEN the process starts THEN a periodic scheduler is registered that invokes health/threshold rule evaluation (runHealthChecks and/or runRetention) on an interval. / GIVEN a failing health probe or a partial retention failure WHEN a scheduler tick runs THEN triggerAlert is invoked and the configured AlertNotifier.send receives the alert (verified in test with InMemoryAlertNotifier). / GIVEN server shutdown (SIGTERM/SIGINT) WHEN the process terminates THEN the scheduler interval/timer is cleared with no leaked timers. / GIVEN the repo WHEN `bash scripts/verify-gates.sh` runs THEN it exits 0 (typecheck/lint/tests pass, routes-mounted guard unaffected).",
     "phase": "P22",
     "team": "T1",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P22-T1-03",
