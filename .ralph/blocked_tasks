@@ -10,3 +10,4 @@ P17-T6-07(revoked 공유 페이지, TS-21) | 만료(410 EXPIRED)와 취소(410 R
 P22-T1-14 | WON'T-BUILD (계약배치 승인됨) — 인앱 Python 플러그인 런타임은 임의코드 실행 표면. 확장성은 MCP+Skills+내장툴로 고정(20-MULTI-AGENT-TOOL). 영구 격리.
 P22-T6-11 | WON'T-BUILD (계약배치 승인됨) — Arena A/B + ELO 리더보드. 단일조직 실효 낮음, 피드백 👍/👎 이미 존재. 영구 격리.
 P22-T6-20 | WON'T-BUILD (계약배치 승인됨) — 핸즈프리 음성/영상 통화(WebRTC 신규 전송계층). STT/TTS 로 기본 음성 충족. 영구 격리.
+P22-T1-12 | 서버측 3/4 acceptance 완료·커밋(등록 REST + spec→AgentToolSpec 변환 + invoke-time SSRF 재검증 + 채팅턴 org-scoped 조립, migration 0032, 152 tests green). 남은 것은 4번째 acceptance 인 ★BROWSER(admin 패널에서 spec 등록 → 채팅에서 endpoint 호출 라운드트립) 뿐인데, 그 UI 는 apps/web/src/components/admin/** (T6 소유 경로)라 team=T1 인 이 태스크에서 수정 불가(path ownership). 카탈로그 files 힌트도 apps/server/src/tools/ 로 한정. P17-T6-07 과 동일한 서버/프론트 분할 구조 — 후속 T6 태스크(예: P22-T6-21 OpenAPI 툴서버 admin 패널: mcp-servers 패널 미러 + /preview Playwright 스펙) 신설 후 (A)+(B) 충족 시 passes=true 가능. 서버 API 는 이미 준비 완료(GET/POST /api/v1/openapi-tool-servers 마운트됨).

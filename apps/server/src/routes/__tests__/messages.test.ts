@@ -467,7 +467,11 @@ describe("GET /:id/messages/:messageId/stream (resume) — 16-API-CONTRACT § re
 });
 
 describe("POST /:id/messages — tools/toolContext 배선 — P11-T2-02", () => {
-  function fakeToolTriggerProvider(toolCallId: string): LLMProvider {
+  function fakeToolTriggerProvider(
+    toolCallId: string,
+    toolName = "danger_tool",
+    toolArgs: Record<string, unknown> = { x: 1 },
+  ): LLMProvider {
     return {
       name: "fake",
       models: ["fake-model"],
@@ -495,8 +499,8 @@ describe("POST /:id/messages — tools/toolContext 배선 — P11-T2-02", () => 
         yield {
           type: "tool_use",
           toolCallId,
-          name: "danger_tool",
-          args: { x: 1 },
+          name: toolName,
+          args: toolArgs,
         };
         yield {
           type: "stop",
@@ -594,6 +598,82 @@ describe("POST /:id/messages — tools/toolContext 배선 — P11-T2-02", () => 
     const hitlRequestIdx = text.indexOf("event: hitl_request");
     const toolResultIdx = text.indexOf("event: tool_result");
     expect(toolResultIdx).toBeGreaterThan(hitlRequestIdx);
+  });
+
+  // P22-T1-12 acceptance #2 — 등록된 OpenAPI 툴서버의 endpoint 가 채팅 턴에서 실제로 호출된다.
+  // openApiTools resolver 가 없으면 서버 등록(routes/openapi-tool-servers.ts)은 되지만 모델이
+  // 그 도구를 볼 수 없다("등록되나 호출 불가" 갭). AgentToolSpec.defaultPolicy 가 "hitl" 이므로
+  // 위 danger_tool 테스트와 같은 승인 흐름으로 왕복을 단언한다.
+  it("openApiTools 로 조립된 OpenAPI endpoint 가 턴에 노출되고 승인 후 실제 결과를 emit 한다", async () => {
+    const sessionId = `session-openapi-${randomUUID()}`;
+    const toolCallId = randomUUID();
+    const toolName = "openapi:srv-1:getPet";
+
+    const openApiTool: AgentTool = {
+      spec: {
+        name: toolName,
+        description: "펫 조회",
+        inputSchema: {
+          type: "object",
+          properties: { petId: { type: "string" } },
+          required: ["petId"],
+          additionalProperties: false,
+        },
+        permissionTier: "tool",
+        defaultPolicy: "hitl",
+      },
+      async invoke({ toolCallId: id, args }) {
+        return {
+          toolCallId: id,
+          content: { kind: "text", text: `pet:${String(args.petId)}` },
+        };
+      },
+    };
+
+    const orgIds: string[] = [];
+    const routes = createMessageRoutes({
+      provider: fakeToolTriggerProvider(toolCallId, toolName, {
+        petId: "42",
+      }),
+      model: "fake-model",
+      openApiTools: async (orgId) => {
+        orgIds.push(orgId);
+        return [openApiTool];
+      },
+    });
+    const app = appWithAuth(routes);
+
+    const textPromise = app
+      .request(`/${sessionId}/messages`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "text/event-stream",
+        },
+        body: JSON.stringify({ content: "펫 42 조회해줘" }),
+      })
+      .then((r) => {
+        expect(r.status).toBe(200);
+        return r.text();
+      });
+
+    let pending = await listPendingHitl(sessionId);
+    for (let i = 0; i < 50 && pending.length === 0; i++) {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      pending = await listPendingHitl(sessionId);
+    }
+    expect(pending).toHaveLength(1);
+    expect(pending[0].toolName).toBe(toolName);
+
+    expect(
+      await resolveHitl(sessionId, toolCallId, { decision: "approved" }),
+    ).toBe("resolved");
+
+    const text = await textPromise;
+    expect(text).toContain("event: tool_result");
+    expect(text).toContain("pet:42");
+    // org 경계: resolver 는 요청 auth 의 org 로만 조회된다.
+    expect(orgIds).toEqual(["org-1"]);
   });
 
   it("tools 미주입 시 기존 동작(auth 없이도 200) 이 그대로 유지된다", async () => {

@@ -238,6 +238,9 @@ export interface MessageRouteDeps {
   // org 소유 MCP 서버 발견 결과를 AgentTool[] 로 조립(org 경계 밖 서버 유출 방지 위해
   // per-request 로 호출 — bridge.listRegisteredTools() 는 org 필터가 없는 전역 registry).
   mcpTools?: (orgId: string) => Promise<AgentTool[]>;
+  // P22-T1-12 — org 소유 OpenAPI 툴서버의 operation 을 AgentTool[] 로 조립(mcpTools 와 동일한
+  // per-request/org-scoped 계약. tools/openapi-tool-assembler.ts).
+  openApiTools?: (orgId: string) => Promise<AgentTool[]>;
   organizations?: { byId(id: string): Promise<Organization | null> };
   // 클라이언트 생성 세션 UUID(/chat/<uuid>)로 바로 메시지를 보내는 흐름에서, 아티팩트
   //   /업로드/active-run 이 참조하는 sessions 행이 없으면 FK 위반이 난다(deep_research 리포트
@@ -438,7 +441,9 @@ export function createMessageRoutes(
     const requestedModel = body.model;
     const staticTools = deps.tools ?? [];
     const needsToolContext =
-      staticTools.length > 0 || deps.mcpTools !== undefined;
+      staticTools.length > 0 ||
+      deps.mcpTools !== undefined ||
+      deps.openApiTools !== undefined;
     // P14-T2-01 — org defaultModel 은 body.model 이 없을 때만, 실제 org 설정이 조회됐을 때만
     // (settingsResolved) deps.model(서버 기본 모델)을 대체한다 — settings 미주입 환경(기존
     // 테스트/배선)은 deps.model 그대로 유지.
@@ -471,8 +476,12 @@ export function createMessageRoutes(
       }
 
       if (needsToolContext) {
-        if (deps.mcpTools) {
-          tools = [...staticTools, ...(await deps.mcpTools(auth.org))];
+        if (deps.mcpTools || deps.openApiTools) {
+          tools = [
+            ...staticTools,
+            ...(deps.mcpTools ? await deps.mcpTools(auth.org) : []),
+            ...(deps.openApiTools ? await deps.openApiTools(auth.org) : []),
+          ];
         }
         const requestId = randomUUID();
         toolContext = {

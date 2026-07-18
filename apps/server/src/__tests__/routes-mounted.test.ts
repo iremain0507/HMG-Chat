@@ -135,6 +135,8 @@ const EXPECTED_ROUTES: Array<{ method: string; path: string; phase: string }> =
     { method: "POST", path: "/api/v1/memories", phase: "P7" },
     { method: "GET", path: "/api/v1/mcp-servers", phase: "P8" },
     { method: "POST", path: "/api/v1/mcp-servers", phase: "P8" },
+    { method: "GET", path: "/api/v1/openapi-tool-servers", phase: "P22" },
+    { method: "POST", path: "/api/v1/openapi-tool-servers", phase: "P22" },
     { method: "GET", path: "/api/v1/skills", phase: "P8" },
     {
       method: "GET",

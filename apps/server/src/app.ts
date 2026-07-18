@@ -38,6 +38,10 @@ import { createMemoryRoutes } from "./routes/memories.js";
 import { createPgUserMemoryDataAccess } from "./db/user-memory-data-access.js";
 import { createMcpServerRoutes } from "./routes/mcp-servers.js";
 import { createPgMcpServerDataAccess } from "./db/mcp-server-data-access.js";
+import { createOpenApiToolServerRoutes } from "./routes/openapi-tool-servers.js";
+import { createPgOpenApiToolServerDataAccess } from "./db/openapi-tool-server-data-access.js";
+import { assembleOrgOpenApiTools } from "./tools/openapi-tool-assembler.js";
+import { createOpenApiToolInvoker } from "./tools/openapi-tool-invoker.js";
 import { createMcpClientPool } from "./mcp/mcp-client-pool.js";
 import { createMcpBridge } from "./mcp/mcp-bridge.js";
 import { createSkillRoutes } from "./routes/skills.js";
@@ -213,6 +217,8 @@ export function createApp(env: Env) {
   // enforcement 포트. admin-grants 라우트(관리)와 동일 테이블, 별도 인스턴스로 조회 전용 사용.
   const resourceGrantsDa = createPgResourceGrantsDataAccess();
   const mcpServerDa = createPgMcpServerDataAccess();
+  // P22-T1-12 — 등록 라우트(아래 openApiToolServersApp)와 채팅 턴 조립이 같은 DA 싱글톤을 공유.
+  const openApiToolServerDa = createPgOpenApiToolServerDataAccess();
   const mcpClientPool = createMcpClientPool({
     da: mcpServerDa,
     nodeEnv: env.NODE_ENV,
@@ -303,6 +309,12 @@ export function createApp(env: Env) {
         memories: userMemoryDa,
       }),
       mcpTools: assembleOrgMcpTools(mcpServerDa, mcpBridge, mcpClientPool),
+      // P22-T1-12 — 등록된 OpenAPI 툴서버 endpoint 를 턴에 노출. 호출 직전 base URL 을 다시
+      // SSRF 검증하는 invoker 를 주입(등록시 검증만으로는 DNS rebinding 을 막지 못함).
+      openApiTools: assembleOrgOpenApiTools({
+        da: openApiToolServerDa,
+        invoke: createOpenApiToolInvoker({ nodeEnv: env.NODE_ENV }),
+      }),
       hitl: hitlBridge,
       logger: createLogger(),
       // P17-T1-01 — 턴마다 user/assistant 메시지를 messages 테이블에 영속.
@@ -489,6 +501,21 @@ export function createApp(env: Env) {
     }),
   );
   app.route("/api/v1/mcp-servers", mcpServersApp);
+
+  // P22-T1-12 — OpenAPI 툴서버 인제스션. mcp-servers 와 같은 조립 패턴(auth → 라우트 →
+  // resource_grants 필터). spec/base URL SSRF 검증은 라우트가 mcp/url-validator 로 수행하므로
+  // 여기서는 nodeEnv 만 전달한다(mcp-servers 와 동일).
+  const openApiToolServersApp = new Hono<{ Variables: AuthedVariables }>();
+  openApiToolServersApp.use("*", authMiddleware);
+  openApiToolServersApp.route(
+    "/",
+    createOpenApiToolServerRoutes({
+      da: openApiToolServerDa,
+      nodeEnv: env.NODE_ENV,
+      grants: resourceGrantsDa,
+    }),
+  );
+  app.route("/api/v1/openapi-tool-servers", openApiToolServersApp);
 
   // repo root/skills — skills/ 는 어떤 패키지도 import 불가(05-REPO-STRUCTURE.md), server 만
   // fs 로 직접 읽는다(skills-engine.ts 와 동일 경로 규칙).
