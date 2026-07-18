@@ -4,13 +4,14 @@
 // 중앙 720px 컬럼 — 인사 → 컴포저 트리거 → 빠른 시작 2×2 → 능력 스트립 → 최근 세션 5.
 // 순수 프레젠테이션 컴포넌트(데이터 페칭은 app/page.tsx 가 담당) — app/preview 갤러리에서도
 // 목 props 로 그대로 재사용.
-import React from "react";
+import React, { useState } from "react";
 import {
   FileText,
   Presentation,
   Search,
   Telescope,
   ChevronRight,
+  ArrowUp,
 } from "lucide-react";
 import { formatRelativeTime } from "../../lib/relative-time";
 
@@ -61,7 +62,8 @@ export interface HomeRecentSession {
 
 export interface HomeContentProps {
   userName: string;
-  onNewChat: () => void;
+  /** 홈 컴포저에서 질문을 입력하고 Enter(또는 보내기)했을 때 — 새 세션으로 이동+자동전송. */
+  onSubmitPrompt: (text: string) => void;
   onQuickStart: (prompt: string) => void;
   onOpenSession: (id: string) => void;
   connectorsCount: number;
@@ -73,7 +75,7 @@ export interface HomeContentProps {
 
 export function HomeContent({
   userName,
-  onNewChat,
+  onSubmitPrompt,
   onQuickStart,
   onOpenSession,
   connectorsCount,
@@ -83,6 +85,13 @@ export function HomeContent({
   now,
 }: HomeContentProps) {
   const recent = recentSessions.slice(0, 5);
+  const [input, setInput] = useState("");
+
+  function submitHome() {
+    const text = input.trim();
+    if (!text) return;
+    onSubmitPrompt(text);
+  }
 
   return (
     <div className="mx-auto w-full max-w-[720px] px-6 py-10">
@@ -93,34 +102,73 @@ export function HomeContent({
         사내 지식과 도구를 불러 업무를 시작하세요
       </p>
 
-      <button
-        type="button"
-        onClick={onNewChat}
-        className="mt-7 w-full rounded-[14px] border border-border bg-surface px-4 py-3 text-left shadow-sm transition hover:border-primary-300"
+      {/* 홈 컴포저 — 클릭만으로 화면 전환하지 않는다. 여기서 직접 입력하고 Enter(또는 보내기)해야
+          새 세션으로 이동+자동전송한다(page.tsx onSubmitPrompt). */}
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          submitHome();
+        }}
+        className="mt-7 w-full rounded-[14px] border border-border bg-surface px-4 py-3 shadow-sm transition focus-within:border-primary-300"
       >
-        <span className="sr-only">새 채팅 시작</span>
-        <div className="min-h-12 text-[15px] text-placeholder">
-          메시지를 입력하세요 — <span className="text-primary-400">@</span>로
-          에이전트·도구 호출
-        </div>
-        <div className="mt-2 flex items-center gap-1.5" aria-hidden="true">
-          <span className="flex h-[30px] w-[30px] items-center justify-center rounded-md border border-border text-fg-muted">
+        <label htmlFor="home-composer" className="sr-only">
+          메시지 입력
+        </label>
+        <textarea
+          id="home-composer"
+          aria-label="메시지 입력"
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+          onKeyDown={(e) => {
+            // 한글 IME 조합 중 Enter 는 조합 확정용 — 제출 금지(마지막 글자 유실 방지).
+            if (
+              e.key === "Enter" &&
+              !e.shiftKey &&
+              !e.nativeEvent.isComposing
+            ) {
+              e.preventDefault();
+              submitHome();
+            }
+          }}
+          rows={1}
+          placeholder="메시지를 입력하세요 — @로 에이전트·도구 호출"
+          className="min-h-12 w-full resize-none bg-transparent text-[15px] text-fg outline-none placeholder:text-placeholder"
+        />
+        <div className="mt-2 flex items-center gap-1.5">
+          <span
+            aria-hidden="true"
+            className="flex h-[30px] w-[30px] items-center justify-center rounded-md border border-border text-fg-muted"
+          >
             +
           </span>
-          <span className="flex h-[30px] w-[30px] items-center justify-center rounded-md border border-border text-sm font-medium text-fg-muted">
+          <span
+            aria-hidden="true"
+            className="flex h-[30px] w-[30px] items-center justify-center rounded-md border border-border text-sm font-medium text-fg-muted"
+          >
             @
           </span>
-          <span className="flex h-[30px] w-[30px] items-center justify-center rounded-md border border-border text-sm font-medium text-fg-muted">
+          <span
+            aria-hidden="true"
+            className="flex h-[30px] w-[30px] items-center justify-center rounded-md border border-border text-sm font-medium text-fg-muted"
+          >
             /
           </span>
-          <span className="ml-1.5 inline-flex h-[30px] items-center rounded-md border border-border px-2.5 text-xs text-fg">
+          <span
+            aria-hidden="true"
+            className="ml-1.5 inline-flex h-[30px] items-center rounded-md border border-border px-2.5 text-xs text-fg"
+          >
             Claude Sonnet
           </span>
-          <span className="ml-auto flex h-8 w-8 items-center justify-center rounded-full bg-primary text-primary-fg">
-            ↑
-          </span>
+          <button
+            type="submit"
+            disabled={!input.trim()}
+            aria-label="보내기"
+            className="ml-auto flex h-8 w-8 items-center justify-center rounded-full bg-primary text-primary-fg transition disabled:opacity-40"
+          >
+            <ArrowUp size={16} strokeWidth={2.5} />
+          </button>
         </div>
-      </button>
+      </form>
 
       <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-2">
         {QUICK_STARTS.map((qs) => (

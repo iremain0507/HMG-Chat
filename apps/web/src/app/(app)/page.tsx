@@ -14,6 +14,7 @@ import { useAgents } from "../../hooks/useAgents";
 import { randomUUID } from "../../lib/uuid";
 import { HomeContent } from "../../components/home/HomeContent";
 import { draftKey } from "../../components/chat/ChatInput";
+import { setPendingMessage } from "../../lib/pending-message";
 
 export default function Home() {
   const router = useRouter();
@@ -46,8 +47,12 @@ export default function Home() {
     );
   }
 
-  function startNewChat() {
-    router.push(`/chat/${randomUUID()}`);
+  // 홈 컴포저 제출 — 클릭 즉시 전환이 아니라, 질문을 입력하고 Enter 했을 때만 새 세션으로
+  // 이동하며 그 첫 메시지를 pending 으로 예약(ChatView 마운트 시 1회 자동전송).
+  function submitFromHome(text: string) {
+    const id = randomUUID();
+    setPendingMessage(id, text);
+    router.push(`/chat/${id}`);
   }
 
   function startWithPrompt(prompt: string) {
@@ -86,7 +91,7 @@ export default function Home() {
 
       <HomeContent
         userName={user.name}
-        onNewChat={startNewChat}
+        onSubmitPrompt={submitFromHome}
         onQuickStart={startWithPrompt}
         onOpenSession={openSession}
         connectorsCount={servers.length}

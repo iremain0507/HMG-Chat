@@ -1211,7 +1211,7 @@ function HomeContentPreview() {
       </div>
       <HomeContent
         userName="김민수"
-        onNewChat={() => setLastAction("새 채팅 시작")}
+        onSubmitPrompt={(text) => setLastAction(`홈 컴포저 제출: ${text}`)}
         onQuickStart={(prompt) => setLastAction(`빠른 시작: ${prompt}`)}
         onOpenSession={(id) => setLastAction(`세션 열기: ${id}`)}
         connectorsCount={6}

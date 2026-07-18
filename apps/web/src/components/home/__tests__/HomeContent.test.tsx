@@ -26,7 +26,7 @@ describe("HomeContent", () => {
     render(
       <HomeContent
         userName="미"
-        onNewChat={vi.fn()}
+        onSubmitPrompt={vi.fn()}
         onQuickStart={vi.fn()}
         onOpenSession={vi.fn()}
         connectorsCount={6}
@@ -39,12 +39,12 @@ describe("HomeContent", () => {
     expect(screen.getByText(/안녕하세요, 미님/)).toBeTruthy();
   });
 
-  it("컴포저 트리거를 클릭하면 onNewChat 이 호출된다", () => {
-    const onNewChat = vi.fn();
+  it("컴포저는 포커스/클릭만으로 전환하지 않고, 입력 후 Enter 해야 onSubmitPrompt 가 호출된다", () => {
+    const onSubmitPrompt = vi.fn();
     render(
       <HomeContent
         userName="미"
-        onNewChat={onNewChat}
+        onSubmitPrompt={onSubmitPrompt}
         onQuickStart={vi.fn()}
         onOpenSession={vi.fn()}
         connectorsCount={0}
@@ -54,8 +54,39 @@ describe("HomeContent", () => {
         now={NOW}
       />,
     );
-    fireEvent.click(screen.getByText(/새 채팅 시작/));
-    expect(onNewChat).toHaveBeenCalledTimes(1);
+    const box = screen.getByLabelText("메시지 입력");
+    // 클릭/포커스만으로는 전환(호출) 없음 — 홈에 머문다.
+    fireEvent.focus(box);
+    fireEvent.click(box);
+    expect(onSubmitPrompt).not.toHaveBeenCalled();
+    // 입력 후 Enter → 입력값으로 호출.
+    fireEvent.change(box, { target: { value: "회의록 요약해줘" } });
+    fireEvent.keyDown(box, { key: "Enter" });
+    expect(onSubmitPrompt).toHaveBeenCalledWith("회의록 요약해줘");
+  });
+
+  it("빈 입력에서 Enter 는 아무것도 하지 않고, 한글 IME 조합 중 Enter 도 무시한다", () => {
+    const onSubmitPrompt = vi.fn();
+    render(
+      <HomeContent
+        userName="미"
+        onSubmitPrompt={onSubmitPrompt}
+        onQuickStart={vi.fn()}
+        onOpenSession={vi.fn()}
+        connectorsCount={0}
+        skillsCount={0}
+        agentsCount={0}
+        recentSessions={[]}
+        now={NOW}
+      />,
+    );
+    const box = screen.getByLabelText("메시지 입력");
+    fireEvent.keyDown(box, { key: "Enter" }); // 빈 입력
+    expect(onSubmitPrompt).not.toHaveBeenCalled();
+    // IME 조합 중(isComposing)에는 제출하지 않는다(한글 마지막 글자 유실 방지).
+    fireEvent.change(box, { target: { value: "안녕" } });
+    fireEvent.keyDown(box, { key: "Enter", isComposing: true });
+    expect(onSubmitPrompt).not.toHaveBeenCalled();
   });
 
   it("빠른 시작 카드 4개를 렌더하고 클릭 시 정해진 prompt 로 onQuickStart 를 호출한다", () => {
@@ -63,7 +94,7 @@ describe("HomeContent", () => {
     render(
       <HomeContent
         userName="미"
-        onNewChat={vi.fn()}
+        onSubmitPrompt={vi.fn()}
         onQuickStart={onQuickStart}
         onOpenSession={vi.fn()}
         connectorsCount={0}
@@ -83,7 +114,7 @@ describe("HomeContent", () => {
     render(
       <HomeContent
         userName="미"
-        onNewChat={vi.fn()}
+        onSubmitPrompt={vi.fn()}
         onQuickStart={vi.fn()}
         onOpenSession={vi.fn()}
         connectorsCount={6}
@@ -109,7 +140,7 @@ describe("HomeContent", () => {
     render(
       <HomeContent
         userName="미"
-        onNewChat={vi.fn()}
+        onSubmitPrompt={vi.fn()}
         onQuickStart={vi.fn()}
         onOpenSession={onOpenSession}
         connectorsCount={0}
@@ -130,7 +161,7 @@ describe("HomeContent", () => {
     render(
       <HomeContent
         userName="미"
-        onNewChat={vi.fn()}
+        onSubmitPrompt={vi.fn()}
         onQuickStart={vi.fn()}
         onOpenSession={vi.fn()}
         connectorsCount={0}

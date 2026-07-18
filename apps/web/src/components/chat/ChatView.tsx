@@ -18,6 +18,7 @@ import {
 import { useCurrentUser } from "../../hooks/useCurrentUser";
 import { usePrompts } from "../../hooks/usePrompts";
 import { randomUUID } from "../../lib/uuid";
+import { takePendingMessage } from "../../lib/pending-message";
 import { showToast } from "../../lib/toast";
 import { apiFetch } from "../../lib/fetch-with-refresh";
 import { substitutePromptVariables } from "../../lib/promptVariables";
@@ -117,6 +118,19 @@ export function ChatView({ sessionId }: { sessionId: string }) {
   const online = useOnlineStatus();
   const { projects } = useProjects();
   const { projectId, setProject } = useSessionProject(sessionId);
+
+  // 홈 컴포저에서 질문을 입력하고 Enter 하면 새 세션 id 로 이동하며 첫 메시지를 pending 으로
+  // 예약해둔다. 여기서 마운트 시 1회 소비(take)해 자동전송 → 홈에서 바로 대화가 시작된다.
+  const autoSentRef = useRef(false);
+  useEffect(() => {
+    if (autoSentRef.current) return;
+    const pending = takePendingMessage(sessionId);
+    if (pending && pending.trim()) {
+      autoSentRef.current = true;
+      void send(pending);
+    }
+  }, [sessionId, send]);
+
   const [autoFollow, setAutoFollow] = useState(true);
   const [announceText, setAnnounceText] = useState("");
   const [followups, setFollowups] = useState<string[]>([]);

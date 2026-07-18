@@ -97,12 +97,31 @@ describe("Home 랜딩", () => {
     expect(replace).toHaveBeenCalledWith("/login");
   });
 
-  it("인증이면 이름 환영 + 새 채팅 진입", () => {
+  it("인증이면 이름 환영 + 편집가능 컴포저 노출(클릭 즉시 전환 아님)", () => {
     state.mockReturnValue({ user: authedUser, loading: false });
     render(<Home />);
     expect(screen.getByText(/안녕하세요, 미님/)).toBeTruthy();
-    expect(screen.getByText(/새 채팅 시작/)).toBeTruthy();
+    // 옛 클릭-트리거 버튼이 아니라 실제 입력 가능한 컴포저.
+    const box = screen.getByLabelText("메시지 입력");
+    fireEvent.click(box);
+    fireEvent.focus(box);
+    expect(push).not.toHaveBeenCalled(); // 클릭/포커스만으로는 채팅 화면으로 전환하지 않는다.
     expect(replace).not.toHaveBeenCalled();
+  });
+
+  it("홈 컴포저에 입력하고 Enter 하면 pending 메시지를 예약하고 새 세션으로 이동한다", () => {
+    state.mockReturnValue({ user: authedUser, loading: false });
+    render(<Home />);
+    const box = screen.getByLabelText("메시지 입력");
+    fireEvent.change(box, { target: { value: "홈에서 바로 질문" } });
+    fireEvent.keyDown(box, { key: "Enter" });
+    expect(push).toHaveBeenCalledTimes(1);
+    const [to] = push.mock.calls[0] as [string];
+    const newId = to.replace("/chat/", "");
+    // 첫 메시지는 pending 으로 예약 → ChatView 마운트 시 자동전송된다.
+    expect(window.sessionStorage.getItem(`wchat:pending:${newId}`)).toBe(
+      "홈에서 바로 질문",
+    );
   });
 
   it("일반 멤버에겐 관리자 링크 미노출", () => {

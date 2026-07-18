@@ -32,6 +32,58 @@ describe("ChatView", () => {
     __resetToastsForTest();
   });
 
+  it("홈에서 예약된 pending 첫 메시지가 있으면 마운트 시 1회 자동전송한다", async () => {
+    // 홈 컴포저 → setPendingMessage 로 예약된 상태를 재현(sessionStorage 스텁).
+    const store = new Map<string, string>();
+    vi.stubGlobal("sessionStorage", {
+      getItem: (k: string) => store.get(k) ?? null,
+      setItem: (k: string, v: string) => store.set(k, String(v)),
+      removeItem: (k: string) => store.delete(k),
+      clear: () => store.clear(),
+    });
+    store.set("wchat:pending:session-auto", "홈에서 보낸 질문");
+
+    const encoder = new TextEncoder();
+    const fetchSpy = vi.fn(async () => ({
+      body: new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.enqueue(
+            encoder.encode(
+              sseFrame("message_start", {
+                messageId: "m-auto",
+                meta: { provider: "fake", model: "fake-model" },
+              }),
+            ),
+          );
+          controller.enqueue(
+            encoder.encode(sseFrame("text_delta", { text: "답변" })),
+          );
+          controller.enqueue(
+            encoder.encode(
+              sseFrame("stop", {
+                reason: "end_turn",
+                usage: { inputTokens: 1, outputTokens: 1 },
+              }),
+            ),
+          );
+          controller.close();
+        },
+      }),
+    }));
+    vi.stubGlobal("fetch", fetchSpy);
+
+    render(<ChatView sessionId="session-auto" />);
+
+    // 사용자가 아무것도 안 눌러도 예약 메시지가 자동전송되어 화면에 뜬다.
+    await waitFor(() => {
+      expect(screen.getByText("홈에서 보낸 질문")).toBeInTheDocument();
+    });
+    // pending 은 1회 소비되어 제거된다(중복 자동전송 방지).
+    expect(store.has("wchat:pending:session-auto")).toBe(false);
+    // 실제 전송(fetch) 이 일어났다.
+    expect(fetchSpy).toHaveBeenCalled();
+  });
+
   it("메시지를 보내면 SSE text_delta 가 화면에 표시되고 스트리밍 종료 시 Stop 버튼이 사라진다", async () => {
     const encoder = new TextEncoder();
     vi.stubGlobal(
