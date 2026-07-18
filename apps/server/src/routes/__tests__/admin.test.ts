@@ -19,8 +19,16 @@ function makeDa(seed: HealthCheckResult[] = []): HealthHistoryDataAccess {
       async append(entry) {
         rows.push(entry);
       },
-      async recent(target, limit) {
-        return rows.filter((r) => r.target === target).slice(0, limit);
+      async recent(target, limit, range) {
+        return rows
+          .filter((r) => r.target === target)
+          .filter((r) => {
+            if (!range || !r.ts) return true;
+            if (range.from && r.ts < range.from) return false;
+            if (range.to && r.ts > range.to) return false;
+            return true;
+          })
+          .slice(0, limit);
       },
     },
   };
@@ -142,6 +150,93 @@ describe("createAdminRoutes", () => {
     const body = (await res.json()) as { data: HealthCheckResult[] };
     expect(body.data).toHaveLength(2);
     expect(body.data.every((r) => r.target === "db")).toBe(true);
+  });
+
+  // P22-T1-10 RED: 계약(16-API-CONTRACT.md § GET /admin/health/history?target&from&to)의
+  // from/to 범위 필터와 응답 ts 필드가 미구현 — 라우트가 range 를 repo 에 전달하지 않는다.
+  it("GET /health/history — from/to 범위 안의 행만 반환한다", async () => {
+    const da = makeDa([
+      {
+        target: "db",
+        status: "healthy",
+        latencyMs: 12,
+        ts: new Date("2026-07-10T00:00:00Z"),
+      },
+      {
+        target: "db",
+        status: "degraded",
+        latencyMs: 340,
+        ts: new Date("2026-07-15T00:00:00Z"),
+      },
+      {
+        target: "db",
+        status: "down",
+        latencyMs: null,
+        ts: new Date("2026-07-20T00:00:00Z"),
+      },
+    ]);
+    const app = appWith(
+      { da, adminDa: makeAdminDa() },
+      { userId, orgId, role: "admin" },
+    );
+
+    const res = await app.request(
+      "/health/history?target=db&from=2026-07-14T00:00:00Z&to=2026-07-16T00:00:00Z",
+    );
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { data: HealthCheckResult[] };
+    expect(body.data).toHaveLength(1);
+    expect(body.data[0]?.status).toBe("degraded");
+  });
+
+  it("GET /health/history — from/to 없으면 기존 동작(최신 limit 개) 유지", async () => {
+    const da = makeDa([
+      {
+        target: "db",
+        status: "healthy",
+        latencyMs: 12,
+        ts: new Date("2026-07-10T00:00:00Z"),
+      },
+      {
+        target: "db",
+        status: "degraded",
+        latencyMs: 340,
+        ts: new Date("2026-07-20T00:00:00Z"),
+      },
+    ]);
+    const app = appWith(
+      { da, adminDa: makeAdminDa() },
+      { userId, orgId, role: "admin" },
+    );
+
+    const res = await app.request("/health/history?target=db");
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { data: HealthCheckResult[] };
+    expect(body.data).toHaveLength(2);
+  });
+
+  it("GET /health/history — 항목은 계약대로 ts 를 포함한다", async () => {
+    const ts = new Date("2026-07-15T00:00:00Z");
+    const da = makeDa([{ target: "db", status: "healthy", latencyMs: 12, ts }]);
+    const app = appWith(
+      { da, adminDa: makeAdminDa() },
+      { userId, orgId, role: "admin" },
+    );
+
+    const res = await app.request("/health/history?target=db");
+    const body = (await res.json()) as { data: { ts?: string }[] };
+    expect(body.data[0]?.ts).toBe(ts.toISOString());
+  });
+
+  it("GET /health/history — from 이 잘못된 날짜면 400", async () => {
+    const da = makeDa();
+    const app = appWith(
+      { da, adminDa: makeAdminDa() },
+      { userId, orgId, role: "admin" },
+    );
+
+    const res = await app.request("/health/history?target=db&from=not-a-date");
+    expect(res.status).toBe(400);
   });
 
   it("GET /health/history — member 는 403", async () => {

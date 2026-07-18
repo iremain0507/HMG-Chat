@@ -5,14 +5,47 @@ import { pgPool } from "./client.js";
 
 export type HealthHistoryDataAccess = Pick<DataAccess, "healthHistory">;
 
-function toHealthCheckResult(row: Record<string, unknown>): HealthCheckResult {
+export function toHealthCheckResult(
+  row: Record<string, unknown>,
+): HealthCheckResult {
   return {
     target: row.target as string,
     status: row.status as HealthCheckResult["status"],
     latencyMs: row.latency_ms === null ? null : Number(row.latency_ms),
+    // 계약(16-API-CONTRACT.md § admin/health/history)의 ts. created_at 이 없는 행은 생략.
+    ...(row.created_at !== null && row.created_at !== undefined
+      ? { ts: new Date(row.created_at as string | number | Date) }
+      : {}),
     ...(row.context !== null && row.context !== undefined
       ? { context: row.context as Record<string, unknown> }
       : {}),
+  };
+}
+
+/**
+ * P22-T1-10 — from/to 범위 필터. range 생략 시 기존 SQL 과 동일(최신 limit 개).
+ * health_check_history_target_idx(target, created_at DESC) 를 그대로 탄다.
+ */
+export function buildRecentQuery(
+  target: string,
+  limit: number,
+  range?: { from?: Date; to?: Date },
+): { text: string; values: unknown[] } {
+  const values: unknown[] = [target];
+  let where = "target = $1";
+  if (range?.from) {
+    values.push(range.from);
+    where += ` AND created_at >= $${values.length}`;
+  }
+  if (range?.to) {
+    values.push(range.to);
+    where += ` AND created_at <= $${values.length}`;
+  }
+  values.push(limit);
+  return {
+    text: `SELECT * FROM health_check_history WHERE ${where}
+           ORDER BY created_at DESC LIMIT $${values.length}`,
+    values,
   };
 }
 
@@ -26,12 +59,9 @@ export function createPgHealthHistoryDataAccess(): HealthHistoryDataAccess {
           [entry.target, entry.status, entry.latencyMs, entry.context ?? null],
         );
       },
-      async recent(target, limit) {
-        const res = await pgPool.query(
-          `SELECT * FROM health_check_history WHERE target = $1
-           ORDER BY created_at DESC LIMIT $2`,
-          [target, limit],
-        );
+      async recent(target, limit, range) {
+        const q = buildRecentQuery(target, limit, range);
+        const res = await pgPool.query(q.text, q.values);
         return res.rows.map(toHealthCheckResult);
       },
     },

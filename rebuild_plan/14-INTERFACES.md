@@ -392,6 +392,7 @@ export interface HealthCheckResult {
   target: string;
   status: "healthy"|"degraded"|"down";
   latencyMs: number | null;
+  ts?: Date;                       // 조회 응답에는 항상 존재(P22-C-01 / C1). append 호환 위해 optional.
   context?: Record<string, unknown>;
 }
 
@@ -472,7 +473,8 @@ export interface ToolMetricRepo {
 
 export interface HealthHistoryRepo {
   append(entry: HealthCheckResult): Promise<void>;
-  recent(target: string, limit: number): Promise<HealthCheckResult[]>;
+  /** range 는 optional — 생략 시 기존 동작(최신 limit 개)과 동일. (P22-C-01 / C1) */
+  recent(target: string, limit: number, range?: { from?: Date; to?: Date }): Promise<HealthCheckResult[]>;
 }
 
 export interface AlertEventRepo extends Repo<AlertEvent, { severity?: AlertEvent["severity"]; unresolved?: boolean }> {

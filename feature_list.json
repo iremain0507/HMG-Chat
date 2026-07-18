@@ -2687,8 +2687,8 @@
     "acceptance": "RED 우선. GIVEN health_check_history rows for target=db spanning several days WHEN GET /admin/health/history?target=db&from=<iso>&to=<iso> is called as admin THEN only rows whose ts falls within [from,to] are returned / GIVEN no from/to query params WHEN GET /admin/health/history?target=db is called THEN behavior is unchanged (most-recent up to limit, backward compatible) / GIVEN a returned health history item WHEN inspected THEN it includes a ts timestamp field per contract 16-API-CONTRACT.md:946 / GIVEN the interface HealthHistoryRepo.recent signature changes THEN the task is isolated to .ralph/blocked_tasks as a shared/human-gated change before any implementation / .ralph/CONTRACT_APPROVED 없으면 격리(구현 금지).",
     "phase": "P22",
     "team": "T1",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P22-T1-11",
