@@ -1,0 +1,44 @@
+# P22 계약 배치 승인서 (CONTRACT_APPROVED)
+# 승인 범위: 적극(엔터프라이즈 포함). REJECT 3건만 제외하고 C1~C18 전부 승인.
+# 이 화이트리스트 안의 FROZEN(packages/interfaces·packages/shared·migration) 변경만
+# Tier3 태스크가 수행할 수 있다. 각 단위의 제안 diff 는 docs/rfc/P22-contract-batch.md 참조.
+
+APPROVED_UNITS: C1 C2 C3 C4 C5 C6 C7 C8 C9 C10 C11 C12 C13 C14 C15 C16 C17 C18
+
+# 대응 태스크(전부 빌드 허용):
+#  C1=P22-T1-10  C2=P22-T1-15  C3=P22-T4-03  C4=P22-T1-13  C5=P22-T6-10
+#  C6=P22-T6-14  C7=P22-T6-17  C8=P22-T6-12  C9=P22-T6-13  C10=P22-T6-16
+#  C11=P22-T6-15 C12=P22-T6-18 C13=P22-T1-12 C14=P22-T1-11 C15=P22-T1-16
+#  C16=P22-T1-17 C17=P22-T6-19 C18=P22-T2-03(격리 해제)
+
+# ---- 의존성 사전승인 (approved units 가 요구하는 표준 라이브러리) ----
+# CLAUDE.md '미지정 dependency 금지' 를 이 승인이 해제한다. 각 커밋에 추가 dep 를 명시할 것.
+DEPS_APPROVED:
+  - bcryptjs        # C4 비밀번호 해시
+  - next-intl       # C11 i18n
+  - ioredis         # C18 / P22-T2-03 Redis 런타임 상태
+  - ldapts          # C14 LDAP/AD (ldapjs 대신 최신 ldapts 권장)
+  - openid-client   # C16 OAuth/OIDC SSO
+  - ws              # C8 Channels 실시간(필요 시. 우선 기존 SSE+pub/sub 재사용 시도, 불가피할 때만)
+# C15 SCIM 은 신규 dep 없이 REST 핸드롤. 위 목록 밖 dep 가 필요하면 그 태스크만 격리하고 사유 기록.
+
+# ---- Migration 승인 (전부 nullable-first + 롤백 주석 + drizzle/meta/_journal.json 갱신) ----
+MIGRATIONS_APPROVED: 0032 0033 0034 0035 0036 0037 0038 0039
+#  + 엔터프라이즈 단위(C8/C14/C15/C16)가 요구하는 후속 migration(0040+)도 동일 원칙 하에 승인.
+
+# ---- 정책 결정 ----
+SCHEMAS: local            # 계약 Zod 는 apps/server/src/lib/*-schema.ts 유지. packages/shared 미신설.
+                          # (배포중립 + FROZEN 대규모 리팩터 회피. C9/C10/C17A 는 FROZEN 변경 0.)
+PROVIDER_KEK: pluggable   # C6: KekProvider 추상화. 지금은 env PROVIDER_KEY_ENCRYPTION_KEY(로컬 대칭 암호화)
+                          # 활성. 배포 시 AWS KMS 구현으로 교체 가능하도록 인터페이스 분리(dev-stub 패턴).
+                          # 실 KMS 배선은 배포 human gate.
+
+# ---- 거부(WON'T-BUILD) — 영구 격리 ----
+REJECTED: P22-T1-14 P22-T6-11 P22-T6-20
+#  P22-T1-14 인앱 Python 플러그인(임의코드 실행 표면, 확장은 MCP+Skills+내장툴로 고정)
+#  P22-T6-11 Arena/ELO 리더보드(단일조직 실효 낮음, 피드백 👍/👎 이미 존재)
+#  P22-T6-20 핸즈프리 음성/영상 통화(WebRTC 신규 전송계층. STT/TTS 로 기본 음성 충족)
+
+# ---- 빌드 순서 권고 ----
+# 저위험 먼저: C1 C2 C3 C4 C9 C10 C13 C17 C18 → 신규도메인 C5 C6 C7 C11 C12
+#            → 엔터프라이즈(대형) C8 C14 C15 C16. 각 태스크 TDD RED→GREEN→게이트→커밋.

@@ -2678,7 +2678,7 @@
     "acceptance": "RED 우선. docs/rfc/P22-contract-batch.md 에 각 Tier3 항목별 필요한 interface/shared/migration 변경이 제안 diff와 함께 명시됨 / 제안은 nullable-first·롤백경로·기존 타입 비파괴 원칙 준수 / .ralph/CONTRACT_PENDING 기록 + <CONTRACT_REVIEW_REQUESTED:P22> 신호로 정지(자동 편집 금지) / 사람 승인 후 .ralph/CONTRACT_APPROVED 존재 시에만 후속 Tier3 진행",
     "phase": "P22",
     "team": "RC",
-    "passes": false,
+    "passes": true,
     "attempts": 1
   },
   {
