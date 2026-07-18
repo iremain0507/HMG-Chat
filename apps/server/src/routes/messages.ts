@@ -1057,6 +1057,12 @@ export function createMessageRoutes(
       const requestSignal = c.req.raw.signal;
       const onAbort = () => subscription.unsubscribe();
       requestSignal.addEventListener("abort", onAbort, { once: true });
+      // deep_research 의 조용한 구간(계획 수립·결과 종합)엔 event 가 한동안 없으므로, POST 스트림과
+      // 동일하게 keep-alive comment 를 주기 방출한다. 없으면 클라의 stale-connection 워치독이
+      // 연결을 끊고 재-resume 을 반복해(churn) 라이브 progress·최종 stop 을 놓친다.
+      const heartbeat = setInterval(() => {
+        void stream.write(": ping\n\n").catch(() => {});
+      }, 10_000);
       try {
         await stream.writeSSE({
           event: "message_replace",
@@ -1077,6 +1083,7 @@ export function createMessageRoutes(
           await stream.writeSSE({ event: type, data: JSON.stringify(payload) });
         }
       } finally {
+        clearInterval(heartbeat);
         requestSignal.removeEventListener("abort", onAbort);
         subscription.unsubscribe();
       }
