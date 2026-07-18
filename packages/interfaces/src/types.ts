@@ -99,6 +99,11 @@ export interface Organization {
   allowedModels: string[];
   allowedTools: string[];
   defaultTokenBudgetMicros: number | null;
+  /**
+   * 메시지 보존일수(12-OPS-SECURITY.md 부록 H 3번). null = 무기한 보존(기존 동작).
+   * (P22-C-01 / C2)
+   */
+  retentionDays: number | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -437,6 +442,11 @@ export interface MessageRepo extends Repo<
     role: Message["role"],
     chunks: AsyncIterable<unknown>,
   ): Promise<Message>;
+  /**
+   * org 보존정책 cron 전용 벌크 삭제(부록 H 3번). orgId 생략 시 전 org(시스템 스코프).
+   * 삭제된 행 수를 반환. 구현체는 1틱당 배치 상한을 둔다. (P22-C-01 / C2)
+   */
+  deleteOlderThan(cutoff: Date, orgId?: string): Promise<number>;
 }
 
 export interface ProjectRepo extends Repo<
@@ -592,6 +602,11 @@ export interface ErrorLogRepo {
     },
     p: Pagination,
   ): Promise<Page<ErrorLogEntry>>;
+  /**
+   * 보존정책 cron 전용(부록 H 4번). 삭제된 행 수를 반환.
+   * UploadRepo.expiredOlderThan 와 동일 계열. (P22-C-01 / C2)
+   */
+  deleteOlderThan(cutoff: Date): Promise<number>;
 }
 
 export interface ToolMetricRepo {
@@ -611,6 +626,8 @@ export interface HealthHistoryRepo {
     limit: number,
     range?: { from?: Date; to?: Date },
   ): Promise<HealthCheckResult[]>;
+  /** 보존정책 cron 전용(부록 H 5번). 삭제된 행 수를 반환. (P22-C-01 / C2) */
+  deleteOlderThan(cutoff: Date): Promise<number>;
 }
 
 export interface AlertEventRepo extends Repo<

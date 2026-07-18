@@ -4,12 +4,17 @@ import { pgPool } from "./db/client.js";
 import { createPgAlertEventDataAccess } from "./db/alert-event-data-access.js";
 import { createPgArtifactDataAccess } from "./db/artifact-data-access.js";
 import { createPgArtifactShareDataAccess } from "./db/artifact-share-data-access.js";
+import { createPgAuditLogDataAccess } from "./db/audit-log-data-access.js";
+import { createPgAuthDataAccess } from "./db/auth-data-access.js";
+import { createPgErrorLogDataAccess } from "./db/error-log-data-access.js";
+import { createPgMessageDataAccess } from "./db/message-data-access.js";
 import { createPgHealthHistoryDataAccess } from "./db/health-history-data-access.js";
 import { createPgUploadDataAccess } from "./db/upload-data-access.js";
 import { loadEnv } from "./env.js";
 import { createAlertNotifier } from "./lib/alert-engine.js";
 import { startAlertingScheduler } from "./lib/alerting-scheduler.js";
 import { createInlineArtifactStore } from "./lib/artifact-store.inline.js";
+import { createAuditRecorder } from "./lib/audit-recorder.js";
 import { createLogger } from "./lib/logger.js";
 import { activateRuntimeBusFromEnv } from "./orchestrator/runtime-bus.js";
 import { startRetentionScheduler } from "./lib/retention-scheduler.js";
@@ -69,7 +74,14 @@ const retentionHandle =
         da: {
           uploads: createPgUploadDataAccess().uploads,
           artifactShares: createPgArtifactShareDataAccess().artifactShares,
+          // 부록 H 3·4·5 (P22-T1-15 / 계약배치 C2)
+          errorLogs: createPgErrorLogDataAccess().errorLogs,
+          healthHistory: createPgHealthHistoryDataAccess().healthHistory,
+          messages: createPgMessageDataAccess(),
+          organizations: createPgAuthDataAccess().organizations,
         },
+        // 부록 H 3번 메시지 삭제는 org 단위 파괴적 작업이라 audit_log 에 남긴다(fail-soft).
+        audit: createAuditRecorder(createPgAuditLogDataAccess(), logger),
         artifactStore: createInlineArtifactStore(
           createPgArtifactDataAccess().artifacts,
         ),

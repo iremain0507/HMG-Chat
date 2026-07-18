@@ -22,6 +22,8 @@ function toOrganization(row: Record<string, unknown>): Organization {
       (row.default_token_budget_micros as string | null) === null
         ? null
         : Number(row.default_token_budget_micros),
+    // 0033_org_retention_days — NULL = 무기한 보존(부록 H 3번).
+    retentionDays: (row.retention_days as number | null) ?? null,
     createdAt: row.created_at as Date,
     updatedAt: row.updated_at as Date,
   };

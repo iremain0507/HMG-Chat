@@ -64,6 +64,14 @@ export function createPgHealthHistoryDataAccess(): HealthHistoryDataAccess {
         const res = await pgPool.query(q.text, q.values);
         return res.rows.map(toHealthCheckResult);
       },
+      // 부록 H 5번 — 보존기간 지난 health_check_history 삭제. 삭제 행 수를 반환.
+      async deleteOlderThan(cutoff) {
+        const res = await pgPool.query(
+          "DELETE FROM health_check_history WHERE created_at < $1",
+          [cutoff],
+        );
+        return res.rowCount ?? 0;
+      },
     },
   };
 }

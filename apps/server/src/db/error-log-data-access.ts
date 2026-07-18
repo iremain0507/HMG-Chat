@@ -72,6 +72,14 @@ export function createPgErrorLogDataAccess(): ErrorLogDataAccess {
         );
         return { items: res.rows.map(toErrorLog) };
       },
+      // 부록 H 4번 — 보존기간 지난 error_logs 삭제. 삭제 행 수를 반환(cron 리포팅용).
+      async deleteOlderThan(cutoff) {
+        const res = await pgPool.query(
+          "DELETE FROM error_logs WHERE created_at < $1",
+          [cutoff],
+        );
+        return res.rowCount ?? 0;
+      },
     },
   };
 }

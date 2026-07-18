@@ -2723,8 +2723,8 @@
     "acceptance": "RED 우선. data-retention 부록 H items 3/4/5 (error_logs, org.retention_days messages, health_history purge) are unimplemented: ErrorLogRepo/HealthHistoryRepo have no delete methods and message retention needs an org.retention_days column (v1.1). Requires interfaces/migration change → isolated. / .ralph/CONTRACT_APPROVED 없으면 격리(구현 금지).",
     "phase": "P22",
     "team": "T1",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P22-T4-03",

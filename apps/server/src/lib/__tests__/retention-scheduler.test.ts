@@ -110,6 +110,72 @@ function fakeDataAccess(opts: {
         revokedShareIds.push(id);
       },
     },
+    // 부록 H 3·4·5 단계(P22-T1-15) — 스케줄러 테스트는 forwarding 만 보므로 최소 스텁.
+    // 단계별 삭제 동작 자체는 data-retention.test.ts 가 단언한다.
+    errorLogs: {
+      async append() {},
+      async list() {
+        return { items: [] };
+      },
+      async deleteOlderThan() {
+        return 0;
+      },
+    },
+    healthHistory: {
+      async append() {},
+      async recent() {
+        return [];
+      },
+      async deleteOlderThan() {
+        return 0;
+      },
+    },
+    messages: {
+      async insert() {
+        throw new Error("not implemented");
+      },
+      async bulkInsert() {
+        throw new Error("not implemented");
+      },
+      async update() {
+        throw new Error("not implemented");
+      },
+      async delete() {
+        throw new Error("not implemented");
+      },
+      async byId() {
+        return null;
+      },
+      async list() {
+        return { items: [] };
+      },
+      async appendStream() {
+        throw new Error("not implemented");
+      },
+      async deleteOlderThan() {
+        return 0;
+      },
+    },
+    organizations: {
+      async insert() {
+        throw new Error("not implemented");
+      },
+      async bulkInsert() {
+        return [];
+      },
+      async update() {
+        throw new Error("not implemented");
+      },
+      async delete() {
+        throw new Error("not implemented");
+      },
+      async byId() {
+        return null;
+      },
+      async list() {
+        return { items: [] };
+      },
+    },
   };
 }
 
@@ -231,10 +297,14 @@ describe("startRetentionScheduler", () => {
     expect(da.deletedUploadIds.sort()).toEqual(["u-1", "u-2"]);
     expect(store.cleanupCalls).toBe(1);
     expect(da.revokedShareIds).toEqual(["s-expired"]);
+    // P22-T1-15(계약배치 C2) 이후 부록 H 3·4·5 단계가 추가됐다.
     expect(results?.map((r) => r.step)).toEqual([
       "expired-uploads",
       "artifact-store-cleanup",
       "expired-artifact-shares",
+      "expired-error-logs",
+      "expired-health-history",
+      "org-message-retention",
     ]);
 
     handle.stop();

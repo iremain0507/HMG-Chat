@@ -8,6 +8,7 @@
 //   다시 예약(one-shot 재무장)해 벽시계 drift 없이 03:00 KST 앵커를 유지한다.
 import type { AlertEventRepo } from "@wchat/interfaces";
 import type { AlertNotifier } from "./alert-engine.js";
+import type { AuditRecorder } from "./audit-recorder.js";
 import {
   runRetention,
   type RetentionDataAccess,
@@ -31,6 +32,8 @@ export interface RetentionSchedulerDeps {
   da: RetentionDataAccess;
   artifactStore: Pick<ArtifactStore, "cleanupExpired">;
   alerting?: { repo: Pick<AlertEventRepo, "insert">; notifier: AlertNotifier };
+  /** org 메시지 보존 삭제(부록 H 3번)의 audit_log 기록. 미주입 시 기록 생략. */
+  audit?: AuditRecorder;
   /** 실행 시각(KST 정시). 기본 03:00. */
   hourKst?: number;
   /** 현재 epoch ms 를 반환(테스트용 fake clock). 기본 Date.now. */
@@ -74,6 +77,7 @@ export function startRetentionScheduler(
     da,
     artifactStore,
     alerting,
+    audit,
     hourKst = DEFAULT_HOUR_KST,
     now = () => Date.now(),
     setTimer = defaultSetTimer,
@@ -89,7 +93,7 @@ export function startRetentionScheduler(
     if (running) return undefined;
     running = true;
     try {
-      return await runRetention(da, artifactStore, alerting);
+      return await runRetention(da, artifactStore, alerting, audit);
     } catch (err) {
       // retention 실패가 스케줄러/프로세스를 죽이지 않도록 삼킨다(각 tick 은 독립).
       logger?.error("retention-scheduler tick failed", {

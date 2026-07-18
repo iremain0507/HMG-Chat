@@ -21,6 +21,9 @@ function toMessage(row: Record<string, unknown>): Message {
   };
 }
 
+/** deleteOlderThan 1배치당 삭제 상한 — 긴 락을 피하려고 나눠 지운다(부록 H 3번). */
+const MESSAGE_PURGE_BATCH = 1000;
+
 export function createPgMessageDataAccess(): MessageRepo {
   return {
     async insert(data) {
@@ -105,6 +108,30 @@ export function createPgMessageDataAccess(): MessageRepo {
         collected.push(chunk);
       }
       return this.insert({ sessionId, role, content: collected });
+    },
+    // 부록 H 3번 — org 보존정책 cron 전용 벌크 삭제. orgId 생략 시 전 org(시스템 스코프).
+    // 한 틱에 무제한 DELETE 를 돌면 장시간 락이 잡히므로 배치 상한(MESSAGE_PURGE_BATCH)을 두고
+    // 더 지울 게 없을 때까지 반복한다(각 배치가 독립 트랜잭션 → 중단돼도 다음 실행이 이어받음).
+    async deleteOlderThan(cutoff, orgId) {
+      let total = 0;
+      for (;;) {
+        const res = await pgPool.query(
+          `DELETE FROM messages WHERE id IN (
+             SELECT m.id FROM messages m
+             JOIN sessions s ON s.id = m.session_id
+             JOIN users u ON u.id = s.user_id
+             WHERE m.created_at < $1${orgId ? " AND u.org_id = $3" : ""}
+             LIMIT $2
+           )`,
+          orgId
+            ? [cutoff, MESSAGE_PURGE_BATCH, orgId]
+            : [cutoff, MESSAGE_PURGE_BATCH],
+        );
+        const deleted = res.rowCount ?? 0;
+        total += deleted;
+        if (deleted < MESSAGE_PURGE_BATCH) break;
+      }
+      return total;
     },
   };
 }

@@ -136,6 +136,8 @@ export interface Organization {
   allowedModels: string[];
   allowedTools: string[];
   defaultTokenBudgetMicros: number | null;
+  /** 메시지 보존일수(12-OPS-SECURITY.md 부록 H 3번). null = 무기한 보존. (P22-C-01 / C2) */
+  retentionDays: number | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -260,6 +262,8 @@ export interface SessionRepo extends Repo<Session, { userId?: string; projectId?
 
 export interface MessageRepo extends Repo<Message, { sessionId: string; role?: Message["role"] }> {
   appendStream(sessionId: string, role: Message["role"], chunks: AsyncIterable<unknown>): Promise<Message>;
+  /** org 보존정책 cron 전용 벌크 삭제(부록 H 3번). orgId 생략 시 전 org. 배치 상한 존재. (P22-C-01 / C2) */
+  deleteOlderThan(cutoff: Date, orgId?: string): Promise<number>;
 }
 
 export interface ProjectRepo extends Repo<Project, { orgId?: string; visibility?: Project["visibility"] }> {
@@ -471,6 +475,8 @@ export interface UsageLogRepo {
 export interface ErrorLogRepo {
   append(entry: ErrorLogEntry): Promise<void>;
   list(filter: { category?: ErrorCategory; level?: ErrorLogEntry["level"]; from?: Date }, p: Pagination): Promise<Page<ErrorLogEntry>>;
+  /** 보존정책 cron 전용(부록 H 4번). 삭제된 행 수 반환. (P22-C-01 / C2) */
+  deleteOlderThan(cutoff: Date): Promise<number>;
 }
 
 export interface ToolMetricRepo {
@@ -482,6 +488,8 @@ export interface HealthHistoryRepo {
   append(entry: HealthCheckResult): Promise<void>;
   /** range 는 optional — 생략 시 기존 동작(최신 limit 개)과 동일. (P22-C-01 / C1) */
   recent(target: string, limit: number, range?: { from?: Date; to?: Date }): Promise<HealthCheckResult[]>;
+  /** 보존정책 cron 전용(부록 H 5번). 삭제된 행 수 반환. (P22-C-01 / C2) */
+  deleteOlderThan(cutoff: Date): Promise<number>;
 }
 
 export interface AlertEventRepo extends Repo<AlertEvent, { severity?: AlertEvent["severity"]; unresolved?: boolean }> {

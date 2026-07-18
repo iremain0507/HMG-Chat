@@ -4,10 +4,13 @@ import type {
   AlertEventRepo,
   ArtifactShareRecord,
   ArtifactStore,
+  Organization,
   UploadRecord,
 } from "@wchat/interfaces";
 import {
   runRetention,
+  ERROR_LOG_RETENTION_DAYS,
+  HEALTH_HISTORY_RETENTION_DAYS,
   UPLOAD_RETENTION_DAYS,
   type RetentionDataAccess,
 } from "../data-retention.js";
@@ -45,21 +48,117 @@ function share(
   };
 }
 
+function org(overrides: Partial<Organization> = {}): Organization {
+  return {
+    id: "org-1",
+    name: "Org",
+    domain: "example.com",
+    plan: "standard",
+    allowedModels: [],
+    allowedTools: [],
+    defaultTokenBudgetMicros: null,
+    retentionDays: null,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+    ...overrides,
+  };
+}
+
 function fakeDataAccess(opts: {
   expiredUploads?: UploadRecord[];
   shares?: ArtifactShareRecord[];
   uploadsDeleteFails?: boolean;
+  orgs?: Organization[];
+  errorLogDeletedCount?: number;
+  healthHistoryDeletedCount?: number;
+  messageDeletedCountByOrg?: Record<string, number>;
 }): RetentionDataAccess & {
   deletedUploadIds: string[];
   revokedShareIds: string[];
+  errorLogCutoffs: Date[];
+  healthHistoryCutoffs: Date[];
+  messageDeleteCalls: Array<{ cutoff: Date; orgId?: string }>;
 } {
   const deletedUploadIds: string[] = [];
   const revokedShareIds: string[] = [];
+  const errorLogCutoffs: Date[] = [];
+  const healthHistoryCutoffs: Date[] = [];
+  const messageDeleteCalls: Array<{ cutoff: Date; orgId?: string }> = [];
   const shares = opts.shares ?? [];
 
   return {
     deletedUploadIds,
     revokedShareIds,
+    errorLogCutoffs,
+    healthHistoryCutoffs,
+    messageDeleteCalls,
+    organizations: {
+      async insert(data) {
+        return org(data);
+      },
+      async bulkInsert(rows) {
+        return rows.map((r) => org(r));
+      },
+      async update() {
+        throw new Error("not implemented");
+      },
+      async delete() {
+        throw new Error("not implemented");
+      },
+      async byId() {
+        return null;
+      },
+      async list() {
+        return { items: opts.orgs ?? [] };
+      },
+    },
+    errorLogs: {
+      async append() {},
+      async list() {
+        return { items: [] };
+      },
+      async deleteOlderThan(cutoff) {
+        errorLogCutoffs.push(cutoff);
+        return opts.errorLogDeletedCount ?? 0;
+      },
+    },
+    healthHistory: {
+      async append() {},
+      async recent() {
+        return [];
+      },
+      async deleteOlderThan(cutoff) {
+        healthHistoryCutoffs.push(cutoff);
+        return opts.healthHistoryDeletedCount ?? 0;
+      },
+    },
+    messages: {
+      async insert() {
+        throw new Error("not implemented");
+      },
+      async bulkInsert() {
+        throw new Error("not implemented");
+      },
+      async update() {
+        throw new Error("not implemented");
+      },
+      async delete() {
+        throw new Error("not implemented");
+      },
+      async byId() {
+        return null;
+      },
+      async list() {
+        return { items: [] };
+      },
+      async appendStream() {
+        throw new Error("not implemented");
+      },
+      async deleteOlderThan(cutoff, orgId) {
+        messageDeleteCalls.push({ cutoff, ...(orgId ? { orgId } : {}) });
+        return orgId ? (opts.messageDeletedCountByOrg?.[orgId] ?? 0) : 0;
+      },
+    },
     uploads: {
       async insert(data) {
         return upload(data);
@@ -257,5 +356,149 @@ describe("data-retention.runRetention", () => {
 
   it("UPLOAD_RETENTION_DAYS 는 12-OPS-SECURITY.md 부록 H 기준 30일이다", () => {
     expect(UPLOAD_RETENTION_DAYS).toBe(30);
+  });
+});
+
+// ── P22-T1-15 (계약배치 C2) — 부록 H 3·4·5 항: error_logs / health_history / messages ──
+describe("data-retention.runRetention — 부록 H 3·4·5 보존기간 삭제", () => {
+  const DAY_MS = 24 * 60 * 60 * 1000;
+
+  it("보존일수 상수는 부록 H 기준(error_logs 90일, health_history 30일)이다", () => {
+    expect(ERROR_LOG_RETENTION_DAYS).toBe(90);
+    expect(HEALTH_HISTORY_RETENTION_DAYS).toBe(30);
+  });
+
+  it("90일 지난 error_logs 를 삭제한다 (부록 H 4번)", async () => {
+    const da = fakeDataAccess({ errorLogDeletedCount: 7 });
+    const before = Date.now();
+
+    const results = await runRetention(da, fakeArtifactStore());
+
+    const step = results.find((r) => r.step === "expired-error-logs");
+    expect(step?.ok).toBe(true);
+    expect(step?.detail).toEqual({ deletedCount: 7 });
+    expect(da.errorLogCutoffs).toHaveLength(1);
+    const cutoff = da.errorLogCutoffs[0]!.getTime();
+    expect(cutoff).toBeLessThanOrEqual(
+      before - ERROR_LOG_RETENTION_DAYS * DAY_MS,
+    );
+    expect(cutoff).toBeGreaterThan(
+      before - (ERROR_LOG_RETENTION_DAYS + 1) * DAY_MS,
+    );
+  });
+
+  it("30일 지난 health_history 를 삭제한다 (부록 H 5번)", async () => {
+    const da = fakeDataAccess({ healthHistoryDeletedCount: 12 });
+    const before = Date.now();
+
+    const results = await runRetention(da, fakeArtifactStore());
+
+    const step = results.find((r) => r.step === "expired-health-history");
+    expect(step?.ok).toBe(true);
+    expect(step?.detail).toEqual({ deletedCount: 12 });
+    expect(da.healthHistoryCutoffs).toHaveLength(1);
+    const cutoff = da.healthHistoryCutoffs[0]!.getTime();
+    expect(cutoff).toBeLessThanOrEqual(
+      before - HEALTH_HISTORY_RETENTION_DAYS * DAY_MS,
+    );
+  });
+
+  it("retentionDays 가 설정된 org 의 messages 만 org 별 cutoff 로 삭제한다 (부록 H 3번)", async () => {
+    const da = fakeDataAccess({
+      orgs: [
+        org({ id: "org-30", retentionDays: 30 }),
+        org({ id: "org-90", retentionDays: 90 }),
+      ],
+      messageDeletedCountByOrg: { "org-30": 4, "org-90": 2 },
+    });
+    const before = Date.now();
+
+    const results = await runRetention(da, fakeArtifactStore());
+
+    const step = results.find((r) => r.step === "org-message-retention");
+    expect(step?.ok).toBe(true);
+    expect(step?.detail).toEqual({
+      deletedCount: 6,
+      orgs: [
+        { orgId: "org-30", deletedCount: 4 },
+        { orgId: "org-90", deletedCount: 2 },
+      ],
+    });
+    expect(da.messageDeleteCalls.map((c) => c.orgId)).toEqual([
+      "org-30",
+      "org-90",
+    ]);
+    expect(da.messageDeleteCalls[0]!.cutoff.getTime()).toBeLessThanOrEqual(
+      before - 30 * DAY_MS,
+    );
+    expect(da.messageDeleteCalls[1]!.cutoff.getTime()).toBeLessThanOrEqual(
+      before - 90 * DAY_MS,
+    );
+  });
+
+  it("retentionDays 가 null 인 org 의 messages 는 절대 건드리지 않는다 (무기한 보존)", async () => {
+    const da = fakeDataAccess({
+      orgs: [
+        org({ id: "org-keep", retentionDays: null }),
+        org({ id: "org-purge", retentionDays: 30 }),
+      ],
+      messageDeletedCountByOrg: { "org-purge": 1 },
+    });
+
+    await runRetention(da, fakeArtifactStore());
+
+    expect(da.messageDeleteCalls.map((c) => c.orgId)).toEqual(["org-purge"]);
+  });
+
+  it("메시지를 실제로 삭제한 org 에 대해서만 audit_log 를 남긴다", async () => {
+    const recorded: Array<{
+      orgId: string;
+      action: string;
+      metadata?: Record<string, unknown>;
+    }> = [];
+    const da = fakeDataAccess({
+      orgs: [
+        org({ id: "org-purge", retentionDays: 30 }),
+        org({ id: "org-none", retentionDays: 30 }),
+      ],
+      messageDeletedCountByOrg: { "org-purge": 5, "org-none": 0 },
+    });
+
+    await runRetention(da, fakeArtifactStore(), undefined, {
+      async record(input) {
+        recorded.push({
+          orgId: input.orgId,
+          action: input.action,
+          ...(input.metadata ? { metadata: input.metadata } : {}),
+        });
+      },
+    });
+
+    expect(recorded).toHaveLength(1);
+    expect(recorded[0]!.orgId).toBe("org-purge");
+    expect(recorded[0]!.action).toBe("data_retention.messages_purged");
+    expect(recorded[0]!.metadata?.deletedCount).toBe(5);
+  });
+
+  it("error_logs 삭제가 실패해도 health_history/messages 단계는 계속 실행된다", async () => {
+    const da = fakeDataAccess({
+      orgs: [org({ id: "org-purge", retentionDays: 30 })],
+      messageDeletedCountByOrg: { "org-purge": 1 },
+    });
+    da.errorLogs.deleteOlderThan = async () => {
+      throw new Error("error_logs delete failed");
+    };
+
+    const results = await runRetention(da, fakeArtifactStore());
+
+    expect(results.find((r) => r.step === "expired-error-logs")?.ok).toBe(
+      false,
+    );
+    expect(results.find((r) => r.step === "expired-health-history")?.ok).toBe(
+      true,
+    );
+    expect(results.find((r) => r.step === "org-message-retention")?.ok).toBe(
+      true,
+    );
   });
 });
