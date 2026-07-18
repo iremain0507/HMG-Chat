@@ -2471,8 +2471,8 @@
     "acceptance": "RED 우선. GIVEN WEBHOOK_DISPATCHER_KIND=slack (or http) with an injected fake fetch, WHEN createWebhookDispatcher().dispatch(url, {event:'new_user',...}) is called, THEN the fake fetch receives exactly one POST to url with a JSON… / GIVEN WEBHOOK_DISPATCHER_KIND unset or 'test'/'devstub', WHEN createWebhookDispatcher() is called, THEN it returns the record-only dev-stub (calls[] populated, no network) preserving existing webhook-signup.test.ts… / GIVEN an unknown WEBHOOK_DISPATCHER_KIND, WHEN createWebhookDispatcher() is called, THEN it throws 'Unknown WEBHOOK_DISPATCHER_KIND' (parity with createEmailSender/createAlertNotifier). / GIVEN app.ts createApp() with WEBHOOK_DISPATCHER_KIND=slack env, WHEN a signup completes for an org with adminWebhookUrl set, THEN the injected fake fetch receives one new_user POST (real dispatcher is now flippable at…",
     "phase": "P22",
     "team": "T1",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P22-T2-01",

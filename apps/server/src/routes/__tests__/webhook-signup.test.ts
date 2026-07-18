@@ -17,7 +17,10 @@ import {
   type AuthSettingsResolverPort,
 } from "../auth.js";
 import { DEFAULT_ORG_SETTINGS } from "../../lib/org-settings-schema.js";
-import { createDevStubWebhookDispatcher } from "../../lib/webhook-dispatcher.js";
+import {
+  createDevStubWebhookDispatcher,
+  createWebhookDispatcher,
+} from "../../lib/webhook-dispatcher.js";
 
 process.env.JWT_SECRET = "test-only-jwt-secret-32chars-minimum-xxxx";
 process.env.PROJECT_SLUG = "wchat";
@@ -315,6 +318,38 @@ describe("webhook-signup: 신규가입 Admin Webhook", () => {
       orgId: org.id,
       email: "new.user@wchat.example.com",
       name: "New User",
+    });
+  });
+
+  it("P22-T1-06: kind='slack' 실 HTTP dispatcher(주입 fake fetch) 로 배선 시 signup 완료 → new_user POST 1회 발송(배포 flip 가능)", async () => {
+    const fetchCalls: { url: string; init?: RequestInit }[] = [];
+    const fakeFetch = (async (url: unknown, init?: RequestInit) => {
+      fetchCalls.push({ url: String(url), init });
+      return new Response(null, { status: 200 });
+    }) as unknown as typeof fetch;
+
+    const app = createAuthRoutes({
+      da,
+      emailSender,
+      allowedDomains: ["wchat.example.com"],
+      appOrigin: "http://localhost:3000",
+      secureCookies: false,
+      settings: makeSettingsResolver("https://hooks.example.com/admin"),
+      // app.ts 기본과 동일: createWebhookDispatcher(kind). kind=slack → 실 HttpWebhookDispatcher.
+      webhookDispatcher: createWebhookDispatcher("slack", fakeFetch),
+    });
+
+    const verifyRes = await signupAndVerify(app);
+    expect(verifyRes.status).toBe(302);
+
+    expect(fetchCalls).toHaveLength(1);
+    expect(fetchCalls[0].url).toBe("https://hooks.example.com/admin");
+    expect(fetchCalls[0].init?.method).toBe("POST");
+    const body = JSON.parse(String(fetchCalls[0].init?.body));
+    expect(body).toMatchObject({
+      event: "new_user",
+      orgId: org.id,
+      email: "new.user@wchat.example.com",
     });
   });
 
