@@ -56,6 +56,17 @@ describe("AdminSubNav", () => {
     );
   });
 
+  // P22-T6-21 — OpenAPI 툴서버 admin 패널(/admin/tool-servers)로 갈 진입점이 없으면
+  //   URL 직접 입력 외에는 도달 불가라 P16-T6-02 갭1 이 재발한다.
+  it("OpenAPI 툴서버 링크를 렌더한다", () => {
+    render(<AdminSubNav />);
+
+    expect(screen.getByTestId("admin-sub-nav-tool-servers")).toHaveAttribute(
+      "href",
+      "/admin/tool-servers",
+    );
+  });
+
   it("현재 경로에 해당하는 항목을 aria-current=page 로 표시한다", () => {
     mockPathname = "/admin/users";
     render(<AdminSubNav />);

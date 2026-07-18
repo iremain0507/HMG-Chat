@@ -44,6 +44,7 @@ import { LocaleProvider } from "../../components/i18n/LocaleProvider";
 import { QuotaPanel } from "../../components/settings/QuotaPanel";
 import { AdminDashboard } from "../../components/admin/AdminDashboard";
 import { ToolMetricsTable } from "../../components/admin/ToolMetricsTable";
+import { OpenApiToolServersManager } from "../../components/admin/OpenApiToolServersManager";
 import { AdminUsersManager } from "../../components/admin/AdminUsersManager";
 import { GroupsManager } from "../../components/admin/GroupsManager";
 import { GrantsManager } from "../../components/admin/GrantsManager";
@@ -249,6 +250,24 @@ function ConnectionsManagerPreview() {
       className="rounded-md border border-border px-3 py-1.5 text-sm text-fg-muted hover:border-primary hover:text-fg"
     >
       연결 관리 열기
+    </button>
+  );
+}
+
+// P22-T6-21 — OpenApiToolServersManager 도 마운트 시 /api/v1/openapi-tool-servers 를 fetch 한다.
+//   위와 동일한 토글 격리 패턴. 전용 e2e(openapi-tool-servers.pw.ts)만 page.route() 로 목킹 후 클릭.
+function OpenApiToolServersManagerPreview() {
+  const [open, setOpen] = useState(false);
+  return open ? (
+    <OpenApiToolServersManager />
+  ) : (
+    <button
+      type="button"
+      data-testid="openapi-tool-servers-preview-trigger"
+      onClick={() => setOpen(true)}
+      className="rounded-md border border-border px-3 py-1.5 text-sm text-fg-muted hover:border-primary hover:text-fg"
+    >
+      OpenAPI 툴서버 관리 열기
     </button>
   );
 }
@@ -1446,6 +1465,10 @@ export default function PreviewGallery() {
 
       <Section name="mcp-servers-manager">
         <McpServersManagerPreview />
+      </Section>
+
+      <Section name="openapi-tool-servers">
+        <OpenApiToolServersManagerPreview />
       </Section>
 
       <Section name="skills-manager">

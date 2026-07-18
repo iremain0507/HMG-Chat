@@ -2696,7 +2696,7 @@
     "acceptance": "RED 우선. GIVEN a valid OpenAPI 3.x spec URL/body, WHEN an admin registers it via the new route/admin panel, THEN each operation is persisted and exposed as an AgentToolSpec (operationId->name, params->inputSchema) discoverable… / GIVEN a registered OpenAPI tool server, WHEN the model calls one of its endpoints in a chat turn, THEN the server performs an SSRF-validated HTTP request (reusing mcp/url-validator.ts) and returns an AgentToolResult,… / GIVEN a spec URL pointing at a private/internal address, WHEN registration or invocation is attempted, THEN the url-validator rejects it and no request is made. / BROWSER: GIVEN the settings admin panel, WHEN a user opens the OpenAPI tool-servers manager, adds a spec, and starts a chat, THEN the imported endpoints appear as callable tools and a tool call round-trips end-to-end in… / ★실브라우저 UAT: 스택 기동 후 Claude-in-Chrome 로 실제 화면에서 동작 확인(불가 시 Playwright /preview + 정직히 미실행 명시). / .ralph/CONTRACT_APPROVED 없으면 격리(구현 금지).",
     "phase": "P22",
     "team": "T1",
-    "passes": false,
+    "passes": true,
     "attempts": 1
   },
   {
@@ -2865,8 +2865,8 @@
     "id": "P22-T6-21",
     "phase": "P22",
     "team": "T6",
-    "passes": false,
-    "attempts": 0,
+    "passes": true,
+    "attempts": 1,
     "desc": "[마무리 · admin UI · T1-12 완성용] OpenAPI 툴서버 admin 패널. 서버 API(GET/POST /api/v1/openapi-tool-servers, 이미 마운트·SSRF방어 완료 — P22-T1-12 c1bedb2)를 소비하는 apps/web/src/components/admin/** 패널: 기존 McpServersManager 패널을 미러(등록 폼: name/spec URL 또는 붙여넣기 → 등록, 목록, 삭제, allowedTools 표시). admin/settings 또는 admin 탭에 배선. 인터랙션·정보구조는 Open WebUI 툴서버 화면 참조, 디자인은 DESIGN.md 토큰. FROZEN·서버 미접촉(API 소비만). ★needsBrowser. 완료 시 P22-T1-12 도 passes=true 로 함께 마감 가능. 상세근거: .ralph/blocked_tasks P22-T1-12.",
     "acceptance": "RED 우선. (A) RTL: 패널이 GET 목록 렌더, 등록 폼 제출 시 POST 호출, 삭제 시 DELETE 호출, 에러 시 표면화 단언. (B) Playwright /preview: 패널을 갤러리 등록 후 page.route 목킹으로 등록→목록반영→삭제 상호작용 단언. (C) 실앱 admin UAT 는 browser-debt 이월. cross-org 격리는 서버 API 가 이미 보장(패널은 UI만)."
   },
