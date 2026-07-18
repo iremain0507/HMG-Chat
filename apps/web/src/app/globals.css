@@ -211,3 +211,25 @@ body {
     inset: 0;
   }
 }
+
+/* 메시지 액션(프롬프트 수정/복사 등) 노출 규칙.
+   - hover 가능한 기기(데스크톱): 기본 숨김 → 메시지 hover 시 노출(기존 UX 유지).
+   - hover 불가 기기(iPad 등 터치): 항상 노출 — hover-only 로 인해 버튼이 "보이지 않는데
+     클릭만 되던" 문제(IMG_0149) 수정.
+   - focus-within: 키보드 포커스로도 노출(a11y).
+   부모 메시지 행에 Tailwind `group` 클래스가 있어 `.group:hover .msg-actions` 로 노출한다. */
+.msg-actions {
+  opacity: 1;
+  transition: opacity 150ms ease;
+}
+@media (hover: hover) {
+  .msg-actions {
+    opacity: 0;
+  }
+  .group:hover .msg-actions {
+    opacity: 1;
+  }
+}
+.msg-actions:focus-within {
+  opacity: 1;
+}

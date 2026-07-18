@@ -972,7 +972,7 @@ export function MessageItem({
                 </button>
               </div>
             )}
-            <div className="opacity-0 transition-opacity group-hover:opacity-100">
+            <div className="msg-actions">
               <MessageActions
                 role="user"
                 content={content}
@@ -1132,7 +1132,7 @@ export function MessageItem({
               </button>
             )}
             {!streaming && (
-              <div className="opacity-0 transition-opacity group-hover:opacity-100">
+              <div className="msg-actions">
                 <MessageActions
                   role="assistant"
                   content={content}
