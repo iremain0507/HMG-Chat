@@ -2588,8 +2588,8 @@
     "acceptance": "RED 우선. GIVEN a set of retrieved candidates and an injected RerankProvider, WHEN knowledge_search runs, THEN the returned citations are ordered by the reranker score (not the raw RRF order) and re-ranks reflect the reranker… / GIVEN no RerankProvider is injected (deps.reranker undefined), WHEN knowledge_search runs, THEN output is identical to current RRF-only behavior (backward compatible, no regression). / GIVEN the reranker prunes below its own relevance cut, WHEN results are assembled, THEN only the reranked topK survive and citation [N] markers remain consistent with citation-helper. / GIVEN pnpm test and bash scripts/verify-gates.sh, WHEN run, THEN the new reranker unit tests and handler integration test pass (exit 0) with a documented RED failure before implementation.",
     "phase": "P22",
     "team": "T3",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P22-T6-01",

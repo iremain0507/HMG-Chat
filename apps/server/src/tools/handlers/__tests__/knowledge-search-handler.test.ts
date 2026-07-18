@@ -324,6 +324,114 @@ describe("createKnowledgeSearchTool", () => {
     expect(data.citations[0]?.filename).toBe("high.pdf");
   });
 
+  it("reranker 가 주입되면 citations 를 RRF 순서가 아니라 reranker 점수 순서로 정렬한다", async () => {
+    // 두 후보: doc-a(RRF 상 vector 완전일치=상위), doc-b(하위). reranker 는 역순 선호.
+    const retrieval: KnowledgeRetrievalPort = {
+      async loadCandidates() {
+        return {
+          candidates: [
+            {
+              chunk: {
+                id: "a-chunk",
+                documentId: "doc-a",
+                chunkIndex: 0,
+                content: "widget alpha",
+                tokenCount: 2,
+                embedding: [1, 0, 0],
+                metadata: {},
+                createdAt: new Date("2026-01-01T00:00:00Z"),
+              },
+            },
+            {
+              chunk: {
+                id: "b-chunk",
+                documentId: "doc-b",
+                chunkIndex: 0,
+                content: "widget beta",
+                tokenCount: 2,
+                embedding: [1, 0, 0],
+                metadata: {},
+                createdAt: new Date("2026-01-01T00:00:00Z"),
+              },
+            },
+          ],
+          sourceMetaByDocumentId: new Map([
+            [
+              "doc-a",
+              {
+                source: "project" as const,
+                documentId: "doc-a",
+                filename: "alpha.pdf",
+              },
+            ],
+            [
+              "doc-b",
+              {
+                source: "project" as const,
+                documentId: "doc-b",
+                filename: "beta.pdf",
+              },
+            ],
+          ]),
+        };
+      },
+    };
+    const reranker = {
+      name: "fake-rerank",
+      async rerank(_q: string, docs: string[]) {
+        // beta 를 더 relevant 로 (RRF 상위인 alpha 보다 앞서게)
+        return docs.map((d, index) => ({
+          index,
+          score: d.includes("beta") ? 0.9 : 0.1,
+        }));
+      },
+    };
+    const tool = createKnowledgeSearchTool({
+      embeddingProvider: fakeEmbeddingProvider([1, 0, 0]),
+      retrieval,
+      reranker,
+    });
+
+    const result = await tool.invoke({
+      toolCallId: "call-rerank",
+      args: { query: "widget" },
+      ctx: fakeToolContext(),
+    });
+
+    if (result.content.kind !== "json") {
+      throw new Error("json content 를 기대함");
+    }
+    const data = result.content.data as {
+      citations: Array<{ index: number; filename: string }>;
+    };
+    // reranker 가 beta 를 먼저 → citation[1] = beta.pdf
+    expect(data.citations.map((c) => c.filename)).toEqual([
+      "beta.pdf",
+      "alpha.pdf",
+    ]);
+    // citation index 는 1..N 로 재부여(citation-helper 일관)
+    expect(data.citations.map((c) => c.index)).toEqual([1, 2]);
+  });
+
+  it("reranker 미주입 시 기존 RRF 순서 동작이 그대로 유지된다(회귀 없음)", async () => {
+    const tool = createKnowledgeSearchTool({
+      embeddingProvider: fakeEmbeddingProvider([1, 0, 0]),
+      retrieval: manyCandidates(15),
+    });
+
+    const result = await tool.invoke({
+      toolCallId: "call-no-rerank",
+      args: { query: "widget" },
+      ctx: fakeToolContext(),
+    });
+
+    if (result.content.kind !== "json") {
+      throw new Error("json content 를 기대함");
+    }
+    const data = result.content.data as { citations: unknown[] };
+    expect(data.citations).toHaveLength(10);
+  });
+
   it("settings.resolve 가 실패해도 throw 하지 않고 DEFAULT_ORG_SETTINGS(topK=10) 로 폴백한다", async () => {
     const settings: KnowledgeSearchSettingsPort = {
       async resolve() {

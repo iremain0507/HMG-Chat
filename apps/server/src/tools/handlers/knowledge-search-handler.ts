@@ -4,7 +4,12 @@
 //   14-INTERFACES.md § 3)은 아직 어떤 db/** pg 구현체도 없어(app.ts 에도 미배선) 이번 태스크
 //   범위 밖 — KnowledgeRetrievalPort 로 DI, 실 구현은 후속 태스크(app.ts 조립 시점)가 주입.
 import { WChatError } from "@wchat/interfaces";
-import type { AgentTool, EmbeddingProvider, Logger } from "@wchat/interfaces";
+import type {
+  AgentTool,
+  EmbeddingProvider,
+  HybridSearchResult,
+  Logger,
+} from "@wchat/interfaces";
 import { knowledgeSearchToolSpec } from "../../knowledge/knowledge-search.js";
 import {
   buildCitations,
@@ -15,6 +20,10 @@ import {
   hybridSearch,
   type HybridSearchCandidate,
 } from "../../knowledge/search-service.js";
+import {
+  applyRerank,
+  type RerankProvider,
+} from "../../knowledge/rerank-provider.js";
 import {
   DEFAULT_ORG_SETTINGS,
   type ResolvedOrgSettings,
@@ -42,6 +51,8 @@ export interface KnowledgeSearchToolDeps {
   embeddingProvider: EmbeddingProvider;
   retrieval: KnowledgeRetrievalPort;
   settings?: KnowledgeSearchSettingsPort;
+  // P22-T3-05 — OPTIONAL cross-encoder reranker. 미주입 시 hybridSearch(RRF) 순서 그대로(회귀 없음).
+  reranker?: RerankProvider;
 }
 
 // ResolvedOrgSettings(=Required<OrgSettingsPatch>) 도 zod `.optional()` 유래 `| undefined`
@@ -69,6 +80,27 @@ async function resolveRagSettingsSafely(
       context: { error: String(error) },
     });
     return DEFAULT_ORG_SETTINGS;
+  }
+}
+
+// reranker 가 throw/reject 해도 검색 자체를 실패시키지 않고 RRF 순서(원본 hits)로 fail-soft (L2/L5).
+async function applyRerankSafely(
+  reranker: RerankProvider,
+  query: string,
+  hits: HybridSearchResult[],
+  topK: number,
+  signal: AbortSignal,
+  logger: Logger,
+): Promise<HybridSearchResult[]> {
+  try {
+    return await applyRerank({ query, hits, reranker, topK, signal });
+  } catch (error) {
+    logger.warn({
+      category: "tool",
+      msg: "rerank 실패 — RRF 순서로 폴백",
+      context: { error: String(error) },
+    });
+    return hits;
   }
 }
 
@@ -110,21 +142,36 @@ export function createKnowledgeSearchTool(
         ctx.logger,
       );
 
+      const topK = resolved.ragTopK ?? SAFE_DEFAULT_RAG_TOP_K;
       const hits = hybridSearch({
         candidates,
         queryEmbedding: queryEmbedding ?? [],
         queryText: query,
-        topK: resolved.ragTopK ?? SAFE_DEFAULT_RAG_TOP_K,
+        topK,
         rrfK: resolved.ragRrfK ?? SAFE_DEFAULT_RAG_RRF_K,
         relevanceThreshold:
           resolved.ragRelevanceThreshold ??
           SAFE_DEFAULT_RAG_RELEVANCE_THRESHOLD,
       });
+
+      // P22-T3-05 — reranker 주입 시 RRF 순서를 query-문서 relevance 로 재정렬/prune(fail-soft:
+      // reranker 실패 시 RRF 순서 유지). 미주입 시 hits 그대로(byte-identical, 회귀 없음).
+      const finalHits = deps.reranker
+        ? await applyRerankSafely(
+            deps.reranker,
+            query,
+            hits,
+            topK,
+            ctx.signal,
+            ctx.logger,
+          )
+        : hits;
+
       const result =
-        hits.length === 0
+        finalHits.length === 0
           ? { citations: [], message: NO_RESULTS_MESSAGE }
           : {
-              citations: buildCitations(hits, sourceMetaByDocumentId),
+              citations: buildCitations(finalHits, sourceMetaByDocumentId),
               message: null,
             };
 
