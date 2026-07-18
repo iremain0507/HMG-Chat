@@ -422,6 +422,32 @@ export function createSessionRoutes(
     return c.body(null, 204);
   });
 
+  // P22-T1-05 — 단일 세션 조회(16-API-CONTRACT §432). userId 는 auth 에서만 파생(body/query
+  // 미수신) — 타 사용자/조직 세션·부재 세션 모두 동일한 404 로 응답해 존재 누출(existence-leak)을
+  // 막는다(/:id/tags·/:id/messages 와 동일 ownership 패턴). Hono 는 세그먼트 수로 라우트를
+  // 구분하므로 이 단일 세그먼트 /:id 는 /:id/messages·/:id/artifacts 를 가리지 않고, 정적
+  // /search 는 param 보다 우선 매칭돼 충돌하지 않는다.
+  app.get("/:id", async (c) => {
+    const auth = c.get("auth");
+    const sessionId = c.req.param("id");
+    const session = await sessions.byId(sessionId);
+    if (!session || session.userId !== auth.sub) {
+      return c.json(errorJson("NOT_FOUND", "세션을 찾을 수 없습니다."), 404);
+    }
+    return c.json({
+      data: {
+        id: session.id,
+        title: session.title,
+        projectId: session.projectId,
+        createdAt: session.createdAt.toISOString(),
+        archivedAt: session.archivedAt
+          ? session.archivedAt.toISOString()
+          : null,
+      },
+      meta: { requestId: randomUUID() },
+    });
+  });
+
   // P17-T1-03(TS-09) — rename(title)/archived. pin 토글은 별도 PATCH /:id/pin(P19-T1-02) 참조
   // (기존 lib/pinnedSessions.ts localStorage-only 를 서버 영속으로 승격).
   // P19-T1-03 — folderId 할당/해제(null). 폴더는 이 사용자(created_by) 소유여야 하므로

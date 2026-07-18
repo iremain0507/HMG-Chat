@@ -2462,8 +2462,8 @@
     "acceptance": "RED 우선. GIVEN an authenticated user who owns session S, WHEN GET /api/v1/sessions/{S} is called, THEN it returns 200 with data {id,title,projectId,createdAt,archivedAt} and meta.requestId per contract §432 / GIVEN an authenticated user, WHEN GET /api/v1/sessions/{id} targets a session owned by another user/org (or a non-existent id), THEN it returns 404 NOT_FOUND with identical body in both cases (no existence leak),… / GIVEN the route is added, WHEN the routes-mounted test runs, THEN EXPECTED_ROUTES includes GET /api/v1/sessions/:id and it is confirmed mounted (not 404-by-missing-route) / GIVEN sibling routes /:id/messages and /:id/artifacts, WHEN GET /:id is registered, THEN those multi-segment routes still resolve correctly (no shadowing)",
     "phase": "P22",
     "team": "T1",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P22-T1-06",
