@@ -208,8 +208,8 @@ describe("DocumentsPanel", () => {
 
     expect(confirmSpy).toHaveBeenCalled();
     expect(
-      fetchMock.mock.calls.some(
-        ([, i]) => (i as RequestInit | undefined)?.method === "DELETE",
+      (fetchMock.mock.calls as ReadonlyArray<readonly unknown[]>).some(
+        (call) => (call[1] as RequestInit | undefined)?.method === "DELETE",
       ),
     ).toBe(false);
     expect(screen.getByText("유지문서.pdf")).toBeInTheDocument();
