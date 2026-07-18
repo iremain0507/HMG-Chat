@@ -2534,8 +2534,8 @@
     "acceptance": "RED 우선. GIVEN an org with ragChunkSizeTokens=1200 set via admin settings WHEN a project document large enough to exceed 1200 tokens is uploaded via POST /api/v1/documents (through createApp, real wiring) THEN it is split at… / GIVEN an org with no ragChunkSizeTokens override WHEN a document is indexed THEN chunking uses DEFAULT_ORG_SETTINGS 800/100 (backward-compatible default). / GIVEN the injected settings resolver throws at resolve() WHEN a document is indexed THEN indexing still succeeds fail-soft at the 800/100 defaults (indexStatus='indexed', not 'failed'). / GIVEN the createApp document route wiring WHEN inspected/tested THEN settingsService is threaded app.ts -> createDocumentRoutes -> createDocumentService (indexing.settings defined), verified by an…",
     "phase": "P22",
     "team": "T3",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P22-T4-01",
@@ -2543,8 +2543,8 @@
     "acceptance": "RED 우선. GIVEN artifact_create is invoked with content whose UTF-8 byte length >= 256_000, WHEN the tool runs, THEN it uploads via s3Store.put() and service.createArtifact receives a non-empty s3Key, producing an ArtifactRecord… / GIVEN artifact_create is invoked with small content (< 256_000 bytes), WHEN the tool runs, THEN the artifact is stored inline (storageKind='inline', s3Key=null) exactly as today — no regression in the existing inline… / GIVEN a large (s3) artifact was created by the tool, WHEN a client calls GET /api/v1/artifacts/:id then GET /api/v1/artifacts/:id/content with the returned exp+sig token, THEN the original bytes stream back with a valid… / GIVEN the assemble-builtin-tools wiring, WHEN assembleBuiltinTools runs with objectStore present, THEN createArtifactCreateTool is constructed with an s3Store dependency (assert via injection/spy) rather than {da} only.",
     "phase": "P22",
     "team": "T4",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P22-T4-02",

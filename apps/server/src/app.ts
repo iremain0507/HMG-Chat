@@ -395,6 +395,8 @@ export function createApp(env: Env) {
       parserPipeline: createParserPipeline(),
       embeddingProvider: withUsageTracking(createDevStubEmbeddingProvider()),
       grants: resourceGrantsDa,
+      // P22-T3-04 — index 시점 org-scoped 청크 설정(ragChunkSizeTokens/Overlap) 반영.
+      settings: settingsService,
       // 인덱싱 완료(dev-stub 은 동기) 후 소유 사용자에게 document_indexed push (P22-T2-02).
       notify: publishNotification,
     }),
@@ -415,6 +417,8 @@ export function createApp(env: Env) {
         parserPipeline: createParserPipeline(),
         embeddingProvider: withUsageTracking(createDevStubEmbeddingProvider()),
         grants: resourceGrantsDa,
+        // P22-T3-04 — nested 경로도 동일하게 org-scoped 청크 설정 반영.
+        settings: settingsService,
         notify: publishNotification,
       },
       { nested: true },

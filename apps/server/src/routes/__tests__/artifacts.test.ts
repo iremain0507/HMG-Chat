@@ -9,6 +9,9 @@ import type { AuthedVariables } from "../../middleware/auth-middleware.js";
 import { Hono } from "hono";
 import { createArtifactRoutes } from "../artifacts.js";
 import type { ArtifactDataAccess } from "../../db/artifact-service.js";
+import { INLINE_STORAGE_THRESHOLD_BYTES } from "../../db/artifact-service.js";
+import { createArtifactCreateTool } from "../../tools/handlers/artifact-create-handler.js";
+import type { ToolContext } from "@wchat/interfaces";
 import { createInlineArtifactStore } from "../../lib/artifact-store.inline.js";
 import { createS3ArtifactStore } from "../../lib/artifact-store.s3.js";
 import { createInMemoryObjectStore } from "../../lib/object-store.js";
@@ -266,5 +269,86 @@ describe("createArtifactRoutes", () => {
       `exp=${Date.now() - 1000}`,
     );
     expect((await app.request(expired)).status).toBe(403);
+  });
+
+  it("P22-T4-01 e2e — artifact_create(>=256KB) 로 만든 s3 아티팩트를 GET /:id → /content 로 원본 바이트 스트리밍", async () => {
+    // 동일 objectStore 를 create 핸들러와 serve 라우트가 공유해야 id-keying 이 일치한다.
+    const da = makeDa();
+    const objectStore = createInMemoryObjectStore();
+    const s3Store = createS3ArtifactStore(objectStore);
+
+    const tool = createArtifactCreateTool({ da, s3Store });
+    const logger: ToolContext["logger"] = {
+      debug() {},
+      info() {},
+      warn() {},
+      error() {},
+      fatal() {},
+      child() {
+        return logger;
+      },
+    };
+    const bigText = "대용량 ".repeat(INLINE_STORAGE_THRESHOLD_BYTES);
+    const expectedBytes = Buffer.from(bigText, "utf-8").byteLength;
+    const created = await tool.invoke({
+      toolCallId: "c1",
+      args: { filename: "big.md", type: "markdown", content: bigText },
+      ctx: {
+        requestId: "r1",
+        userId,
+        orgId: "org-1",
+        sessionId: null,
+        signal: new AbortController().signal,
+        logger,
+        hitl: {
+          async askApproval() {
+            return { kind: "approved" };
+          },
+        },
+        budget: {
+          async claim() {},
+          async settle() {},
+          async refund() {},
+          remaining: Infinity,
+        },
+      },
+    });
+    if (created.content.kind !== "json") throw new Error("json 기대");
+    const artifactId = (
+      created.content.data as { artifact: { artifactId: string } }
+    ).artifact.artifactId;
+
+    const routes = createArtifactRoutes({
+      da,
+      inlineStore: createInlineArtifactStore(da.artifacts),
+      s3Store,
+      downloadSecret: DOWNLOAD_SECRET,
+    });
+    const app = new Hono<{ Variables: AuthedVariables }>();
+    app.use("*", async (c, next) => {
+      c.set("auth", {
+        sub: userId,
+        org: randomUUID(),
+        role: "member",
+        scope: "access",
+        jti: "x",
+      });
+      await next();
+    });
+    app.route("/", routes);
+
+    const metaRes = await app.request(`/${artifactId}`);
+    expect(metaRes.status).toBe(200);
+    const meta = (await metaRes.json()) as {
+      data: { downloadUrl: string; storageKind: string; sizeBytes: number };
+    };
+    expect(meta.data.storageKind).toBe("s3");
+    expect(meta.data.sizeBytes).toBe(expectedBytes);
+
+    const contentRes = await app.request(meta.data.downloadUrl);
+    expect(contentRes.status).toBe(200);
+    const streamed = Buffer.from(await contentRes.arrayBuffer());
+    expect(streamed.byteLength).toBe(expectedBytes);
+    expect(streamed.toString("utf-8")).toBe(bigText);
   });
 });

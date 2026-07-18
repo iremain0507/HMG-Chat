@@ -8,9 +8,11 @@ import type {
   AgentTool,
   AgentToolSpec,
   ArtifactRecord,
+  ArtifactStore,
 } from "@wchat/interfaces";
 import {
   createArtifactService,
+  decideStorageKind,
   type ArtifactDataAccess,
 } from "../../db/artifact-service.js";
 
@@ -27,6 +29,9 @@ const VALID_TYPES = new Set<ArtifactRecord["type"]>([
 
 export interface ArtifactCreateToolDeps {
   da: ArtifactDataAccess;
+  // 큰 아티팩트(>=256KB)를 S3(로컬은 ObjectStore 위임)로 업로드하는 스토어.
+  // 미주입 시 큰 콘텐츠는 INVALID_INPUT 으로 거절(inline 임계 초과라 저장 불가).
+  s3Store?: ArtifactStore;
 }
 
 export const artifactCreateToolSpec: AgentToolSpec = {
@@ -81,15 +86,51 @@ export function createArtifactCreateTool(
       }
 
       const data = Buffer.from(content, "utf-8");
-      const record = await service.createArtifact(
-        { userId: ctx.userId },
-        {
+      const sizeBytes = data.byteLength;
+      const actor = { userId: ctx.userId };
+
+      let record: ArtifactRecord;
+      if (decideStorageKind(sizeBytes) === "s3") {
+        if (!deps.s3Store) {
+          return {
+            toolCallId,
+            content: {
+              kind: "error",
+              error: new WChatError(
+                "INVALID_INPUT",
+                "tool",
+                false,
+                "콘텐츠가 인라인 저장 한도를 초과했으나 S3 스토어가 구성되지 않았습니다.",
+              ),
+            },
+          };
+        }
+        // S3 오브젝트 키는 `artifacts/${id}` 이며 조회(routes/artifacts.ts)는
+        // row id 로 키를 재계산한다. 따라서 DB 가 생성한 id 를 얻은 뒤 그 id 로 업로드해야
+        // 조회 키가 일치한다(chicken-egg 해소). 우선 임시 s3Key 로 row 생성 →
+        // record.id 로 put → 실제 locator 로 s3Key 갱신.
+        record = await service.createArtifact(actor, {
           sessionId: ctx.sessionId,
           type: type as ArtifactRecord["type"],
           filename,
           data,
-        },
-      );
+          s3Key: "artifacts/pending",
+        });
+        const { locator } = await deps.s3Store.put({
+          artifactId: record.id,
+          content: data,
+          sizeBytes,
+          mimeType: record.mimeType ?? "application/octet-stream",
+        });
+        record = await deps.da.artifacts.update(record.id, { s3Key: locator });
+      } else {
+        record = await service.createArtifact(actor, {
+          sessionId: ctx.sessionId,
+          type: type as ArtifactRecord["type"],
+          filename,
+          data,
+        });
+      }
 
       return {
         toolCallId,

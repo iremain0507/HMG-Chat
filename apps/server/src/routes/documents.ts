@@ -70,6 +70,10 @@ export function createDocumentRoutes(
       ? {
           parserPipeline: deps.parserPipeline,
           embeddingProvider: deps.embeddingProvider,
+          // P22-T3-04 — index 시점 org-scoped 청크 설정 resolver 를 실제로 흘려보낸다.
+          // (미주입/조회 실패 시 document-service 가 DEFAULT 800/100 으로 fail-soft.)
+          // exactOptionalPropertyTypes: settings 는 정의됐을 때만 포함(명시적 undefined 금지).
+          ...(deps.settings ? { settings: deps.settings } : {}),
         }
       : undefined,
   );

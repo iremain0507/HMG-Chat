@@ -17,6 +17,7 @@ import {
   type WebSearchSettingsResolverPort,
 } from "./handlers/web-search-handler.js";
 import { createArtifactCreateTool } from "./handlers/artifact-create-handler.js";
+import { createS3ArtifactStore } from "../lib/artifact-store.s3.js";
 import { createCodeInterpreterTool } from "./handlers/code-interpreter-handler.js";
 import {
   createDeepResearchTool,
@@ -137,7 +138,11 @@ export function assembleBuiltinTools(
   });
 
   return [
-    createArtifactCreateTool({ da: deps.artifactDa }),
+    createArtifactCreateTool({
+      da: deps.artifactDa,
+      // 큰 아티팩트(>=256KB)는 S3(로컬은 objectStore 위임)로 라우팅(P22-T4-01).
+      s3Store: createS3ArtifactStore(deps.objectStore),
+    }),
     webSearchTool,
     createCodeInterpreterTool({
       transport: sandboxTransport,
