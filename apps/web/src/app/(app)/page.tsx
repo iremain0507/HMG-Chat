@@ -10,13 +10,10 @@ import { useCurrentUser } from "../../hooks/useCurrentUser";
 import { useSessions } from "../../hooks/useSessions";
 import { useMcpServers } from "../../hooks/useMcpServers";
 import { useSkills } from "../../hooks/useSkills";
+import { useAgents } from "../../hooks/useAgents";
 import { randomUUID } from "../../lib/uuid";
 import { HomeContent } from "../../components/home/HomeContent";
 import { draftKey } from "../../components/chat/ChatInput";
-
-// 내장 에이전틱 도구(tools/assemble-builtin-tools.ts) 개수 — artifact_create/web_search/
-// code_interpreter/deep_research. 전용 "에이전트" API 가 아직 없어 정적 상수로 반영.
-const BUILTIN_AGENT_COUNT = 4;
 
 export default function Home() {
   const router = useRouter();
@@ -24,6 +21,10 @@ export default function Home() {
   const { sessions } = useSessions();
   const { servers } = useMcpServers();
   const { skills } = useSkills();
+  // P22-T6-10 — Agent registry(/api/v1/agents) 도입으로 정적 BUILTIN_AGENT_COUNT 를
+  // 제거하고 조직에 실제 등록된 워크스페이스 에이전트 수를 표시한다. 조회 중에는
+  // 0(=아직 확인된 것 없음)을 보여주고, 로드 완료 시 실제 길이로 대체된다.
+  const { agents } = useAgents();
 
   useEffect(() => {
     if (!loading && !user) router.replace("/login");
@@ -90,7 +91,7 @@ export default function Home() {
         onOpenSession={openSession}
         connectorsCount={servers.length}
         skillsCount={skills.length}
-        agentsCount={BUILTIN_AGENT_COUNT}
+        agentsCount={agents.length}
         recentSessions={sessions}
         now={Date.now()}
       />

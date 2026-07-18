@@ -2741,8 +2741,8 @@
     "acceptance": "RED 우선. GIVEN an authenticated org user, WHEN they POST /api/v1/agents with {name, systemPrompt, baseModel, toolIds}, THEN a 201 with the Agent record is returned and GET /api/v1/agents lists it scoped to their org only (a… / GIVEN the new Agent interface, WHEN typecheck runs, THEN the Agent record type resolves from packages/interfaces (added via isolated Phase 0.5 contract PR, not invented ad-hoc in a feature task). / GIVEN a browser at /settings/agents (or the 'agents' nav item), WHEN the user opens the agent gallery and clicks create, fills the editor (base model + system prompt + tools + knowledge + access control) and saves, THEN… / GIVEN agents exist, WHEN the home page loads, THEN the agents count reflects the real GET /agents length (not the hardcoded BUILTIN_AGENT_COUNT=4). / ★실브라우저 UAT: 스택 기동 후 Claude-in-Chrome 로 실제 화면에서 동작 확인(불가 시 Playwright /preview + 정직히 미실행 명시). / .ralph/CONTRACT_APPROVED 없으면 격리(구현 금지).",
     "phase": "P22",
     "team": "T6",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P22-T6-11",

@@ -356,6 +356,23 @@ export interface McpServerRecord {
   status: "active"|"degraded"|"suspended";
 }
 
+// Agent — 커스텀 워크스페이스 에이전트(P22-T6-10, 계약 승인 C5). 도구 호출 계약 AgentTool* 과 별개.
+export interface Agent {
+  id: string;
+  orgId: string;
+  name: string;
+  description: string | null;
+  baseModel: string;
+  systemPrompt: string | null;
+  toolIds: string[];
+  skillIds: string[];
+  projectIds: string[];
+  visibility: "private"|"org";
+  createdBy: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
 export interface SkillAssetRecord {
   skillId: string;
   filename: string;
@@ -450,6 +467,7 @@ export interface UserMemoryRepo extends Repo<UserMemory, { userId?: string; cate
 export interface McpServerRepo extends Repo<McpServerRecord, { orgId?: string; projectId?: string | null; userId?: string | null }> {
   updateDiscovery(id: string, supportedTools: McpServerRecord["supportedTools"]): Promise<void>;
 }
+export type AgentRepo = Repo<Agent, { orgId?: string; createdBy?: string; visibility?: Agent["visibility"] }>;
 // SkillAsset 는 composite PK (skillId, filename). byId/delete(id) 사용 불가.
 export interface SkillAssetRepo {
   insert(data: SkillAssetRecord): Promise<SkillAssetRecord>;
@@ -803,6 +821,7 @@ export interface DataAccess {
   uploads: UploadRepo;
   userMemories: UserMemoryRepo;
   mcpServers: McpServerRepo;
+  agents: AgentRepo;
   skillAssets: SkillAssetRepo;
   userQuotas: UserQuotaRepo;
   usageLogs: UsageLogRepo;

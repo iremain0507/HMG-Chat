@@ -51,6 +51,19 @@ vi.mock("../../../hooks/useSkills", () => ({
   useSkills: () => ({ skills: mockSkills, loading: false, error: null }),
 }));
 
+let mockAgents: unknown[] = [];
+let mockAgentsLoading = false;
+vi.mock("../../../hooks/useAgents", () => ({
+  useAgents: () => ({
+    agents: mockAgents,
+    loading: mockAgentsLoading,
+    error: null,
+    create: vi.fn(),
+    update: vi.fn(),
+    remove: vi.fn(),
+  }),
+}));
+
 const authedUser = {
   id: "u1",
   email: "me@wchat.dev",
@@ -68,6 +81,8 @@ describe("Home 랜딩", () => {
     mockSessions = [];
     mockServers = [];
     mockSkills = [];
+    mockAgents = [];
+    mockAgentsLoading = false;
   });
 
   it("로딩 중이면 안내 문구", () => {
@@ -103,6 +118,21 @@ describe("Home 랜딩", () => {
     render(<Home />);
     expect(screen.getByTestId("capability-connectors")).toHaveTextContent("2");
     expect(screen.getByTestId("capability-skills")).toHaveTextContent("1");
+  });
+
+  it("능력 스트립의 에이전트 개수는 useAgents 로 실제 조회한 길이를 반영한다(P22-T6-10)", () => {
+    mockAgents = [{ id: "a1" }, { id: "a2" }, { id: "a3" }];
+    state.mockReturnValue({ user: authedUser, loading: false });
+    render(<Home />);
+    expect(screen.getByTestId("capability-agents")).toHaveTextContent("3");
+  });
+
+  it("에이전트 목록 로딩 중에는 0 을 표시한다(하드코딩 상수 미사용)", () => {
+    mockAgents = [];
+    mockAgentsLoading = true;
+    state.mockReturnValue({ user: authedUser, loading: false });
+    render(<Home />);
+    expect(screen.getByTestId("capability-agents")).toHaveTextContent("0");
   });
 
   it("빠른 시작 카드를 클릭하면 draft 를 sessionStorage 에 저장하고 새 세션으로 이동한다", () => {

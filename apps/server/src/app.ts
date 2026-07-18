@@ -40,6 +40,8 @@ import { createMcpServerRoutes } from "./routes/mcp-servers.js";
 import { createPgMcpServerDataAccess } from "./db/mcp-server-data-access.js";
 import { createOpenApiToolServerRoutes } from "./routes/openapi-tool-servers.js";
 import { createPgOpenApiToolServerDataAccess } from "./db/openapi-tool-server-data-access.js";
+import { createAgentRoutes } from "./routes/agents.js";
+import { createPgAgentDataAccess } from "./db/agent-data-access.js";
 import { assembleOrgOpenApiTools } from "./tools/openapi-tool-assembler.js";
 import { createOpenApiToolInvoker } from "./tools/openapi-tool-invoker.js";
 import { createMcpClientPool } from "./mcp/mcp-client-pool.js";
@@ -219,6 +221,8 @@ export function createApp(env: Env) {
   const mcpServerDa = createPgMcpServerDataAccess();
   // P22-T1-12 — 등록 라우트(아래 openApiToolServersApp)와 채팅 턴 조립이 같은 DA 싱글톤을 공유.
   const openApiToolServerDa = createPgOpenApiToolServerDataAccess();
+  // P22-T6-10 — 커스텀 워크스페이스 에이전트 레지스트리(0034_agents).
+  const agentDa = createPgAgentDataAccess();
   const mcpClientPool = createMcpClientPool({
     da: mcpServerDa,
     nodeEnv: env.NODE_ENV,
@@ -516,6 +520,13 @@ export function createApp(env: Env) {
     }),
   );
   app.route("/api/v1/openapi-tool-servers", openApiToolServersApp);
+
+  // P22-T6-10 — 에이전트 레지스트리(Open WebUI Workspace>Models 파리티).
+  // org 경계 + visibility(private=작성자만) 강제는 라우트가 수행(RLS superuser 우회 대비).
+  const agentsApp = new Hono<{ Variables: AuthedVariables }>();
+  agentsApp.use("*", authMiddleware);
+  agentsApp.route("/", createAgentRoutes({ da: agentDa }));
+  app.route("/api/v1/agents", agentsApp);
 
   // repo root/skills — skills/ 는 어떤 패키지도 import 불가(05-REPO-STRUCTURE.md), server 만
   // fs 로 직접 읽는다(skills-engine.ts 와 동일 경로 규칙).

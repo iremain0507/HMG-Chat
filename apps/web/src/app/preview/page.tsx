@@ -33,6 +33,7 @@ import { HomeContent } from "../../components/home/HomeContent";
 import { ProjectDetail } from "../../components/projects/ProjectDetail";
 import { McpServersManager } from "../../components/settings/McpServersManager";
 import { SkillsManager } from "../../components/settings/SkillsManager";
+import { AgentGallery } from "../../components/agents/AgentGallery";
 import { MemoryManager } from "../../components/settings/MemoryManager";
 import { QuotaPanel } from "../../components/settings/QuotaPanel";
 import { AdminDashboard } from "../../components/admin/AdminDashboard";
@@ -205,6 +206,25 @@ function SkillsManagerPreview() {
       className="rounded-md border border-border px-3 py-1.5 text-sm text-fg-muted hover:border-primary hover:text-fg"
     >
       스킬 관리 열기
+    </button>
+  );
+}
+
+// P22-T6-10 — AgentGallery 도 useAgents 로 마운트 시 /api/v1/agents 를 fetch 한다.
+//   위 두 프리뷰와 동일한 토글 격리 패턴. 전용 e2e(agent-gallery.pw.ts)만 page.route()
+//   로 API 를 목킹한 뒤 트리거를 클릭한다.
+function AgentGalleryPreview() {
+  const [open, setOpen] = useState(false);
+  return open ? (
+    <AgentGallery />
+  ) : (
+    <button
+      type="button"
+      data-testid="agent-gallery-preview-trigger"
+      onClick={() => setOpen(true)}
+      className="rounded-md border border-border px-3 py-1.5 text-sm text-fg-muted hover:border-primary hover:text-fg"
+    >
+      에이전트 갤러리 열기
     </button>
   );
 }
@@ -1337,6 +1357,10 @@ export default function PreviewGallery() {
 
       <Section name="skills-manager">
         <SkillsManagerPreview />
+      </Section>
+
+      <Section name="agent-gallery">
+        <AgentGalleryPreview />
       </Section>
 
       <Section name="memory-manager">

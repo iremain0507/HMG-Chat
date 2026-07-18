@@ -7,6 +7,7 @@
 // generic 자체는 types.ts 단일 출처 → 본 파일은 types.ts 만 import.
 
 import type {
+  AgentRepo,
   AlertEventRepo,
   ArtifactRepo,
   ArtifactRevisionRepo,
@@ -55,6 +56,7 @@ export interface DataAccess {
   uploads: UploadRepo;
   userMemories: UserMemoryRepo;
   mcpServers: McpServerRepo;
+  agents: AgentRepo; // C5 · P22-T6-10 커스텀 워크스페이스 에이전트
   skillAssets: SkillAssetRepo;
   userQuotas: UserQuotaRepo;
   usageLogs: UsageLogRepo;

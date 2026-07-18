@@ -67,13 +67,15 @@ describe("NavRail", () => {
     );
   });
 
-  it("에이전트 항목은 404 라우트(/agents) 대신 기존 표면(/settings/skills)을 가리킨다(갭5)", () => {
+  // 갭5 당시엔 전용 에이전트 표면이 없어 /settings/skills 로 임시 대체했으나,
+  // P22-T6-10 에서 Agent registry 화면(/settings/agents)이 생겨 본래 목적지로 되돌린다.
+  it("에이전트 항목은 에이전트 갤러리(/settings/agents)를 가리킨다(P22-T6-10)", () => {
     stubCurrentUser("member");
     render(<NavRail />);
 
     expect(screen.getByTestId("nav-rail-agents")).toHaveAttribute(
       "href",
-      "/settings/skills",
+      "/settings/agents",
     );
   });
 

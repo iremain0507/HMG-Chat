@@ -277,6 +277,25 @@ export interface McpServerRecord {
   status: "active" | "degraded" | "suspended";
 }
 
+// Agent — 커스텀 워크스페이스 에이전트(프리셋: 기본 모델 + 시스템 프롬프트 + 도구/스킬/지식 스코프).
+// 계약 승인: .ralph/CONTRACT_APPROVED C5 (docs/rfc/P22-contract-batch.md § C5, P22-T6-10).
+// 도구 호출 계약인 AgentTool*(AgentTool.ts) 과는 별개 개념 — 이쪽은 영속 레코드다.
+export interface Agent {
+  id: string;
+  orgId: string;
+  name: string;
+  description: string | null;
+  baseModel: string; // organizations.allowedModels 중 하나
+  systemPrompt: string | null;
+  toolIds: string[]; // AgentToolSpec.name 참조
+  skillIds: string[]; // SkillSpec.id 참조
+  projectIds: string[]; // 지식 스코프
+  visibility: "private" | "org";
+  createdBy: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
 export interface SkillAssetRecord {
   skillId: string;
   filename: string;
@@ -555,6 +574,11 @@ export interface McpServerRepo extends Repo<
     supportedTools: McpServerRecord["supportedTools"],
   ): Promise<void>;
 }
+
+export type AgentRepo = Repo<
+  Agent,
+  { orgId?: string; createdBy?: string; visibility?: Agent["visibility"] }
+>;
 
 // SkillAsset 는 composite PK (skillId, filename). byId/delete(id) 사용 불가.
 export interface SkillAssetRepo {

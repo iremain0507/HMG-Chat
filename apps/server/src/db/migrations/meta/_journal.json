@@ -232,6 +232,13 @@
       "when": 1783977800000,
       "tag": "0033_org_retention_days",
       "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1783981000000,
+      "tag": "0034_agents",
+      "breakpoints": true
     }
   ]
 }
