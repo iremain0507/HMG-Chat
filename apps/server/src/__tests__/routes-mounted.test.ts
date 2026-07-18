@@ -93,6 +93,32 @@ const EXPECTED_ROUTES: Array<{ method: string; path: string; phase: string }> =
       path: `/api/v1/documents/${randomUUID()}/retry`,
       phase: "P17",
     },
+    // P22-T3-02 — 계약(§666-710) nested 경로. flat 은 back-compat 로 유지.
+    {
+      method: "GET",
+      path: `/api/v1/projects/${pid}/documents`,
+      phase: "P22",
+    },
+    {
+      method: "POST",
+      path: `/api/v1/projects/${pid}/documents`,
+      phase: "P22",
+    },
+    {
+      method: "GET",
+      path: `/api/v1/projects/${pid}/documents/${randomUUID()}`,
+      phase: "P22",
+    },
+    {
+      method: "POST",
+      path: `/api/v1/projects/${pid}/documents/${randomUUID()}/retry`,
+      phase: "P22",
+    },
+    {
+      method: "DELETE",
+      path: `/api/v1/projects/${pid}/documents/${randomUUID()}`,
+      phase: "P22",
+    },
     { method: "GET", path: `/api/v1/artifacts/${randomUUID()}`, phase: "P5" },
     {
       method: "POST",

@@ -54,7 +54,14 @@ export function createDocumentRoutes(
     // 인덱싱 완료 시 소유 사용자에게 document_indexed push (P22-T2-02). 미주입 시 no-op.
     notify?: (userId: string, event: NotificationEvent) => void;
   } & Partial<DocumentIndexingDeps>,
+  // P22-T3-02 — nested=true 면 계약(§666-710) 형태로 마운트: projectId 를 부모 마운트
+  // 경로파라미터(:id)에서 읽고, 문서 id 파라미터를 :docId 로 써서 :id 충돌을 피한다.
+  // 기본(flat)은 기존 /api/v1/documents?projectId= 형태(back-compat) 그대로.
+  opts?: { nested?: boolean },
 ): Hono<{ Variables: AuthedVariables }> {
+  const nested = opts?.nested ?? false;
+  // nested 마운트에선 문서 id 세그먼트를 :docId 로 (projectId 의 :id 와 충돌 방지).
+  const docParam = nested ? "docId" : "id";
   const app = new Hono<{ Variables: AuthedVariables }>();
   const service = createDocumentService(
     deps.da,
@@ -102,7 +109,8 @@ export function createDocumentRoutes(
   }
 
   app.get("/", async (c) => {
-    const projectId = c.req.query("projectId");
+    // nested: projectId 는 경로(:id)에서, flat: ?projectId 쿼리에서.
+    const projectId = nested ? c.req.param("id") : c.req.query("projectId");
     if (!projectId) {
       return c.json(
         errorJson("INVALID_INPUT", "projectId 가 필요합니다."),
@@ -141,8 +149,12 @@ export function createDocumentRoutes(
   app.post("/", async (c) => {
     const form = await c.req.parseBody().catch(() => null);
     const file = form?.file;
-    const projectId =
-      typeof form?.projectId === "string" ? form.projectId : null;
+    // nested: projectId 는 경로(:id)에서, flat: multipart body 에서.
+    const projectId = nested
+      ? (c.req.param("id") ?? null)
+      : typeof form?.projectId === "string"
+        ? form.projectId
+        : null;
     if (!file || !(file instanceof File) || !projectId) {
       return c.json(
         errorJson("INVALID_INPUT", "file, projectId 가 필요합니다."),
@@ -171,9 +183,12 @@ export function createDocumentRoutes(
     }
   });
 
-  app.get("/:id", async (c) => {
+  app.get(`/:${docParam}`, async (c) => {
     const actor = actorOf(c);
-    const found = await service.getDocumentForActor(actor, c.req.param("id"));
+    const found = await service.getDocumentForActor(
+      actor,
+      c.req.param(docParam),
+    );
     if (!found) {
       return c.json(errorJson("NOT_FOUND", "문서를 찾을 수 없습니다."), 404);
     }
@@ -192,10 +207,10 @@ export function createDocumentRoutes(
     return c.json({ data: toDto(found), meta: { requestId: randomUUID() } });
   });
 
-  app.post("/:id/retry", async (c) => {
+  app.post(`/:${docParam}/retry`, async (c) => {
     try {
       const actor = actorOf(c);
-      const doc = await service.retryDocument(actor, c.req.param("id"));
+      const doc = await service.retryDocument(actor, c.req.param(docParam));
       notifyDocumentIndexed(actor.userId, doc);
       return c.json({ data: toDto(doc), meta: { requestId: randomUUID() } });
     } catch (err) {
@@ -204,9 +219,9 @@ export function createDocumentRoutes(
     }
   });
 
-  app.delete("/:id", async (c) => {
+  app.delete(`/:${docParam}`, async (c) => {
     try {
-      await service.deleteDocument(actorOf(c), c.req.param("id"));
+      await service.deleteDocument(actorOf(c), c.req.param(docParam));
       return c.body(null, 204);
     } catch (err) {
       const { body, status } = handleServiceError(err);

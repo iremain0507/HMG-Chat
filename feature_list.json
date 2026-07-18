@@ -2516,8 +2516,8 @@
     "acceptance": "RED 우선. GIVEN an authed member of a project WHEN they POST multipart to /api/v1/projects/:id/documents THEN the document is created and returned (contract nested path resolves, not 404) / GIVEN an indexed document WHEN GET /api/v1/projects/:id/documents/:docId is called THEN it returns that document's DTO scoped to the path projectId / GIVEN the routes-mounted guard test WHEN the suite runs THEN EXPECTED_ROUTES asserts the nested /projects/:id/documents* paths resolve (non-404) and the flat-path assertions are updated or retained as back-compat / GIVEN a cross-org or non-member actor WHEN they hit any nested /projects/:id/documents* endpoint THEN existence-leak protection still maps FORBIDDEN/NOT_FOUND to 404 (behavior preserved from db/document-service.ts)",
     "phase": "P22",
     "team": "T3",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P22-T3-03",

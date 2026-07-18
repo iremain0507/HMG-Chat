@@ -218,6 +218,84 @@ describe("app.ts /api/v1/documents mount — P4-T3-07", () => {
     expect(chunks.rows[0]?.count).toBe(body.data.chunkCount);
   });
 
+  // P22-T3-02 — 계약(16-API §666-710) nested 경로 /projects/:id/documents* 실HTTP 검증.
+  // flat /api/v1/documents 는 back-compat 로 유지되므로 위 테스트가 회귀가드 역할을 겸한다.
+  describe("nested /api/v1/projects/:id/documents (P22-T3-02, 계약 §666-710)", () => {
+    it("GET /projects/:id/documents → 200 목록 (path projectId 로 스코프)", async () => {
+      const docId = await insertDocument("nested-a.pdf", "hash-nested-a");
+      const res = await app.request(`/api/v1/projects/${projectId}/documents`, {
+        headers: { Cookie: cookieFor(userA, orgA) },
+      });
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as { data: Array<{ id: string }> };
+      expect(body.data.some((d) => d.id === docId)).toBe(true);
+    });
+
+    it("GET /projects/:id/documents/:docId → 200 단건 (path projectId 스코프)", async () => {
+      const docId = await insertDocument("nested-b.pdf", "hash-nested-b");
+      const res = await app.request(
+        `/api/v1/projects/${projectId}/documents/${docId}`,
+        { headers: { Cookie: cookieFor(userA, orgA) } },
+      );
+      expect(res.status).toBe(200);
+      const got = (await res.json()) as {
+        data: { id: string; filename: string; projectId: string };
+      };
+      expect(got.data.id).toBe(docId);
+      expect(got.data.filename).toBe("nested-b.pdf");
+      expect(got.data.projectId).toBe(projectId);
+    });
+
+    it("POST /projects/:id/documents (multipart, projectId 는 경로에서) → 201 + chunks", async () => {
+      const bytes = readFileSync(docxFixturePath);
+      const form = new FormData();
+      // 계약 nested 형태 — body 에 projectId 를 싣지 않는다(경로파라미터 사용).
+      form.set(
+        "file",
+        new File([bytes], "nested-upload.docx", {
+          type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        }),
+      );
+      const res = await app.request(`/api/v1/projects/${projectId}/documents`, {
+        method: "POST",
+        headers: { Cookie: cookieFor(userA, orgA) },
+        body: form,
+      });
+      expect(res.status).toBe(201);
+      const body = (await res.json()) as {
+        data: { id: string; projectId: string; indexStatus: string };
+      };
+      expect(body.data.projectId).toBe(projectId);
+      expect(body.data.indexStatus).toBe("indexed");
+    });
+
+    it("DELETE /projects/:id/documents/:docId → 204", async () => {
+      const docId = await insertDocument("nested-del.pdf", "hash-nested-del");
+      const res = await app.request(
+        `/api/v1/projects/${projectId}/documents/${docId}`,
+        { method: "DELETE", headers: { Cookie: cookieFor(userA, orgA) } },
+      );
+      expect(res.status).toBe(204);
+    });
+
+    it("다른 org 사용자는 nested 경로에서도 404 (existence-leak 방지)", async () => {
+      const docId = await insertDocument(
+        "nested-secret.pdf",
+        "hash-nested-secret",
+      );
+      const res = await app.request(
+        `/api/v1/projects/${projectId}/documents/${docId}`,
+        { headers: { Cookie: cookieFor(userB, orgB) } },
+      );
+      expect(res.status).toBe(404);
+    });
+
+    it("미인증 요청은 nested 경로에서도 401", async () => {
+      const res = await app.request(`/api/v1/projects/${projectId}/documents`);
+      expect(res.status).toBe(401);
+    });
+  });
+
   describe("POST /api/v1/documents/:id/retry (P17-T1-06 / TS-15)", () => {
     const objectStore = createLocalObjectStore();
 

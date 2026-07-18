@@ -401,6 +401,27 @@ export function createApp(env: Env) {
   );
   app.route("/api/v1/documents", documentsApp);
 
+  // P22-T3-02 — 계약(16-API §666-710) nested 경로 /projects/:id/documents* 로도 서빙.
+  // projectId 를 경로파라미터(:id)에서 읽는다(문서 id 는 :docId). flat /api/v1/documents 는
+  // web 클라이언트(useDocuments) back-compat 를 위해 유지(둘 다 마운트).
+  const nestedDocumentsApp = new Hono<{ Variables: AuthedVariables }>();
+  nestedDocumentsApp.use("*", authMiddleware);
+  nestedDocumentsApp.route(
+    "/",
+    createDocumentRoutes(
+      {
+        da: createPgDocumentDataAccess(),
+        objectStore: createLocalObjectStore(),
+        parserPipeline: createParserPipeline(),
+        embeddingProvider: withUsageTracking(createDevStubEmbeddingProvider()),
+        grants: resourceGrantsDa,
+        notify: publishNotification,
+      },
+      { nested: true },
+    ),
+  );
+  app.route("/api/v1/projects/:id/documents", nestedDocumentsApp);
+
   // P22-T2-02 — GET /notifications SSE 사용자 단위 push 채널(계약 § 906).
   const notificationsApp = new Hono<{ Variables: AuthedVariables }>();
   notificationsApp.use("*", authMiddleware);
