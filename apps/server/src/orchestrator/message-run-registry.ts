@@ -109,9 +109,10 @@ export interface MessageRunRegistry {
   ): Promise<ResumeSubscription>;
   // 세션의 진행 중(비종결) messageId — 새로고침 후 loadHistory 가 resume 대상을 발견하는 데 쓴다.
   getActiveMessageId(sessionId: string): Promise<string | undefined>;
-  // 턴 전체가 끝났을 때(POST finally) 그 세션의 모든 run 을 terminal 로 닫는다 — resume 중이던
-  // 클라의 열린 스트림을 종료시켜 최종답변 복구 경로로 넘긴다.
-  endSessionRuns(sessionId: string): Promise<void>;
+  // 턴이 끝났을 때(POST finally) 그 턴이 만든 messageId 들만 terminal 로 닫는다 — resume 중이던
+  // 클라의 열린 스트림을 종료시켜 최종답변 복구 경로로 넘긴다. sessionId 맵은 그 messageId 를
+  // 아직 가리킬 때만 지운다(뒤이어 시작된 다른 턴의 run 을 오지우지 않도록 messageId 로 스코프).
+  finishMessageRuns(messageIds: string[], sessionId: string): Promise<void>;
   close(): Promise<void>;
 }
 
@@ -315,16 +316,39 @@ export function createMessageRunRegistry(bus: RuntimeBus): MessageRunRegistry {
       return shared ?? undefined;
     },
 
-    async endSessionRuns(sessionId) {
-      // 이 인스턴스가 소유한 세션의 모든 leg 를 terminal 로 닫는다(비종결 leg 포함).
-      for (const [messageId, run] of runs) {
-        if (run.sessionId !== sessionId) continue;
-        if (!run.terminalReason) run.terminalReason = "end_turn";
-        run.subscriber?.close();
-        await patchShared(messageId, { terminalReason: run.terminalReason });
+    async finishMessageRuns(messageIds, sessionId) {
+      // 이 턴이 만든 messageId 들만 terminal 로 닫는다(뒤이어 시작된 다른 턴의 run 은 건드리지 않음).
+      for (const messageId of messageIds) {
+        const run = runs.get(messageId);
+        if (run && !run.terminalReason) run.terminalReason = "end_turn";
+        // 열린 resume 구독자에게 합성 terminal stop 을 흘린 뒤 닫는다 — leg 분할(deep_research
+        // 도구 leg vs 최종답변 leg)로 최종답변이 다른 leg 에 있어도, 이 leg 에 붙은 클라가 스핀을
+        // 멈추고 recoverFinalMessage(영속된 최종답변 복구)로 넘어가게 한다.
+        run?.subscriber?.push({
+          type: "stop",
+          reason: "end_turn",
+          usage: { inputTokens: 0, outputTokens: 0 },
+        });
+        run?.subscriber?.close();
+        // 원격(다른 인스턴스) 구독자에게도 동일하게 전달.
+        await bus.publish(
+          eventChannel(messageId),
+          JSON.stringify({
+            type: "stop",
+            reason: "end_turn",
+            usage: { inputTokens: 0, outputTokens: 0 },
+          }),
+        );
+        await patchShared(messageId, { terminalReason: "end_turn" });
       }
-      sessionToMessage.delete(sessionId);
-      await bus.del(sessionKey(sessionId));
+      // 세션 맵/공유 key 는 아직 이 턴의 messageId 를 가리킬 때만 지운다(신규 턴 run 보존).
+      if (messageIds.includes(sessionToMessage.get(sessionId) ?? "")) {
+        sessionToMessage.delete(sessionId);
+      }
+      const sharedActive = await bus.get(sessionKey(sessionId));
+      if (sharedActive !== null && messageIds.includes(sharedActive)) {
+        await bus.del(sessionKey(sessionId));
+      }
     },
 
     async close() {
@@ -381,6 +405,9 @@ export function getActiveMessageId(
   return defaultRegistry().getActiveMessageId(sessionId);
 }
 
-export function endSessionRuns(sessionId: string): Promise<void> {
-  return defaultRegistry().endSessionRuns(sessionId);
+export function finishMessageRuns(
+  messageIds: string[],
+  sessionId: string,
+): Promise<void> {
+  return defaultRegistry().finishMessageRuns(messageIds, sessionId);
 }

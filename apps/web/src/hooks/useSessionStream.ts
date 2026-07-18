@@ -992,24 +992,37 @@ export function useSessionStream(sessionId: string) {
           };
           const rows = body.data ?? [];
           let finalContent: string | null = null;
+          // 구조화({text,parts})로 저장된 응답이면 최종 도구 카드(done)까지 복원해 resume 세션도
+          // 새로고침과 동일한 완성 상태가 되게 한다(leg 분할로 최종답변이 다른 leg 에 있던 경우).
+          let finalParts: MessagePart[] | undefined;
           for (let i = rows.length - 1; i >= 0; i -= 1) {
             if (rows[i]?.role !== "assistant") continue;
             const raw = rows[i]!.content;
-            // 도구 호출이 있는 응답은 {text,parts} 구조화로 저장된다 — 이 경우 JSON 을 그대로
-            // 노출하지 않고 text 만 뽑아 최종 답변으로 쓴다(도구 파트는 아래에서 보존).
-            finalContent =
-              typeof raw === "string"
-                ? raw
-                : raw == null
-                  ? ""
-                  : typeof (raw as { text?: unknown }).text === "string"
-                    ? ((raw as { text: string }).text ?? "")
-                    : JSON.stringify(raw);
+            if (typeof raw === "string") {
+              finalContent = raw;
+            } else if (
+              raw &&
+              typeof raw === "object" &&
+              Array.isArray((raw as { parts?: unknown }).parts)
+            ) {
+              const structured = raw as { text?: unknown; parts?: unknown };
+              finalContent =
+                typeof structured.text === "string" ? structured.text : "";
+              finalParts = structured.parts as MessagePart[];
+            } else {
+              finalContent = raw == null ? "" : JSON.stringify(raw);
+            }
             break;
           }
-          if (!finalContent) return false;
+          if (finalContent === null) return false;
+          // 텍스트도 파트도 없으면(빈 응답) 보정할 게 없다.
+          if (!finalContent && !finalParts) return false;
           const target = assistantId;
           updateNode(target, (m) => {
+            // 구조화 파트가 있으면 그걸로 완성 상태를 복원한다(도구 카드 status=done 반영).
+            if (finalParts) {
+              return { ...m, content: finalContent!, parts: finalParts };
+            }
             // 클라이언트가 이미 최종본 이상을 들고 있으면(정상 종단) 덮어쓰지 않는다.
             if (m.content.length >= finalContent!.length) return m;
             const toolParts = (m.parts ?? []).filter((p) => p.type !== "text");
@@ -1114,6 +1127,10 @@ export function useSessionStream(sessionId: string) {
             content: "",
           });
           await driveToTerminal();
+          // leg 분할(deep_research: 도구 leg vs 최종답변 leg)로 최종 텍스트가 resume 대상과
+          // 다른 leg 에 있을 수 있다 — 종료 후 영속된 최종답변({text,parts})으로 한 번 더 보정해
+          // 완성 상태(최종 답변 + done 도구 카드)를 맞춘다. recoverFinalMessage 는 멱등하다.
+          await recoverFinalMessage();
         } else {
           const res = await apiFetch(`/api/v1/sessions/${sessionId}/messages`, {
             method: "POST",

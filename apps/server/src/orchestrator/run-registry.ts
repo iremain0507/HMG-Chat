@@ -50,6 +50,16 @@ export function createRunRegistry(bus: RuntimeBus): RunRegistry {
   return {
     async registerRun(sessionId, jobId) {
       await ensureSubscribed();
+      // 같은 세션에 진행 중 run 이 있으면 abort 한다 — send/편집/재생성으로 새 턴이 시작되면
+      // 이전 턴을 대체한다. (클라 연결 끊김에는 messages 라우트가 더는 abort 하지 않으므로, 새 턴
+      // 시작이 이전 턴을 정리하는 유일한 자동 경로 — 그 외엔 명시적 Stop.) 로컬에 없으면 다른
+      // 인스턴스 소유일 수 있어 공유 채널로 abort 를 팬아웃한다.
+      const existing = registry.get(sessionId);
+      if (existing) {
+        existing.controller.abort();
+      } else if ((await bus.get(activeRunKey(sessionId))) !== null) {
+        await bus.publish(ABORT_CHANNEL, sessionId);
+      }
       const handle: ActiveRunHandle = {
         sessionId,
         jobId,

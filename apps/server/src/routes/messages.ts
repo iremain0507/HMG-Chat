@@ -30,7 +30,7 @@ import {
   startMessageRun,
   recordMessageRunEvent,
   subscribeMessageRun,
-  endSessionRuns,
+  finishMessageRuns,
 } from "../orchestrator/message-run-registry.js";
 import type { AuthedVariables } from "../middleware/auth-middleware.js";
 import { hitlBridge } from "../tools/hitl-manager.js";
@@ -591,15 +591,11 @@ export function createMessageRoutes(
 
     const jobId = randomUUID();
     const activeRuns = deps.activeRuns ?? noopActiveRuns;
+    // registerRun 은 이 세션의 이전 run(있으면)을 abort 하고 이 run 을 등록한다 — send/편집/재생성
+    // 으로 새 턴이 시작되면 이전 턴을 대체한다. **클라 연결 끊김(새로고침/탭닫기)에는 턴을 abort 하지
+    // 않는다** — 턴은 서버에서 끝까지 돌고, 재진입한 클라가 resume 스트림으로 이어받는다(실행중 resume).
+    // 명시적 Stop(DELETE /active-run → abortRun) 또는 같은 세션의 새 턴만 진행 중 턴을 취소한다.
     const handle = await registerRun(sessionId, jobId);
-    const requestSignal = c.req.raw.signal;
-    if (requestSignal.aborted) {
-      handle.controller.abort();
-    } else {
-      requestSignal.addEventListener("abort", () => handle.controller.abort(), {
-        once: true,
-      });
-    }
 
     // P22-T6-14 — model 이 확정된 뒤 org 연결을 조회한다. 연결이 이 모델을 제공하면 그
     // 연결(baseURL+키)로, 아니면 기존 env provider 로 — 연결 미등록 org 는 종전과 동일(비파괴).
@@ -623,6 +619,9 @@ export function createMessageRoutes(
       // 재호출로 leg 가 여러 개 생기면 그때마다 message_start 가 새 messageId 를 발급하므로
       // currentMessageId 도 그에 맞춰 갱신된다.
       let currentMessageId: string | undefined;
+      // 이 턴이 발급한 모든 leg messageId — 턴 종료 시 이것들만 registry 에서 닫는다(뒤이어
+      // 시작된 다른 턴의 run 을 오지우지 않도록 sessionId 대신 messageId 로 스코프).
+      const turnMessageIds: string[] = [];
       let assistantText = "";
       let assistantUsage:
         { inputTokens: number; outputTokens: number } | undefined;
@@ -682,6 +681,7 @@ export function createMessageRoutes(
         for await (const event of events) {
           if (event.type === "message_start") {
             currentMessageId = event.messageId;
+            turnMessageIds.push(event.messageId);
             await startMessageRun(event.messageId, sessionId);
             // P17-T1-05(TS-14) — 첨부 ephemeral 청크 검색 결과를 이 turn 의 citation 이벤트로
             // 방출(모델의 tool_use 여부와 무관하게 결정적으로 반영).
@@ -791,11 +791,12 @@ export function createMessageRoutes(
               });
             });
         }
-        // 턴 전체 종료 — 이 세션의 모든 message-run 을 terminal 로 닫는다. 새로고침 중 resume
-        // 하던 클라의 열린 스트림이 종료돼(410 gone) 방금 영속된 최종답변 복구로 이어진다.
-        // (assistant insert 이후에 호출해야 recoverFinalMessage 가 최종 행을 찾는다.)
-        if (currentMessageId) {
-          await endSessionRuns(sessionId).catch(() => {});
+        // 턴 종료 — 이 턴이 발급한 message-run 들만 terminal 로 닫는다. resume 중이던 클라의
+        // 열린 스트림이 종료되고(410 gone), 진행 중이면 라이브 stop 이 이미 전달됐다. 방금 영속한
+        // 최종답변 복구로 이어진다. (assistant insert 이후에 호출해야 recoverFinalMessage 가 찾는다.
+        // messageId 스코프라 뒤이어 시작된 다른 턴의 run 을 오지우지 않는다.)
+        if (turnMessageIds.length > 0) {
+          await finishMessageRuns(turnMessageIds, sessionId).catch(() => {});
         }
         // P19-T2-06 — 첫 턴 완료 후 세션 제목·태그를 LLM 으로 생성(provider 부재/파싱 실패 시
         // deriveSessionTitle 파생 폴백 — L5). 취소된 턴(사용자 Stop)은 건너뛴다.

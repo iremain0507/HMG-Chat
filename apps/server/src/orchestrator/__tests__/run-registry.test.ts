@@ -35,6 +35,21 @@ describe("run-registry — 단일 인스턴스(LOCAL_ONLY) 동작", () => {
     await expect(registry.abortRun("nope")).resolves.toBe(false);
   });
 
+  it("같은 세션에 새 run 을 registerRun 하면 이전 run 이 abort 된다(새 턴이 이전 턴 대체)", async () => {
+    // 클라 연결 끊김에는 더 이상 messages 라우트가 abort 하지 않으므로(실행중 resume), 겹친
+    // 새 턴(편집/재생성) 시작이 이전 턴을 정리하는 자동 경로가 된다.
+    const registry = createRunRegistry(createInMemoryRuntimeBus());
+    const first = await registry.registerRun("session-sup", "job-1");
+    expect(first.controller.signal.aborted).toBe(false);
+
+    const second = await registry.registerRun("session-sup", "job-2");
+    expect(first.controller.signal.aborted).toBe(true);
+    expect(second.controller.signal.aborted).toBe(false);
+    // 새 run 이 활성 — abortRun 은 최신(job-2)을 취소한다.
+    await expect(registry.abortRun("session-sup")).resolves.toBe(true);
+    expect(second.controller.signal.aborted).toBe(true);
+  });
+
   it("unregisterRun 후에는 abort 가 false — jobId 가 다르면 해제하지 않는다", async () => {
     const registry = createRunRegistry(createInMemoryRuntimeBus());
     await registry.registerRun("session-1", "job-1");

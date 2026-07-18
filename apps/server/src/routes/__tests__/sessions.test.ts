@@ -14,7 +14,7 @@ import type { ArtifactDataAccess } from "../../db/artifact-service.js";
 import type { Message } from "@wchat/interfaces";
 import {
   startMessageRun,
-  endSessionRuns,
+  finishMessageRuns,
 } from "../../orchestrator/message-run-registry.js";
 
 // P22-T1-05 — GET /:id 단일 세션 조회 테스트용: byId 만 의미있게 구현하고 나머지 SessionsPort
@@ -323,18 +323,18 @@ describe("routes/sessions — GET /:id/messages resume 발견(activeRun)", () =>
   }
 
   it("진행 중(비종결) run 이 있으면 activeRun.messageId 를 실어 준다(새로고침 resume 발견)", async () => {
-    await endSessionRuns("sess-live"); // 잔여 상태 정리
+    await finishMessageRuns(["msg-live-1"], "sess-live"); // 잔여 상태 정리
     await startMessageRun("msg-live-1", "sess-live");
     const app = historyApp("user-1", "sess-live", "user-1");
     const res = await app.request("/sess-live/messages");
     expect(res.status).toBe(200);
     const json = (await res.json()) as { activeRun?: { messageId: string } };
     expect(json.activeRun).toEqual({ messageId: "msg-live-1" });
-    await endSessionRuns("sess-live");
+    await finishMessageRuns(["msg-live-1"], "sess-live");
   });
 
   it("진행 중 run 이 없으면 activeRun 필드가 없다", async () => {
-    await endSessionRuns("sess-idle");
+    await finishMessageRuns(["msg-idle-x"], "sess-idle");
     const app = historyApp("user-1", "sess-idle", "user-1");
     const res = await app.request("/sess-idle/messages");
     expect(res.status).toBe(200);

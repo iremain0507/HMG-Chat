@@ -5,7 +5,7 @@ import {
   recordMessageRunEvent,
   subscribeMessageRun,
   getActiveMessageId,
-  endSessionRuns,
+  finishMessageRuns,
   createMessageRunRegistry,
 } from "../message-run-registry.js";
 import {
@@ -128,16 +128,31 @@ describe("message-run-registry — 16-API-CONTRACT § GET /sessions/:id/messages
     ]);
   });
 
-  it("getActiveMessageId 는 세션의 진행 중 messageId 를 돌려주고 endSessionRuns 후 사라진다", async () => {
+  it("getActiveMessageId 는 세션의 진행 중 messageId 를 돌려주고 finishMessageRuns 후 사라진다", async () => {
     await startMessageRun("msg-active-1", "session-active");
     expect(await getActiveMessageId("session-active")).toBe("msg-active-1");
 
-    await endSessionRuns("session-active");
+    await finishMessageRuns(["msg-active-1"], "session-active");
     expect(await getActiveMessageId("session-active")).toBeUndefined();
-    // endSessionRuns 는 진행 중 run 을 terminal 로 만들어 재구독 시 gone 이 된다
+    // finishMessageRuns 는 그 messageId 의 run 을 terminal 로 만들어 재구독 시 gone 이 된다
     // (턴 종료 시 resume 중이던 클라가 최종답변 복구 경로로 넘어가게).
     const result = await subscribeMessageRun("msg-active-1", "session-active");
     expect(result.kind).toBe("gone");
+  });
+
+  it("finishMessageRuns 는 messageId 스코프 — 뒤이어 시작된 다른 턴의 run/세션맵을 오지우지 않는다", async () => {
+    // 편집/재생성으로 겹친 두 턴: 이전 턴(old)이 끝나며 finishMessageRuns 를 부를 때 세션맵이
+    // 이미 새 턴(new)을 가리키면, new 를 지우면 안 된다(그러면 새 턴 resume 발견이 깨진다).
+    await startMessageRun("msg-old", "session-overlap");
+    await startMessageRun("msg-new", "session-overlap"); // 세션맵이 msg-new 로 갱신됨
+    expect(await getActiveMessageId("session-overlap")).toBe("msg-new");
+
+    await finishMessageRuns(["msg-old"], "session-overlap"); // 이전 턴만 종료
+    // 세션맵은 여전히 새 턴을 가리켜야 한다.
+    expect(await getActiveMessageId("session-overlap")).toBe("msg-new");
+    expect((await subscribeMessageRun("msg-new", "session-overlap")).kind).toBe(
+      "ok",
+    );
   });
 
   it("구독 이후 push 된 event 는 async iterable 로 전달되고 terminal stop 에서 close 된다", async () => {
