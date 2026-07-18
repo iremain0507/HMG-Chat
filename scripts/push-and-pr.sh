@@ -46,14 +46,17 @@ info "push: $BRANCH → $REMOTE ($AHEAD commits ahead of $BASE)"
 git push -u "$REMOTE" "$BRANCH"
 ok "push 완료"
 
-# 3) PR 생성 또는 갱신
-if gh pr view "$BRANCH" --json url >/dev/null 2>&1; then
-  URL="$(gh pr view "$BRANCH" --json url -q .url)"
-  ok "기존 PR 갱신됨(push 반영): $URL"
-  gh pr view "$BRANCH" --json number,title,state,url \
+# 3) PR 생성 또는 갱신 — OPEN PR 만 "기존"으로 취급(MERGED/CLOSED 는 무시하고 새로 생성)
+OPEN_PR_URL="$(gh pr list --head "$BRANCH" --state open --json url -q '.[0].url' 2>/dev/null || true)"
+if [ -n "$OPEN_PR_URL" ]; then
+  ok "기존 OPEN PR 갱신됨(push 반영): $OPEN_PR_URL"
+  gh pr view "$OPEN_PR_URL" --json number,title,state \
     -q '"  #\(.number) [\(.state)] \(.title)"' || true
   exit 0
 fi
+# 참고: 같은 브랜치의 과거 PR 이 MERGED/CLOSED 면 새 PR 을 만든다.
+PREV="$(gh pr list --head "$BRANCH" --state all --json number,state -q '.[0] | "#\(.number) [\(.state)]"' 2>/dev/null || true)"
+[ -n "$PREV" ] && info "이 브랜치의 과거 PR: $PREV → 새 PR 을 생성합니다."
 
 TITLE="feat(P22): Open WebUI 파리티 — 미개발/미완료 기능 대규모 구현 (48/51)"
 
