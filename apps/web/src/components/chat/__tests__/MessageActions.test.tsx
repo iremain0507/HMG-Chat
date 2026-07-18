@@ -54,6 +54,90 @@ describe("MessageActions", () => {
     ).not.toBeInTheDocument();
   });
 
+  // P22-T6-09 — TTS 낭독(read-aloud). window.speechSynthesis 는 jsdom 에 없으므로 스텁 주입.
+  describe("낭독(TTS)", () => {
+    function stubSynthesis() {
+      const speak = vi.fn((u: { text: string }) => {
+        lastSpoken = u;
+      });
+      const cancel = vi.fn();
+      vi.stubGlobal("speechSynthesis", { speak, cancel, speaking: false });
+      vi.stubGlobal(
+        "SpeechSynthesisUtterance",
+        class {
+          text: string;
+          lang = "";
+          onend: (() => void) | null = null;
+          onerror: (() => void) | null = null;
+          constructor(text: string) {
+            this.text = text;
+          }
+        },
+      );
+      return { speak, cancel };
+    }
+    let lastSpoken: { text: string } | null = null;
+
+    afterEach(() => {
+      lastSpoken = null;
+    });
+
+    it("assistant 메시지의 낭독 버튼 클릭 시 평문으로 speechSynthesis.speak 을 호출하고 aria-pressed=true 가 된다", () => {
+      const { speak } = stubSynthesis();
+      render(<MessageActions role="assistant" content="**안녕** 하세요" />);
+
+      const button = screen.getByRole("button", { name: "낭독" });
+      expect(button).toHaveAttribute("aria-pressed", "false");
+
+      fireEvent.click(button);
+
+      expect(speak).toHaveBeenCalledTimes(1);
+      expect(lastSpoken?.text).toBe("안녕 하세요");
+      expect(button).toHaveAttribute("aria-pressed", "true");
+    });
+
+    it("낭독 중 다시 클릭하면 cancel 되고 idle(aria-pressed=false) 로 돌아온다", () => {
+      const { cancel } = stubSynthesis();
+      render(<MessageActions role="assistant" content="낭독 대상" />);
+
+      const button = screen.getByRole("button", { name: "낭독" });
+      fireEvent.click(button);
+      expect(button).toHaveAttribute("aria-pressed", "true");
+
+      fireEvent.click(button);
+      expect(cancel).toHaveBeenCalled();
+      expect(button).toHaveAttribute("aria-pressed", "false");
+    });
+
+    it("언마운트 시 진행 중 낭독을 cancel 한다", () => {
+      const { cancel } = stubSynthesis();
+      const { unmount } = render(
+        <MessageActions role="assistant" content="언마운트 전" />,
+      );
+
+      fireEvent.click(screen.getByRole("button", { name: "낭독" }));
+      cancel.mockClear();
+      unmount();
+
+      expect(cancel).toHaveBeenCalled();
+    });
+
+    it("user 메시지에는 낭독 버튼이 없다", () => {
+      stubSynthesis();
+      render(<MessageActions role="user" content="hi" />);
+      expect(
+        screen.queryByRole("button", { name: "낭독" }),
+      ).not.toBeInTheDocument();
+    });
+
+    it("speechSynthesis 미지원 런타임에서는 낭독 버튼이 렌더되지 않고 에러도 없다", () => {
+      render(<MessageActions role="assistant" content="hi" />);
+      expect(
+        screen.queryByRole("button", { name: "낭독" }),
+      ).not.toBeInTheDocument();
+    });
+  });
+
   it("👍/👎 클릭 시 상호배타적으로 눌림 상태(aria-pressed)를 토글한다", () => {
     render(<MessageActions role="assistant" content="hi" />);
     const up = screen.getByRole("button", { name: "좋아요" });

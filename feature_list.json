@@ -2669,8 +2669,8 @@
     "acceptance": "RED 우선. GIVEN an assistant message rendered in ChatView, WHEN the user clicks the read-aloud (낭독) button, THEN window.speechSynthesis.speak is called with a SpeechSynthesisUtterance of the message plaintext and the button… / GIVEN TTS is playing, WHEN the user clicks the button again (toggle/stop), THEN speechSynthesis.cancel (or pause) is invoked and the button returns to idle; utterance is also cancelled on component unmount. / GIVEN a runtime without window.speechSynthesis (feature-unsupported), WHEN MessageActions renders, THEN the read-aloud button is hidden or disabled and no error is thrown. / BROWSER: GIVEN the app running in Chrome with an assistant reply, WHEN the user clicks read-aloud, THEN audible speech plays and pause/stop controls work and stop the audio. / ★실브라우저 UAT: 스택 기동 후 Claude-in-Chrome 로 실제 화면에서 동작 확인(불가 시 Playwright /preview + 정직히 미실행 명시).",
     "phase": "P22",
     "team": "T6",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P22-C-01",

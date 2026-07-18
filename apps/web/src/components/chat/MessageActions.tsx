@@ -9,6 +9,7 @@ import React, { useRef, useState } from "react";
 import { copyText } from "../../lib/clipboard";
 import { sendMessageFeedback } from "../../lib/messageFeedback";
 import { useDismiss } from "../../hooks/useDismiss";
+import { useSpeechSynthesis } from "../../hooks/useSpeechSynthesis";
 import type { StreamMessageMeta } from "../../hooks/useSessionStream";
 
 export function MessageActions({
@@ -48,6 +49,9 @@ export function MessageActions({
     },
     { enabled: showInfo, triggerRef: infoButtonRef },
   );
+  // P22-T6-09 — 낭독(TTS): assistant 응답을 브라우저 네이티브 speechSynthesis 로 읽어준다.
+  //   미지원 런타임에서는 supported=false 라 버튼 자체를 렌더하지 않는다.
+  const tts = useSpeechSynthesis();
   const hasInfo =
     role === "assistant" &&
     meta !== undefined &&
@@ -112,6 +116,18 @@ export function MessageActions({
           className="rounded-md p-1 text-xs hover:bg-surface hover:text-fg"
         >
           재생성
+        </button>
+      )}
+      {role === "assistant" && tts.supported && (
+        <button
+          type="button"
+          aria-label="낭독"
+          aria-pressed={tts.speaking}
+          data-testid="message-read-aloud"
+          onClick={() => tts.toggle(content)}
+          className="rounded-md p-1 text-xs hover:bg-surface hover:text-fg aria-pressed:text-primary"
+        >
+          {tts.speaking ? "정지" : "낭독"}
         </button>
       )}
       {role === "assistant" && (
