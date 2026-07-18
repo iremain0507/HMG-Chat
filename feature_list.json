@@ -2570,8 +2570,8 @@
     "acceptance": "RED 우선. GIVEN an org with imageGenEnabled=true and the image_generate tool assembled, WHEN a user asks the chat to generate an image, THEN the model invokes image_generate, the (dev-stub) provider returns an image, it is stored… / GIVEN imageGenEnabled=false (or the flag absent), WHEN messages tools are assembled, THEN image_generate is NOT present in the tool list (assembly gate test, mirroring knowledge_search optional gate) / GIVEN the returned image artifact, WHEN the assistant message renders in the browser chat UI, THEN the generated image is displayed inline (browser check of ToolCallRenderer/artifact rendering) / GIVEN an org admin in the settings panel, WHEN they toggle Image generation on/off, THEN the imageGenEnabled setting persists and controls whether the tool is offered (browser check of admin settings) / ★실브라우저 UAT: 스택 기동 후 Claude-in-Chrome 로 실제 화면에서 동작 확인(불가 시 Playwright /preview + 정직히 미실행 명시).",
     "phase": "P22",
     "team": "T1",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P22-T1-09",

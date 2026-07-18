@@ -246,4 +246,20 @@ describe("ModelsGenerationTab", () => {
       screen.getByTestId("admin-settings-maxTokens-error"),
     ).toHaveTextContent("1~128,000");
   });
+
+  it("이미지 생성 토글(imageGenEnabled)을 렌더하고 클릭 시 onChange 로 반전 값을 전달한다(P22-T1-08)", () => {
+    const onChange = vi.fn();
+    render(
+      <ModelsGenerationTab
+        value={{ ...VALUE, imageGenEnabled: false }}
+        errors={{}}
+        orgAllowedModels={[]}
+        onChange={onChange}
+      />,
+    );
+    const box = screen.getByTestId("admin-settings-imageGenEnabled");
+    expect(box).not.toBeChecked();
+    fireEvent.click(box);
+    expect(onChange).toHaveBeenCalledWith({ imageGenEnabled: true });
+  });
 });

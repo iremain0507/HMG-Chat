@@ -12,10 +12,15 @@ import type {
 import type { ArtifactDataAccess } from "../db/artifact-service.js";
 import type { ObjectStore } from "../lib/object-store.js";
 import type { WebSearchPort } from "./web-search-port.js";
+import type { ImageGenPort } from "./image-gen-port.js";
 import {
   createWebSearchTool,
   type WebSearchSettingsResolverPort,
 } from "./handlers/web-search-handler.js";
+import {
+  createImageGenerateTool,
+  type ImageGenSettingsResolverPort,
+} from "./handlers/image-generate-handler.js";
 import { createArtifactCreateTool } from "./handlers/artifact-create-handler.js";
 import { createS3ArtifactStore } from "../lib/artifact-store.s3.js";
 import { createCodeInterpreterTool } from "./handlers/code-interpreter-handler.js";
@@ -60,7 +65,13 @@ export interface AssembleBuiltinToolsDeps {
   // P20-T1-02 — knowledge_search 의 ragTopK/ragRrfK/ragRelevanceThreshold invoke-time resolve 에도 재사용.
   settings?: ToolSettingsResolverPort &
     WebSearchSettingsResolverPort &
-    KnowledgeSearchSettingsPort;
+    KnowledgeSearchSettingsPort &
+    ImageGenSettingsResolverPort;
+  // P22-T1-08 — image_generate: 전역 feature 게이트(imageGenEnabled)와 실 provider(imageGenPort)가
+  // 둘 다 있어야 조립(knowledge_search optional 게이트와 동일 원칙 — 주입 유무로 도구 목록이 갈린다).
+  // 미주입/false 면 모델이 도구 자체를 보지 못한다. org 별 on/off 는 settings.resolve 로 invoke 시점 재확인.
+  imageGenEnabled?: boolean;
+  imageGenPort?: ImageGenPort;
   // P20-T1-02 — 둘 다 주입돼야 knowledge_search 를 조립(L1 last-mile: 주입 유무로 도구
   // 목록이 갈리는 조립 테스트로 진입점 도달을 단언). 미주입 시 이전처럼 도구 자체가 생략된다.
   embeddingProvider?: EmbeddingProvider;
@@ -137,6 +148,16 @@ export function assembleBuiltinTools(
     memories: deps.memories,
   });
 
+  // P22-T1-08 — 전역 feature 게이트(imageGenEnabled) + provider(imageGenPort) 둘 다 있을 때만 조립.
+  const imageGenerateTool =
+    deps.imageGenEnabled && deps.imageGenPort
+      ? createImageGenerateTool({
+          port: deps.imageGenPort,
+          da: deps.artifactDa,
+          ...(deps.settings ? { settings: deps.settings } : {}),
+        })
+      : undefined;
+
   return [
     createArtifactCreateTool({
       da: deps.artifactDa,
@@ -166,5 +187,6 @@ export function assembleBuiltinTools(
       ...(deps.settings ? { settings: deps.settings } : {}),
     }),
     ...(knowledgeSearchTool ? [knowledgeSearchTool] : []),
+    ...(imageGenerateTool ? [imageGenerateTool] : []),
   ];
 }

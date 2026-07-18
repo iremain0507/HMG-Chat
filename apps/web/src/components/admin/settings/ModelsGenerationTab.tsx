@@ -33,6 +33,8 @@ const INPUT_CLASS =
   "mt-1 w-full rounded-md border border-border bg-bg px-2.5 py-1.5 text-sm text-fg outline-none focus-visible:border-primary-400";
 const ERROR_CLASS = "mt-1 block text-xs text-accent";
 const HINT_CLASS = "mt-1 block text-xs text-fg-subtle";
+const CHECKBOX_LABEL_CLASS =
+  "flex items-center gap-2 text-xs font-medium text-fg-muted";
 
 export function ModelsGenerationTab({
   value,
@@ -190,6 +192,18 @@ export function ModelsGenerationTab({
             {errors.toolMaxTokens}
           </span>
         )}
+      </label>
+
+      {/* P22-T1-08 — 이미지 생성(image_generate) org 게이트. 켜면 채팅에서 모델이 이미지를
+          생성해 인라인 표시한다(끄면 도구 자체가 조립되지 않음). webSearchEnabled 와 동일 토글 패턴. */}
+      <label className={`${CHECKBOX_LABEL_CLASS} sm:col-span-2`}>
+        <input
+          type="checkbox"
+          data-testid="admin-settings-imageGenEnabled"
+          checked={value.imageGenEnabled ?? false}
+          onChange={(e) => onChange({ imageGenEnabled: e.target.checked })}
+        />
+        이미지 생성 사용(imageGenEnabled)
       </label>
 
       <label className={`${LABEL_CLASS} sm:col-span-2`}>

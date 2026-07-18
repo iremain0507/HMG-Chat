@@ -70,6 +70,7 @@ import { deriveSessionTitle } from "./lib/session-title.js";
 import { DEFAULT_ORG_SETTINGS } from "./lib/org-settings-schema.js";
 import { createSkillRegistry } from "./tools/skills-engine.js";
 import { assembleBuiltinTools } from "./tools/assemble-builtin-tools.js";
+import { createDevStubImageGenProvider } from "./tools/image-gen-provider-dev-stub.js";
 import { hitlBridge } from "./tools/hitl-manager.js";
 import { createInlineArtifactStore } from "./lib/artifact-store.inline.js";
 import { createS3ArtifactStore } from "./lib/artifact-store.s3.js";
@@ -292,6 +293,10 @@ export function createApp(env: Env) {
         // 재주입(구조적 타이핑으로 SessionsSearchPort/ViewChatMessagesPort 충족, 신규 DA 불필요).
         sessions: sessionDa,
         sessionMessages: messageDa,
+        // P22-T1-08 — image_generate: 전역 feature 게이트(env)가 켜지면 dev-stub provider 로
+        // 조립(실 provider 는 배포 시 교체). org 별 on/off 는 settings resolver 로 invoke 시점 재확인.
+        imageGenEnabled: env.IMAGE_GEN_ENABLED,
+        imageGenPort: createDevStubImageGenProvider(),
         // P20-T1-10 — add_memory/search_memories: memoriesApp(CRUD)/P20-T1-09(런타임 회상)와
         // 같은 userMemoryDa 싱글톤을 재주입(신규 DA 불필요, 구조적 타이핑으로 MemoryToolsPort 충족).
         memories: userMemoryDa,

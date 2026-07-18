@@ -55,6 +55,14 @@ interface ResearchArtifact {
   filename: string;
   sizeBytes: number;
   downloadUrl?: string;
+  mimeType?: string;
+}
+
+// image_generate(및 이미지 kind 아티팩트) 는 파일 카드가 아니라 인라인 <img> 로 미리 본다(P22-T1-08).
+function isImageArtifact(a: ResearchArtifact): boolean {
+  return (
+    a.artifactKind === "image" || (a.mimeType?.startsWith("image/") ?? false)
+  );
 }
 interface ResearchResult {
   message?: string;
@@ -238,12 +246,31 @@ export function ToolCallRenderer({
         </>
       )}
 
-      {/* 접힘 + 완료: 요약 한 줄 */}
-      {status === "done" && collapsedSummary && !expanded && (
-        <p className="truncate border-t border-border px-3 pb-2 pt-2 text-xs text-fg-muted">
-          {summarize(collapsedSummary)}
-        </p>
-      )}
+      {/* 접힘 + 완료: 요약 한 줄 (이미지 아티팩트는 아래에서 인라인 미리보기로 대체) */}
+      {status === "done" &&
+        collapsedSummary &&
+        !expanded &&
+        !(research?.artifact && isImageArtifact(research.artifact)) && (
+          <p className="truncate border-t border-border px-3 pb-2 pt-2 text-xs text-fg-muted">
+            {summarize(collapsedSummary)}
+          </p>
+        )}
+
+      {/* 완료 + 이미지 아티팩트: 생성 이미지를 인라인으로 즉시 표시(펼침 여부 무관, P22-T1-08). */}
+      {status === "done" &&
+        research?.artifact &&
+        isImageArtifact(research.artifact) &&
+        research.artifact.downloadUrl && (
+          <div className="border-t border-border px-3 py-2">
+            {/* 서버 아티팩트 스트림(동적 id) — next/image 부적합, 순수 img 사용 */}
+            <img
+              data-testid="tool-image-artifact"
+              src={research.artifact.downloadUrl}
+              alt={research.artifact.filename}
+              className="max-h-80 w-auto rounded-lg border border-border"
+            />
+          </div>
+        )}
 
       {expanded && (
         <div className="space-y-2 border-t border-border px-3 py-2">

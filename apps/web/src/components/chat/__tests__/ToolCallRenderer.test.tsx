@@ -112,6 +112,33 @@ describe("ToolCallRenderer", () => {
     expect(screen.queryByText(/"artifactId"/)).not.toBeInTheDocument();
   });
 
+  it("image_generate 결과(artifactKind=image)는 생성 이미지를 인라인 <img> 로 표시한다(P22-T1-08)", () => {
+    const result = {
+      artifact: {
+        artifactId: "img1",
+        artifactKind: "image",
+        filename: "a-red-sports-car.png",
+        mimeType: "image/png",
+        sizeBytes: 512,
+        downloadUrl: "/api/v1/artifacts/img1/content",
+      },
+    };
+    render(
+      <ToolCallRenderer
+        toolCallId="call-img"
+        name="image_generate"
+        args={{ prompt: "a red sports car" }}
+        status="done"
+        result={result}
+      />,
+    );
+    // 펼치지 않아도(done) 생성 이미지가 인라인으로 즉시 보인다.
+    const img = screen.getByTestId("tool-image-artifact");
+    expect(img.tagName).toBe("IMG");
+    expect(img).toHaveAttribute("src", "/api/v1/artifacts/img1/content");
+    expect(img.getAttribute("alt") ?? "").toContain("a-red-sports-car");
+  });
+
   it("deep_research 실행 중 progress 가 있으면 라벨(접힘)과 서브에이전트 작업목록(펼침 스윔레인)을 보여준다", () => {
     render(
       <ToolCallRenderer

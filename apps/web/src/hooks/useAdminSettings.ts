@@ -24,6 +24,10 @@ export interface AdminOrgSettings {
   webSearchEndpoint: string;
   webSearchApiKeyRef: string;
 
+  // P22-T1-08 — image_generate 도구 org 게이트(Models & Generation 탭 토글). 서버 resolve 가
+  // 항상 기본값(false)을 채워 내려주므로 실사용상 항상 존재하나, 기존 픽스처 비파괴 위해 optional.
+  imageGenEnabled?: boolean;
+
   enableDirectConnections: boolean;
 
   instanceName: string;

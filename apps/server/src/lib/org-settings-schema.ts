@@ -48,6 +48,10 @@ export const OrgSettingsSchema = z.object({
   webSearchEndpoint: z.string().max(500).optional(),
   webSearchApiKeyRef: z.string().max(200).optional(),
 
+  // Media — P22-T1-08: image_generate 도구 org 게이트. false 면 핸들러가 invoke 시점에
+  // IMAGE_GEN_DISABLED 로 거절한다(admin 설정에서 토글, webSearchEnabled 와 동일 패턴).
+  imageGenEnabled: z.boolean().optional(),
+
   // Connectors/MCP
   enableDirectConnections: z.boolean().optional(),
 
@@ -117,6 +121,8 @@ export const DEFAULT_ORG_SETTINGS: ResolvedOrgSettings = {
   webSearchProvider: "dev-stub",
   webSearchEndpoint: "",
   webSearchApiKeyRef: "",
+
+  imageGenEnabled: false,
 
   enableDirectConnections: false,
 

@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import type { EmbeddingProvider, LLMProvider } from "@wchat/interfaces";
 import { assembleBuiltinTools } from "../assemble-builtin-tools.js";
+import { createDevStubImageGenProvider } from "../image-gen-provider-dev-stub.js";
 import type { ArtifactDataAccess } from "../../db/artifact-service.js";
 import type { ObjectStore } from "../../lib/object-store.js";
 import type { KnowledgeRetrievalPort } from "../handlers/knowledge-search-handler.js";
@@ -165,5 +166,28 @@ describe("tools/assembleBuiltinTools", () => {
   it("retrieval 미주입 시 knowledge_search 를 조립하지 않는다(L1 last-mile — 주입 유무로 목록이 갈림)", () => {
     const names = assembleBuiltinTools(base()).map((t) => t.spec.name);
     expect(names).not.toContain("knowledge_search");
+  });
+
+  it("imageGenPort 미주입(또는 imageGenEnabled=false) 시 image_generate 를 조립하지 않는다(P22-T1-08 assembly gate — knowledge_search optional gate 미러)", () => {
+    const names = assembleBuiltinTools(base()).map((t) => t.spec.name);
+    expect(names).not.toContain("image_generate");
+  });
+
+  it("imageGenPort 주입 + imageGenEnabled=true 시 image_generate 를 포함한다(P22-T1-08)", () => {
+    const names = assembleBuiltinTools({
+      ...base(),
+      imageGenEnabled: true,
+      imageGenPort: createDevStubImageGenProvider(),
+    }).map((t) => t.spec.name);
+    expect(names).toContain("image_generate");
+  });
+
+  it("imageGenPort 주입돼도 imageGenEnabled=false 면 image_generate 를 조립하지 않는다(P22-T1-08 flag gate)", () => {
+    const names = assembleBuiltinTools({
+      ...base(),
+      imageGenEnabled: false,
+      imageGenPort: createDevStubImageGenProvider(),
+    }).map((t) => t.spec.name);
+    expect(names).not.toContain("image_generate");
   });
 });
