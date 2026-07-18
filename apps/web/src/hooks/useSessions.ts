@@ -38,6 +38,7 @@ interface UseSessionsResult {
   hasMore: boolean;
   loadMore: () => Promise<void>;
   createSession: () => Promise<SessionListItemDto | null>;
+  cloneSession: (id: string) => Promise<SessionListItemDto | null>;
   renameSession: (id: string, title: string) => Promise<void>;
   deleteSession: (id: string) => Promise<void>;
   togglePin: (id: string) => Promise<void>;
@@ -171,6 +172,40 @@ export function useSessions(): UseSessionsResult {
     };
     setSessions((prev) => [created, ...prev]);
     return created;
+  }, []);
+
+  // P22-T6-01 — 대화 복제. POST /sessions/:id/clone 은 원본 메시지 트리를 복사한 새 세션
+  // DTO(POST /sessions 와 동일 shape)를 돌려주므로, 반환 세션을 목록 최상단에 prepend 한다
+  // (createSession 과 동일 패턴). SessionCard 의 handleClone 이중 제출 가드가 중복 호출을 막는다.
+  const cloneSession = useCallback(async (id: string) => {
+    const res = await apiFetch(`/api/v1/sessions/${id}/clone`, {
+      method: "POST",
+      credentials: "include",
+    });
+    if (!res.ok) {
+      showToast("error", "대화를 복제하지 못했습니다.");
+      return null;
+    }
+    const body = (await res.json()) as {
+      data: {
+        id: string;
+        title: string | null;
+        projectId: string | null;
+        createdAt: string;
+      };
+    };
+    const cloned: SessionListItemDto = {
+      id: body.data.id,
+      title: body.data.title,
+      projectId: body.data.projectId,
+      lastMessageAt: body.data.createdAt,
+      archived: false,
+      pinned: false,
+      folderId: null,
+      tags: [],
+    };
+    setSessions((prev) => [cloned, ...prev]);
+    return cloned;
   }, []);
 
   const renameSession = useCallback(async (id: string, title: string) => {
@@ -417,6 +452,7 @@ export function useSessions(): UseSessionsResult {
     hasMore,
     loadMore,
     createSession,
+    cloneSession,
     renameSession,
     deleteSession,
     togglePin,

@@ -319,6 +319,7 @@ export function SessionList({ now }: { now?: Date } = {}) {
     hasMore,
     loadMore,
     createSession,
+    cloneSession,
     renameSession,
     deleteSession,
     togglePin,
@@ -514,6 +515,7 @@ export function SessionList({ now }: { now?: Date } = {}) {
         onAddTag={(id, tag) => void addTag(id, tag)}
         onRemoveTag={(id, tag) => void removeTag(id, tag)}
         onArchive={(id) => archiveSession(id)}
+        onClone={(id) => cloneSession(id).then(() => undefined)}
         selectionMode={selectionMode}
         selected={selectedIds.has(session.id)}
         onToggleSelect={toggleSelect}

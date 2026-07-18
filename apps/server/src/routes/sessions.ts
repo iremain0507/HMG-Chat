@@ -97,6 +97,10 @@ export interface SessionMessagesPort {
   // P20-T1-05 — 개별 메시지(및 하위 서브트리) 삭제. createPgMessageDataAccess()(MessageRepo,
   // 14-INTERFACES Repo<T,F> 상속)가 이미 delete(id) 를 구현하고 있어 포트만 넓힌다.
   delete(id: string): Promise<void>;
+  // P22-T6-01 — 대화 복제(POST /:id/clone) 시 원본 메시지를 새 세션에 재삽입. MessageRepo.insert
+  // (Partial<Message>)가 이미 존재하므로 포트만 넓힌다(부모→자식 순으로 1건씩 insert 하며
+  // 반환된 new id 로 parentMessageId 를 재매핑하기 위해 bulkInsert 대신 단건 insert 를 쓴다).
+  insert(data: Partial<Message>): Promise<Message>;
 }
 
 export interface SessionRoutesDeps {
@@ -284,6 +288,60 @@ export function createSessionRoutes(
       data: { id: updated.id, archived: updated.archivedAt !== null },
       meta: { requestId: randomUUID() },
     });
+  });
+
+  // P22-T6-01 — 대화 복제(POST /:id/clone). Open WebUI 의 conversation duplicate 대응.
+  // 소유자 검증(byId + auth.sub, 타 사용자/조직 세션은 404 existence-leak 방지) 후 POST /sessions
+  // 와 동일 생성 경로로 title/projectId 를 복사한 새 세션을 만들고, 원본 메시지 트리를
+  // created_at ASC(부모가 자식보다 먼저 오는 순서)로 읽어 1건씩 삽입하며 old→new id 매핑으로
+  // parentMessageId 를 재매핑한다(트리 관계 보존). pin/archive/active-run 상태는 복사하지 않고
+  // 원본 세션은 변경하지 않는다(읽기만). 새 세션 DTO 는 POST / 와 동일 shape 로 201 반환.
+  app.post("/:id/clone", async (c) => {
+    const auth = c.get("auth");
+    const sourceId = c.req.param("id");
+    const source = await sessions.byId(sourceId);
+    if (!source || source.userId !== auth.sub) {
+      return c.json(errorJson("NOT_FOUND", "세션을 찾을 수 없습니다."), 404);
+    }
+    const cloned = await sessions.create({
+      userId: auth.sub,
+      title: source.title,
+      projectId: source.projectId,
+    });
+    const page = await sessionMessages.list(
+      { sessionId: sourceId },
+      { limit: 1000 },
+    );
+    const idMap = new Map<string, string>();
+    for (const m of page.items) {
+      const remappedParent =
+        m.parentMessageId != null
+          ? (idMap.get(m.parentMessageId) ?? null)
+          : null;
+      const inserted = await sessionMessages.insert({
+        sessionId: cloned.id,
+        role: m.role,
+        content: m.content,
+        toolCallIds: m.toolCallIds,
+        parentMessageId: remappedParent,
+        tokensIn: m.tokensIn,
+        tokensOut: m.tokensOut,
+        costMicros: m.costMicros,
+      });
+      idMap.set(m.id, inserted.id);
+    }
+    return c.json(
+      {
+        data: {
+          id: cloned.id,
+          title: cloned.title,
+          projectId: cloned.projectId,
+          createdAt: cloned.createdAt.toISOString(),
+        },
+        meta: { requestId: randomUUID() },
+      },
+      201,
+    );
   });
 
   // P17-T1-02(TS-08/10) — 세션 히스토리. 타 사용자 세션은 404(existence-leak 방지,

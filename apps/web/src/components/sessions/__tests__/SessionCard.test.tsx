@@ -544,3 +544,65 @@ describe("SessionCard 이중 제출 가드 (P21-T6-15, UX-17)", () => {
     await waitFor(() => expect(archiveButton).not.toBeDisabled());
   });
 });
+
+describe("SessionCard 복제 (P22-T6-01)", () => {
+  afterEach(() => cleanup());
+
+  const baseProps = {
+    pinned: false,
+    folders: [],
+    onOpen: vi.fn(),
+    onRename: vi.fn(),
+    onDelete: vi.fn(),
+    onTogglePin: vi.fn(),
+    onAssignFolder: vi.fn(),
+    onAddTag: vi.fn(),
+    onRemoveTag: vi.fn(),
+    onArchive: vi.fn(),
+  };
+
+  it("컨텍스트 메뉴에 '복제' menuitem 이 있고 클릭 시 onClone 을 세션 id 로 호출한다", () => {
+    const onClone = vi.fn();
+    render(<SessionCard {...baseProps} session={session} onClone={onClone} />);
+    fireEvent.contextMenu(screen.getByTestId("session-card-sess-1"));
+    const menu = screen.getByTestId("context-menu-sess-1");
+    const cloneItem = within(menu).getByRole("menuitem", { name: "복제" });
+    fireEvent.click(cloneItem);
+    expect(onClone).toHaveBeenCalledWith("sess-1");
+  });
+
+  it("복제는 onClone 응답 대기 중 disabled 이며 재클릭해도 한 번만 호출된다(이중 복제 방지)", async () => {
+    let resolveClone: (() => void) | undefined;
+    const onClone = vi.fn(
+      () =>
+        new Promise<void>((res) => {
+          resolveClone = res;
+        }),
+    );
+    render(<SessionCard {...baseProps} session={session} onClone={onClone} />);
+    fireEvent.contextMenu(screen.getByTestId("session-card-sess-1"));
+    const menu = screen.getByTestId("context-menu-sess-1");
+    const cloneItem = within(menu).getByRole("menuitem", { name: "복제" });
+
+    fireEvent.click(cloneItem);
+    expect(cloneItem).toBeDisabled();
+    fireEvent.click(cloneItem);
+    expect(onClone).toHaveBeenCalledTimes(1);
+
+    resolveClone!();
+    await waitFor(() =>
+      expect(
+        screen.queryByTestId("context-menu-sess-1"),
+      ).not.toBeInTheDocument(),
+    );
+  });
+
+  it("onClone 이 없으면 '복제' menuitem 을 렌더하지 않는다", () => {
+    render(<SessionCard {...baseProps} session={session} />);
+    fireEvent.contextMenu(screen.getByTestId("session-card-sess-1"));
+    const menu = screen.getByTestId("context-menu-sess-1");
+    expect(
+      within(menu).queryByRole("menuitem", { name: "복제" }),
+    ).not.toBeInTheDocument();
+  });
+});

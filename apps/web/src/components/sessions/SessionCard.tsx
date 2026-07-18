@@ -70,6 +70,7 @@ export interface SessionCardProps {
   onAddTag: (id: string, tag: string) => void;
   onRemoveTag: (id: string, tag: string) => void;
   onArchive: (id: string) => void | Promise<void>;
+  onClone?: (id: string) => void | Promise<void>;
   selectionMode?: boolean;
   selected?: boolean;
   onToggleSelect?: (id: string) => void;
@@ -87,6 +88,7 @@ export function SessionCard({
   onAddTag,
   onRemoveTag,
   onArchive,
+  onClone,
   selectionMode = false,
   selected = false,
   onToggleSelect,
@@ -97,6 +99,7 @@ export function SessionCard({
   const [tagError, setTagError] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [archiving, setArchiving] = useState(false);
+  const [cloning, setCloning] = useState(false);
   const label = session.title ?? "(제목 없음)";
   const TITLE_MAX_LENGTH = 200;
   const TAG_MAX_LENGTH = 40;
@@ -126,6 +129,19 @@ export function SessionCard({
       await onArchive(session.id);
     } finally {
       if (mountedRef.current) setArchiving(false);
+    }
+  }
+
+  // P22-T6-01 — 대화 복제. 보관/삭제와 동일한 이중 제출 가드(cloning)로 재클릭 시 중복 복제를
+  // 막고, 복제가 끝나면 컨텍스트 메뉴를 닫는다(메뉴는 복제 진행 중에는 열린 채 disabled 유지).
+  async function handleClone() {
+    if (cloning || !onClone) return;
+    setCloning(true);
+    try {
+      await onClone(session.id);
+      contextMenu.close();
+    } finally {
+      if (mountedRef.current) setCloning(false);
     }
   }
 
@@ -494,6 +510,19 @@ export function SessionCard({
           >
             {session.archived ? "복원" : "보관"}
           </button>
+          {onClone && (
+            <button
+              type="button"
+              role="menuitem"
+              disabled={cloning}
+              onClick={() => {
+                void handleClone();
+              }}
+              className="block w-full rounded-md px-2 py-1.5 text-left text-sm text-fg hover:bg-bg disabled:opacity-50"
+            >
+              복제
+            </button>
+          )}
           <button
             type="button"
             role="menuitem"

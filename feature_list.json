@@ -2597,8 +2597,8 @@
     "acceptance": "RED 우선. GIVEN an existing session with a multi-message tree (branching via parentMessageId) WHEN POST /sessions/:id/clone is called by the owner THEN a new session id is returned and its GET /:id/messages returns the same… / GIVEN a session owned by a different user/org WHEN POST /sessions/:id/clone is called THEN it returns 404 (no cross-org/cross-owner clone) — verified by createApp real-HTTP integration test / GIVEN the sessions list in the browser WHEN the user opens a SessionCard hover/context menu and clicks 복제 THEN a new duplicated session appears at the top of the list (double-click does not create two clones) and… / GIVEN the new route WHEN pnpm test runs THEN routes-mounted.test.ts passes with the clone path added to EXPECTED_ROUTES / ★실브라우저 UAT: 스택 기동 후 Claude-in-Chrome 로 실제 화면에서 동작 확인(불가 시 Playwright /preview + 정직히 미실행 명시).",
     "phase": "P22",
     "team": "T6",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P22-T6-02",

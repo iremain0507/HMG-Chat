@@ -97,6 +97,62 @@ describe("useSessions", () => {
     );
   });
 
+  it("cloneSession 이 POST /sessions/:id/clone 을 호출하고 복제 세션을 목록 최상단에 추가한다", async () => {
+    const fetchMock = vi.fn(
+      async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        if (
+          init?.method === "POST" &&
+          url === "/api/v1/sessions/sess-1/clone"
+        ) {
+          return {
+            ok: true,
+            status: 201,
+            json: async () => ({
+              data: {
+                id: "sess-clone",
+                title: "영업 RFP 초안",
+                projectId: null,
+                createdAt: "2026-07-14T03:00:00Z",
+              },
+            }),
+          };
+        }
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            data: [
+              {
+                id: "sess-1",
+                title: "영업 RFP 초안",
+                lastMessageAt: "2026-07-14T01:00:00Z",
+                projectId: null,
+                archived: false,
+              },
+            ],
+          }),
+        };
+      },
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { result } = renderHook(() => useSessions());
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    await act(async () => {
+      const cloned = await result.current.cloneSession("sess-1");
+      expect(cloned?.id).toBe("sess-clone");
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/v1/sessions/sess-1/clone",
+      expect.objectContaining({ method: "POST" }),
+    );
+    expect(result.current.sessions[0]?.id).toBe("sess-clone");
+    expect(result.current.sessions).toHaveLength(2);
+  });
+
   it("renameSession 이 PATCH /sessions/:id 를 title 과 함께 호출한다", async () => {
     const fetchMock = vi.fn(
       async (_input: RequestInfo | URL, init?: RequestInit) => {

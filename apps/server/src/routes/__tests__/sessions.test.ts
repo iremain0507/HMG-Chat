@@ -2,11 +2,16 @@
 // GET /sessions/:id/hitl/pending 단일 acceptance (P10-T2-02).
 import { describe, it, expect } from "vitest";
 import { Hono } from "hono";
-import { createSessionRoutes, type SessionsPort } from "../sessions.js";
+import {
+  createSessionRoutes,
+  type SessionsPort,
+  type SessionMessagesPort,
+} from "../sessions.js";
 import type { SessionWithPin } from "../../db/session-data-access.js";
 import type { AuthedVariables } from "../../middleware/auth-middleware.js";
 import { hitlBridge } from "../../tools/hitl-manager.js";
 import type { ArtifactDataAccess } from "../../db/artifact-service.js";
+import type { Message } from "@wchat/interfaces";
 
 // P22-T1-05 — GET /:id 단일 세션 조회 테스트용: byId 만 의미있게 구현하고 나머지 SessionsPort
 // 메서드는 호출되면 실패하는 스텁으로 채운다(이 라우트는 byId 만 사용).
@@ -276,6 +281,144 @@ describe("routes/sessions — GET /:id/artifacts (P10-T2-04)", () => {
     expect(res.status).toBe(200);
     const json = (await res.json()) as { data: unknown[] };
     expect(json.data).toEqual([]);
+  });
+});
+
+function messageRow(over: Partial<Message>): Message {
+  return {
+    id: "m-1",
+    sessionId: "src",
+    role: "user",
+    content: "hi",
+    toolCallIds: [],
+    parentMessageId: null,
+    tokensIn: null,
+    tokensOut: null,
+    costMicros: null,
+    createdAt: new Date("2026-07-15T00:00:00Z"),
+    ...over,
+  };
+}
+
+describe("routes/sessions — POST /:id/clone 대화 복제 (P22-T6-01)", () => {
+  interface CloneHarness {
+    app: ReturnType<typeof appWithAuth>;
+    inserted: Array<{ sessionId: string; parentMessageId: string | null }>;
+    created: Array<{ userId: string; title: string | null }>;
+  }
+
+  function cloneApp(opts: {
+    sub: string;
+    source: SessionWithPin | null;
+    messages: Message[];
+  }): CloneHarness {
+    const inserted: CloneHarness["inserted"] = [];
+    const created: CloneHarness["created"] = [];
+    let seq = 0;
+    const sessions: SessionsPort = {
+      byId: async (id) =>
+        opts.source && opts.source.id === id ? opts.source : null,
+      create: async (data) => {
+        created.push({ userId: data.userId, title: data.title ?? null });
+        return sessionRow({
+          id: "cloned-session",
+          userId: data.userId,
+          title: data.title ?? null,
+          projectId: data.projectId ?? null,
+        });
+      },
+      list: (() => {
+        throw new Error("not implemented");
+      }) as SessionsPort["list"],
+      updateForOwner: (() => {
+        throw new Error("not implemented");
+      }) as SessionsPort["updateForOwner"],
+      deleteForOwner: (() => {
+        throw new Error("not implemented");
+      }) as SessionsPort["deleteForOwner"],
+      togglePinForOwner: (() => {
+        throw new Error("not implemented");
+      }) as SessionsPort["togglePinForOwner"],
+      toggleArchiveForOwner: (() => {
+        throw new Error("not implemented");
+      }) as SessionsPort["toggleArchiveForOwner"],
+      search: (() => {
+        throw new Error("not implemented");
+      }) as SessionsPort["search"],
+    };
+    const sessionMessages: SessionMessagesPort = {
+      list: async (filter) =>
+        filter.sessionId === "src" ? { items: opts.messages } : { items: [] },
+      byId: async () => null,
+      delete: async () => {},
+      insert: async (data) => {
+        seq += 1;
+        const newId = `new-m-${seq}`;
+        inserted.push({
+          sessionId: data.sessionId as string,
+          parentMessageId: (data.parentMessageId as string | null) ?? null,
+        });
+        return messageRow({
+          id: newId,
+          sessionId: data.sessionId as string,
+          parentMessageId: (data.parentMessageId as string | null) ?? null,
+        });
+      },
+    };
+    return {
+      app: appWithAuth(opts.sub, { sessions, sessionMessages }),
+      inserted,
+      created,
+    };
+  }
+
+  it("소유자가 복제하면 201 + 새 세션 id 를 반환하고 메시지 트리(parentMessageId)를 재매핑해 복사한다", async () => {
+    const source = sessionRow({
+      id: "src",
+      userId: "user-1",
+      title: "원본 대화",
+      projectId: "proj-1",
+    });
+    const messages = [
+      messageRow({ id: "m1", parentMessageId: null }),
+      messageRow({ id: "m2", parentMessageId: "m1" }),
+      messageRow({ id: "m3", parentMessageId: "m2" }),
+    ];
+    const h = cloneApp({ sub: "user-1", source, messages });
+    const res = await h.app.request("/src/clone", { method: "POST" });
+    expect(res.status).toBe(201);
+    const json = (await res.json()) as {
+      data: { id: string; title: string | null; projectId: string | null };
+    };
+    expect(json.data.id).toBe("cloned-session");
+    expect(json.data.title).toBe("원본 대화");
+    expect(json.data.projectId).toBe("proj-1");
+    // 3건이 새 세션(cloned-session)에 삽입되고 parentMessageId 가 new id 로 재매핑된다.
+    expect(h.inserted).toEqual([
+      { sessionId: "cloned-session", parentMessageId: null },
+      { sessionId: "cloned-session", parentMessageId: "new-m-1" },
+      { sessionId: "cloned-session", parentMessageId: "new-m-2" },
+    ]);
+  });
+
+  it("타 사용자 소유 세션 복제는 404 이고 새 세션을 만들지 않는다(cross-owner 차단)", async () => {
+    const source = sessionRow({ id: "src", userId: "user-2" });
+    const h = cloneApp({ sub: "user-1", source, messages: [] });
+    const res = await h.app.request("/src/clone", { method: "POST" });
+    expect(res.status).toBe(404);
+    const json = (await res.json()) as { error: { code: string } };
+    expect(json.error.code).toBe("NOT_FOUND");
+    expect(h.created).toHaveLength(0);
+    expect(h.inserted).toHaveLength(0);
+  });
+
+  it("메시지가 없는 세션도 201 로 빈 새 세션을 만든다", async () => {
+    const source = sessionRow({ id: "src", userId: "user-1", title: null });
+    const h = cloneApp({ sub: "user-1", source, messages: [] });
+    const res = await h.app.request("/src/clone", { method: "POST" });
+    expect(res.status).toBe(201);
+    expect(h.created).toHaveLength(1);
+    expect(h.inserted).toHaveLength(0);
   });
 });
 
