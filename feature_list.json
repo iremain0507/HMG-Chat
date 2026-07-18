@@ -2660,8 +2660,8 @@
     "acceptance": "RED 우선. GIVEN a browser that supports the Web Speech API, WHEN the user clicks the Mic button in the ChatInput composer and speaks, THEN recognized text is inserted into the composer textarea at the cursor and the button… / GIVEN the user is recording, WHEN they click the Mic button again (or press Escape), THEN recognition stops, the active state clears, and no further text is appended. / GIVEN a browser without SpeechRecognition support (feature-detect false), WHEN the composer renders, THEN the Mic button is hidden or disabled and no runtime error occurs. / BROWSER: GIVEN the running web app, WHEN a real user grants microphone permission and dictates a phrase, THEN the spoken phrase appears in the composer and can be sent as a message. / ★실브라우저 UAT: 스택 기동 후 Claude-in-Chrome 로 실제 화면에서 동작 확인(불가 시 Playwright /preview + 정직히 미실행 명시).",
     "phase": "P22",
     "team": "T6",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P22-T6-09",

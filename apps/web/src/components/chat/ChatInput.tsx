@@ -21,9 +21,10 @@ import React, {
   type FormEvent,
   type KeyboardEvent,
 } from "react";
-import { Plus, AtSign, Slash, Hash, ArrowUp, Square } from "lucide-react";
+import { Plus, AtSign, Slash, Hash, ArrowUp, Square, Mic } from "lucide-react";
 import { useAttachments } from "../../hooks/useAttachments";
 import { useDismiss } from "../../hooks/useDismiss";
+import { useSpeechRecognition } from "../../hooks/useSpeechRecognition";
 import type { QueuedMessage, SendOptions } from "../../hooks/useSessionStream";
 import {
   ComposerPopover,
@@ -208,6 +209,34 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
     const { items, addFiles, remove, clear, readyAttachments } =
       useAttachments(sessionId);
     const webSearchAvailable = availableTools.includes("web_search");
+
+    // P22-T6-08 — 음성 입력(STT): 녹음 시작 시점의 커서 위치를 기억해, 인식되는 최종 텍스트를
+    // 그 지점에서부터 순서대로 삽입한다(다중 결과에도 삽입 지점이 앞으로 전진). 값은 함수형
+    // setInput 으로 갱신해 비동기 인식 콜백에서 stale 클로저를 피한다.
+    const speechInsertPosRef = useRef<number | null>(null);
+    function insertTranscript(text: string) {
+      setInput((prev) => {
+        const pos = speechInsertPosRef.current ?? prev.length;
+        const needsSpace = pos > 0 && !/\s$/.test(prev.slice(0, pos));
+        const chunk = (needsSpace ? " " : "") + text;
+        speechInsertPosRef.current = pos + chunk.length;
+        return prev.slice(0, pos) + chunk + prev.slice(pos);
+      });
+      requestAnimationFrame(() => autogrow());
+    }
+    const speech = useSpeechRecognition({
+      onFinalTranscript: insertTranscript,
+    });
+    function toggleMic() {
+      if (speech.listening) {
+        speech.stop();
+        return;
+      }
+      const ta = taRef.current;
+      speechInsertPosRef.current = ta?.selectionStart ?? input.length;
+      speech.start();
+      requestAnimationFrame(() => ta?.focus());
+    }
 
     // availableModels 가 마운트 후 비동기로 로드되면(useCurrentUser → org.allowedModels) 첫 항목을 기본 선택.
     useEffect(() => {
@@ -483,6 +512,12 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
           return;
         }
       }
+      // P22-T6-08 — 녹음 중 Escape 는 음성 인식을 멈춘다(팝오버가 열려있지 않을 때).
+      if (e.key === "Escape" && speech.listening) {
+        e.preventDefault();
+        speech.stop();
+        return;
+      }
       if (e.key === "Enter" && !e.shiftKey) {
         e.preventDefault();
         void submit();
@@ -709,6 +744,21 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
           >
             <Hash size={13} strokeWidth={2} aria-hidden="true" />
           </button>
+          {speech.supported && (
+            // P22-T6-08 — 음성 입력(STT) 토글. 녹음 중엔 accent(레드)로 '진행 중'을 강조하고
+            // 펄스로 라이브 상태를 알린다(accent=강조/Stop 전용 소량 규칙에 부합). 미지원
+            // 브라우저에서는 아예 렌더하지 않는다(speech.supported=false).
+            <button
+              type="button"
+              aria-label={speech.listening ? "음성 입력 중지" : "음성 입력"}
+              data-testid="composer-trigger-mic"
+              onClick={toggleMic}
+              aria-pressed={speech.listening}
+              className="grid h-7 w-7 flex-none place-items-center rounded-md border border-border text-fg-muted hover:bg-bg hover:text-fg aria-pressed:animate-pulse aria-pressed:border-accent aria-pressed:bg-accent/10 aria-pressed:text-accent"
+            >
+              <Mic size={13} strokeWidth={2} aria-hidden="true" />
+            </button>
+          )}
           <ModelModePicker
             models={availableModels}
             model={model}
