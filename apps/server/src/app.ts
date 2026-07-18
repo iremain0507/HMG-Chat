@@ -6,6 +6,7 @@ import { createPgAuthDataAccess } from "./db/auth-data-access.js";
 import { createEmailSender } from "./lib/email-sender.js";
 import { createAuthRoutes } from "./routes/auth.js";
 import { createLdaptsDirectoryClient } from "./lib/ldap-client.js";
+import { createHttpOidcClient } from "./lib/oidc-client.js";
 import { createSessionRoutes } from "./routes/sessions.js";
 import { createFolderRoutes } from "./routes/folders.js";
 import { createPgSessionFolderDataAccess } from "./db/session-folder-data-access.js";
@@ -195,10 +196,15 @@ export function createApp(env: Env) {
   // 미설정 org 는 기존 매직링크/비밀번호 경로 그대로다(비파괴). ldapts 미설치 환경에서는
   // 실제 호출 시점에 LdapConnectionError 로 실패해 503 으로 표면화된다(createEmailSender 패턴).
   const directoryClient = createLdaptsDirectoryClient();
+  // P22-T1-17(C16) — OIDC SSO. org_settings.oidcEnabled=false 인 org 는 이 클라이언트가
+  // 주입돼 있어도 resolveOidcConfig 가 null 을 돌려줘 기존 magic-link 경로 그대로다.
+  // 실 IdP 왕복은 fetch 기반이라 신규 dep 없이 동작한다(client_secret 은 env ref 로만).
+  const oidcClient = createHttpOidcClient();
   app.route(
     "/api/v1/auth",
     createAuthRoutes({
       directoryClient,
+      oidcClient,
       da: authDa,
       emailSender: createEmailSender(env.EMAIL_SENDER_KIND),
       allowedDomains: env.ALLOWED_DOMAINS.split(",").map((d) => d.trim()),

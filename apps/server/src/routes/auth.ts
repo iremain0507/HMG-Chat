@@ -6,7 +6,12 @@ import bcrypt from "bcryptjs";
 import { getCookie, setCookie, deleteCookie } from "hono/cookie";
 import { randomBytes, randomUUID, createHash } from "node:crypto";
 import jwt from "jsonwebtoken";
-import type { DataAccess, EmailSender } from "@wchat/interfaces";
+import type {
+  DataAccess,
+  EmailSender,
+  Organization,
+  User,
+} from "@wchat/interfaces";
 import {
   signAccessToken,
   signRefreshToken,
@@ -24,7 +29,16 @@ import {
   mapGroupsToRole,
   resolveLdapConfig,
   type LdapDirectoryClient,
+  type OrgRole,
 } from "../lib/ldap-client.js";
+import {
+  createPkcePair,
+  OidcConnectionError,
+  readTrustedHeaderIdentity,
+  resolveOidcConfig,
+  resolveTrustedHeaderConfig,
+  type OidcClient,
+} from "../lib/oidc-client.js";
 
 // P15-T1-01 — org-scoped enableSignup/defaultUserRole 조회 포트. settings-service.ts(T1)와
 // 동일 계약(resolve)만 의존해 순환을 피한다(messages.ts SettingsResolverPort 와 동일 idiom).
@@ -76,7 +90,11 @@ export interface AuthRouteDeps {
   // P22-T1-11(C14) — LDAP/AD 디렉터리 로그인. 미주입이면 POST /login/directory 는
   // 항상 403 DIRECTORY_AUTH_DISABLED (기존 배포 동작 무변경).
   directoryClient?: LdapDirectoryClient;
-  // ldapBindPasswordRef 가 가리키는 비밀을 읽을 환경. 미주입 시 process.env.
+  // P22-T1-17(C16) — OAuth/OIDC SSO. 미주입이면 /login/oidc 는 항상 sso_disabled 로
+  // 되돌린다(기존 배포 동작 무변경). trusted-header 경로는 이 클라이언트가 필요 없다.
+  oidcClient?: OidcClient;
+  // ldapBindPasswordRef·oidcClientSecretRef·trustedHeaderSecretRef 가 가리키는 비밀을
+  // 읽을 환경. 미주입 시 process.env.
   env?: Record<string, string | undefined>;
 }
 
@@ -431,46 +449,34 @@ export function createAuthRoutes(deps: AuthRouteDeps): Hono {
       );
     }
 
-    // 디렉터리가 돌려준 이메일 도메인이 최종 권위 — 허용목록 + org 를 여기서 다시 판정.
-    const domain = emailDomain(email);
-    if (!deps.allowedDomains.includes(domain)) {
-      return c.json(
-        errorJson(
-          "EMAIL_DOMAIN_FORBIDDEN",
-          `${deps.allowedDomains.join(", ")} 도메인만 로그인 가능합니다.`,
-        ),
-        403,
-      );
-    }
-    const org = await findOrgByDomain(domain);
-    if (!org) {
-      return c.json(
-        errorJson("EMAIL_DOMAIN_FORBIDDEN", "등록된 조직을 찾을 수 없습니다."),
-        403,
-      );
-    }
-
-    // 그룹→롤 매핑: undefined = 게이트 미설정(기본 롤), null = 매핑된 그룹 없음(거부).
-    const mappedRole = mapGroupsToRole(entry.groups, resolved.ldapGroupRoleMap);
-    if (mappedRole === null) {
-      return c.json(
-        errorJson(
-          "DIRECTORY_GROUP_FORBIDDEN",
-          "이 서비스에 접근이 허용된 디렉터리 그룹에 속해 있지 않습니다.",
-        ),
-        403,
-      );
-    }
-    const role = mappedRole ?? resolved.defaultUserRole ?? "member";
-
-    const existing = await deps.da.users.list({
-      orgId: org.id,
-      emailEq: email,
+    // 디렉터리가 돌려준 이메일 도메인이 최종 권위 — 허용목록·org·그룹롤·프로비저닝은
+    // OIDC/trusted-header 와 같은 규칙이라 provisionFederatedUser 로 공유한다.
+    const result = await provisionFederatedUser({
+      email,
+      name: entry.name,
+      groups: entry.groups,
+      groupRoleMap: resolved.ldapGroupRoleMap,
+      defaultRole: resolved.defaultUserRole ?? "member",
     });
-    let user = existing.items[0] ?? null;
-    // P22-T1-16(C15) — 디렉터리는 롤/이름의 권위 출처지만, 프로비저닝 상태(status)의
-    // 권위 출처는 SCIM/관리자다. bind 성공만으로 비활성 계정이 되살아나면 안 된다.
-    if (user && user.status !== "active") {
+    if (!result.ok) {
+      if (result.reason === "domain_forbidden") {
+        return c.json(
+          errorJson(
+            "EMAIL_DOMAIN_FORBIDDEN",
+            `${deps.allowedDomains.join(", ")} 도메인만 로그인 가능합니다.`,
+          ),
+          403,
+        );
+      }
+      if (result.reason === "group_forbidden") {
+        return c.json(
+          errorJson(
+            "DIRECTORY_GROUP_FORBIDDEN",
+            "이 서비스에 접근이 허용된 디렉터리 그룹에 속해 있지 않습니다.",
+          ),
+          403,
+        );
+      }
       return c.json(
         errorJson(
           "ACCOUNT_INACTIVE",
@@ -479,18 +485,65 @@ export function createAuthRoutes(deps: AuthRouteDeps): Hono {
         403,
       );
     }
+
+    loginFailures.delete(rateKey);
+    await issueSession(c, result.user.id, result.user.orgId, result.user.role);
+
+    return c.json(sessionPayload(result.user, result.org));
+  });
+
+  // ── 외부 신원공급자(LDAP·OIDC·trusted-header) 공통 프로비저닝 ────────────────
+  // 세 경로 모두 "IdP 가 준 이메일이 최종 권위" 라는 같은 규칙을 따른다:
+  // 허용도메인 → org 판정 → 그룹→롤 매핑 → 유저 생성/동기화. 표면별로 다른 것은
+  // 실패를 어떤 응답(JSON 에러 vs 302 redirect)으로 표현하느냐뿐이다.
+  type FederatedResult =
+    | { ok: true; user: User; org: Organization }
+    | {
+        ok: false;
+        reason: "domain_forbidden" | "group_forbidden" | "account_inactive";
+      };
+
+  async function provisionFederatedUser(input: {
+    email: string;
+    name: string | null;
+    groups: string[];
+    groupRoleMap: Record<string, OrgRole>;
+    defaultRole: OrgRole;
+  }): Promise<FederatedResult> {
+    const domain = emailDomain(input.email);
+    if (!deps.allowedDomains.includes(domain)) {
+      return { ok: false, reason: "domain_forbidden" };
+    }
+    const org = await findOrgByDomain(domain);
+    if (!org) return { ok: false, reason: "domain_forbidden" };
+
+    // undefined = 그룹 게이트 미설정(기본 롤), null = 매핑된 그룹 없음(거부).
+    const mappedRole = mapGroupsToRole(input.groups, input.groupRoleMap);
+    if (mappedRole === null) return { ok: false, reason: "group_forbidden" };
+    const role = mappedRole ?? input.defaultRole;
+
+    const existing = await deps.da.users.list({
+      orgId: org.id,
+      emailEq: input.email,
+    });
+    let user = existing.items[0] ?? null;
+    // 프로비저닝 상태(status)의 권위 출처는 SCIM/관리자다 — IdP 인증 성공만으로
+    // 비활성 계정이 되살아나면 안 된다(P22-T1-16 C15 와 동일 규칙).
+    if (user && user.status !== "active") {
+      return { ok: false, reason: "account_inactive" };
+    }
     if (user) {
-      // 디렉터리가 권위 있는 출처 — 롤/이름을 로그인 때마다 동기화한다.
+      // IdP 가 권위 있는 출처 — 롤/이름을 로그인 때마다 동기화한다.
       user = await deps.da.users.update(user.id, {
         role,
-        name: entry.name ?? user.name,
+        name: input.name ?? user.name,
         lastLoginAt: new Date(),
       });
     } else {
       user = await deps.da.users.insert({
         orgId: org.id,
-        email,
-        name: entry.name ?? email,
+        email: input.email,
+        name: input.name ?? input.email,
         role,
         customInstructions: null,
         language: null,
@@ -498,11 +551,11 @@ export function createAuthRoutes(deps: AuthRouteDeps): Hono {
         lastLoginAt: new Date(),
       });
     }
+    return { ok: true, user, org };
+  }
 
-    loginFailures.delete(rateKey);
-    await issueSession(c, user.id, user.orgId, user.role);
-
-    return c.json({
+  function sessionPayload(user: User, org: Organization) {
+    return {
       data: {
         user: {
           id: user.id,
@@ -527,7 +580,228 @@ export function createAuthRoutes(deps: AuthRouteDeps): Hono {
         },
       },
       meta: { requestId: randomUUID() },
+    };
+  }
+
+  // ── P22-T1-17(계약배치 C16) — OAuth/OIDC SSO ────────────────────────────────
+  // 브라우저 리다이렉트 흐름이라 실패는 JSON 이 아니라 /login?error=<code> 302 로 표현한다
+  // (magic-link/verify 와 동일 관례). state·nonce·PKCE verifier 는 httpOnly 쿠키에 담아
+  // 콜백에서 대조한다 — 쿠키가 없거나 state 가 다르면 CSRF 로 보고 거부.
+  const oidcCookie = `${cookiePrefix}_oidc`;
+  const OIDC_COOKIE_PATH = "/api/v1/auth";
+  const OIDC_STATE_TTL_SECONDS = 10 * 60;
+
+  interface OidcFlowState {
+    state: string;
+    nonce: string;
+    verifier: string;
+    orgDomain: string;
+  }
+
+  /** 요청에서 org 를 판정한다(설정 조회가 IdP 왕복보다 먼저라 org 를 알아야 한다). */
+  function hintOrgDomain(explicit?: string): string | undefined {
+    return (
+      explicit ??
+      (deps.allowedDomains.length === 1 ? deps.allowedDomains[0] : undefined)
+    )?.toLowerCase();
+  }
+
+  app.get("/login/oidc", async (c) => {
+    const domain = hintOrgDomain(c.req.query("orgDomain"));
+    if (!domain) return c.redirect(loginUrl("sso_disabled"), 302);
+    const org = await findOrgByDomain(domain);
+    if (!org) return c.redirect(loginUrl("sso_disabled"), 302);
+
+    const resolved = await resolveAuthSettingsSafely(deps.settings, org.id);
+    const config = resolveOidcConfig(resolved, deps.env ?? process.env);
+    if (!deps.oidcClient || !config) {
+      return c.redirect(loginUrl("sso_disabled"), 302);
+    }
+
+    const { verifier, challenge } = createPkcePair();
+    const flow: OidcFlowState = {
+      state: randomBytes(16).toString("base64url"),
+      nonce: randomBytes(16).toString("base64url"),
+      verifier,
+      orgDomain: domain,
+    };
+    setCookie(
+      c,
+      oidcCookie,
+      Buffer.from(JSON.stringify(flow)).toString("base64url"),
+      {
+        httpOnly: true,
+        secure,
+        sameSite: "Lax",
+        path: OIDC_COOKIE_PATH,
+        maxAge: OIDC_STATE_TTL_SECONDS,
+      },
+    );
+
+    return c.redirect(
+      deps.oidcClient.authorizationUrl(config, {
+        state: flow.state,
+        nonce: flow.nonce,
+        codeChallenge: challenge,
+      }),
+      302,
+    );
+  });
+
+  app.get("/login/oidc/callback", async (c) => {
+    function fail(error: string) {
+      deleteCookie(c, oidcCookie, { path: OIDC_COOKIE_PATH });
+      return c.redirect(loginUrl(error), 302);
+    }
+
+    let flow: OidcFlowState | null = null;
+    const raw = getCookie(c, oidcCookie);
+    if (raw) {
+      try {
+        flow = JSON.parse(
+          Buffer.from(raw, "base64url").toString("utf8"),
+        ) as OidcFlowState;
+      } catch {
+        flow = null;
+      }
+    }
+    const state = c.req.query("state");
+    if (!flow?.state || !state || flow.state !== state)
+      return fail("sso_state");
+
+    const code = c.req.query("code");
+    if (!code) return fail("sso_failed");
+
+    const org = await findOrgByDomain(flow.orgDomain);
+    if (!org) return fail("sso_disabled");
+    const resolved = await resolveAuthSettingsSafely(deps.settings, org.id);
+    const config = resolveOidcConfig(resolved, deps.env ?? process.env);
+    if (!deps.oidcClient || !config) return fail("sso_disabled");
+
+    let identity;
+    try {
+      identity = await deps.oidcClient.exchangeCode(config, {
+        code,
+        codeVerifier: flow.verifier,
+        nonce: flow.nonce,
+      });
+    } catch (err) {
+      // 인프라/설정 실패는 자격증명 오류와 구분한다(재시도 가능).
+      if (err instanceof OidcConnectionError) return fail("sso_unavailable");
+      throw err;
+    }
+    if (!identity) return fail("sso_failed");
+
+    const email = identity.email.trim().toLowerCase();
+    if (!isValidEmail(email)) return fail("sso_failed");
+
+    const result = await provisionFederatedUser({
+      email,
+      name: identity.name,
+      groups: identity.groups,
+      groupRoleMap: resolved.oidcGroupRoleMap,
+      defaultRole: resolved.defaultUserRole ?? "member",
     });
+    if (!result.ok) {
+      return fail(
+        result.reason === "group_forbidden" ? "sso_group" : result.reason,
+      );
+    }
+
+    deleteCookie(c, oidcCookie, { path: OIDC_COOKIE_PATH });
+    await issueSession(c, result.user.id, result.user.orgId, result.user.role);
+    return c.redirect("/", 302);
+  });
+
+  // ── P22-T1-17(C16) — 역프록시 trusted-header 로그인 ──────────────────────────
+  // oauth2-proxy·Cloudflare Access 처럼 앞단이 이미 인증을 끝낸 배포용. 헤더는 위조가 쉬워
+  // 기본 비활성 + 프록시 공유비밀(설정 시) 두 겹으로 막는다(lib/oidc-client.ts 참조).
+  // 403 TRUSTED_HEADER_DISABLED · EMAIL_DOMAIN_FORBIDDEN · TRUSTED_HEADER_GROUP_FORBIDDEN ·
+  // ACCOUNT_INACTIVE / 401 INVALID_CREDENTIALS
+  app.post("/login/trusted-header", async (c) => {
+    const disabled = () =>
+      c.json(
+        errorJson(
+          "TRUSTED_HEADER_DISABLED",
+          "이 조직은 프록시 헤더 인증이 활성화되어 있지 않습니다.",
+        ),
+        403,
+      );
+
+    const domain = hintOrgDomain();
+    if (!domain) return disabled();
+    const settingsOrg = await findOrgByDomain(domain);
+    if (!settingsOrg) return disabled();
+
+    const resolved = await resolveAuthSettingsSafely(
+      deps.settings,
+      settingsOrg.id,
+    );
+    const config = resolveTrustedHeaderConfig(
+      resolved,
+      deps.env ?? process.env,
+    );
+    if (!config) return disabled();
+
+    const identity = readTrustedHeaderIdentity(config, c.req.raw.headers);
+    if (!identity) {
+      return c.json(
+        errorJson(
+          "INVALID_CREDENTIALS",
+          "신뢰할 수 있는 프록시 신원 헤더가 없습니다.",
+        ),
+        401,
+      );
+    }
+
+    const email = identity.email.trim().toLowerCase();
+    if (!isValidEmail(email)) {
+      return c.json(
+        errorJson(
+          "INVALID_CREDENTIALS",
+          "헤더의 이메일 형식이 올바르지 않습니다.",
+        ),
+        401,
+      );
+    }
+
+    const result = await provisionFederatedUser({
+      email,
+      name: identity.name,
+      groups: identity.groups,
+      groupRoleMap: resolved.trustedHeaderGroupRoleMap,
+      defaultRole: resolved.defaultUserRole ?? "member",
+    });
+    if (!result.ok) {
+      if (result.reason === "domain_forbidden") {
+        return c.json(
+          errorJson(
+            "EMAIL_DOMAIN_FORBIDDEN",
+            `${deps.allowedDomains.join(", ")} 도메인만 로그인 가능합니다.`,
+          ),
+          403,
+        );
+      }
+      if (result.reason === "group_forbidden") {
+        return c.json(
+          errorJson(
+            "TRUSTED_HEADER_GROUP_FORBIDDEN",
+            "이 서비스에 접근이 허용된 그룹에 속해 있지 않습니다.",
+          ),
+          403,
+        );
+      }
+      return c.json(
+        errorJson(
+          "ACCOUNT_INACTIVE",
+          "비활성화된 계정입니다. 관리자에게 문의하세요.",
+        ),
+        403,
+      );
+    }
+
+    await issueSession(c, result.user.id, result.user.orgId, result.user.role);
+    return c.json(sessionPayload(result.user, result.org));
   });
 
   app.post("/signup", async (c) => {

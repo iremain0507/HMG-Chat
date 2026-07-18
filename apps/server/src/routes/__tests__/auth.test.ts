@@ -19,6 +19,8 @@ import {
 } from "../../lib/org-settings-schema.js";
 // P22-T1-11(C14) — LDAP/AD 디렉터리 로그인 테스트용 dev-stub 클라이언트.
 import { createInMemoryLdapDirectoryClient } from "../../lib/ldap-client.js";
+// P22-T1-17(C16) — OIDC SSO 테스트용 dev-stub IdP 클라이언트.
+import { createInMemoryOidcClient } from "../../lib/oidc-client.js";
 
 process.env.JWT_SECRET = "test-only-jwt-secret-32chars-minimum-xxxx";
 process.env.PROJECT_SLUG = "wchat";
@@ -1340,5 +1342,336 @@ describe("routes/auth — POST /login/directory (LDAP/AD)", () => {
     const res = await login(makeApp(), { username: "kim" });
     expect(res.status).toBe(400);
     expect((await res.json()).error.code).toBe("INVALID_INPUT");
+  });
+});
+
+// ── P22-T1-17(계약배치 C16) — OAuth/OIDC SSO + trusted-header ────────────────
+describe("routes/auth — GET /login/oidc (OIDC SSO)", () => {
+  const OIDC_SETTINGS: Partial<ResolvedOrgSettings> = {
+    oidcEnabled: true,
+    oidcIssuer: "https://idp.example.com",
+    oidcAuthorizationEndpoint: "https://idp.example.com/authorize",
+    oidcTokenEndpoint: "https://idp.example.com/token",
+    oidcClientId: "wchat",
+    oidcClientSecretRef: "OIDC_CLIENT_SECRET",
+    oidcRedirectUri: "http://localhost:3000/api/v1/auth/login/oidc/callback",
+    oidcGroupRoleMap: { "wchat-admins": "admin", "all-staff": "member" },
+  };
+
+  let da: AuthDataAccess;
+  let emailSender: InMemoryEmailSenderStub;
+  let org: Organization;
+
+  function oidcClient() {
+    return createInMemoryOidcClient({
+      tokenEndpoint: "https://idp.example.com/token",
+      clientId: "wchat",
+      clientSecret: "idp-secret",
+      codes: {
+        "code-kim": {
+          claims: {
+            sub: "kim-sub",
+            email: "kim@wchat.example.com",
+            name: "김위아",
+            groups: ["wchat-admins", "all-staff"],
+          },
+        },
+        "code-guest": {
+          claims: {
+            sub: "guest-sub",
+            email: "guest@wchat.example.com",
+            name: "게스트",
+            groups: ["guests"],
+          },
+        },
+        "code-outsider": {
+          claims: {
+            sub: "out-sub",
+            email: "spy@other.example.com",
+            name: "외부",
+            groups: ["all-staff"],
+          },
+        },
+      },
+    });
+  }
+
+  function makeApp(
+    overrides: Partial<ResolvedOrgSettings> = OIDC_SETTINGS,
+    extra: Partial<Parameters<typeof createAuthRoutes>[0]> = {},
+  ) {
+    return createAuthRoutes({
+      da,
+      emailSender,
+      allowedDomains: ["wchat.example.com"],
+      appOrigin: "http://localhost:3000",
+      secureCookies: false,
+      settings: makeSettingsResolver(overrides),
+      oidcClient: oidcClient(),
+      env: { OIDC_CLIENT_SECRET: "idp-secret" },
+      ...extra,
+    });
+  }
+
+  /** /login/oidc 302 에서 state 와 상태쿠키를 뽑아 콜백에 되돌려준다(브라우저 흉내). */
+  async function startFlow(app: ReturnType<typeof createAuthRoutes>) {
+    const res = await app.request("/login/oidc");
+    const location = res.headers.get("location") ?? "";
+    const stateCookie = res.headers
+      .getSetCookie()
+      .find((h) => h.startsWith("wchat_oidc="));
+    return {
+      res,
+      location,
+      state: new URL(location, "http://localhost").searchParams.get("state"),
+      cookieHeader: stateCookie?.split(";")[0] ?? "",
+    };
+  }
+
+  beforeEach(async () => {
+    da = makeInMemoryDataAccess();
+    emailSender = new InMemoryEmailSenderStub();
+    org = await da.organizations.insert({
+      name: "WChat Inc",
+      domain: "wchat.example.com",
+      plan: "team",
+      allowedModels: [],
+      allowedTools: [],
+      defaultTokenBudgetMicros: null,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+  });
+
+  it("oidcEnabled=false(기본값) → /login?error=sso_disabled (기존 동작 보존)", async () => {
+    const res = await makeApp({ oidcEnabled: false }).request("/login/oidc");
+    expect(res.status).toBe(302);
+    expect(res.headers.get("location")).toBe("/login?error=sso_disabled");
+  });
+
+  it("IdP authorize URL 로 302 + state/PKCE 상태쿠키 발급", async () => {
+    const { res, location, state, cookieHeader } = await startFlow(makeApp());
+    expect(res.status).toBe(302);
+    const url = new URL(location);
+    expect(url.origin + url.pathname).toBe("https://idp.example.com/authorize");
+    expect(url.searchParams.get("client_id")).toBe("wchat");
+    expect(url.searchParams.get("code_challenge_method")).toBe("S256");
+    expect(state).toBeTruthy();
+    expect(cookieHeader).toContain("wchat_oidc=");
+  });
+
+  it("콜백: 유효한 code → 유저 자동 프로비저닝 + 세션 쿠키 + 앱으로 302", async () => {
+    const app = makeApp();
+    const { state, cookieHeader } = await startFlow(app);
+    const res = await app.request(
+      `/login/oidc/callback?code=code-kim&state=${state}`,
+      { headers: { cookie: cookieHeader } },
+    );
+    expect(res.status).toBe(302);
+    expect(res.headers.get("location")).toBe("/");
+
+    const cookies = res.headers.getSetCookie();
+    expect(cookieValue(cookies, "wchat_at")).toBeTruthy();
+    expect(cookieValue(cookies, "wchat_rt")).toBeTruthy();
+
+    const created = await da.users.list({
+      orgId: org.id,
+      emailEq: "kim@wchat.example.com",
+    });
+    expect(created.items[0]?.name).toBe("김위아");
+    // groups 클레임 → 롤 매핑(wchat-admins ⇒ admin)
+    expect(created.items[0]?.role).toBe("admin");
+  });
+
+  it("콜백: state 불일치 → 세션 미발급 (CSRF 방어)", async () => {
+    const app = makeApp();
+    const { cookieHeader } = await startFlow(app);
+    const res = await app.request(
+      "/login/oidc/callback?code=code-kim&state=forged-state",
+      { headers: { cookie: cookieHeader } },
+    );
+    expect(res.status).toBe(302);
+    expect(res.headers.get("location")).toBe("/login?error=sso_state");
+    expect(cookieValue(res.headers.getSetCookie(), "wchat_at")).toBeFalsy();
+  });
+
+  it("콜백: 상태쿠키 없이 온 요청 → 거부", async () => {
+    const app = makeApp();
+    const { state } = await startFlow(app);
+    const res = await app.request(
+      `/login/oidc/callback?code=code-kim&state=${state}`,
+    );
+    expect(res.headers.get("location")).toBe("/login?error=sso_state");
+  });
+
+  it("콜백: 매핑된 그룹이 없는 사용자 → 거부(그룹 게이트)", async () => {
+    const app = makeApp();
+    const { state, cookieHeader } = await startFlow(app);
+    const res = await app.request(
+      `/login/oidc/callback?code=code-guest&state=${state}`,
+      { headers: { cookie: cookieHeader } },
+    );
+    expect(res.headers.get("location")).toBe("/login?error=sso_group");
+    expect(cookieValue(res.headers.getSetCookie(), "wchat_at")).toBeFalsy();
+  });
+
+  it("콜백: 허용 도메인 밖 이메일 → 거부 (IdP 가 준 이메일이 최종 권위)", async () => {
+    const app = makeApp();
+    const { state, cookieHeader } = await startFlow(app);
+    const res = await app.request(
+      `/login/oidc/callback?code=code-outsider&state=${state}`,
+      { headers: { cookie: cookieHeader } },
+    );
+    expect(res.headers.get("location")).toBe("/login?error=domain_forbidden");
+    const users = await da.users.list({ orgId: org.id });
+    expect(users.items).toHaveLength(0);
+  });
+
+  it("콜백: 위조 code → 자격증명 오류 (세션 미발급)", async () => {
+    const app = makeApp();
+    const { state, cookieHeader } = await startFlow(app);
+    const res = await app.request(
+      `/login/oidc/callback?code=forged&state=${state}`,
+      { headers: { cookie: cookieHeader } },
+    );
+    expect(res.headers.get("location")).toBe("/login?error=sso_failed");
+    expect(cookieValue(res.headers.getSetCookie(), "wchat_at")).toBeFalsy();
+  });
+
+  it("기존 유저 재로그인 → 새 계정 없이 롤/이름을 IdP 기준으로 동기화", async () => {
+    await da.users.insert({
+      orgId: org.id,
+      email: "kim@wchat.example.com",
+      name: "옛이름",
+      role: "member",
+      customInstructions: null,
+      language: null,
+      status: "active",
+      lastLoginAt: null,
+    });
+    const app = makeApp();
+    const { state, cookieHeader } = await startFlow(app);
+    await app.request(`/login/oidc/callback?code=code-kim&state=${state}`, {
+      headers: { cookie: cookieHeader },
+    });
+    const users = await da.users.list({
+      orgId: org.id,
+      emailEq: "kim@wchat.example.com",
+    });
+    expect(users.items).toHaveLength(1);
+    expect(users.items[0]?.name).toBe("김위아");
+    expect(users.items[0]?.role).toBe("admin");
+  });
+
+  it("비활성 계정은 SSO 성공으로도 되살아나지 않는다", async () => {
+    await da.users.insert({
+      orgId: org.id,
+      email: "kim@wchat.example.com",
+      name: "김위아",
+      role: "member",
+      customInstructions: null,
+      language: null,
+      status: "suspended",
+      lastLoginAt: null,
+    });
+    const app = makeApp();
+    const { state, cookieHeader } = await startFlow(app);
+    const res = await app.request(
+      `/login/oidc/callback?code=code-kim&state=${state}`,
+      { headers: { cookie: cookieHeader } },
+    );
+    expect(res.headers.get("location")).toBe("/login?error=account_inactive");
+    expect(cookieValue(res.headers.getSetCookie(), "wchat_at")).toBeFalsy();
+  });
+});
+
+describe("routes/auth — POST /login/trusted-header", () => {
+  const HEADER_SETTINGS: Partial<ResolvedOrgSettings> = {
+    trustedHeaderEnabled: true,
+    trustedHeaderSecretRef: "TRUSTED_HEADER_SECRET",
+    trustedHeaderGroupRoleMap: { "wchat-admins": "admin" },
+  };
+
+  let da: AuthDataAccess;
+  let emailSender: InMemoryEmailSenderStub;
+  let org: Organization;
+
+  function makeApp(overrides: Partial<ResolvedOrgSettings> = HEADER_SETTINGS) {
+    return createAuthRoutes({
+      da,
+      emailSender,
+      allowedDomains: ["wchat.example.com"],
+      appOrigin: "http://localhost:3000",
+      secureCookies: false,
+      settings: makeSettingsResolver(overrides),
+      env: { TRUSTED_HEADER_SECRET: "proxy-secret" },
+    });
+  }
+
+  function login(
+    app: ReturnType<typeof createAuthRoutes>,
+    headers: Record<string, string>,
+  ) {
+    return app.request("/login/trusted-header", { method: "POST", headers });
+  }
+
+  beforeEach(async () => {
+    da = makeInMemoryDataAccess();
+    emailSender = new InMemoryEmailSenderStub();
+    org = await da.organizations.insert({
+      name: "WChat Inc",
+      domain: "wchat.example.com",
+      plan: "team",
+      allowedModels: [],
+      allowedTools: [],
+      defaultTokenBudgetMicros: null,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+  });
+
+  it("trustedHeaderEnabled=false(기본값) → 403 TRUSTED_HEADER_DISABLED", async () => {
+    const res = await login(makeApp({ trustedHeaderEnabled: false }), {
+      "x-forwarded-email": "kim@wchat.example.com",
+      "x-wchat-proxy-secret": "proxy-secret",
+    });
+    expect(res.status).toBe(403);
+    expect((await res.json()).error.code).toBe("TRUSTED_HEADER_DISABLED");
+  });
+
+  it("신뢰 프록시 헤더 → 유저 프로비저닝 + 세션 발급", async () => {
+    const res = await login(makeApp(), {
+      "x-forwarded-email": "kim@wchat.example.com",
+      // HTTP 헤더 값은 latin-1 만 실을 수 있어 프록시도 ASCII 로 넘긴다.
+      "x-forwarded-user": "Kim Wia",
+      "x-forwarded-groups": "wchat-admins",
+      "x-wchat-proxy-secret": "proxy-secret",
+    });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.data.user.email).toBe("kim@wchat.example.com");
+    expect(body.data.user.name).toBe("Kim Wia");
+    expect(body.data.user.role).toBe("admin");
+    expect(body.data.org.id).toBe(org.id);
+    expect(cookieValue(res.headers.getSetCookie(), "wchat_at")).toBeTruthy();
+  });
+
+  it("공유 비밀 없이 헤더만 위조한 직접 요청 → 401 (프록시 우회 차단)", async () => {
+    const res = await login(makeApp(), {
+      "x-forwarded-email": "attacker@wchat.example.com",
+    });
+    expect(res.status).toBe(401);
+    expect((await res.json()).error.code).toBe("INVALID_CREDENTIALS");
+    const users = await da.users.list({ orgId: org.id });
+    expect(users.items).toHaveLength(0);
+  });
+
+  it("허용 도메인 밖 이메일 헤더 → 403 EMAIL_DOMAIN_FORBIDDEN", async () => {
+    const res = await login(makeApp(), {
+      "x-forwarded-email": "spy@other.example.com",
+      "x-wchat-proxy-secret": "proxy-secret",
+    });
+    expect(res.status).toBe(403);
+    expect((await res.json()).error.code).toBe("EMAIL_DOMAIN_FORBIDDEN");
   });
 });

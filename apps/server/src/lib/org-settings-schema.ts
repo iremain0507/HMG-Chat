@@ -105,6 +105,38 @@ export const OrgSettingsSchema = z.object({
     .optional(),
   ldapTlsRejectUnauthorized: z.boolean().optional(),
 
+  // Identity/SSO — P22-T1-17(계약배치 C16): OAuth2/OIDC SSO + 역프록시 trusted-header.
+  // 둘 다 기본 false 라 미설정 org 는 기존 매직링크/비밀번호/LDAP 경로 그대로(비파괴).
+  oidcEnabled: z.boolean().optional(),
+  oidcIssuer: z.string().max(500).optional(),
+  oidcAuthorizationEndpoint: z.string().max(500).optional(),
+  oidcTokenEndpoint: z.string().max(500).optional(),
+  // 선택 — id_token 에 email/groups 를 싣지 않는 IdP 보강용.
+  oidcUserinfoEndpoint: z.string().max(500).optional(),
+  oidcClientId: z.string().max(200).optional(),
+  // client_secret 자체가 아니라 서버가 읽을 env 변수 **이름**만 저장한다(OIDC_ 접두만 허용).
+  oidcClientSecretRef: z.string().max(200).optional(),
+  oidcRedirectUri: z.string().max(500).optional(),
+  oidcScopes: z.string().max(300).optional(), // 공백 구분("openid email profile")
+  oidcEmailClaim: z.string().max(100).optional(),
+  oidcNameClaim: z.string().max(100).optional(),
+  oidcGroupsClaim: z.string().max(100).optional(),
+  // 그룹/롤 클레임 값 → org 롤. 비어 있으면 그룹 게이트 미적용(IdP 인증만으로 허용).
+  oidcGroupRoleMap: z
+    .record(z.string().max(500), z.enum(["member", "admin", "owner"]))
+    .optional(),
+
+  // 앞단 프록시(oauth2-proxy·Cloudflare Access 등)가 인증을 끝내고 신원을 헤더로 넘기는 배포.
+  trustedHeaderEnabled: z.boolean().optional(),
+  trustedHeaderEmail: z.string().max(100).optional(),
+  trustedHeaderName: z.string().max(100).optional(),
+  trustedHeaderGroups: z.string().max(100).optional(),
+  // 프록시 공유비밀의 env 변수 **이름**(TRUSTED_HEADER_ 접두만 허용). 설정 시 헤더 위조 차단.
+  trustedHeaderSecretRef: z.string().max(200).optional(),
+  trustedHeaderGroupRoleMap: z
+    .record(z.string().max(500), z.enum(["member", "admin", "owner"]))
+    .optional(),
+
   // API Keys — P20-T1-12: 전역 마스터 토글(off 면 신규 발급 거부, 기존 키는 영향 없음).
   enableApiKeys: z.boolean().optional(),
 
@@ -196,6 +228,30 @@ export const DEFAULT_ORG_SETTINGS: ResolvedOrgSettings = {
   ldapGroupAttribute: "memberOf",
   ldapGroupRoleMap: {},
   ldapTlsRejectUnauthorized: true,
+
+  // P22-T1-17(C16) — SSO 는 명시적으로 켜야 활성(기존 인증 경로 무변경).
+  // 클레임 이름 기본값은 OIDC Core 표준 클레임을 따른다.
+  oidcEnabled: false,
+  oidcIssuer: "",
+  oidcAuthorizationEndpoint: "",
+  oidcTokenEndpoint: "",
+  oidcUserinfoEndpoint: "",
+  oidcClientId: "",
+  oidcClientSecretRef: "",
+  oidcRedirectUri: "",
+  oidcScopes: "openid email profile",
+  oidcEmailClaim: "email",
+  oidcNameClaim: "name",
+  oidcGroupsClaim: "groups",
+  oidcGroupRoleMap: {},
+
+  // 헤더 인증은 위조가 쉬워 기본 비활성. 헤더 이름 기본값은 oauth2-proxy 관례를 따른다.
+  trustedHeaderEnabled: false,
+  trustedHeaderEmail: "X-Forwarded-Email",
+  trustedHeaderName: "X-Forwarded-User",
+  trustedHeaderGroups: "X-Forwarded-Groups",
+  trustedHeaderSecretRef: "",
+  trustedHeaderGroupRoleMap: {},
 
   // 현행(마스터 토글 없음=누구나 발급 가능) 동작을 미조정 org 에서 보존(비파괴).
   enableApiKeys: true,

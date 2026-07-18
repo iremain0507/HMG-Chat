@@ -2849,8 +2849,8 @@
     "acceptance": "RED 우선. Auth is magic-link + JWT/refresh; no OAuth/OIDC SSO, role/group claim mapping, or trusted-proxy header auth. Plan defers SSO (SAML/OIDC) to the enterprise-governance phase. Listed as deferred. / .ralph/CONTRACT_APPROVED 없으면 격리(구현 금지).",
     "phase": "P22",
     "team": "T1",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P22-T6-12",
