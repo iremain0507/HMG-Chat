@@ -11,9 +11,19 @@ import { createAlertNotifier } from "./lib/alert-engine.js";
 import { startAlertingScheduler } from "./lib/alerting-scheduler.js";
 import { createInlineArtifactStore } from "./lib/artifact-store.inline.js";
 import { createLogger } from "./lib/logger.js";
+import { activateRuntimeBusFromEnv } from "./orchestrator/runtime-bus.js";
 import { startRetentionScheduler } from "./lib/retention-scheduler.js";
 
 const env = loadEnv();
+
+// P22-T2-03 — abort/resume/HITL 런타임 상태 백엔드를 배포 시점에 선택한다.
+//   RUNTIME_STATE_BACKEND=memory(기본): 기존 LOCAL_ONLY 단일 프로세스 동작 그대로.
+//   RUNTIME_STATE_BACKEND=redis: REDIS_URL 을 실제로 소비해, 다중 인스턴스에서 Stop(abort)·
+//   SSE resume 캐치업·HITL 승인이 소유 인스턴스로 팬아웃된다. createApp 이전에 활성화해야
+//   registry 모듈 기본 인스턴스가 올바른 bus 에 바인딩된다.
+const runtimeBusHandle = await activateRuntimeBusFromEnv(env);
+console.warn(`[server] runtime state backend: ${runtimeBusHandle.backend}`);
+
 const app = createApp(env);
 
 const server = serve({ fetch: app.fetch, port: env.PORT }, (info) => {
@@ -83,6 +93,7 @@ function shutdown(signal: string): void {
   console.warn(`[server] ${signal} received, shutting down`);
   alertingHandle?.stop();
   retentionHandle?.stop();
+  void runtimeBusHandle.stop();
   server.close();
   process.exit(0);
 }

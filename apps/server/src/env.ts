@@ -30,6 +30,9 @@ const Env = z.object({
     .enum(["true", "false"])
     .default("true")
     .transform((v) => v === "true"),
+  // P22-T2-03 — abort/resume/HITL 런타임 상태 백엔드를 배포 시점에 고른다.
+  //   memory(기본, LOCAL_ONLY 단일 프로세스) / redis(다중 ECS task — REDIS_URL 을 실제로 소비).
+  RUNTIME_STATE_BACKEND: z.enum(["memory", "redis"]).default("memory"),
 });
 export type Env = z.infer<typeof Env>;
 

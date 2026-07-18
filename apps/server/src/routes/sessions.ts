@@ -586,9 +586,10 @@ export function createSessionRoutes(
     return c.body(null, 204);
   });
 
-  app.delete("/:id/active-run", (c) => {
+  app.delete("/:id/active-run", async (c) => {
     const sessionId = c.req.param("id");
-    const cancelled = abortRun(sessionId);
+    // P22-T2-03 — 다른 인스턴스가 들고 있는 run 도 RuntimeBus 팬아웃으로 취소된다.
+    const cancelled = await abortRun(sessionId);
     return c.json({ data: { cancelled }, meta: { requestId: randomUUID() } });
   });
 
@@ -613,7 +614,7 @@ export function createSessionRoutes(
       );
     }
 
-    const result = resolveHitl(sessionId, body.toolCallId, {
+    const result = await resolveHitl(sessionId, body.toolCallId, {
       decision: body.decision,
       ...(body.modifiedArgs ? { modifiedArgs: body.modifiedArgs } : {}),
       ...(body.reason ? { reason: body.reason } : {}),
@@ -634,10 +635,10 @@ export function createSessionRoutes(
     });
   });
 
-  app.get("/:id/hitl/pending", (c) => {
+  app.get("/:id/hitl/pending", async (c) => {
     const sessionId = c.req.param("id");
     return c.json({
-      data: listPendingHitl(sessionId),
+      data: await listPendingHitl(sessionId),
       meta: { requestId: randomUUID() },
     });
   });

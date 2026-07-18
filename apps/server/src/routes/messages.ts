@@ -558,7 +558,7 @@ export function createMessageRoutes(
 
     const jobId = randomUUID();
     const activeRuns = deps.activeRuns ?? noopActiveRuns;
-    const handle = registerRun(sessionId, jobId);
+    const handle = await registerRun(sessionId, jobId);
     const requestSignal = c.req.raw.signal;
     if (requestSignal.aborted) {
       handle.controller.abort();
@@ -618,19 +618,19 @@ export function createMessageRoutes(
         for await (const event of events) {
           if (event.type === "message_start") {
             currentMessageId = event.messageId;
-            startMessageRun(event.messageId, sessionId);
+            await startMessageRun(event.messageId, sessionId);
             // P17-T1-05(TS-14) — 첨부 ephemeral 청크 검색 결과를 이 turn 의 citation 이벤트로
             // 방출(모델의 tool_use 여부와 무관하게 결정적으로 반영).
             for (const citation of attachmentCitations) {
               const citationEvent = { type: "citation" as const, ...citation };
-              recordMessageRunEvent(currentMessageId, citationEvent);
+              await recordMessageRunEvent(currentMessageId, citationEvent);
               await stream.writeSSE({
                 event: "citation",
                 data: JSON.stringify(citation),
               });
             }
           } else if (currentMessageId) {
-            recordMessageRunEvent(currentMessageId, event);
+            await recordMessageRunEvent(currentMessageId, event);
           }
           if (event.type === "text_delta") {
             assistantText += event.text;
@@ -672,7 +672,7 @@ export function createMessageRoutes(
         }
       } finally {
         clearInterval(heartbeat);
-        unregisterRun(sessionId, jobId);
+        await unregisterRun(sessionId, jobId);
         // P17-T1-01 — assistant 메시지 영속(정상 종료·취소·에러 경로 모두 finally 에서 1회).
         // message_start 가 한 번도 없었으면(예: 초기 검증 실패) 빈 행을 남기지 않는다.
         // P19-T2-05 — temporary 턴은 영속 자체를 스킵한다.
@@ -777,7 +777,7 @@ export function createMessageRoutes(
 
     const jobId = randomUUID();
     const activeRuns = deps.activeRuns ?? noopActiveRuns;
-    const handle = registerRun(sessionId, jobId);
+    const handle = await registerRun(sessionId, jobId);
     const requestSignal = c.req.raw.signal;
     if (requestSignal.aborted) {
       handle.controller.abort();
@@ -811,9 +811,9 @@ export function createMessageRoutes(
         for await (const event of events) {
           if (event.type === "message_start") {
             currentMessageId = event.messageId;
-            startMessageRun(event.messageId, sessionId);
+            await startMessageRun(event.messageId, sessionId);
           } else if (currentMessageId) {
-            recordMessageRunEvent(currentMessageId, event);
+            await recordMessageRunEvent(currentMessageId, event);
           }
           if (event.type === "text_delta") {
             continuedText += event.text;
@@ -853,7 +853,7 @@ export function createMessageRoutes(
         }
       } finally {
         clearInterval(heartbeat);
-        unregisterRun(sessionId, jobId);
+        await unregisterRun(sessionId, jobId);
         if (continuedText.length > 0) {
           await deps.messages
             ?.update?.(messageId, {
@@ -927,10 +927,11 @@ export function createMessageRoutes(
   // resume 후 재연결 — stop reason='tool_use' 뒤 또는 네트워크 재연결. 첫 event 는 항상
   // message_replace(contentSoFar 로 캐치업) 후 이어지는 live event 를 relay(단일 구독,
   // 동시 구독은 409).
-  app.get("/:id/messages/:messageId/stream", (c) => {
+  app.get("/:id/messages/:messageId/stream", async (c) => {
     const sessionId = c.req.param("id");
     const messageId = c.req.param("messageId");
-    const subscription = subscribeMessageRun(messageId, sessionId);
+    // P22-T2-03 — 로컬에 없으면 RuntimeBus 공유 스냅샷으로 다른 인스턴스의 run 을 이어받는다.
+    const subscription = await subscribeMessageRun(messageId, sessionId);
 
     if (subscription.kind === "not_found") {
       return c.json(errorJson("NOT_FOUND", "메시지를 찾을 수 없습니다."), 404);

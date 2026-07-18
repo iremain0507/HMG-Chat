@@ -569,17 +569,17 @@ describe("POST /:id/messages — tools/toolContext 배선 — P11-T2-02", () => 
         return r.text();
       });
 
-    let pending = listPendingHitl(sessionId);
+    let pending = await listPendingHitl(sessionId);
     for (let i = 0; i < 50 && pending.length === 0; i++) {
       await new Promise((resolve) => setTimeout(resolve, 10));
-      pending = listPendingHitl(sessionId);
+      pending = await listPendingHitl(sessionId);
     }
     // 승인 전 — 실행 결과가 아직 큐에 대기 중이어야 한다(=아직 실행되지 않음).
     expect(pending).toHaveLength(1);
     expect(pending[0].toolName).toBe("danger_tool");
     expect(pending[0].toolCallId).toBe(toolCallId);
 
-    const resolveResult = resolveHitl(sessionId, toolCallId, {
+    const resolveResult = await resolveHitl(sessionId, toolCallId, {
       decision: "approved",
     });
     expect(resolveResult).toBe("resolved");

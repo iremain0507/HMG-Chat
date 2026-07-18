@@ -2498,8 +2498,8 @@
     "acceptance": "RED 우선. GIVEN two app instances sharing one Redis, WHEN a run starts on instance A and DELETE /sessions/:id/active-run is served by instance B, THEN abortRun on B fires controller.abort() for the run on A and returns… / GIVEN a message run streaming on instance A, WHEN GET /sessions/:id/messages/:messageId/stream (resume) is served by instance B, THEN B returns kind:ok with the contentSoFar catch-up snapshot and relays subsequent live… / GIVEN a pending HITL approval created on instance A, WHEN POST /sessions/:id/messages/hitl resolves on instance B, THEN the askApproval promise on A settles approved/denied and listPendingHitl no longer lists it (today… / GIVEN env selects LOCAL_ONLY (no redis flag), WHEN the server boots single-process, THEN existing in-memory abort/resume/HITL behavior and all current tests pass unchanged (adapter selection is backward compatible).",
     "phase": "P22",
     "team": "T2",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P22-T3-01",
