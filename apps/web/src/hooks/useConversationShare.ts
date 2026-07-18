@@ -22,11 +22,15 @@ export interface ConversationShareDto {
   revokedAt: string | null;
 }
 
+export type ConversationShareGoneReason = "expired" | "revoked";
+
 interface UseConversationShareResult {
   share: ConversationShareDto | null;
   loading: boolean;
   notFound: boolean;
   gone: boolean;
+  // 410 응답의 원인(만료 vs 취소). 구버전 서버는 null(구분 불가).
+  goneReason: ConversationShareGoneReason | null;
   error: string | null;
 }
 
@@ -37,12 +41,15 @@ export function useConversationShare(
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
   const [gone, setGone] = useState(false);
+  const [goneReason, setGoneReason] =
+    useState<ConversationShareGoneReason | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
     setNotFound(false);
     setGone(false);
+    setGoneReason(null);
     setError(null);
     try {
       const res = await fetch(`/api/v1/conversation-shares/${token}`);
@@ -52,6 +59,14 @@ export function useConversationShare(
       }
       if (res.status === 410) {
         setGone(true);
+        const body = (await res.json().catch(() => ({}))) as {
+          error?: { reason?: string };
+        };
+        setGoneReason(
+          body.error?.reason === "expired" || body.error?.reason === "revoked"
+            ? body.error.reason
+            : null,
+        );
         return;
       }
       if (!res.ok) {
@@ -70,5 +85,5 @@ export function useConversationShare(
     void load();
   }, [load]);
 
-  return { share, loading, notFound, gone, error };
+  return { share, loading, notFound, gone, goneReason, error };
 }

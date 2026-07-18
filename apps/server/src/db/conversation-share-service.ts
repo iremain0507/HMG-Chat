@@ -72,10 +72,17 @@ export interface ConversationShareActor {
 
 export class ConversationShareServiceError extends Error {
   code: "NOT_FOUND" | "GONE";
+  // GONE 세분화: 만료(expired) 와 취소(revoked) 를 공개 응답에서 구분(P22-T4-02).
+  reason?: "expired" | "revoked";
 
-  constructor(code: ConversationShareServiceError["code"], message: string) {
+  constructor(
+    code: ConversationShareServiceError["code"],
+    message: string,
+    reason?: ConversationShareServiceError["reason"],
+  ) {
     super(message);
     this.code = code;
+    this.reason = reason;
   }
 }
 
@@ -158,9 +165,11 @@ export function createConversationShareService(deps: {
       found.revokedAt ||
       (found.expiresAt && found.expiresAt.getTime() <= Date.now())
     ) {
+      // revoke 가 만료보다 우선(둘 다 성립 시 revoked 로 안내).
       throw new ConversationShareServiceError(
         "GONE",
         "share 가 만료되었거나 revoke 되었습니다.",
+        found.revokedAt ? "revoked" : "expired",
       );
     }
     return found;

@@ -17,11 +17,15 @@ export interface ShareDto {
   revokedAt: string | null;
 }
 
+export type ShareGoneReason = "expired" | "revoked";
+
 interface UseShareResult {
   share: ShareDto | null;
   loading: boolean;
   notFound: boolean;
   gone: boolean;
+  // 410 응답의 원인(만료 vs 취소). 구버전 서버는 null(구분 불가).
+  goneReason: ShareGoneReason | null;
   error: string | null;
 }
 
@@ -30,12 +34,14 @@ export function useShare(token: string): UseShareResult {
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
   const [gone, setGone] = useState(false);
+  const [goneReason, setGoneReason] = useState<ShareGoneReason | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
     setNotFound(false);
     setGone(false);
+    setGoneReason(null);
     setError(null);
     try {
       const res = await fetch(`/api/v1/share/${token}`);
@@ -45,6 +51,14 @@ export function useShare(token: string): UseShareResult {
       }
       if (res.status === 410) {
         setGone(true);
+        const body = (await res.json().catch(() => ({}))) as {
+          error?: { reason?: string };
+        };
+        setGoneReason(
+          body.error?.reason === "expired" || body.error?.reason === "revoked"
+            ? body.error.reason
+            : null,
+        );
         return;
       }
       if (!res.ok) {
@@ -63,5 +77,5 @@ export function useShare(token: string): UseShareResult {
     void load();
   }, [load]);
 
-  return { share, loading, notFound, gone, error };
+  return { share, loading, notFound, gone, goneReason, error };
 }

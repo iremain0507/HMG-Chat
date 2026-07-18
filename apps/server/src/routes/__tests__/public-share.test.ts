@@ -215,4 +215,38 @@ describe("createPublicShareRoutes", () => {
     expect((await app.request(`/${share.token}`)).status).toBe(410);
     expect((await app.request(`/${share.token}/content`)).status).toBe(410);
   });
+
+  it("만료된 토큰의 410 응답 body 는 reason='expired' 를 담는다", async () => {
+    vi.useFakeTimers();
+    try {
+      const { artifact, shareService, app } = await setup();
+      const share = await shareService.issueShare(
+        { userId: issuer },
+        artifact.id,
+        1,
+      );
+      vi.advanceTimersByTime(2 * 24 * 60 * 60 * 1000);
+
+      const res = await app.request(`/${share.token}`);
+      expect(res.status).toBe(410);
+      const body = (await res.json()) as { error: { reason?: string } };
+      expect(body.error.reason).toBe("expired");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("revoke 된 토큰의 410 응답 body 는 reason='revoked' 를 담는다", async () => {
+    const { artifact, shareService, app } = await setup();
+    const share = await shareService.issueShare(
+      { userId: issuer },
+      artifact.id,
+    );
+    await shareService.revokeShare({ userId: issuer }, share.id);
+
+    const res = await app.request(`/${share.token}`);
+    expect(res.status).toBe(410);
+    const body = (await res.json()) as { error: { reason?: string } };
+    expect(body.error.reason).toBe("revoked");
+  });
 });

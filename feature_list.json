@@ -2552,8 +2552,8 @@
     "acceptance": "RED 우선. GIVEN a share whose expiresAt is in the past WHEN GET /api/v1/share/:token is called THEN response is 410 and the error body carries reason='expired' / GIVEN a share with revokedAt set WHEN GET /api/v1/share/:token (and the conversation-shares equivalent) is called THEN response is 410 and the error body carries reason='revoked' / GIVEN the 410 body reason='expired' WHEN SharePublicView/ConversationSharePublicView render THEN a clock icon and expired copy show; GIVEN reason='revoked' THEN a distinct X/ban icon and revoked copy show (RTL component… / GIVEN an existing valid share WHEN fetched THEN it still returns 200 with data unchanged (no regression in the happy path)",
     "phase": "P22",
     "team": "T4",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P22-T1-07",

@@ -13,9 +13,19 @@ import {
   type ConversationShareSessionsPort,
 } from "../db/conversation-share-service.js";
 
-function errorJson(code: string, message: string) {
+function errorJson(
+  code: string,
+  message: string,
+  reason?: "expired" | "revoked",
+) {
   return {
-    error: { code, category: "http" as const, message, retryable: false },
+    error: {
+      code,
+      category: "http" as const,
+      message,
+      retryable: false,
+      ...(reason ? { reason } : {}),
+    },
   };
 }
 
@@ -111,7 +121,7 @@ export function createPublicConversationShareRoutes(deps: {
     } catch (err) {
       if (err instanceof ConversationShareServiceError) {
         return c.json(
-          errorJson(err.code, err.message),
+          errorJson(err.code, err.message, err.reason),
           err.code === "GONE" ? 410 : 404,
         );
       }

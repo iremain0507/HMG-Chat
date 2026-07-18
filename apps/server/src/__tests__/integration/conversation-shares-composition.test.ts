@@ -192,6 +192,10 @@ describe("app.ts /api/v1/sessions/:id/share-snapshot + /api/v1/conversation-shar
       `/api/v1/conversation-shares/${issued.data.token}`,
     );
     expect(afterRevokeRes.status).toBe(410);
+    const goneBody = (await afterRevokeRes.json()) as {
+      error: { reason?: string };
+    };
+    expect(goneBody.error.reason).toBe("revoked");
   });
 
   it("존재하지 않는 토큰 공개 조회 → 404", async () => {

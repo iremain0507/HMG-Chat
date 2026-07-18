@@ -3,11 +3,11 @@
 // components/share/ConversationSharePublicView.tsx — P20-T1-08 대화 스냅샷 공유.
 // components/share/SharePublicView.tsx(아티팩트 공유) 와 동일한 시각 언어(ShareSignature,
 // loading/notFound/gone/error 4 상태)를 GET /api/v1/conversation-shares/:token 계약으로
-// 재사용한다. 존재하지 않는 토큰은 notFound(), 만료/revoke(410, API 가 둘을 구분하지 않음)는
-// 동일한 410 안내 화면으로 표시한다.
+// 재사용한다. 존재하지 않는 토큰은 notFound(), 만료/revoke(410)는 서버가 내려주는
+// reason(expired|revoked)으로 만료(시계)·취소(금지) 화면을 구분한다(P22-T4-02).
 import React from "react";
 import { notFound } from "next/navigation";
-import { Clock } from "lucide-react";
+import { Ban, Clock } from "lucide-react";
 import {
   useConversationShare,
   type ConversationShareMessageDto,
@@ -49,6 +49,39 @@ function ShareSignature() {
   );
 }
 
+function ShareGoneScreen({ reason }: { reason: "expired" | "revoked" | null }) {
+  const revoked = reason === "revoked";
+  const copy = revoked
+    ? "이 링크는 취소되었습니다."
+    : reason === "expired"
+      ? "이 링크는 만료되었습니다."
+      : "이 링크는 만료되었거나 취소되었습니다.";
+  return (
+    <section className="w-full max-w-md text-center">
+      <ShareSignature />
+      {revoked ? (
+        <Ban
+          aria-hidden="true"
+          data-testid="share-gone-revoked"
+          size={48}
+          strokeWidth={1.5}
+          className="mx-auto text-accent"
+        />
+      ) : (
+        <Clock
+          aria-hidden="true"
+          data-testid="share-gone-expired"
+          size={48}
+          strokeWidth={1.5}
+          className="mx-auto text-fg-subtle"
+        />
+      )}
+      <h1 className="mt-4 text-2xl font-semibold text-accent">410</h1>
+      <p className="mt-2 text-fg-muted">{copy}</p>
+    </section>
+  );
+}
+
 function ConversationMessageItem({
   message,
 }: {
@@ -72,27 +105,14 @@ export function ConversationSharePublicView({ token }: { token: string }) {
     loading,
     notFound: shareNotFound,
     gone,
+    goneReason,
     error,
   } = useConversationShare(token);
 
   if (loading) return <p className="text-fg-muted">불러오는 중…</p>;
   if (shareNotFound) notFound();
   if (gone) {
-    return (
-      <section className="w-full max-w-md text-center">
-        <ShareSignature />
-        <Clock
-          aria-hidden="true"
-          size={48}
-          strokeWidth={1.5}
-          className="mx-auto text-fg-subtle"
-        />
-        <h1 className="mt-4 text-2xl font-semibold text-accent">410</h1>
-        <p className="mt-2 text-fg-muted">
-          이 링크는 만료되었거나 취소되었습니다.
-        </p>
-      </section>
-    );
+    return <ShareGoneScreen reason={goneReason} />;
   }
   if (error)
     return (

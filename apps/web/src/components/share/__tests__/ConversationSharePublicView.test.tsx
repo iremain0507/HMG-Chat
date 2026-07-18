@@ -102,6 +102,41 @@ describe("ConversationSharePublicView", () => {
     ).toBeInTheDocument();
   });
 
+  it("만료(reason='expired') 이면 만료 전용 안내를 표시한다", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({
+        ok: false,
+        status: 410,
+        json: async () => ({ error: { reason: "expired" } }),
+      })),
+    );
+
+    render(<ConversationSharePublicView token="expired" />);
+
+    await waitFor(() => {
+      expect(screen.getByText("이 링크는 만료되었습니다.")).toBeInTheDocument();
+    });
+  });
+
+  it("취소(reason='revoked') 이면 취소 전용 안내와 구분되는 아이콘을 표시한다", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({
+        ok: false,
+        status: 410,
+        json: async () => ({ error: { reason: "revoked" } }),
+      })),
+    );
+
+    render(<ConversationSharePublicView token="revoked" />);
+
+    await waitFor(() => {
+      expect(screen.getByText("이 링크는 취소되었습니다.")).toBeInTheDocument();
+    });
+    expect(screen.getByTestId("share-gone-revoked")).toBeInTheDocument();
+  });
+
   it("존재하지 않는 토큰(404) 이면 notFound() 를 호출한다", async () => {
     vi.stubGlobal(
       "fetch",
