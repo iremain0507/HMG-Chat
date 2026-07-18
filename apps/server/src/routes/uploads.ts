@@ -14,6 +14,7 @@ import {
 } from "../db/upload-service.js";
 import type { ObjectStore } from "../lib/object-store.js";
 import type { SettingsService } from "../lib/settings-service.js";
+import type { ChunkOptions } from "../knowledge/chunker.js";
 
 function errorJson(code: string, message: string) {
   return {
@@ -61,10 +62,18 @@ export function createUploadRoutes(deps: {
     const data = Buffer.from(await file.arrayBuffer());
     const actor = actorOf(c);
 
+    // P22-T3-03: org-scoped RAG 청크 설정. actor 에 orgId 가 없어 org 유래 chunkOptions 는
+    // 반드시 라우트에서 유래해야 한다. size/count 강제와 같은 resolved 객체를 재사용(2차 resolve 없음).
+    let chunkOptions: ChunkOptions | undefined;
+
     // P20-T1-17: org_settings 화이트리스트/size/count 강제(설정 미주입 시 기존 동작 보존).
     if (deps.settings) {
       const auth = c.get("auth");
       const resolved = await deps.settings.resolve(auth.org);
+      chunkOptions = {
+        chunkSizeTokens: resolved.ragChunkSizeTokens,
+        overlapTokens: resolved.ragChunkOverlapTokens,
+      };
       const ext = extensionOf(file.name);
       if (
         resolved.allowedUploadExtensions.length > 0 &&
@@ -108,6 +117,7 @@ export function createUploadRoutes(deps: {
       mimeType: file.type || "application/octet-stream",
       data,
       sessionId,
+      chunkOptions,
     });
     return c.json(
       { data: toDto(upload), meta: { requestId: randomUUID() } },

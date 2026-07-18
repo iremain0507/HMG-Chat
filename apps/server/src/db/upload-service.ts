@@ -10,6 +10,7 @@ import {
   type EphemeralChunkRow,
   type EphemeralIndexerDeps,
 } from "../knowledge/ephemeral-indexer.js";
+import type { ChunkOptions } from "../knowledge/chunker.js";
 
 export type UploadDataAccess = Pick<DataAccess, "uploads">;
 
@@ -31,6 +32,10 @@ export interface CreateUploadInput {
   mimeType: string;
   data: Buffer;
   sessionId?: string | null;
+  // P22-T3-03 — org-scoped 청크 설정(라우트에서 settings.resolve(auth.org) 로 해석해 주입).
+  // actor 는 userId 만 갖고 orgId 가 없으므로 org 유래 chunkOptions 는 반드시 라우트 계층에서
+  // 유래해야 한다. 지정 시 정적 indexing.chunkOptions 를 오버라이드, 미지정 시 기본값 유지(fail-soft).
+  chunkOptions?: ChunkOptions | undefined;
 }
 
 export class UploadServiceError extends Error {
@@ -67,6 +72,10 @@ export function createUploadService(
   ): Promise<void> {
     if (!indexing || !input.sessionId || !shouldIndex) return;
     try {
+      // per-request(org-scoped) chunkOptions 가 있으면 정적 indexing.chunkOptions 를 오버라이드.
+      const indexDeps: UploadIndexingDeps = input.chunkOptions
+        ? { ...indexing, chunkOptions: input.chunkOptions }
+        : indexing;
       const rows = await indexEphemeralUpload(
         {
           bytes: input.data,
@@ -75,7 +84,7 @@ export function createUploadService(
           uploadId: upload.id,
           sessionId: input.sessionId,
         },
-        indexing,
+        indexDeps,
       );
       if (rows.length > 0) {
         await indexing.bulkInsert(rows);

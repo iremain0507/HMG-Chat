@@ -2525,8 +2525,8 @@
     "acceptance": "RED 우선. GIVEN an org with org_settings.ragChunkSizeTokens/ragChunkOverlapTokens set to non-default values, WHEN a user uploads a session attachment (POST /api/v1/uploads with sessionId), THEN the produced ephemeral_chunks… / GIVEN no settings resolver injected (or resolve throws), WHEN an attachment is indexed, THEN chunking fails soft to DEFAULT_ORG_SETTINGS values and the upload still succeeds (existing fail-soft behavior preserved). / GIVEN the same bytes re-attached to a different session (sha256 dedup re-index branch), WHEN re-indexing runs, THEN the per-org chunkOptions are applied on that path too. / GIVEN a RED test asserting org-specific chunk boundaries on the ephemeral path, WHEN run before the fix, THEN it fails because chunkOptions is undefined; after wiring, it passes and full test/typecheck gates stay green.",
     "phase": "P22",
     "team": "T3",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P22-T3-04",
