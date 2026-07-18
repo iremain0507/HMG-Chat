@@ -13,6 +13,7 @@ import { ShortcutSheet } from "./ShortcutSheet";
 import { Banner } from "./Banner";
 import { useAppConfig } from "../../hooks/useAppConfig";
 import { CommandPalette } from "../sessions/CommandPalette";
+import { InstallPwaButton } from "../InstallPwaButton";
 
 const DISMISSED_BANNERS_KEY = "wchat:dismissedBanners";
 
@@ -193,6 +194,7 @@ export function AppShell({ sidebar, rightPanel, children }: AppShellProps) {
             ⌘K
           </span>
         </button>
+        <InstallPwaButton />
         <ThemeToggle />
         <button
           type="button"

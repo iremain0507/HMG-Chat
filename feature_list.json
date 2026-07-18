@@ -2651,8 +2651,8 @@
     "acceptance": "RED 우선. GIVEN the app served in Chrome WHEN fetching /manifest.webmanifest THEN it returns a valid manifest with display:standalone, name/short_name, start_url, theme_color #00287A, and 192px+512px icons (Lighthouse PWA /… / GIVEN a Chromium browser that fired beforeinstallprompt WHEN the user clicks the install affordance THEN the native install prompt appears and accepting it installs the app / GIVEN the app installed WHEN launched from the home screen/app list THEN it opens in a standalone window with no browser URL chrome / GIVEN the page loaded WHEN inspecting navigator.serviceWorker THEN a service worker is registered and the app shell loads on repeat/offline visit / ★실브라우저 UAT: 스택 기동 후 Claude-in-Chrome 로 실제 화면에서 동작 확인(불가 시 Playwright /preview + 정직히 미실행 명시).",
     "phase": "P22",
     "team": "T6",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P22-T6-08",

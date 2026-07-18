@@ -44,6 +44,7 @@ import { AnalyticsDashboard } from "../../components/admin/AnalyticsDashboard";
 import { AuditLogTable } from "../../components/admin/AuditLogTable";
 import { AdminSettingsScreen } from "../../components/admin/settings/AdminSettingsScreen";
 import { ToastContainer } from "../../components/layout/ToastContainer";
+import { InstallPwaButton } from "../../components/InstallPwaButton";
 import {
   ArtifactCanvas,
   type ArtifactCanvasArtifact,
@@ -1223,6 +1224,14 @@ export default function PreviewGallery() {
           <AppShellPreview />
         </div>
       </section>
+
+      <Section name="install-pwa">
+        <p className="mb-2 text-xs text-fg-muted">
+          beforeinstallprompt 이벤트가 발화되기 전까지는 숨겨진다(설치 가능
+          시에만 노출).
+        </p>
+        <InstallPwaButton />
+      </Section>
 
       <Section name="home">
         <HomeContentPreview />
