@@ -156,6 +156,8 @@ const EXPECTED_ROUTES: Array<{ method: string; path: string; phase: string }> =
     { method: "PUT", path: "/api/v1/admin/settings", phase: "P14" },
     { method: "GET", path: "/api/v1/admin/models", phase: "P19" },
     { method: "PUT", path: "/api/v1/admin/models", phase: "P19" },
+    { method: "GET", path: "/api/v1/admin/tools", phase: "P22" },
+    { method: "PUT", path: "/api/v1/admin/tools", phase: "P22" },
     { method: "GET", path: "/api/v1/api-keys", phase: "P19" },
     { method: "POST", path: "/api/v1/api-keys", phase: "P19" },
     { method: "GET", path: "/api/v1/admin/groups", phase: "P19" },

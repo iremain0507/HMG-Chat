@@ -2606,8 +2606,8 @@
     "acceptance": "RED 우선. GIVEN an admin on the Connectors/MCP tab WHEN they add or remove a tool chip and save THEN PUT /api/v1/admin/tools is called with the updated allowedTools array and the org allow-list reflects the change (verify in… / GIVEN a non-admin session or a token for another org WHEN calling PUT /api/v1/admin/tools THEN it returns 403 FORBIDDEN and no other org's allowedTools are mutated (orgId comes from JWT only). / GIVEN the server test suite WHEN routes-mounted.test runs THEN GET and PUT /api/v1/admin/tools are present in EXPECTED_ROUTES and actually mounted. / GIVEN ConnectorsTab rendered WHEN inspected THEN the read-only hint is gone and an editable add-input plus per-chip remove controls exist, wired to the PUT save. / ★실브라우저 UAT: 스택 기동 후 Claude-in-Chrome 로 실제 화면에서 동작 확인(불가 시 Playwright /preview + 정직히 미실행 명시).",
     "phase": "P22",
     "team": "T6",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P22-T6-03",

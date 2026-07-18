@@ -52,6 +52,7 @@ import { createPgErrorLogDataAccess } from "./db/error-log-data-access.js";
 import { createAdminRoutes } from "./routes/admin.js";
 import { createAdminSettingsRoutes } from "./routes/admin-settings.js";
 import { createAdminModelsRoutes } from "./routes/admin-models.js";
+import { createAdminToolsRoutes } from "./routes/admin-tools.js";
 import { createAdminGroupsRoutes } from "./routes/admin-groups.js";
 import { createAdminGrantsRoutes } from "./routes/admin-grants.js";
 import { createPgResourceGrantsDataAccess } from "./db/resource-grants-data-access.js";
@@ -553,6 +554,13 @@ export function createApp(env: Env) {
   adminApp.route(
     "/models",
     createAdminModelsRoutes({
+      organizations: authDa.organizations,
+      audit: auditRecorder,
+    }),
+  );
+  adminApp.route(
+    "/tools",
+    createAdminToolsRoutes({
       organizations: authDa.organizations,
       audit: auditRecorder,
     }),

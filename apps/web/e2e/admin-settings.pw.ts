@@ -36,6 +36,7 @@ const SETTINGS = {
 async function mockBackend(
   page: import("@playwright/test").Page,
   onPut?: (body: unknown) => void,
+  onToolsPut?: (body: unknown) => void,
 ) {
   await page.route("**/api/v1/admin/settings", (route) => {
     if (route.request().method() === "PUT") {
@@ -45,6 +46,21 @@ async function mockBackend(
       status: 200,
       contentType: "application/json",
       body: JSON.stringify({ data: SETTINGS }),
+    });
+  });
+  // P22-T6-02: Connectors 탭의 allowedTools 편집 저장 → PUT /api/v1/admin/tools.
+  await page.route("**/api/v1/admin/tools", (route) => {
+    const body =
+      route.request().method() === "PUT"
+        ? (route.request().postDataJSON() as { allowedTools: string[] })
+        : { allowedTools: [] };
+    if (route.request().method() === "PUT") {
+      onToolsPut?.(body);
+    }
+    return route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ data: { allowedTools: body.allowedTools } }),
     });
   });
   await page.route("**/api/v1/auth/me", (route) =>
@@ -131,9 +147,13 @@ test.describe("P14 preview — 관리자 설정(P14-T6-01) 핸드오프 정렬",
     ).toHaveValue("3");
 
     await settingsScreen.getByRole("tab", { name: "Connectors/MCP" }).click();
+    // P22-T6-02: allowedTools 는 더 이상 읽기전용이 아니라 편집 입력/추가/저장 컨트롤을 노출한다.
     await expect(
       settingsScreen.getByTestId("admin-settings-allowedTools-hint"),
-    ).toContainText("읽기 전용");
+    ).not.toContainText("읽기 전용");
+    await expect(
+      settingsScreen.getByTestId("admin-settings-allowedTools-input"),
+    ).toBeVisible();
 
     await settingsScreen.getByRole("tab", { name: "General/Branding" }).click();
     await expect(
@@ -236,5 +256,37 @@ test.describe("P14 preview — 관리자 설정(P14-T6-01) 핸드오프 정렬",
         },
       ],
     });
+  });
+
+  test("P22-T6-02: Connectors 탭에서 도구를 추가·저장하면 PUT /api/v1/admin/tools 를 호출한다", async ({
+    page,
+  }) => {
+    let toolsBody: unknown = null;
+    await mockBackend(page, undefined, (body) => {
+      toolsBody = body;
+    });
+    await page.goto("/preview");
+
+    const settingsScreen = page.getByTestId("preview-admin-settings-screen");
+    await settingsScreen
+      .getByTestId("admin-settings-screen-preview-trigger")
+      .click();
+    await settingsScreen.getByRole("tab", { name: "Connectors/MCP" }).click();
+
+    await settingsScreen
+      .getByTestId("admin-settings-allowedTools-input")
+      .fill("web_search");
+    await settingsScreen.getByTestId("admin-settings-allowedTools-add").click();
+    await expect(
+      settingsScreen.getByTestId("admin-settings-allowedTools-list"),
+    ).toContainText("web_search");
+    await settingsScreen
+      .getByTestId("admin-settings-allowedTools-save")
+      .click();
+
+    await expect
+      .poll(() => toolsBody, { message: "PUT /api/v1/admin/tools body" })
+      .not.toBeNull();
+    expect(toolsBody).toEqual({ allowedTools: ["web_search"] });
   });
 });
