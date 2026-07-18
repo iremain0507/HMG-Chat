@@ -18,6 +18,15 @@ export interface ResourceGrantRow extends ResourceGrant {
   resourceId: string;
 }
 
+/** subject(user/group)이 보유한 grant 한 건 — 그룹 카드의 '이 그룹의 접근 권한' 목록용
+ *  (P22-T1-07). grantsForResource 가 리소스 관점({subject...})인 것과 대칭으로 리소스 관점이 아닌
+ *  subject 관점({resourceType, resourceId, access})이다. */
+export interface SubjectGrantRow {
+  resourceType: ResourceType;
+  resourceId: string;
+  access: AccessLevel;
+}
+
 export interface ResourceGrantsDataAccess {
   /** subjectId 가 org 에 속하지 않으면 grant 하지 않고 false 를 반환한다(cross-org 거부). */
   grant(
@@ -40,6 +49,13 @@ export interface ResourceGrantsDataAccess {
     resourceType: ResourceType,
     resourceIds: string[],
   ): Promise<ResourceGrantRow[]>;
+  /** 특정 subject(user/group)가 org 안에서 보유한 모든 grant 를 나열한다(그룹 카드의 grant
+   *  목록, P22-T1-07). 명시적 WHERE org_id 로 org 격리(sibling 메서드와 동일한 이중 방어). */
+  grantsForSubject(
+    orgId: string,
+    subjectType: SubjectType,
+    subjectId: string,
+  ): Promise<SubjectGrantRow[]>;
   groupIdsForUser(orgId: string, userId: string): Promise<string[]>;
   revoke(
     orgId: string,
@@ -105,6 +121,19 @@ export function createPgResourceGrantsDataAccess(): ResourceGrantsDataAccess {
         resourceId: row.resource_id as string,
         subjectType: row.subject_type as SubjectType,
         subjectId: row.subject_id as string,
+        access: row.access as AccessLevel,
+      }));
+    },
+    async grantsForSubject(orgId, subjectType, subjectId) {
+      const res = await pgPool.query(
+        `SELECT resource_type, resource_id, access
+         FROM resource_grants
+         WHERE org_id = $1 AND subject_type = $2 AND subject_id = $3`,
+        [orgId, subjectType, subjectId],
+      );
+      return res.rows.map((row) => ({
+        resourceType: row.resource_type as ResourceType,
+        resourceId: row.resource_id as string,
         access: row.access as AccessLevel,
       }));
     },

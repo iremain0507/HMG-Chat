@@ -31,6 +31,12 @@ const ResourceQuerySchema = z.object({
   resourceId: z.string().min(1),
 });
 
+// P22-T1-07: subject(group/user) 관점 조회 — 그룹 카드가 '이 그룹의 접근 권한' 목록을 얻는다.
+const SubjectQuerySchema = z.object({
+  subjectType: z.enum(SUBJECT_TYPES),
+  subjectId: z.string().min(1),
+});
+
 function errorJson(code: string, message: string, details?: unknown) {
   return {
     error: {
@@ -113,6 +119,32 @@ export function createAdminGrantsRoutes(
     const auth = c.get("auth");
     if (!isAdmin(auth.role)) {
       return c.json(errorJson("FORBIDDEN", "admin 권한이 필요합니다."), 403);
+    }
+    // subject-scoped 조회(?subjectType=group&subjectId=…): 그룹/사용자가 보유한 grant 목록.
+    // subjectType/subjectId 중 하나라도 있으면 subject 관점으로 처리한다(P22-T1-07).
+    const subjectType = c.req.query("subjectType");
+    const subjectId = c.req.query("subjectId");
+    if (subjectType !== undefined || subjectId !== undefined) {
+      const parsed = SubjectQuerySchema.safeParse({ subjectType, subjectId });
+      if (!parsed.success) {
+        return c.json(
+          errorJson(
+            "INVALID_INPUT",
+            "subjectType/subjectId 쿼리가 필요합니다.",
+            parsed.error.issues,
+          ),
+          400,
+        );
+      }
+      const subjectList = await grants.grantsForSubject(
+        auth.org,
+        parsed.data.subjectType,
+        parsed.data.subjectId,
+      );
+      return c.json({
+        data: subjectList,
+        meta: { requestId: randomUUID() },
+      });
     }
     const parsed = ResourceQuerySchema.safeParse({
       resourceType: c.req.query("resourceType"),

@@ -2561,8 +2561,8 @@
     "acceptance": "RED 우선. GIVEN an admin authenticated in org A WHEN they call GET /api/v1/admin/grants?subjectType=group&subjectId=<groupId> THEN the response lists every resource grant held by that group (resourceType, resourceId, access)… / GIVEN the new grantsForSubject(orgId, subjectType, subjectId) data-access method WHEN invoked for a group holding 2 grants THEN it returns exactly those 2 rows and a unit test proves org isolation via the explicit WHERE… / GIVEN the admin panel Groups page in a browser WHEN an admin opens a group card THEN it displays that group's current resource grants and provides an in-card control to grant and revoke a resource (POST/DELETE… / GIVEN the new route query shape WHEN pnpm test runs routes-mounted + admin-grants integration tests THEN the subject-scoped GET is covered and the existing resource-scoped GET/POST/DELETE still pass with no regression / ★실브라우저 UAT: 스택 기동 후 Claude-in-Chrome 로 실제 화면에서 동작 확인(불가 시 Playwright /preview + 정직히 미실행 명시).",
     "phase": "P22",
     "team": "T1",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P22-T1-08",

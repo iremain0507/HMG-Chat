@@ -171,6 +171,118 @@ describe("GroupsManager", () => {
     });
   });
 
+  // P22-T1-07: 그룹 카드의 per-resource 접근 권한(grant) 조회/부여/회수.
+  it("그룹 카드에 그 그룹이 보유한 접근 권한 목록을 표시한다", async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("/admin/grants")) {
+        return {
+          ok: true,
+          json: async () => ({
+            data: [
+              { resourceType: "model", resourceId: "gpt-x", access: "read" },
+            ],
+          }),
+        };
+      }
+      return { ok: true, json: async () => ({ data: [GROUP_1] }) };
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<GroupsManager />);
+
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("group-grant-model-gpt-x-read"),
+      ).toBeInTheDocument();
+    });
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/v1/admin/grants?subjectType=group&subjectId=group-1",
+      expect.objectContaining({ credentials: "include" }),
+    );
+  });
+
+  it("그룹 카드에서 권한 부여 폼 제출 시 subjectType=group 으로 POST 한다", async () => {
+    const fetchMock = vi.fn(
+      async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        if (url.includes("/admin/grants") && init?.method === "POST") {
+          return { ok: true, json: async () => ({ data: {} }) };
+        }
+        if (url.includes("/admin/grants")) {
+          return { ok: true, json: async () => ({ data: [] }) };
+        }
+        return { ok: true, json: async () => ({ data: [GROUP_1] }) };
+      },
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<GroupsManager />);
+    await waitFor(() => {
+      expect(screen.getByText("엔지니어링")).toBeInTheDocument();
+    });
+
+    fireEvent.change(screen.getByLabelText("리소스 ID (엔지니어링)"), {
+      target: { value: "kb-42" },
+    });
+    fireEvent.click(screen.getByLabelText("권한 부여 (엔지니어링)"));
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/v1/admin/grants",
+        expect.objectContaining({
+          method: "POST",
+          body: JSON.stringify({
+            resourceType: "knowledge",
+            resourceId: "kb-42",
+            subjectType: "group",
+            subjectId: "group-1",
+            access: "read",
+          }),
+        }),
+      );
+    });
+  });
+
+  it("그룹 카드에서 권한 회수 버튼 클릭 시 subjectType=group 으로 DELETE 한다", async () => {
+    const fetchMock = vi.fn(
+      async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        if (url.includes("/admin/grants") && init?.method === "DELETE") {
+          return { ok: true, json: async () => ({}) };
+        }
+        if (url.includes("/admin/grants")) {
+          return {
+            ok: true,
+            json: async () => ({
+              data: [
+                { resourceType: "tool", resourceId: "t-9", access: "write" },
+              ],
+            }),
+          };
+        }
+        return { ok: true, json: async () => ({ data: [GROUP_1] }) };
+      },
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<GroupsManager />);
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("group-grant-tool-t-9-write"),
+      ).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByLabelText("권한 회수 (tool:t-9, write)"));
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/v1/admin/grants?resourceType=tool&resourceId=t-9&subjectType=group&subjectId=group-1&access=write",
+        expect.objectContaining({ method: "DELETE" }),
+      );
+    });
+  });
+
   it("서브내비를 렌더한다", async () => {
     vi.stubGlobal(
       "fetch",

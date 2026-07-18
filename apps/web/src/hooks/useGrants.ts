@@ -14,6 +14,13 @@ export interface GrantDto {
   access: GrantAccessLevel;
 }
 
+// P22-T1-07: subject(group) 관점 grant — 그룹 카드의 '이 그룹의 접근 권한' 목록용.
+export interface SubjectGrantDto {
+  resourceType: GrantResourceType;
+  resourceId: string;
+  access: GrantAccessLevel;
+}
+
 interface UseGrantsResult {
   grants: GrantDto[];
   loading: boolean;
@@ -125,4 +132,108 @@ export function useGrants(): UseGrantsResult {
   );
 
   return { grants, loading, error, loadGrants, createGrant, revokeGrant };
+}
+
+interface UseGroupGrantsResult {
+  grants: SubjectGrantDto[];
+  loading: boolean;
+  error: string | null;
+  load(): Promise<void>;
+  grant(
+    resourceType: GrantResourceType,
+    resourceId: string,
+    access: GrantAccessLevel,
+  ): Promise<void>;
+  revoke(
+    resourceType: GrantResourceType,
+    resourceId: string,
+    access: GrantAccessLevel,
+  ): Promise<void>;
+}
+
+// P22-T1-07: 단일 그룹이 보유한 grant 를 subject-scoped GET 으로 조회하고 부여/회수한다.
+// 그룹 카드마다 독립 인스턴스로 사용(카드 간 상태 격리).
+export function useGroupGrants(groupId: string): UseGroupGrantsResult {
+  const [grants, setGrants] = useState<SubjectGrantDto[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const qs = new URLSearchParams({
+        subjectType: "group",
+        subjectId: groupId,
+      });
+      const res = await apiFetch(`/api/v1/admin/grants?${qs.toString()}`, {
+        credentials: "include",
+      });
+      if (!res.ok) {
+        setError("접근 권한 목록을 불러오지 못했습니다.");
+        return;
+      }
+      const body = (await res.json()) as { data: SubjectGrantDto[] };
+      setGrants(body.data);
+    } finally {
+      setLoading(false);
+    }
+  }, [groupId]);
+
+  const grant = useCallback(
+    async (
+      resourceType: GrantResourceType,
+      resourceId: string,
+      access: GrantAccessLevel,
+    ) => {
+      setError(null);
+      const res = await apiFetch("/api/v1/admin/grants", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          resourceType,
+          resourceId,
+          subjectType: "group",
+          subjectId: groupId,
+          access,
+        }),
+      });
+      if (!res.ok) {
+        setError("접근 권한 부여에 실패했습니다.");
+        return;
+      }
+      await load();
+    },
+    [groupId, load],
+  );
+
+  const revoke = useCallback(
+    async (
+      resourceType: GrantResourceType,
+      resourceId: string,
+      access: GrantAccessLevel,
+    ) => {
+      setError(null);
+      const qs = new URLSearchParams({
+        resourceType,
+        resourceId,
+        subjectType: "group",
+        subjectId: groupId,
+        access,
+      });
+      const res = await apiFetch(`/api/v1/admin/grants?${qs.toString()}`, {
+        method: "DELETE",
+        credentials: "include",
+      });
+      if (!res.ok) {
+        setError("접근 권한 회수에 실패했습니다.");
+        return;
+      }
+      await load();
+    },
+    [groupId, load],
+  );
+
+  return { grants, loading, error, load, grant, revoke };
 }

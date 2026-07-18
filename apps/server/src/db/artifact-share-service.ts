@@ -27,7 +27,8 @@ export class ArtifactShareServiceError extends Error {
   ) {
     super(message);
     this.code = code;
-    this.reason = reason;
+    // exactOptionalPropertyTypes: 미지정(undefined) 이면 속성 자체를 부여하지 않는다.
+    if (reason !== undefined) this.reason = reason;
   }
 }
 
