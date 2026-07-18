@@ -204,6 +204,23 @@ export function createPgAuthDataAccess(): AuthDataAccess {
         const res = await pgPool.query(`SELECT * FROM users ${where}`, params);
         return { items: res.rows.map(toUser) };
       },
+      // P22-T1-13(C4) — 비밀번호 로그인 전용 자격증명 조회. password_hash 는 여기서만
+      // 읽고 toUser()(User DTO) 에는 절대 싣지 않는다. email 은 CITEXT 라 대소문자 무관.
+      // status='active' 인 계정만 로그인 대상(삭제/정지 계정은 자격증명 부재로 취급).
+      async credentialsByEmail(email) {
+        const res = await pgPool.query(
+          `SELECT id, org_id, password_hash FROM users
+            WHERE email = $1 AND status = 'active' LIMIT 1`,
+          [email.trim().toLowerCase()],
+        );
+        const row = res.rows[0];
+        if (!row) return null;
+        return {
+          userId: row.id as string,
+          orgId: row.org_id as string,
+          passwordHash: (row.password_hash as string | null) ?? null,
+        };
+      },
     },
     magicLinkTokens: {
       async insert(data) {

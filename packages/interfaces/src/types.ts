@@ -378,6 +378,21 @@ export interface UserFilter {
   statusIn?: User["status"][];
 }
 
+// P22-T1-13(계약배치 C4) — 비밀번호 로그인 전용 자격증명. `User` 에 passwordHash 를
+// 넣지 않는 이유: /me·/login 등 모든 AuthMeResponse 직렬화에서 해시를 다시 지워야 해
+// 유출 위험이 상시 존재한다. 대신 이 전용 반환 타입으로만 해시를 노출한다.
+export interface UserCredentials {
+  userId: string;
+  orgId: string;
+  /** NULL = magic-link 전용 계정(비밀번호 미설정). migration 0012 password_hash 컬럼. */
+  passwordHash: string | null;
+}
+
+export interface UserRepo extends Repo<User, UserFilter> {
+  /** 이 반환값은 절대 응답 직렬화에 넣지 않는다(해시는 DTO 밖). */
+  credentialsByEmail(email: string): Promise<UserCredentials | null>;
+}
+
 export interface OrgUnitFilter {
   orgId?: string;
   parentId?: string | null;

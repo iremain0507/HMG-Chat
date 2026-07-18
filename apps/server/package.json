@@ -28,6 +28,7 @@
     "@hono/node-server": "^1.13.0",
     "@wchat/interfaces": "workspace:*",
     "@wchat/shared": "workspace:*",
+    "bcryptjs": "^3.0.3",
     "drizzle-orm": "0.36.0",
     "e2b": "^2.33.0",
     "hono": "4.6.0",
@@ -45,6 +46,7 @@
     "zod": "^3.23.0"
   },
   "devDependencies": {
+    "@types/bcryptjs": "^3.0.0",
     "@types/jsonwebtoken": "^9.0.0",
     "@types/node": "^22.5.0",
     "@types/nodemailer": "^8.0.1",

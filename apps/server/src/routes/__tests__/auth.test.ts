@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { randomUUID, createHash } from "node:crypto";
+import bcrypt from "bcryptjs";
 import type {
   MagicLinkTokenRecord,
   Organization,
@@ -27,6 +28,8 @@ function makeInMemoryDataAccess(): AuthDataAccess {
   const users = new Map<string, User>();
   const magicLinkTokens = new Map<string, MagicLinkTokenRecord>();
   const refreshTokenFamilies = new Map<string, RefreshTokenFamilyRecord>();
+  // P22-T1-13 — email → bcrypt hash. User DTO 와 분리(해시 유출 방지).
+  const passwordHashes = new Map<string, string>();
 
   return {
     organizations: {
@@ -93,7 +96,23 @@ function makeInMemoryDataAccess(): AuthDataAccess {
         );
         return { items };
       },
+      // P22-T1-13(C4) — 비밀번호 로그인 전용 자격증명 조회. 해시는 users Map(User DTO)
+      // 밖의 별도 저장소(passwordHashes)에만 둔다 — 실제 DB 도 password_hash 컬럼을
+      // User 직렬화에서 제외하므로 동일 구조.
+      async credentialsByEmail(email) {
+        const normalized = email.trim().toLowerCase();
+        const user = [...users.values()].find(
+          (u) => u.email.toLowerCase() === normalized,
+        );
+        if (!user) return null;
+        return {
+          userId: user.id,
+          orgId: user.orgId,
+          passwordHash: passwordHashes.get(normalized) ?? null,
+        };
+      },
     },
+    __passwordHashes: passwordHashes,
     magicLinkTokens: {
       async insert(data) {
         const row = {
@@ -243,6 +262,19 @@ function extractMagicToken(html: string): string {
   const match = html.match(/token=([^"&\s]+)/);
   if (!match) throw new Error("magic link token not found in email body");
   return decodeURIComponent(match[1]);
+}
+
+// P22-T1-13 — 비밀번호 로그인 테스트용: users repo 의 credentialsByEmail 이 돌려줄
+// (userId, orgId, passwordHash) 를 email 키로 주입한다. User 본체엔 해시를 싣지 않는다
+// (계약 C4 원칙: 해시는 DTO 밖, 전용 조회 경로로만).
+function seedPasswordHash(
+  da: AuthDataAccess,
+  email: string,
+  hash: string,
+): void {
+  (
+    da as unknown as { __passwordHashes: Map<string, string> }
+  ).__passwordHashes.set(email.toLowerCase(), hash);
 }
 
 function makeSettingsResolver(
@@ -734,6 +766,163 @@ describe("routes/auth", () => {
     }
     const user = await da.users.byId(userId);
     expect(user?.status).toBe("active");
+  });
+
+  // ── P22-T1-13 — POST /auth/login 비밀번호 로그인 (16-API-CONTRACT.md § 1 Auth) ──
+  describe("P22-T1-13: POST /login (password)", () => {
+    const EMAIL = "pw-user@wchat.example.com";
+    const PASSWORD = "correct-horse-battery-staple";
+    let userId: string;
+
+    beforeEach(async () => {
+      const user = await da.users.insert({
+        orgId: org.id,
+        email: EMAIL,
+        name: "PW User",
+        role: "member",
+        customInstructions: null,
+        status: "active",
+        lastLoginAt: null,
+      });
+      userId = user.id;
+      // cost 4 = 테스트 속도용(운영 해시는 migration 0012 주석대로 cost 12).
+      seedPasswordHash(da, EMAIL, bcrypt.hashSync(PASSWORD, 4));
+    });
+
+    function login(body: unknown, headers: Record<string, string> = {}) {
+      return app.request("/login", {
+        method: "POST",
+        headers: { "content-type": "application/json", ...headers },
+        body: JSON.stringify(body),
+      });
+    }
+
+    it("올바른 email+password → 200 AuthMeResponse{user,org} + _at/_rt 쿠키", async () => {
+      const res = await login({ email: EMAIL, password: PASSWORD });
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.data.user.id).toBe(userId);
+      expect(body.data.user.email).toBe(EMAIL);
+      expect(body.data.org.id).toBe(org.id);
+      // 해시가 응답으로 새지 않는다 (C4 핵심 보안 조건).
+      expect(JSON.stringify(body)).not.toContain("$2");
+      const cookies = res.headers.getSetCookie();
+      expect(cookieValue(cookies, "wchat_at")).toBeTruthy();
+      expect(cookieValue(cookies, "wchat_rt")).toBeTruthy();
+    });
+
+    it("틀린 password → 401 INVALID_CREDENTIALS + 쿠키 미발급", async () => {
+      const res = await login({ email: EMAIL, password: "wrong-password" });
+      expect(res.status).toBe(401);
+      const body = await res.json();
+      expect(body.error.code).toBe("INVALID_CREDENTIALS");
+      expect(res.headers.getSetCookie()).toHaveLength(0);
+    });
+
+    it("존재하지 않는 계정도 동일한 401 INVALID_CREDENTIALS (계정 열거 방지)", async () => {
+      const res = await login({
+        email: "nobody@wchat.example.com",
+        password: PASSWORD,
+      });
+      expect(res.status).toBe(401);
+      const body = await res.json();
+      expect(body.error.code).toBe("INVALID_CREDENTIALS");
+    });
+
+    it("password_hash 가 NULL(magic-link 전용 계정) → 401 INVALID_CREDENTIALS", async () => {
+      await da.users.insert({
+        orgId: org.id,
+        email: "magic-only@wchat.example.com",
+        name: "Magic Only",
+        role: "member",
+        customInstructions: null,
+        status: "active",
+        lastLoginAt: null,
+      });
+      const res = await login({
+        email: "magic-only@wchat.example.com",
+        password: PASSWORD,
+      });
+      expect(res.status).toBe(401);
+      expect((await res.json()).error.code).toBe("INVALID_CREDENTIALS");
+    });
+
+    it("허용되지 않은 도메인 → 403 EMAIL_DOMAIN_FORBIDDEN", async () => {
+      const res = await login({
+        email: "someone@gmail.com",
+        password: PASSWORD,
+      });
+      expect(res.status).toBe(403);
+      expect((await res.json()).error.code).toBe("EMAIL_DOMAIN_FORBIDDEN");
+    });
+
+    it("email/password 누락 → 400 INVALID_INPUT", async () => {
+      const res = await login({ email: EMAIL });
+      expect(res.status).toBe(400);
+      expect((await res.json()).error.code).toBe("INVALID_INPUT");
+    });
+
+    it("brute-force 임계 초과 → 429 RATE_LIMITED (이후 올바른 비밀번호도 차단)", async () => {
+      const limitedApp = createAuthRoutes({
+        da,
+        emailSender,
+        allowedDomains: ["wchat.example.com"],
+        appOrigin: "http://localhost:3000",
+        secureCookies: false,
+        loginRateLimit: { maxAttempts: 3, windowMs: 60_000 },
+      });
+      const attempt = (password: string) =>
+        limitedApp.request("/login", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ email: EMAIL, password }),
+        });
+
+      for (let i = 0; i < 3; i++) {
+        expect((await attempt("wrong-password")).status).toBe(401);
+      }
+      const blocked = await attempt("wrong-password");
+      expect(blocked.status).toBe(429);
+      expect((await blocked.json()).error.code).toBe("RATE_LIMITED");
+      // 임계 초과 후에는 올바른 비밀번호도 차단된다(계정 보호).
+      const stillBlocked = await attempt(PASSWORD);
+      expect(stillBlocked.status).toBe(429);
+    });
+
+    it("로그인 성공 시 실패 카운터가 리셋된다", async () => {
+      const limitedApp = createAuthRoutes({
+        da,
+        emailSender,
+        allowedDomains: ["wchat.example.com"],
+        appOrigin: "http://localhost:3000",
+        secureCookies: false,
+        loginRateLimit: { maxAttempts: 3, windowMs: 60_000 },
+      });
+      const attempt = (password: string) =>
+        limitedApp.request("/login", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ email: EMAIL, password }),
+        });
+
+      expect((await attempt("wrong-password")).status).toBe(401);
+      expect((await attempt("wrong-password")).status).toBe(401);
+      expect((await attempt(PASSWORD)).status).toBe(200);
+      // 리셋됐으므로 다시 3회까지 401 이어야 한다(2회만에 429 가 되면 리셋 실패).
+      expect((await attempt("wrong-password")).status).toBe(401);
+      expect((await attempt("wrong-password")).status).toBe(401);
+      expect((await attempt("wrong-password")).status).toBe(401);
+    });
+
+    it("발급된 세션 쿠키로 GET /me 가 동일 유저를 반환한다(실사용 라운드트립)", async () => {
+      const res = await login({ email: EMAIL, password: PASSWORD });
+      const at = cookieValue(res.headers.getSetCookie(), "wchat_at");
+      const me = await app.request("/me", {
+        headers: { cookie: `wchat_at=${at}` },
+      });
+      expect(me.status).toBe(200);
+      expect((await me.json()).data.user.email).toBe(EMAIL);
+    });
   });
 
   it("P22-T1-01: DELETE /me — 인증 없이 호출 → 401 UNAUTHENTICATED", async () => {

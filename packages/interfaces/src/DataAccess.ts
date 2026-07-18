@@ -33,15 +33,14 @@ import type {
   ToolMetricRepo,
   UploadRepo,
   UsageLogRepo,
-  User,
-  UserFilter,
   UserMemoryRepo,
+  UserRepo,
   UserQuotaRepo,
 } from "./types.js";
 
 export interface DataAccess {
   organizations: Repo<Organization, OrgFilter>;
-  users: Repo<User, UserFilter>;
+  users: UserRepo;
   orgUnits: Repo<OrgUnit, OrgUnitFilter>;
   sessions: SessionRepo;
   messages: MessageRepo;
@@ -109,11 +108,10 @@ export interface EphemeralChunk {
 // types.ts 의 `Repo<T>.bulkInsert(rows: Partial<T>[]): Promise<T[]>` 와 반환형이
 // 충돌한다 (void vs T[]). spec 의 의도 (입력은 id/createdAt 없는 새 chunk, 반환은
 // void) 를 보존하기 위해 base 의 bulkInsert 만 Omit 하고 narrowed 시그니처를 단다.
-export interface EphemeralChunkRepo
-  extends Omit<
-    Repo<EphemeralChunk, { sessionId?: string; uploadId?: string }>,
-    "bulkInsert"
-  > {
+export interface EphemeralChunkRepo extends Omit<
+  Repo<EphemeralChunk, { sessionId?: string; uploadId?: string }>,
+  "bulkInsert"
+> {
   // session+project 동시 검색: server 의 knowledge_search 도구가 호출.
   hybridSearchUnified(
     input: {

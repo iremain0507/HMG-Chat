@@ -2705,8 +2705,8 @@
     "acceptance": "RED 우선. GIVEN a user with a bcrypt password_hash WHEN POST /api/v1/auth/login with correct email+password THEN 200 with AuthMeResponse {user,org} and the _at and _rt cookies set / GIVEN a user WHEN POST /auth/login with a wrong password THEN 401 INVALID_CREDENTIALS and no cookies set / GIVEN repeated failed attempts beyond the brute-force threshold WHEN POST /auth/login THEN 429 RATE_LIMITED / GIVEN an email whose domain is not in ALLOWED_DOMAINS WHEN POST /auth/login THEN 403 EMAIL_DOMAIN_FORBIDDEN / .ralph/CONTRACT_APPROVED 없으면 격리(구현 금지).",
     "phase": "P22",
     "team": "T1",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P22-T1-14",

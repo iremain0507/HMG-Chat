@@ -231,6 +231,13 @@ export interface UserMemory {
 
 export interface OrgFilter   { domainEq?: string }
 export interface UserFilter  { orgId?: string; emailEq?: string; statusIn?: User["status"][] }
+
+// P22-T1-13(계약배치 C4) — 비밀번호 로그인 전용. 해시를 User DTO 에 싣지 않기 위한 분리 경로.
+// 반환값은 절대 응답 직렬화에 넣지 않는다. passwordHash=null 이면 magic-link 전용 계정.
+export interface UserCredentials { userId: string; orgId: string; passwordHash: string | null }
+export interface UserRepo extends Repo<User, UserFilter> {
+  credentialsByEmail(email: string): Promise<UserCredentials | null>;
+}
 export interface OrgUnitFilter { orgId?: string; parentId?: string | null; pathPrefix?: string }
 export interface ChunkFilter { documentId?: string; projectId?: string }
 
@@ -769,7 +776,7 @@ DB 호출의 단일 진입점. production 은 Drizzle, 테스트는 InMemory.
 // packages/interfaces/src/DataAccess.ts
 export interface DataAccess {
   organizations: Repo<Organization, OrgFilter>;
-  users: Repo<User, UserFilter>;
+  users: UserRepo; // P22-T1-13(C4): Repo<User,UserFilter> + credentialsByEmail
   orgUnits: Repo<OrgUnit, OrgUnitFilter>;
   sessions: SessionRepo;
   messages: MessageRepo;

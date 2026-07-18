@@ -1,7 +1,8 @@
 // routes/auth.ts — 16-API-CONTRACT.md § 1 Auth 단일 출처.
-// Magic-link 기반 가입/로그인 (password 경로는 packages/interfaces 의 User 타입에
-// password_hash 가 노출되지 않아 이 태스크 범위 밖 — PROGRESS.md 참고).
+// Magic-link 기반 가입/로그인 + P22-T1-13(계약배치 C4) 비밀번호 로그인(POST /login).
+// 해시는 UserRepo.credentialsByEmail 로만 읽고 User DTO 에는 싣지 않는다.
 import { Hono, type Context } from "hono";
+import bcrypt from "bcryptjs";
 import { getCookie, setCookie, deleteCookie } from "hono/cookie";
 import { randomBytes, randomUUID, createHash } from "node:crypto";
 import jwt from "jsonwebtoken";
@@ -64,10 +65,21 @@ export interface AuthRouteDeps {
   // P20-T1-14 — 신규가입 완료 시 org.adminWebhookUrl 설정돼 있으면 new_user 페이로드를
   // fire-and-forget 으로 전달(미주입/미설정 시 미발송, 인증흐름은 절대 차단하지 않음).
   webhookDispatcher?: WebhookDispatcher;
+  // P22-T1-13 — POST /login brute-force 임계. 미주입 시 DEFAULT_LOGIN_RATE_LIMIT.
+  loginRateLimit?: { maxAttempts: number; windowMs: number };
 }
 
 const ACCESS_TTL_SECONDS = 15 * 60;
 const REFRESH_TTL_SECONDS = 30 * 24 * 60 * 60;
+
+// P22-T1-13 — 계약(16 § POST /auth/login) 429 RATE_LIMITED 임계. 프로세스 로컬 카운터
+// (단일 인스턴스 기준). 다중 인스턴스 배포 시 Redis 백엔드로 교체 대상.
+const DEFAULT_LOGIN_RATE_LIMIT = { maxAttempts: 10, windowMs: 15 * 60_000 };
+
+// 존재하지 않는 계정/해시 없는 계정에도 동일한 bcrypt 비용을 지불해 응답시간으로
+// 계정 존재 여부가 새지 않게 한다(계정 열거 방지). cost 는 migration 0012 와 동일한 12.
+const DUMMY_BCRYPT_HASH =
+  "$2a$12$C6UzMDM.H6dfI/f/IKcEe.ANRXCPHZOwRRVPelE6TZ0Y6nQoQvY9O";
 
 function emailDomain(email: string): string {
   return (email.split("@")[1] ?? "").toLowerCase();
@@ -162,6 +174,128 @@ export function createAuthRoutes(deps: AuthRouteDeps): Hono {
       return null;
     }
   }
+
+  // ── P22-T1-13 — POST /login (16-API-CONTRACT.md § 1 Auth) ──
+  // EMAIL_SENDER_KIND=noop 등 magic-link 를 못 쓰는 환경의 admin/dev 로그인 경로.
+  // 400 INVALID_INPUT / 401 INVALID_CREDENTIALS / 403 EMAIL_DOMAIN_FORBIDDEN / 429 RATE_LIMITED.
+  const loginLimit = deps.loginRateLimit ?? DEFAULT_LOGIN_RATE_LIMIT;
+  const loginFailures = new Map<string, { count: number; firstAt: number }>();
+
+  function rateLimited(key: string): boolean {
+    const entry = loginFailures.get(key);
+    if (!entry) return false;
+    if (Date.now() - entry.firstAt >= loginLimit.windowMs) {
+      loginFailures.delete(key);
+      return false;
+    }
+    return entry.count >= loginLimit.maxAttempts;
+  }
+
+  function recordFailure(key: string): void {
+    const entry = loginFailures.get(key);
+    if (!entry || Date.now() - entry.firstAt >= loginLimit.windowMs) {
+      loginFailures.set(key, { count: 1, firstAt: Date.now() });
+      return;
+    }
+    entry.count += 1;
+  }
+
+  app.post("/login", async (c) => {
+    const body = await c.req
+      .json<{ email?: string; password?: string }>()
+      .catch(() => ({}) as { email?: string; password?: string });
+    const email = body.email?.trim().toLowerCase();
+    const password = body.password;
+    if (!email || !isValidEmail(email) || !password) {
+      return c.json(
+        errorJson("INVALID_INPUT", "이메일/비밀번호를 확인하세요."),
+        400,
+      );
+    }
+
+    // 도메인 게이트는 rate-limit 보다 먼저 — 계약상 403 이 우선이고, 허용되지 않은
+    // 도메인은 어차피 자격증명 조회에 도달하지 않는다.
+    if (!deps.allowedDomains.includes(emailDomain(email))) {
+      return c.json(
+        errorJson(
+          "EMAIL_DOMAIN_FORBIDDEN",
+          `${deps.allowedDomains.join(", ")} 도메인만 로그인 가능합니다.`,
+        ),
+        403,
+      );
+    }
+
+    if (rateLimited(email)) {
+      return c.json(
+        errorJson(
+          "RATE_LIMITED",
+          "로그인 시도가 너무 많습니다. 잠시 후 다시 시도하세요.",
+          true,
+        ),
+        429,
+      );
+    }
+
+    const credentials = await deps.da.users.credentialsByEmail(email);
+    // 계정 부재/해시 부재여도 더미 해시로 동일한 시간을 소모(계정 열거 방지).
+    const matched = await bcrypt.compare(
+      password,
+      credentials?.passwordHash ?? DUMMY_BCRYPT_HASH,
+    );
+    if (!credentials?.passwordHash || !matched) {
+      recordFailure(email);
+      return c.json(
+        errorJson(
+          "INVALID_CREDENTIALS",
+          "이메일 또는 비밀번호가 올바르지 않습니다.",
+        ),
+        401,
+      );
+    }
+
+    const user = await deps.da.users.byId(credentials.userId);
+    const org = user ? await deps.da.organizations.byId(user.orgId) : null;
+    if (!user || !org) {
+      recordFailure(email);
+      return c.json(
+        errorJson(
+          "INVALID_CREDENTIALS",
+          "이메일 또는 비밀번호가 올바르지 않습니다.",
+        ),
+        401,
+      );
+    }
+
+    loginFailures.delete(email);
+    await deps.da.users.update(user.id, { lastLoginAt: new Date() });
+    await issueSession(c, user.id, user.orgId, user.role);
+
+    return c.json({
+      data: {
+        user: {
+          id: user.id,
+          email: user.email,
+          name: user.name,
+          orgId: user.orgId,
+          role: user.role,
+          customInstructions: user.customInstructions,
+          createdAt: user.createdAt.toISOString(),
+        },
+        org: {
+          id: org.id,
+          name: org.name,
+          domain: org.domain,
+          plan: org.plan,
+          allowedModels: org.allowedModels,
+          allowedTools: org.allowedTools,
+          defaultTokenBudgetMicros: org.defaultTokenBudgetMicros,
+          createdAt: org.createdAt.toISOString(),
+          updatedAt: org.updatedAt.toISOString(),
+        },
+      },
+      meta: { requestId: randomUUID() },
+    });
+  });
 
   app.post("/signup", async (c) => {
     const body = await c.req
