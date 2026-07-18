@@ -390,12 +390,17 @@ describe("createDeepResearchTool", () => {
       };
       citations: unknown[];
       message: string;
+      subQuestions: { title: string; citations: { index: number }[] }[];
     };
 
     expect(data.artifact.artifactKind).toBe("markdown");
     expect(data.artifact.sizeBytes).toBeGreaterThan(0);
     // 2개 sub-question 각각 researcher 가 citation 1개씩 반환 → 전역 재번호 2개.
     expect(data.citations).toHaveLength(2);
+    // #3 — 하위질문별 출처(전역 인덱스)를 결과에 포함해 서브에이전트 펼침에서 표시.
+    expect(data.subQuestions).toHaveLength(2);
+    expect(data.subQuestions[0]!.citations.map((c) => c.index)).toEqual([1]);
+    expect(data.subQuestions[1]!.citations.map((c) => c.index)).toEqual([2]);
 
     const stored = await da.artifacts.byId(data.artifact.artifactId);
     const storedText = stored?.inlineContent?.toString("utf-8") ?? "";

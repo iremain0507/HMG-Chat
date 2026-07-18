@@ -10,8 +10,11 @@ import {
   cleanup,
 } from "@testing-library/react";
 import "@testing-library/jest-dom/vitest";
-import { ActivityPanel } from "../ActivityPanel";
-import type { ToolProgressState } from "../../../hooks/useSessionStream";
+import { ActivityPanel, WorkerCard } from "../ActivityPanel";
+import type {
+  ToolProgressState,
+  Citation,
+} from "../../../hooks/useSessionStream";
 
 afterEach(() => cleanup());
 
@@ -91,5 +94,65 @@ describe("ActivityPanel", () => {
       />,
     );
     expect(screen.getByTestId("activity-stop-button")).toBeDisabled();
+  });
+});
+
+describe("WorkerCard 하위질문 출처 펼침(#3)", () => {
+  const CITATIONS: Citation[] = [
+    {
+      index: 1,
+      source: "ephemeral",
+      title: "효모 발효 연구",
+      filename: "yeast.pdf",
+      sourceUri: "https://ex.com/1",
+      snippet: "효모 균주와 발효 조건",
+    },
+    {
+      index: 2,
+      source: "ephemeral",
+      title: "에스테르 생성",
+      filename: "ester.pdf",
+      snippet: "에스테르화 반응",
+    },
+  ];
+
+  it("citations 가 있으면 '출처 N' 이 토글이 되고, 펼치면 실제 출처(제목/링크)를 보여준다", () => {
+    render(
+      <WorkerCard
+        task={{
+          id: "sq-0",
+          title: "워시 발효",
+          status: "done",
+          sourceCount: 2,
+        }}
+        index={0}
+        citations={CITATIONS}
+      />,
+    );
+    // 접힘 상태: 출처는 아직 안 보임.
+    expect(screen.queryByText("효모 발효 연구")).toBeNull();
+    const toggle = screen.getByTestId("worker-sources-toggle-sq-0");
+    expect(toggle).toHaveTextContent("출처 2");
+    fireEvent.click(toggle);
+    // 펼침: 실제 출처가 링크로 노출.
+    const link = screen.getByRole("link", { name: "효모 발효 연구" });
+    expect(link).toHaveAttribute("href", "https://ex.com/1");
+    expect(screen.getByText("에스테르 생성")).toBeInTheDocument();
+  });
+
+  it("citations 가 없으면(실행 중 등) 토글 없이 sourceCount 만 표시한다", () => {
+    render(
+      <WorkerCard
+        task={{
+          id: "sq-1",
+          title: "조사 중",
+          status: "running",
+          sourceCount: 0,
+        }}
+        index={1}
+      />,
+    );
+    expect(screen.queryByTestId("worker-sources-toggle-sq-1")).toBeNull();
+    expect(screen.getByText("출처 0")).toBeInTheDocument();
   });
 });

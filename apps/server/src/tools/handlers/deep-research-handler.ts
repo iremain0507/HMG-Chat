@@ -290,15 +290,21 @@ async function runResearcher(
 function remapFindingCitations(findings: ResearchFinding[]): {
   combinedText: string;
   citations: Citation[];
+  // 하위질문별 출처(전역 인덱스) — 클라가 서브에이전트를 펼치면 어떤 출처를 썼는지 보여준다.
+  subQuestions: { title: string; citations: Citation[] }[];
 } {
   const citations: Citation[] = [];
   const sections: string[] = [];
+  const subQuestions: { title: string; citations: Citation[] }[] = [];
   for (const finding of findings) {
     const localToGlobal = new Map<number, number>();
+    const findingCitations: Citation[] = [];
     for (const citation of finding.citations) {
       const globalIndex = citations.length + 1;
       localToGlobal.set(citation.index, globalIndex);
-      citations.push({ ...citation, index: globalIndex });
+      const remapped = { ...citation, index: globalIndex };
+      citations.push(remapped);
+      findingCitations.push(remapped);
     }
     const remappedText = finding.text.replace(
       /\[(\d+)\]/g,
@@ -308,8 +314,12 @@ function remapFindingCitations(findings: ResearchFinding[]): {
       },
     );
     sections.push(`### ${finding.subQuestion}\n${remappedText}`);
+    subQuestions.push({
+      title: finding.subQuestion,
+      citations: findingCitations,
+    });
   }
-  return { combinedText: sections.join("\n\n"), citations };
+  return { combinedText: sections.join("\n\n"), citations, subQuestions };
 }
 
 export function createDeepResearchTool(deps: DeepResearchToolDeps): AgentTool {
@@ -410,9 +420,11 @@ export function createDeepResearchTool(deps: DeepResearchToolDeps): AgentTool {
       });
       let reportText = "";
       let citations: Citation[] = [];
+      let subQuestionBreakdown: { title: string; citations: Citation[] }[] = [];
       for (let iteration = 1; iteration <= maxGapIterations; iteration += 1) {
         const merged = remapFindingCitations(findings);
         citations = merged.citations;
+        subQuestionBreakdown = merged.subQuestions;
         reportText = await runIsolatedText(
           merged.combinedText,
           deps.leadProvider,
@@ -491,6 +503,8 @@ export function createDeepResearchTool(deps: DeepResearchToolDeps): AgentTool {
               downloadUrl: `/api/v1/artifacts/${record.id}/content`,
             },
             citations,
+            // 하위질문별 출처(전역 인덱스) — 클라 WorkerCard 펼침에서 사용(duck-typed json 추가 필드).
+            subQuestions: subQuestionBreakdown,
             message: `${subQuestions.length}개 하위 질문을 조사해 리포트로 종합했습니다.`,
           },
         },

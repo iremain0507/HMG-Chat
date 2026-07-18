@@ -64,10 +64,16 @@ function isImageArtifact(a: ResearchArtifact): boolean {
     a.artifactKind === "image" || (a.mimeType?.startsWith("image/") ?? false)
   );
 }
+interface ResearchSubQuestion {
+  title: string;
+  citations?: Citation[];
+}
 interface ResearchResult {
   message?: string;
   citations?: Citation[];
   artifact?: ResearchArtifact;
+  // 하위질문별 출처(서버 duck-typed json 추가 필드) — 서브에이전트 펼침에서 출처 목록 표시.
+  subQuestions?: ResearchSubQuestion[];
 }
 
 // deep_research tool_result(kind:json data = {message, citations, artifact}) duck-type 파싱.
@@ -90,6 +96,9 @@ function parseResearchResult(result: unknown): ResearchResult | null {
       ? { citations: r.citations as Citation[] }
       : {}),
     ...(hasArtifact ? { artifact: r.artifact as ResearchArtifact } : {}),
+    ...(Array.isArray(r.subQuestions)
+      ? { subQuestions: r.subQuestions as ResearchSubQuestion[] }
+      : {}),
   };
 }
 
@@ -298,7 +307,12 @@ export function ToolCallRenderer({
               </div>
               <div className="space-y-1.5">
                 {progress.tasks.map((t, i) => (
-                  <WorkerCard key={t.id} task={t} index={i} />
+                  <WorkerCard
+                    key={t.id}
+                    task={t}
+                    index={i}
+                    citations={research?.subQuestions?.[i]?.citations}
+                  />
                 ))}
               </div>
             </div>

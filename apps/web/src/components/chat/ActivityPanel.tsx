@@ -6,8 +6,12 @@
 //   (프레임의 "검색 N"은 서버가 emit 하지 않는 필드라 미포함 — sourceCount 만 표시).
 //   탭 전환·아티팩트/출처 탭과의 3-tab shell 배선은 P13-T6-08 소관, 이 컴포넌트는 '활동' 탭의
 //   콘텐츠(WorkerCard 는 ToolCallRenderer 의 펼침 진행목록과 공유)만 담당.
-import React from "react";
-import type { ToolProgressState, ToolTask } from "../../hooks/useSessionStream";
+import React, { useState } from "react";
+import type {
+  ToolProgressState,
+  ToolTask,
+  Citation,
+} from "../../hooks/useSessionStream";
 import { StatusChip } from "./StatusChip";
 
 const STEP_ORDER = ["planning", "researching", "synthesizing"] as const;
@@ -19,7 +23,20 @@ const STEP_LABELS: Record<Step, string> = {
 };
 type StepStatus = "done" | "running" | "pending";
 
-export function WorkerCard({ task, index }: { task: ToolTask; index: number }) {
+export function WorkerCard({
+  task,
+  index,
+  citations,
+}: {
+  task: ToolTask;
+  index: number;
+  // 하위질문별 출처(완료 후 결과에서 전달). 있으면 "출처 N" 을 눌러 실제 출처 목록을 펼친다.
+  citations?: Citation[] | undefined;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const sources = citations ?? [];
+  const hasSources = sources.length > 0;
+  const count = hasSources ? sources.length : (task.sourceCount ?? 0);
   return (
     <div
       data-testid={`activity-worker-${task.id}`}
@@ -39,9 +56,56 @@ export function WorkerCard({ task, index }: { task: ToolTask; index: number }) {
         </span>
         <StatusChip status={task.status} />
       </div>
-      <div className="mt-1 font-mono text-[10.5px] tabular-nums text-fg-muted">
-        출처 {task.sourceCount ?? 0}
-      </div>
+      {hasSources ? (
+        <button
+          type="button"
+          onClick={() => setExpanded((v) => !v)}
+          aria-expanded={expanded}
+          data-testid={`worker-sources-toggle-${task.id}`}
+          className="mt-1 flex items-center gap-1 font-mono text-[10.5px] tabular-nums text-fg-muted hover:text-fg"
+        >
+          출처 {count}
+          <span aria-hidden="true">{expanded ? "▲" : "▼"}</span>
+        </button>
+      ) : (
+        <div className="mt-1 font-mono text-[10.5px] tabular-nums text-fg-muted">
+          출처 {count}
+        </div>
+      )}
+      {hasSources && expanded && (
+        <ul className="mt-1.5 space-y-1 border-t border-border pt-1.5">
+          {sources.map((c, i) => (
+            <li
+              key={`sub-src-${i}-${c.index}`}
+              className="flex items-baseline gap-1.5 text-[11px] leading-snug"
+            >
+              <span className="flex-none font-semibold tabular-nums text-primary">
+                [{c.index}]
+              </span>
+              <span className="min-w-0">
+                {c.sourceUri ? (
+                  <a
+                    href={c.sourceUri}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-fg underline decoration-border underline-offset-2 hover:decoration-primary"
+                  >
+                    {c.title ?? c.filename}
+                  </a>
+                ) : (
+                  <span className="text-fg">{c.title ?? c.filename}</span>
+                )}
+                {c.filename && (
+                  <span className="ml-1 text-fg-muted">
+                    {c.filename}
+                    {c.page ? ` p.${c.page}` : ""}
+                  </span>
+                )}
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }
