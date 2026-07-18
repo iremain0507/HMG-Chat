@@ -34,6 +34,7 @@ import { ProjectDetail } from "../../components/projects/ProjectDetail";
 import { McpServersManager } from "../../components/settings/McpServersManager";
 import { SkillsManager } from "../../components/settings/SkillsManager";
 import { AgentGallery } from "../../components/agents/AgentGallery";
+import { ConnectionsManager } from "../../components/settings/ConnectionsManager";
 import { MemoryManager } from "../../components/settings/MemoryManager";
 import { QuotaPanel } from "../../components/settings/QuotaPanel";
 import { AdminDashboard } from "../../components/admin/AdminDashboard";
@@ -225,6 +226,24 @@ function AgentGalleryPreview() {
       className="rounded-md border border-border px-3 py-1.5 text-sm text-fg-muted hover:border-primary hover:text-fg"
     >
       에이전트 갤러리 열기
+    </button>
+  );
+}
+
+// P22-T6-14 — ConnectionsManager 도 마운트 시 /api/v1/connections 를 fetch 한다. 위와 동일한
+//   토글 격리 패턴. 전용 e2e(connections.pw.ts)만 page.route() 로 API 를 목킹한 뒤 트리거를 클릭.
+function ConnectionsManagerPreview() {
+  const [open, setOpen] = useState(false);
+  return open ? (
+    <ConnectionsManager />
+  ) : (
+    <button
+      type="button"
+      data-testid="connections-manager-preview-trigger"
+      onClick={() => setOpen(true)}
+      className="rounded-md border border-border px-3 py-1.5 text-sm text-fg-muted hover:border-primary hover:text-fg"
+    >
+      연결 관리 열기
     </button>
   );
 }
@@ -1361,6 +1380,10 @@ export default function PreviewGallery() {
 
       <Section name="agent-gallery">
         <AgentGalleryPreview />
+      </Section>
+
+      <Section name="connections-manager">
+        <ConnectionsManagerPreview />
       </Section>
 
       <Section name="memory-manager">

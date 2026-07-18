@@ -41,6 +41,15 @@ import { createPgMcpServerDataAccess } from "./db/mcp-server-data-access.js";
 import { createOpenApiToolServerRoutes } from "./routes/openapi-tool-servers.js";
 import { createPgOpenApiToolServerDataAccess } from "./db/openapi-tool-server-data-access.js";
 import { createAgentRoutes } from "./routes/agents.js";
+import {
+  createConnectionRoutes,
+  createDefaultProviderProbe,
+} from "./routes/connections.js";
+import { createPgProviderConnectionDataAccess } from "./db/provider-connection-data-access.js";
+import { createKekProvider } from "./lib/kek-provider.js";
+import { createConnectionProviderResolver } from "./orchestrator/connection-provider-resolver.js";
+import { createOpenAILLMProvider } from "./orchestrator/llm-provider-openai.js";
+import OpenAI from "openai";
 import { createPgAgentDataAccess } from "./db/agent-data-access.js";
 import { assembleOrgOpenApiTools } from "./tools/openapi-tool-assembler.js";
 import { createOpenApiToolInvoker } from "./tools/openapi-tool-invoker.js";
@@ -223,6 +232,12 @@ export function createApp(env: Env) {
   const openApiToolServerDa = createPgOpenApiToolServerDataAccess();
   // P22-T6-10 — 커스텀 워크스페이스 에이전트 레지스트리(0034_agents).
   const agentDa = createPgAgentDataAccess();
+  // P22-T6-14 — 외부 OpenAI 호환 provider 연결(0035_provider_connections).
+  // 키는 KEK(계약 승인 C6: pluggable, 지금은 로컬 대칭키. 배포 시 KMS 구현으로 교체)로 봉인해
+  // 저장하고 재조회 시 keyPrefix 만 노출한다(api_keys 마스킹 미러).
+  const providerConnectionDa = createPgProviderConnectionDataAccess({
+    kek: createKekProvider(env),
+  });
   const mcpClientPool = createMcpClientPool({
     da: mcpServerDa,
     nodeEnv: env.NODE_ENV,
@@ -253,6 +268,16 @@ export function createApp(env: Env) {
     "/",
     createMessageRoutes({
       provider,
+      // P22-T6-14 — org 가 등록한 연결이 요청 모델을 제공하면 그 연결의 baseURL/키로 턴을
+      // 보낸다. 연결 미등록 org 는 resolver 가 null 을 주므로 위 env provider 그대로(비파괴).
+      resolveConnectionProvider: createConnectionProviderResolver({
+        da: providerConnectionDa,
+        createProvider: ({ baseUrl, apiKey, models }) =>
+          createOpenAILLMProvider({
+            client: new OpenAI({ baseURL: baseUrl, apiKey }),
+            models,
+          }),
+      }),
       // 실 Anthropic 은 env.LLM_MODEL(기본 Haiku 4.5) 사용. dev-stub 은 모델명 무시(에코).
       // org_settings.defaultModel 이 설정돼 있으면(및 인증된 요청) messages.ts 가 이 값을
       // 대체한다 — settings resolve 실패/미설정 시 이 값 그대로 fail-soft.
@@ -527,6 +552,20 @@ export function createApp(env: Env) {
   agentsApp.use("*", authMiddleware);
   agentsApp.route("/", createAgentRoutes({ da: agentDa }));
   app.route("/api/v1/agents", agentsApp);
+
+  // P22-T6-14 — Connections(Open WebUI Connections 파리티). org 경계는 라우트가 강제하고
+  // baseUrl 은 등록/verify 양쪽에서 mcp/url-validator 로 SSRF 재검증한다(mcp-servers 미러).
+  const connectionsApp = new Hono<{ Variables: AuthedVariables }>();
+  connectionsApp.use("*", authMiddleware);
+  connectionsApp.route(
+    "/",
+    createConnectionRoutes({
+      da: providerConnectionDa,
+      probe: createDefaultProviderProbe(),
+      urlValidatorOptions: { nodeEnv: env.NODE_ENV },
+    }),
+  );
+  app.route("/api/v1/connections", connectionsApp);
 
   // repo root/skills — skills/ 는 어떤 패키지도 import 불가(05-REPO-STRUCTURE.md), server 만
   // fs 로 직접 읽는다(skills-engine.ts 와 동일 경로 규칙).

@@ -27,6 +27,7 @@ import type {
   ProjectDocumentRepo,
   ProjectMemberRepo,
   ProjectRepo,
+  ProviderConnectionRepo,
   RefreshTokenFamilyRepo,
   Repo,
   SessionRepo,
@@ -57,6 +58,7 @@ export interface DataAccess {
   userMemories: UserMemoryRepo;
   mcpServers: McpServerRepo;
   agents: AgentRepo; // C5 · P22-T6-10 커스텀 워크스페이스 에이전트
+  providerConnections: ProviderConnectionRepo; // C6 · P22-T6-14 외부 provider 연결
   skillAssets: SkillAssetRepo;
   userQuotas: UserQuotaRepo;
   usageLogs: UsageLogRepo;

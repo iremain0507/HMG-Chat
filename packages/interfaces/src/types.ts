@@ -296,6 +296,26 @@ export interface Agent {
   updatedAt: Date;
 }
 
+// ProviderConnection — 외부 OpenAI 호환 provider 연결(base URL + API 키).
+// 계약 승인: .ralph/CONTRACT_APPROVED C6 (docs/rfc/P22-contract-batch.md § C6, P22-T6-14).
+// 중요: API 키 본문은 이 DTO 에 절대 담지 않는다 — 키는 provider_connections.api_key_encrypted
+//   컬럼에만 존재하고 repo 의 별도 메서드 secretById() 로만 읽는다("비밀은 DTO 밖", C4 와 동일 원칙).
+//   응답에는 keyPrefix(마스킹 표시용 앞자리)만 노출한다(api_keys 마스킹 미러).
+export interface ProviderConnection {
+  id: string;
+  orgId: string;
+  name: string;
+  kind: "openai-compatible"; // 향후 확장 여지
+  baseUrl: string;
+  keyPrefix: string; // 예: "sk-abcd…" — 응답에는 이것만 노출
+  enabled: boolean;
+  verifiedAt: Date | null;
+  models: string[];
+  createdBy: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
 export interface SkillAssetRecord {
   skillId: string;
   filename: string;
@@ -579,6 +599,25 @@ export type AgentRepo = Repo<
   Agent,
   { orgId?: string; createdBy?: string; visibility?: Agent["visibility"] }
 >;
+
+// ProviderConnectionRepo — C6 · P22-T6-14.
+// insert/update 의 apiKey(평문)는 DTO 밖 전용 인자로 받는다(구현체가 KEK 로 암호화해 저장).
+// secretById() 만이 복호화된 키를 돌려준다 — 라우트 응답에는 절대 싣지 않는다.
+export interface ProviderConnectionRepo extends Repo<
+  ProviderConnection,
+  { orgId?: string; enabled?: boolean }
+> {
+  insertWithSecret(
+    data: Omit<
+      ProviderConnection,
+      "id" | "keyPrefix" | "verifiedAt" | "createdAt" | "updatedAt"
+    >,
+    apiKey: string,
+  ): Promise<ProviderConnection>;
+  updateSecret(id: string, apiKey: string): Promise<void>;
+  secretById(id: string): Promise<string | null>;
+  markVerified(id: string, verifiedAt: Date | null): Promise<void>;
+}
 
 // SkillAsset 는 composite PK (skillId, filename). byId/delete(id) 사용 불가.
 export interface SkillAssetRepo {

@@ -10,3 +10,4 @@
 | P22-T1-08 image-generation | ✅     | ⏳                     | ⏳          | 채팅 내 이미지 생성 + admin 설정      |
 | P22-T6-01 session-clone    | ✅     | ✅ session-clone.pw.ts | ⏳          | 컨텍스트메뉴 복제→목록 최상단 prepend |
 | P22-T6-05 message-queue    | ✅     | ✅ message-queue.pw.ts | ⏳          | 응답 생성 중 메시지 큐잉              |
+| P22-T6-14 Connections      | ✅     | ✅ connections.pw.ts   | ⏳          | 외부 provider 연결 admin              |

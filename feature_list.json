@@ -2768,7 +2768,7 @@
     "acceptance": "RED 우선. GIVEN an admin on the settings Connections screen, WHEN they enter an OpenAI-compatible base URL + API key and save, THEN a provider_connections row is persisted (key stored encrypted, only keyPrefix returned on… / GIVEN a saved connection, WHEN the admin clicks Verify, THEN the server performs a scoped probe to the base URL and the UI shows verified/failed status without leaking the full key. / GIVEN an enabled connection whose models are allowed, WHEN a user starts a chat selecting one of those models, THEN the orchestrator LLMProviderRegistry routes the turn through that connection's baseURL/key (not… / GIVEN cross-org isolation, WHEN org A requests org B's connection, THEN it returns 404/forbidden and RLS prevents access (verified via createApp integration test + browser check of the admin/settings Connections panel). / ★실브라우저 UAT: 스택 기동 후 Claude-in-Chrome 로 실제 화면에서 동작 확인(불가 시 Playwright /preview + 정직히 미실행 명시). / .ralph/CONTRACT_APPROVED 없으면 격리(구현 금지).",
     "phase": "P22",
     "team": "T6",
-    "passes": false,
+    "passes": true,
     "attempts": 0
   },
   {

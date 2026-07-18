@@ -143,6 +143,23 @@ const EXPECTED_ROUTES: Array<{ method: string; path: string; phase: string }> =
     { method: "GET", path: `/api/v1/agents/${randomUUID()}`, phase: "P22" },
     { method: "PATCH", path: `/api/v1/agents/${randomUUID()}`, phase: "P22" },
     { method: "DELETE", path: `/api/v1/agents/${randomUUID()}`, phase: "P22" },
+    { method: "GET", path: "/api/v1/connections", phase: "P22" },
+    { method: "POST", path: "/api/v1/connections", phase: "P22" },
+    {
+      method: "PATCH",
+      path: `/api/v1/connections/${randomUUID()}`,
+      phase: "P22",
+    },
+    {
+      method: "DELETE",
+      path: `/api/v1/connections/${randomUUID()}`,
+      phase: "P22",
+    },
+    {
+      method: "POST",
+      path: `/api/v1/connections/${randomUUID()}/verify`,
+      phase: "P22",
+    },
     { method: "GET", path: "/api/v1/skills", phase: "P8" },
     {
       method: "GET",

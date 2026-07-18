@@ -34,6 +34,12 @@ const SETTINGS_SECTIONS: SettingsSectionItem[] = [
     href: "/settings/mcp",
   },
   {
+    key: "connections",
+    label: "연결",
+    description: "외부 OpenAI 호환 provider 엔드포인트를 등록·검증합니다.",
+    href: "/settings/connections",
+  },
+  {
     key: "prompts",
     label: "프롬프트",
     description: "자주 쓰는 프롬프트를 저장하고 /명령으로 불러옵니다.",

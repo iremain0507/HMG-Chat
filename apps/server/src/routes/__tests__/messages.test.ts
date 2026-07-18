@@ -1425,3 +1425,99 @@ describe("POST /:id/messages — per-turn 관련 도구만 노출(selectRelevant
     expect(names.sort()).toEqual(allTools.map((t) => t.spec.name).sort());
   });
 });
+
+// P22-T6-14 — Connections: 등록된 org 연결의 모델을 고르면 그 연결의 baseURL/키로 턴이 나가야
+// 한다. env 단일 provider 폴백은 연결이 없을 때만 — 비파괴 요구사항이라 폴백도 함께 단언한다.
+describe("POST /:id/messages — 연결(ProviderConnection) 기반 provider 해석 (P22-T6-14)", () => {
+  function appWithAuth(routes: ReturnType<typeof createMessageRoutes>) {
+    const app = new Hono<{ Variables: AuthedVariables }>();
+    app.use("*", async (c, next) => {
+      c.set("auth", {
+        sub: "user-1",
+        org: "org-1",
+        role: "member",
+        scope: "access",
+        jti: "x",
+      });
+      await next();
+    });
+    app.route("/", routes);
+    return app;
+  }
+
+  function namedProvider(name: string, used: string[]): LLMProvider {
+    return {
+      name,
+      models: ["conn-model"],
+      async *chat() {
+        used.push(name);
+        const events: ChatEvent[] = [
+          {
+            type: "message_start",
+            messageId: "m",
+            meta: { provider: name, model: "conn-model" },
+          },
+          { type: "text_delta", text: "ok" },
+          {
+            type: "stop",
+            reason: "end_turn",
+            usage: { inputTokens: 1, outputTokens: 1 },
+          },
+        ];
+        for (const event of events) {
+          yield event;
+        }
+      },
+    };
+  }
+
+  it("연결이 해당 모델을 제공하면 env provider 대신 연결 provider 로 라우팅한다", async () => {
+    const used: string[] = [];
+    const asked: Array<{ orgId: string; model: string }> = [];
+    const routes = createMessageRoutes({
+      provider: namedProvider("env-provider", used),
+      model: "conn-model",
+      resolveConnectionProvider: async (orgId, model) => {
+        asked.push({ orgId, model });
+        return namedProvider("connection-provider", used);
+      },
+    });
+
+    const res = await appWithAuth(routes).request("/sess-conn-1/messages", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "text/event-stream",
+      },
+      body: JSON.stringify({ content: "hi" }),
+    });
+    expect(res.status).toBe(200);
+    await res.text();
+
+    // org 경계: resolver 는 호출자의 org 로만 조회돼야 한다.
+    expect(asked).toEqual([{ orgId: "org-1", model: "conn-model" }]);
+    expect(used).toEqual(["connection-provider"]);
+  });
+
+  it("연결이 없으면(resolver null) 기존 env provider 로 폴백한다(비파괴)", async () => {
+    const used: string[] = [];
+    const routes = createMessageRoutes({
+      provider: namedProvider("env-provider", used),
+      model: "conn-model",
+      resolveConnectionProvider: async () => null,
+    });
+
+    const res = await appWithAuth(routes).request("/sess-conn-2/messages", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "text/event-stream",
+      },
+      body: JSON.stringify({ content: "hi" }),
+    });
+    expect(res.status).toBe(200);
+    await res.text();
+
+    expect(used).toEqual(["env-provider"]);
+  });
+});

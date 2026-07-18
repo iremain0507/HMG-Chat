@@ -227,6 +227,14 @@ function createBudgetClaim(limitMicros: number | null): BudgetClaim {
 export interface MessageRouteDeps {
   provider: LLMProvider;
   model: string;
+  // P22-T6-14 — org 에 등록된 ProviderConnection 중 이 모델을 제공하는 연결이 있으면 그
+  // 연결의 baseURL+키로 만든 provider 를 돌려준다(없으면 null → deps.provider 폴백).
+  // app.ts 조립 시점 싱글톤인 registry 로는 org 별 연결을 담을 수 없어 invoke-time 해석을
+  // 쓴다(P14-T2-02 가 같은 이유로 격리된 전례, T3-01 패턴 미러).
+  resolveConnectionProvider?: (
+    orgId: string,
+    model: string,
+  ) => Promise<LLMProvider | null>;
   systemBlocks?: PromptBlock[];
   maxTokens?: number;
   activeRuns?: ActiveRunsPort;
@@ -577,6 +585,13 @@ export function createMessageRoutes(
       });
     }
 
+    // P22-T6-14 — model 이 확정된 뒤 org 연결을 조회한다. 연결이 이 모델을 제공하면 그
+    // 연결(baseURL+키)로, 아니면 기존 env provider 로 — 연결 미등록 org 는 종전과 동일(비파괴).
+    const turnProvider =
+      (auth && deps.resolveConnectionProvider
+        ? await deps.resolveConnectionProvider(auth.org, model)
+        : null) ?? deps.provider;
+
     // nginx 등 리버스 프록시가 SSE 를 버퍼링하지 않게(토큰 순차 전달 보장). Next origin
     //   압축은 next.config compress:false 로 이미 끔.
     c.header("X-Accel-Buffering", "no");
@@ -597,7 +612,7 @@ export function createMessageRoutes(
         { inputTokens: number; outputTokens: number } | undefined;
       try {
         const events = runTurn({
-          provider: deps.provider,
+          provider: turnProvider,
           model,
           systemBlocks: [...systemBlocks, ...ephemeralBlock],
           messages,
@@ -712,7 +727,9 @@ export function createMessageRoutes(
           !handle.controller.signal.aborted
         ) {
           await generateSessionTitleAndTags({
-            provider: deps.provider,
+            // 제목 생성도 같은 model 을 쓰므로 provider 도 같아야 한다 — env provider 로
+            // 보내면 연결 전용 모델을 모르는 provider 에 요청하게 된다(P22-T6-14).
+            provider: turnProvider,
             model,
             userText: content,
             assistantText,

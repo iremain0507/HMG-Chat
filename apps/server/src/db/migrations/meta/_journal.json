@@ -239,6 +239,13 @@
       "when": 1783981000000,
       "tag": "0034_agents",
       "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1783984600000,
+      "tag": "0035_provider_connections",
+      "breakpoints": true
     }
   ]
 }
