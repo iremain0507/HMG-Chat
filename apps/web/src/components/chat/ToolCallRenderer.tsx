@@ -202,8 +202,14 @@ export function ToolCallRenderer({
           )}
         </span>
         <span className="flex flex-none items-center gap-2">
-          {isMultiAgent && running && (
-            <span className="font-mono text-xs tabular-nums text-fg-muted">
+          {/* 경과 시간 — 실행 중엔 매초 갱신(생존 신호), 완료 시엔 최종 소요시간으로 고정 표시.
+              (client 측 측정이라 히스토리 로드된 done 은 0 → 숨김) */}
+          {(running || (status === "done" && elapsedMs > 0)) && (
+            <span
+              data-testid="tool-elapsed"
+              className="font-mono text-xs tabular-nums text-fg-muted"
+              title={status === "done" ? "소요 시간" : "경과 시간"}
+            >
               {fmtElapsed(elapsedMs)}
             </span>
           )}

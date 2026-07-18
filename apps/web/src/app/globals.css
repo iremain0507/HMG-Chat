@@ -233,3 +233,24 @@ body {
 .msg-actions:focus-within {
   opacity: 1;
 }
+
+/* 스트리밍 응답 커서 — 정적으로 보이지 않도록 은은하게 깜빡인다(생성 중 vs 멈춤 구분).
+   prefers-reduced-motion 시 정지(상시 노출). */
+@keyframes wchat-blink {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.15;
+  }
+}
+.wchat-caret {
+  animation: wchat-blink 1s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .wchat-caret {
+    animation: none;
+    opacity: 1;
+  }
+}

@@ -25,6 +25,20 @@ describe("ToolCallRenderer", () => {
     );
   });
 
+  it("실행 중이면 경과 시간(tool-elapsed)을 m:ss 로 보여준다 — 멀티에이전트 아니어도", () => {
+    render(
+      <ToolCallRenderer
+        toolCallId="call-1"
+        name="knowledge_search"
+        args={{ query: "wchat" }}
+        status="running"
+      />,
+    );
+    const el = screen.getByTestId("tool-elapsed");
+    expect(el).toBeInTheDocument();
+    expect(el.textContent).toMatch(/^\d+:\d{2}$/);
+  });
+
   it("P12 orchestrator-worker 계열({task} 단일 인자)은 '멀티에이전트' 배지를 보여준다", () => {
     render(
       <ToolCallRenderer

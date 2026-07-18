@@ -1091,7 +1091,8 @@ export function MessageItem({
         )}
         {streaming && content && (
           <span
-            className="ml-0.5 inline-block h-4 w-[3px] animate-pulse bg-fg align-middle"
+            data-testid="stream-caret"
+            className="wchat-caret ml-0.5 inline-block h-[1.1em] w-[3px] rounded-[1px] bg-primary align-[-0.15em]"
             aria-label="응답 생성 중"
           />
         )}
