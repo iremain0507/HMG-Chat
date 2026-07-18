@@ -354,6 +354,46 @@ describe("createDeepResearchTool", () => {
     await expect(invokePromise).rejects.toThrow();
   });
 
+  it("종합 LLM 이 멈추거나 실패해도(사용자 취소 아님) 모은 findings 로 폴백해 kind:json 으로 완료한다 — 클라 tool 이 '결과 종합 중' 에 고착되지 않는다", async () => {
+    const da = fakeArtifactDa();
+    const tool = createDeepResearchTool({
+      leadProvider: fakeLeadProvider({
+        plannerResponse: "- 질문 A\n- 질문 B",
+        synthesisResponse: () => {
+          throw new Error("synthesis stalled"); // 종합 단계 실패/멈춤 모사(타임아웃 abort 동등)
+        },
+        gapCheckResponse: () => "COMPLETE",
+      }),
+      leadModel: "fake-lead-model",
+      workerProvider: fakeWorkerProvider(),
+      workerModel: "fake-worker-model",
+      workerTools: [fakeWorkerTool()],
+      maxTokens: 512,
+      da,
+    });
+
+    const result = await tool.invoke({
+      toolCallId: "c-fallback",
+      args: { query: "리서치 목표" },
+      ctx: fakeToolContext(), // 사용자 취소 아님 → reject 대신 폴백 완료
+    });
+
+    expect(result.content.kind).toBe("json");
+    if (result.content.kind !== "json")
+      throw new Error("json content 를 기대함");
+    const data = result.content.data as {
+      message: string;
+      artifact: { artifactId: string };
+      subQuestions: unknown[];
+    };
+    // degraded 메시지 + 하위질문별 출처 유지.
+    expect(data.message).toContain("조사 원문");
+    expect(data.subQuestions.length).toBeGreaterThan(0);
+    // 아티팩트에 종합 대신 findings 원문(### 하위질문 섹션)이 폴백되어 저장된다.
+    const stored = await da.artifacts.byId(data.artifact.artifactId);
+    expect(stored?.inlineContent?.toString("utf-8")).toContain("###");
+  });
+
   it("plan→병렬 researcher→종합 후 인용이 포함된 markdown 아티팩트를 생성하고, 존재하지 않는 인용 마커[99]는 drop 한다(gapCheck COMPLETE 로 1회 종합에 종료)", async () => {
     const da = fakeArtifactDa();
     const tool = createDeepResearchTool({

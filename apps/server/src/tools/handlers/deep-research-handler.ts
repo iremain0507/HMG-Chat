@@ -352,7 +352,10 @@ export function createDeepResearchTool(deps: DeepResearchToolDeps): AgentTool {
       //   무한 "조사 중" 대신 재시도 가능한 error 로 종단된다. 아래 본문 전체가 이 ctx(=linked
       //   signal) 를 쓰므로 sub-call(runResearcher/runIsolatedText)에 그대로 전파된다.
       const timeoutController = new AbortController();
-      setTimeout(() => timeoutController.abort(), DEEP_RESEARCH_TIMEOUT_MS);
+      const overallTimeoutId = setTimeout(
+        () => timeoutController.abort(),
+        DEEP_RESEARCH_TIMEOUT_MS,
+      );
       const ctx: ToolContext = {
         ...baseCtx,
         signal: AbortSignal.any([baseCtx.signal, timeoutController.signal]),
@@ -421,52 +424,67 @@ export function createDeepResearchTool(deps: DeepResearchToolDeps): AgentTool {
       let reportText = "";
       let citations: Citation[] = [];
       let subQuestionBreakdown: { title: string; citations: Citation[] }[] = [];
-      for (let iteration = 1; iteration <= maxGapIterations; iteration += 1) {
-        const merged = remapFindingCitations(findings);
-        citations = merged.citations;
-        subQuestionBreakdown = merged.subQuestions;
-        reportText = await runIsolatedText(
-          merged.combinedText,
-          deps.leadProvider,
-          deps.leadModel,
-          buildSynthesisSystemBlocks(),
-          maxTokens,
-          ctx,
-        );
+      // 종합 실패 시 폴백용 — 이미 remap 된 findings 원문(하위질문별 텍스트+[N] 인용).
+      let combinedFindings = "";
+      let synthesisDegraded = false;
+      try {
+        for (let iteration = 1; iteration <= maxGapIterations; iteration += 1) {
+          const merged = remapFindingCitations(findings);
+          citations = merged.citations;
+          subQuestionBreakdown = merged.subQuestions;
+          combinedFindings = merged.combinedText;
+          reportText = await runIsolatedText(
+            merged.combinedText,
+            deps.leadProvider,
+            deps.leadModel,
+            buildSynthesisSystemBlocks(),
+            maxTokens,
+            ctx,
+          );
 
-        // hard cap 도달 — gapCheck 자체를 호출하지 않고 즉시 종료(MAST 종료조건 가드,
-        // 응답 내용과 무관하게 무한루프를 원천 차단).
-        if (iteration === maxGapIterations) break;
+          // hard cap 도달 — gapCheck 자체를 호출하지 않고 즉시 종료(MAST 종료조건 가드,
+          // 응답 내용과 무관하게 무한루프를 원천 차단).
+          if (iteration === maxGapIterations) break;
 
-        const gapCheckText = await runIsolatedText(
-          reportText,
-          deps.leadProvider,
-          deps.leadModel,
-          buildGapCheckSystemBlocks(),
-          maxTokens,
-          ctx,
-        );
-        const gap = parseGapCheck(gapCheckText);
-        if (gap.complete || !gap.gapQuestion) break;
+          const gapCheckText = await runIsolatedText(
+            reportText,
+            deps.leadProvider,
+            deps.leadModel,
+            buildGapCheckSystemBlocks(),
+            maxTokens,
+            ctx,
+          );
+          const gap = parseGapCheck(gapCheckText);
+          if (gap.complete || !gap.gapQuestion) break;
 
-        const extra = await runResearcher(
-          gap.gapQuestion,
-          deps,
-          maxTokens,
-          ctx,
-        );
-        findings = [...findings, extra];
-        tasks.push({
-          id: `gap-${iteration}`,
-          title: gap.gapQuestion,
-          status: "done",
-          sourceCount: extra.citations.length,
-        });
-        ctx.emitProgress?.({
-          stage: "synthesizing",
-          label: "추가 조사 반영 중",
-          tasks: tasks.map((t) => ({ ...t })),
-        });
+          const extra = await runResearcher(
+            gap.gapQuestion,
+            deps,
+            maxTokens,
+            ctx,
+          );
+          findings = [...findings, extra];
+          tasks.push({
+            id: `gap-${iteration}`,
+            title: gap.gapQuestion,
+            status: "done",
+            sourceCount: extra.citations.length,
+          });
+          ctx.emitProgress?.({
+            stage: "synthesizing",
+            label: "추가 조사 반영 중",
+            tasks: tasks.map((t) => ({ ...t })),
+          });
+        }
+      } catch (error) {
+        // 종합/gap 단계가 응답 없이 멈추거나(전체 상한 타임아웃 abort) 실패해도, 이미 모은
+        // findings 를 리포트로 폴백한다 — "결과 종합 중" 무한 hang·무결과 방지. 단, 사용자
+        // 취소(baseCtx.signal)는 중단 의사이므로 그대로 전파한다.
+        if (baseCtx.signal.aborted) throw error;
+        reportText = reportText || combinedFindings;
+        synthesisDegraded = true;
+      } finally {
+        clearTimeout(overallTimeoutId);
       }
 
       const { unmatchedIndexes } = matchCitations(reportText, citations);
@@ -505,7 +523,9 @@ export function createDeepResearchTool(deps: DeepResearchToolDeps): AgentTool {
             citations,
             // 하위질문별 출처(전역 인덱스) — 클라 WorkerCard 펼침에서 사용(duck-typed json 추가 필드).
             subQuestions: subQuestionBreakdown,
-            message: `${subQuestions.length}개 하위 질문을 조사해 리포트로 종합했습니다.`,
+            message: synthesisDegraded
+              ? `${subQuestions.length}개 하위 질문 조사 결과입니다(최종 종합이 시간 내 완료되지 않아 조사 원문을 제공).`
+              : `${subQuestions.length}개 하위 질문을 조사해 리포트로 종합했습니다.`,
           },
         },
       };
