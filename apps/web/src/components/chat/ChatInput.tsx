@@ -134,7 +134,15 @@ export interface ChatInputProps {
   isStreaming: boolean;
   onSend: (
     content: string,
-    attachments: Array<{ uploadId: string }>,
+    // P22-T6-04 — uploadId 외 filename/mimeType/previewUrl(이미지 objectURL)을 함께 넘겨
+    // 낙관적 유저 버블이 이미지 썸네일을 그릴 수 있게 한다. 서버 요청 body 에는
+    // useSessionStream 이 uploadId 만 추린다(추가 필드는 무시).
+    attachments: Array<{
+      uploadId: string;
+      filename: string;
+      mimeType: string;
+      previewUrl?: string;
+    }>,
     options?: SendOptions,
   ) => void | Promise<void>;
   onStop: () => void;
@@ -180,7 +188,7 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
     const taRef = useRef<HTMLTextAreaElement>(null);
     const popoverRef = useRef<HTMLDivElement>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
-    const { items, addFiles, remove, clear, readyUploadIds } =
+    const { items, addFiles, remove, clear, readyAttachments } =
       useAttachments(sessionId);
     const webSearchAvailable = availableTools.includes("web_search");
 
@@ -398,7 +406,7 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
     async function submit() {
       if (!canSend) return;
       const content = input.trim();
-      const attachments = readyUploadIds;
+      const attachments = readyAttachments;
       setInput("");
       setTrigger(null);
       if (taRef.current) taRef.current.style.height = "auto";
@@ -539,8 +547,18 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
                 key={it.localId}
                 data-testid={`attachment-chip-${it.localId}`}
                 data-status={it.status}
-                className="flex items-center gap-1.5 rounded-full border border-border bg-bg px-2.5 py-1 text-xs text-fg-muted data-[status=error]:border-accent data-[status=error]:text-accent"
+                className="flex items-center gap-1.5 rounded-full border border-border bg-bg py-1 pl-1.5 pr-2.5 text-xs text-fg-muted data-[status=error]:border-accent data-[status=error]:text-accent"
               >
+                {it.previewUrl && (
+                  // P22-T6-04 — 이미지 첨부는 파일명 대신 실제 썸네일을 보여준다(멀티모달 파리티).
+                  // 동적 blob: URL 이라 next/image 부적합, 순수 img 사용(ToolCallRenderer 패턴).
+                  <img
+                    src={it.previewUrl}
+                    alt={it.filename}
+                    data-testid={`attachment-thumb-${it.localId}`}
+                    className="h-6 w-6 flex-none rounded-md object-cover"
+                  />
+                )}
                 <span className="max-w-[10rem] truncate">
                   {it.status === "uploading" ? "업로드 중… " : ""}
                   {it.filename}

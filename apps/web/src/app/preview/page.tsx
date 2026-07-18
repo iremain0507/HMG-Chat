@@ -1142,6 +1142,36 @@ export default function PreviewGallery() {
         <MessageBranchPreview />
       </Section>
 
+      <Section name="message-attachments">
+        {/* P22-T6-04 — 유저 버블의 이미지 첨부는 파일명 대신 썸네일(<img>)로,
+            비이미지는 파일명 칩으로 렌더된다(멀티모달 파리티). */}
+        <ul className="space-y-3">
+          <MessageItem
+            role="user"
+            content="이 사진들 분석해줘"
+            streaming={false}
+            error={false}
+            attachments={[
+              {
+                uploadId: "preview-att-img-1",
+                filename: "photo.png",
+                mimeType: "image/png",
+                previewUrl:
+                  "data:image/svg+xml;utf8," +
+                  encodeURIComponent(
+                    "<svg xmlns='http://www.w3.org/2000/svg' width='80' height='80'><rect width='80' height='80' fill='%2300287A'/></svg>",
+                  ),
+              },
+              {
+                uploadId: "preview-att-doc-1",
+                filename: "spec.pdf",
+                mimeType: "application/pdf",
+              },
+            ]}
+          />
+        </ul>
+      </Section>
+
       <Section name="session-switch">
         <SessionSwitchPreview />
       </Section>

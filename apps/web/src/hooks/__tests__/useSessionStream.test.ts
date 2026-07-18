@@ -115,7 +115,15 @@ describe("useSessionStream", () => {
     const { result } = renderHook(() => useSessionStream("session-1"));
 
     await act(async () => {
-      await result.current.send("이 문서 요약해줘", [{ uploadId: "upload-1" }]);
+      // P22-T6-04 — send() 는 이제 filename/mimeType(이미지는 previewUrl)까지 받는다.
+      // 서버 body 로는 uploadId 만 실려야 한다(아래 body 단언이 stripping 을 검증).
+      await result.current.send("이 문서 요약해줘", [
+        {
+          uploadId: "upload-1",
+          filename: "spec.pdf",
+          mimeType: "application/pdf",
+        },
+      ]);
     });
 
     expect(fetch).toHaveBeenCalledWith(

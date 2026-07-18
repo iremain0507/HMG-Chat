@@ -73,6 +73,17 @@ export interface StreamMessage {
   citations?: Citation[];
   branch?: MessageBranch;
   meta?: StreamMessageMeta;
+  // P22-T6-04 — 유저 메시지에 딸린 첨부(이미지는 previewUrl objectURL 로 버블에 썸네일 렌더).
+  // 낙관적 전송 시 ChatInput→send() 가 채운다. 서버 wire format 엔 없는 클라이언트 전용 필드.
+  attachments?: MessageAttachment[];
+}
+
+// P22-T6-04 — 버블 렌더용 첨부 메타(서버 요청 body 엔 uploadId 만 실림).
+export interface MessageAttachment {
+  uploadId: string;
+  filename: string;
+  mimeType: string;
+  previewUrl?: string;
 }
 
 // 14-INTERFACES § ChatEvent.citation 과 1:1 (type 필드 제외).
@@ -495,9 +506,9 @@ export function useSessionStream(sessionId: string) {
     async (
       userNodeId: string,
       content: string,
-      attachments?: Array<{ uploadId: string }>,
+      attachments?: MessageAttachment[],
       options?: SendOptions,
-    ) => {
+    ): Promise<void> => {
       // P21-T6-12(UX-20/21) — send/editMessage/regenerate 는 모두 이 함수를 거쳐 새 턴을
       // 시작한다. 이전 leg 이 아직 스트리밍 중일 때 겹쳐 들어오면 두 leg 이 동시에 같은
       // 트리에 기록돼 이중기록이 난다 — 새 진입 시 이전 leg 을 먼저 abort 한다.
@@ -937,7 +948,15 @@ export function useSessionStream(sessionId: string) {
           },
           body: JSON.stringify({
             content,
-            ...(attachments && attachments.length > 0 ? { attachments } : {}),
+            // P22-T6-04 — 서버 wire format 은 uploadId 만 받는다. 버블 썸네일용
+            // filename/mimeType/previewUrl(blob:) 는 여기서 떼고 uploadId 만 보낸다.
+            ...(attachments && attachments.length > 0
+              ? {
+                  attachments: attachments.map((a) => ({
+                    uploadId: a.uploadId,
+                  })),
+                }
+              : {}),
             ...(options?.model ? { model: options.model } : {}),
             ...(options?.mode ? { mode: options.mode } : {}),
             ...(options?.reasoningEffort
@@ -979,12 +998,18 @@ export function useSessionStream(sessionId: string) {
   const send = useCallback(
     async (
       content: string,
-      attachments?: Array<{ uploadId: string }>,
+      attachments?: MessageAttachment[],
       options?: SendOptions,
     ) => {
       const tipId = getTipId(treeRef.current);
       const userId = `local-u-${idCounterRef.current++}`;
-      addNode(userId, tipId, { id: userId, role: "user", content });
+      // P22-T6-04 — 낙관적 유저 버블에 첨부(이미지는 previewUrl 썸네일)를 함께 실어 렌더한다.
+      addNode(userId, tipId, {
+        id: userId,
+        role: "user",
+        content,
+        ...(attachments && attachments.length > 0 ? { attachments } : {}),
+      });
       await streamTurn(userId, content, attachments, options);
     },
     [addNode, streamTurn],

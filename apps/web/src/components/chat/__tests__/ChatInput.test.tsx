@@ -150,7 +150,13 @@ describe("ChatInput", () => {
 
     await waitFor(() => {
       expect(onSend).toHaveBeenCalledWith("이 파일 요약해줘", [
-        { uploadId: "upload-3" },
+        // P22-T6-04 — onSend 는 uploadId 외 filename/mimeType(이미지는 previewUrl)도 함께
+        // 넘긴다(낙관적 유저 버블 썸네일용). 서버 body 로는 useSessionStream 이 uploadId 만 추린다.
+        {
+          uploadId: "upload-3",
+          filename: "spec.pdf",
+          mimeType: "application/pdf",
+        },
       ]);
     });
   });
@@ -322,7 +328,11 @@ describe("ChatInput 슬래시/멘션", () => {
 
     await waitFor(() => {
       expect(onSend).toHaveBeenCalledWith("#report.pdf 이 문서 요약해줘", [
-        { uploadId: "upload-9" },
+        {
+          uploadId: "upload-9",
+          filename: "report.pdf",
+          mimeType: "application/pdf",
+        },
       ]);
     });
   });

@@ -25,6 +25,31 @@ function isAcceptedType(mimeType: string): boolean {
   return ACCEPTED_MIME_TYPES.has(mimeType);
 }
 
+// P22-T6-04 — 멀티모달 채팅 파리티(Open WebUI 참조): 이미지 첨부는 파일명 칩이 아니라
+// 실제 썸네일로 보여준다. 브라우저 objectURL 로 미리보기 URL 을 만들어 칩·전송 버블에서
+// <img> 로 렌더한다(제거/클리어 시 revoke 로 누수 방지).
+function isImageType(mimeType: string): boolean {
+  return mimeType.startsWith("image/");
+}
+
+// 이미지면 blob: objectURL 을 만든다. SSR/테스트(jsdom)처럼 URL.createObjectURL 이
+// 없는 환경에서는 undefined 로 폴백(썸네일만 생략, 업로드/전송은 정상 동작).
+function makePreviewUrl(file: File): string | undefined {
+  if (!isImageType(file.type)) return undefined;
+  if (typeof URL === "undefined" || typeof URL.createObjectURL !== "function") {
+    return undefined;
+  }
+  return URL.createObjectURL(file);
+}
+
+function revokePreviewUrl(previewUrl: string | undefined): void {
+  if (!previewUrl) return;
+  if (typeof URL === "undefined" || typeof URL.revokeObjectURL !== "function") {
+    return;
+  }
+  URL.revokeObjectURL(previewUrl);
+}
+
 export interface AttachmentItem {
   localId: string;
   uploadId: string | null;
@@ -33,6 +58,16 @@ export interface AttachmentItem {
   sizeBytes: number;
   status: "uploading" | "done" | "error";
   error?: string;
+  // 이미지일 때만 채워지는 클라이언트측 미리보기 objectURL(blob:). 비이미지는 undefined.
+  previewUrl?: string;
+}
+
+// 전송(onSend)·낙관적 버블에서 쓰는 첨부 메타. 서버 요청 body 에는 uploadId 만 실린다.
+export interface ReadyAttachment {
+  uploadId: string;
+  filename: string;
+  mimeType: string;
+  previewUrl?: string;
 }
 
 export function useAttachments(sessionId: string) {
@@ -128,6 +163,7 @@ export function useAttachments(sessionId: string) {
           ]);
           continue;
         }
+        const previewUrl = makePreviewUrl(file);
         setItems((prev) => [
           ...prev,
           {
@@ -137,6 +173,7 @@ export function useAttachments(sessionId: string) {
             mimeType: file.type,
             sizeBytes: file.size,
             status: "uploading",
+            ...(previewUrl ? { previewUrl } : {}),
           },
         ]);
         void uploadOne(localId, file);
@@ -146,10 +183,17 @@ export function useAttachments(sessionId: string) {
   );
 
   const remove = useCallback((localId: string) => {
-    setItems((prev) => prev.filter((it) => it.localId !== localId));
+    setItems((prev) => {
+      const target = prev.find((it) => it.localId === localId);
+      revokePreviewUrl(target?.previewUrl);
+      return prev.filter((it) => it.localId !== localId);
+    });
   }, []);
 
   const clear = useCallback(() => {
+    // clear 는 전송(submit) 시에만 호출된다 — 이때 이미지 previewUrl 의 소유권은 낙관적
+    // 유저 버블(StreamMessage.attachments)로 넘어가므로 revoke 하지 않는다(revoke 하면
+    // 방금 보낸 버블의 <img src="blob:…"> 가 깨진다). 수동 remove 만 revoke 한다.
     setItems([]);
   }, []);
 
@@ -157,5 +201,23 @@ export function useAttachments(sessionId: string) {
     .filter((it) => it.status === "done" && it.uploadId)
     .map((it) => ({ uploadId: it.uploadId! }));
 
-  return { items, addFiles, remove, clear, readyUploadIds };
+  // P22-T6-04 — 전송 시 낙관적 유저 버블에 이미지 썸네일을 그리기 위해 filename/mimeType/
+  // previewUrl 까지 함께 넘긴다(서버 body 에는 useSessionStream 이 uploadId 만 추린다).
+  const readyAttachments: ReadyAttachment[] = items
+    .filter((it) => it.status === "done" && it.uploadId)
+    .map((it) => ({
+      uploadId: it.uploadId!,
+      filename: it.filename,
+      mimeType: it.mimeType,
+      ...(it.previewUrl ? { previewUrl: it.previewUrl } : {}),
+    }));
+
+  return {
+    items,
+    addFiles,
+    remove,
+    clear,
+    readyUploadIds,
+    readyAttachments,
+  };
 }

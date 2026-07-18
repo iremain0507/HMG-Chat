@@ -2624,8 +2624,8 @@
     "acceptance": "RED 우선. Images can be uploaded (vision input) but are rendered only as filename chips — no <img>/thumbnail in composer (ChatInput) or message bubbles (ChatView). Table-stakes for a multimodal chat. Done = image thumbnail preview in composer chips and in sent message bubbles. / ★실브라우저 UAT: 스택 기동 후 Claude-in-Chrome 로 실제 화면에서 동작 확인(불가 시 Playwright /preview + 정직히 미실행 명시).",
     "phase": "P22",
     "team": "T6",
-    "passes": false,
-    "attempts": 0
+    "passes": true,
+    "attempts": 1
   },
   {
     "id": "P22-T6-05",

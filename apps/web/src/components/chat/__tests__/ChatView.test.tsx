@@ -13,7 +13,7 @@ import {
   within,
 } from "@testing-library/react";
 import "@testing-library/jest-dom/vitest";
-import { ChatView } from "../ChatView";
+import { ChatView, MessageItem } from "../ChatView";
 import { ToastContainer } from "../../layout/ToastContainer";
 import { __resetToastsForTest } from "../../../lib/toast";
 
@@ -2451,5 +2451,56 @@ describe("ChatView", () => {
     await waitFor(() => {
       expect(screen.getByText("후속질문A")).toBeInTheDocument();
     });
+  });
+});
+
+describe("MessageItem 첨부 썸네일(P22-T6-04)", () => {
+  afterEach(() => {
+    cleanup();
+  });
+
+  it("유저 버블은 이미지 첨부를 previewUrl 썸네일(<img>)로 렌더한다", () => {
+    render(
+      <ul>
+        <MessageItem
+          role="user"
+          content="이 사진 분석해줘"
+          streaming={false}
+          attachments={[
+            {
+              uploadId: "up-1",
+              filename: "photo.png",
+              mimeType: "image/png",
+              previewUrl: "blob:preview-abc",
+            },
+          ]}
+        />
+      </ul>,
+    );
+
+    const thumb = screen.getByRole("img", { name: "photo.png" });
+    expect(thumb).toHaveAttribute("src", "blob:preview-abc");
+  });
+
+  it("비이미지 첨부는 파일명 칩으로만 표시(썸네일 없음)한다", () => {
+    render(
+      <ul>
+        <MessageItem
+          role="user"
+          content="이 문서 요약해줘"
+          streaming={false}
+          attachments={[
+            {
+              uploadId: "up-2",
+              filename: "spec.pdf",
+              mimeType: "application/pdf",
+            },
+          ]}
+        />
+      </ul>,
+    );
+
+    expect(screen.queryByRole("img", { name: "spec.pdf" })).toBeNull();
+    expect(screen.getByText("spec.pdf")).toBeInTheDocument();
   });
 });

@@ -12,6 +12,7 @@ import {
   type MessageBranch,
   type StreamMessageMeta,
   type ArtifactSummary,
+  type MessageAttachment,
 } from "../../hooks/useSessionStream";
 import { useCurrentUser } from "../../hooks/useCurrentUser";
 import { usePrompts } from "../../hooks/usePrompts";
@@ -536,6 +537,7 @@ export function ChatView({ sessionId }: { sessionId: string }) {
                       content={m.content}
                       sessionId={sessionId}
                       messageId={m.id}
+                      {...(m.attachments ? { attachments: m.attachments } : {})}
                       {...(m.parts ? { parts: m.parts } : {})}
                       {...(m.reasoning ? { reasoning: m.reasoning } : {})}
                       {...(m.citations ? { citations: m.citations } : {})}
@@ -743,11 +745,14 @@ export function MessageItem({
   onActivityFocus,
   onOpenArtifact,
   onDelete,
+  attachments,
 }: {
   role: "user" | "assistant";
   content: string;
   sessionId?: string;
   messageId?: string;
+  // P22-T6-04 — 유저 버블에 딸린 첨부(이미지는 previewUrl 썸네일로 렌더).
+  attachments?: MessageAttachment[];
   parts?: MessagePart[];
   reasoning?: string;
   citations?: Citation[];
@@ -875,6 +880,32 @@ export function MessageItem({
     return (
       <li data-role="user" className="group flex justify-end">
         <div className="max-w-[80%]">
+          {attachments && attachments.length > 0 && (
+            // P22-T6-04 — 멀티모달 파리티(Open WebUI 참조): 이미지 첨부는 파일명 대신
+            // 실제 썸네일(<img>)로, 비이미지는 파일명 칩으로 버블 위에 표시한다.
+            <ul
+              aria-label="첨부"
+              className="mb-1.5 flex flex-wrap justify-end gap-1.5"
+            >
+              {attachments.map((a) => (
+                <li key={a.uploadId}>
+                  {a.previewUrl ? (
+                    // 동적 blob: URL 이라 next/image 부적합, 순수 img 사용(ToolCallRenderer 패턴).
+                    <img
+                      src={a.previewUrl}
+                      alt={a.filename}
+                      data-testid={`bubble-thumb-${a.uploadId}`}
+                      className="h-20 w-20 rounded-lg border border-border object-cover"
+                    />
+                  ) : (
+                    <span className="inline-flex items-center gap-1.5 rounded-full border border-border bg-bg px-2.5 py-1 text-xs text-fg-muted">
+                      {a.filename}
+                    </span>
+                  )}
+                </li>
+              ))}
+            </ul>
+          )}
           <div className="whitespace-pre-wrap rounded-[10px] bg-primary-50 px-4 py-2.5 text-fg">
             {content}
           </div>
