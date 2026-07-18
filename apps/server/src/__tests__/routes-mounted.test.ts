@@ -157,6 +157,20 @@ const EXPECTED_ROUTES: Array<{ method: string; path: string; phase: string }> =
       path: `/api/v1/notes/${randomUUID()}/enhance`,
       phase: "P22",
     },
+    // P22-T6-12 — Channels(실시간 다중사용자). createApp 마운트 가드.
+    { method: "GET", path: "/api/v1/channels", phase: "P22" },
+    { method: "POST", path: "/api/v1/channels", phase: "P22" },
+    { method: "GET", path: `/api/v1/channels/${randomUUID()}`, phase: "P22" },
+    {
+      method: "POST",
+      path: `/api/v1/channels/${randomUUID()}/messages`,
+      phase: "P22",
+    },
+    {
+      method: "GET",
+      path: `/api/v1/channels/${randomUUID()}/stream`,
+      phase: "P22",
+    },
     { method: "GET", path: "/api/v1/connections", phase: "P22" },
     { method: "POST", path: "/api/v1/connections", phase: "P22" },
     {

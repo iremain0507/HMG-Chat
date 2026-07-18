@@ -57,6 +57,8 @@ import OpenAI from "openai";
 import { createPgAgentDataAccess } from "./db/agent-data-access.js";
 import { createPgUserSkillStore } from "./db/user-skill-data-access.js";
 import { createPgNoteDataAccess } from "./db/note-data-access.js";
+import { createChannelRoutes } from "./routes/channels.js";
+import { createPgChannelDataAccess } from "./db/channel-data-access.js";
 import { assembleOrgOpenApiTools } from "./tools/openapi-tool-assembler.js";
 import { createOpenApiToolInvoker } from "./tools/openapi-tool-invoker.js";
 import { createMcpClientPool } from "./mcp/mcp-client-pool.js";
@@ -251,6 +253,8 @@ export function createApp(env: Env) {
   const agentDa = createPgAgentDataAccess();
   // P22-T6-17 — 노트 워크스페이스(0037_notes).
   const noteDa = createPgNoteDataAccess();
+  // P22-T6-12 — 실시간 다중사용자 채널(0041_channels).
+  const channelDa = createPgChannelDataAccess();
   // P22-T6-14 — 외부 OpenAI 호환 provider 연결(0035_provider_connections).
   // 키는 KEK(계약 승인 C6: pluggable, 지금은 로컬 대칭키. 배포 시 KMS 구현으로 교체)로 봉인해
   // 저장하고 재조회 시 keyPrefix 만 노출한다(api_keys 마스킹 미러).
@@ -603,6 +607,17 @@ export function createApp(env: Env) {
     createNoteRoutes({ da: noteDa, provider, model: env.LLM_MODEL }),
   );
   app.route("/api/v1/notes", notesApp);
+
+  // P22-T6-12 — Channels(실시간 다중사용자 협업, Open WebUI Channels 파리티). org 경계는
+  // 라우트가 강제하고, @model 멘션은 provider 미주입 시 fail-soft(사람 글은 정상 저장).
+  // 실시간은 SSE(GET /:id/stream) 로 채널 구독자에게 fan-out(channel-registry).
+  const channelsApp = new Hono<{ Variables: AuthedVariables }>();
+  channelsApp.use("*", authMiddleware);
+  channelsApp.route(
+    "/",
+    createChannelRoutes({ da: channelDa, provider, model: env.LLM_MODEL }),
+  );
+  app.route("/api/v1/channels", channelsApp);
 
   // P22-T6-14 — Connections(Open WebUI Connections 파리티). org 경계는 라우트가 강제하고
   // baseUrl 은 등록/verify 양쪽에서 mcp/url-validator 로 SSRF 재검증한다(mcp-servers 미러).
