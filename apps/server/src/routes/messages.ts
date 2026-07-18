@@ -30,6 +30,7 @@ import {
   startMessageRun,
   recordMessageRunEvent,
   subscribeMessageRun,
+  endSessionRuns,
 } from "../orchestrator/message-run-registry.js";
 import type { AuthedVariables } from "../middleware/auth-middleware.js";
 import { hitlBridge } from "../tools/hitl-manager.js";
@@ -790,6 +791,12 @@ export function createMessageRoutes(
               });
             });
         }
+        // 턴 전체 종료 — 이 세션의 모든 message-run 을 terminal 로 닫는다. 새로고침 중 resume
+        // 하던 클라의 열린 스트림이 종료돼(410 gone) 방금 영속된 최종답변 복구로 이어진다.
+        // (assistant insert 이후에 호출해야 recoverFinalMessage 가 최종 행을 찾는다.)
+        if (currentMessageId) {
+          await endSessionRuns(sessionId).catch(() => {});
+        }
         // P19-T2-06 — 첫 턴 완료 후 세션 제목·태그를 LLM 으로 생성(provider 부재/파싱 실패 시
         // deriveSessionTitle 파생 폴백 — L5). 취소된 턴(사용자 Stop)은 건너뛴다.
         if (
@@ -1057,6 +1064,13 @@ export function createMessageRoutes(
             contentSoFar: subscription.contentSoFar,
           }),
         });
+        // 새로고침/세션이동으로 라이브 스트림을 놓친 클라를 위해, 구독 시점까지 누적된 도구
+        // 카드(tool_use/최신 progress/result)를 원본 이벤트로 먼저 재생한다. 클라의 tool_use
+        // 핸들러는 toolCallId 로 멱등 병합하므로 이미 카드를 든 in-memory resume 경로는 중복되지 않는다.
+        for (const replay of subscription.replayEvents) {
+          const { type, ...payload } = replay;
+          await stream.writeSSE({ event: type, data: JSON.stringify(payload) });
+        }
         for await (const event of subscription.events) {
           const { type, ...payload } = event;
           await stream.writeSSE({ event: type, data: JSON.stringify(payload) });

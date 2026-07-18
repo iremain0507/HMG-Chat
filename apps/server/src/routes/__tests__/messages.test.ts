@@ -11,6 +11,10 @@ import type {
 import type { AuthedVariables } from "../../middleware/auth-middleware.js";
 import { listPendingHitl, resolveHitl } from "../../tools/hitl-manager.js";
 import { createMessageRoutes, type AttachmentsPort } from "../messages.js";
+import {
+  startMessageRun,
+  recordMessageRunEvent,
+} from "../../orchestrator/message-run-registry.js";
 import { DEFAULT_ORG_SETTINGS } from "../../lib/org-settings-schema.js";
 import { selectRelevantTools } from "../../tools/tool-router.js";
 import { createDevStubEmbeddingProvider } from "../../knowledge/embedding-provider-dev-stub.js";
@@ -415,6 +419,49 @@ describe("GET /:id/messages/:messageId/stream (resume) — 16-API-CONTRACT § re
     const worldIdx = resumeText.indexOf('"text":"world"');
     expect(worldIdx).toBeGreaterThan(replaceIdx);
     expect(resumeText).toContain("event: stop");
+  });
+
+  it("resume 스트림은 message_replace 뒤에 누적된 도구 카드(tool_use/progress)를 재생한다", async () => {
+    // 새로고침/세션이동으로 라이브 스트림을 놓친 클라가 진행 중 deep_research 서브에이전트
+    // 카드를 되살리려면, 텍스트뿐 아니라 도구 이벤트도 재생돼야 한다.
+    const app = createMessageRoutes({
+      provider: fakeHelloProvider(),
+      model: "fake-model",
+    });
+    // 실 도구 실행 없이 레지스트리에 진행 중 run + 도구 이벤트를 직접 시드한다.
+    await startMessageRun("msg-replay-route", "session-replay-route");
+    await recordMessageRunEvent("msg-replay-route", {
+      type: "tool_use",
+      toolCallId: "tc-9",
+      name: "deep_research",
+      args: {},
+    });
+    await recordMessageRunEvent("msg-replay-route", {
+      type: "tool_progress",
+      toolCallId: "tc-9",
+      stage: "researching",
+      label: "2/3",
+    });
+
+    const res = await app.request(
+      "/session-replay-route/messages/msg-replay-route/stream",
+    );
+    expect(res.status).toBe(200);
+    // 라우트가 구독을 마친 뒤 종료 이벤트를 흘려 스트림을 닫는다(res.text() 가 드레인되게).
+    await recordMessageRunEvent("msg-replay-route", {
+      type: "stop",
+      reason: "end_turn",
+      usage: { inputTokens: 1, outputTokens: 1 },
+    });
+    const text = await res.text();
+
+    const replaceIdx = text.indexOf("event: message_replace");
+    const toolUseIdx = text.indexOf("event: tool_use");
+    const progIdx = text.indexOf('"stage":"researching"');
+    expect(replaceIdx).toBe(0);
+    expect(toolUseIdx).toBeGreaterThan(replaceIdx);
+    expect(text).toContain('"toolCallId":"tc-9"');
+    expect(progIdx).toBeGreaterThan(toolUseIdx);
   });
 
   it("동일 messageId 에 이미 다른 구독자가 있으면 409 CONCURRENT_RUN", async () => {

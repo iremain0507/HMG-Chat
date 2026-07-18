@@ -365,6 +365,10 @@ export function useSessionStream(sessionId: string) {
   // streamTurn 은 send/dispatchSend 보다 먼저 정의되므로(순환 참조 회피) ref 로 드레인 함수를
   // 노출해 finally 에서 호출한다.
   const drainQueueRef = useRef<() => void>(() => {});
+  // loadHistory(streamTurn 보다 먼저 정의)가 진행 중 run 을 발견하면 이 ref 로 resume 을 킥오프한다.
+  const resumeActiveRunRef = useRef<
+    (parentNodeId: string, messageId: string) => Promise<void>
+  >(async () => {});
   const syncQueueState = useCallback(() => {
     setQueuedMessages(
       queueRef.current.map((q) => ({
@@ -511,6 +515,9 @@ export function useSessionStream(sessionId: string) {
     if (Object.keys(treeRef.current.nodes).length > 0) return;
     historyLoadedRef.current = true;
     setHistoryLoading(true);
+    // 진행 중(비종결) 턴이 있으면 서버가 activeRun.messageId 를 실어 준다 — 복원 후 resume 으로
+    // 재연결해 서브에이전트/도구 카드를 되살리고 최종답변까지 이어받는다(새로고침 중 실행중).
+    let activeRunMessageId: string | undefined;
     try {
       const res = await apiFetch(`/api/v1/sessions/${sessionId}/messages`, {
         credentials: "include",
@@ -523,7 +530,9 @@ export function useSessionStream(sessionId: string) {
           content: unknown;
           parentMessageId?: string | null;
         }>;
+        activeRun?: { messageId: string };
       };
+      activeRunMessageId = body.activeRun?.messageId;
       let previousId: string | null = null;
       for (const row of body.data) {
         if (row.role !== "user" && row.role !== "assistant") continue;
@@ -568,6 +577,14 @@ export function useSessionStream(sessionId: string) {
       // fail-soft — 히스토리 복원 실패 시 빈 대화로 시작(L2/L5, 조용한 실패 아닌 정상 폴백).
     } finally {
       setHistoryLoading(false);
+    }
+    // 복원 후 진행 중 턴이면 resume 킥오프 — placeholder assistant 를 마지막 노드(대개 방금
+    // 복원한 user 메시지) 아래에 만들고 라이브 스트림에 재연결한다. 이미 로컬 진행 중이면 스킵.
+    if (activeRunMessageId && !isStreamingRef.current) {
+      const parentNodeId = getTipId(treeRef.current);
+      if (parentNodeId) {
+        await resumeActiveRunRef.current(parentNodeId, activeRunMessageId);
+      }
     }
   }, [sessionId, addNode]);
 
@@ -636,6 +653,9 @@ export function useSessionStream(sessionId: string) {
       content: string,
       attachments?: MessageAttachment[],
       options?: SendOptions,
+      // 지정하면 POST 로 새 턴을 시작하지 않고, 이미 진행 중인 이 messageId 의 resume 스트림에
+      // 곧장 재연결한다(새로고침/세션이동으로 라이브 스트림을 놓친 진행 중 턴 이어받기).
+      resumeMessageId?: string,
     ): Promise<void> => {
       // P21-T6-12(UX-20/21) — send/editMessage/regenerate 는 모두 이 함수를 거쳐 새 턴을
       // 시작한다. 이전 leg 이 아직 스트리밍 중일 때 겹쳐 들어오면 두 leg 이 동시에 같은
@@ -753,19 +773,31 @@ export function useSessionStream(sessionId: string) {
             };
           });
         } else if (event.type === "tool_use" && assistantId) {
-          updateNode(assistantId, (m) => ({
-            ...m,
-            parts: [
-              ...(m.parts ?? []),
-              {
-                type: "tool",
-                toolCallId: event.toolCallId,
-                name: event.name,
-                args: event.args,
-                status: "running",
-              },
-            ],
-          }));
+          updateNode(assistantId, (m) => {
+            const parts = m.parts ?? [];
+            // 멱등 — 같은 toolCallId 카드가 이미 있으면(resume 재생/중복 이벤트) 새로 추가하지
+            // 않고 그대로 둔다. 새로고침 resume 은 누적 도구 카드를 재생하므로 append 면 중복된다.
+            if (
+              parts.some(
+                (p) => p.type === "tool" && p.toolCallId === event.toolCallId,
+              )
+            ) {
+              return m;
+            }
+            return {
+              ...m,
+              parts: [
+                ...parts,
+                {
+                  type: "tool",
+                  toolCallId: event.toolCallId,
+                  name: event.name,
+                  args: event.args,
+                  status: "running",
+                },
+              ],
+            };
+          });
         } else if (event.type === "tool_progress" && assistantId) {
           // 실행 중 진행 스냅샷을 해당 tool part 에 최신으로 교체(라이브 스윔레인).
           updateNode(assistantId, (m) =>
@@ -963,12 +995,16 @@ export function useSessionStream(sessionId: string) {
           for (let i = rows.length - 1; i >= 0; i -= 1) {
             if (rows[i]?.role !== "assistant") continue;
             const raw = rows[i]!.content;
+            // 도구 호출이 있는 응답은 {text,parts} 구조화로 저장된다 — 이 경우 JSON 을 그대로
+            // 노출하지 않고 text 만 뽑아 최종 답변으로 쓴다(도구 파트는 아래에서 보존).
             finalContent =
               typeof raw === "string"
                 ? raw
                 : raw == null
                   ? ""
-                  : JSON.stringify(raw);
+                  : typeof (raw as { text?: unknown }).text === "string"
+                    ? ((raw as { text: string }).text ?? "")
+                    : JSON.stringify(raw);
             break;
           }
           if (!finalContent) return false;
@@ -1066,41 +1102,55 @@ export function useSessionStream(sessionId: string) {
       }
 
       try {
-        const res = await apiFetch(`/api/v1/sessions/${sessionId}/messages`, {
-          method: "POST",
-          credentials: "include",
-          signal: controller.signal,
-          headers: {
-            "Content-Type": "application/json",
-            Accept: "text/event-stream",
-          },
-          body: JSON.stringify({
-            content,
-            // P22-T6-04 — 서버 wire format 은 uploadId 만 받는다. 버블 썸네일용
-            // filename/mimeType/previewUrl(blob:) 는 여기서 떼고 uploadId 만 보낸다.
-            ...(attachments && attachments.length > 0
-              ? {
-                  attachments: attachments.map((a) => ({
-                    uploadId: a.uploadId,
-                  })),
-                }
-              : {}),
-            ...(options?.model ? { model: options.model } : {}),
-            ...(options?.mode ? { mode: options.mode } : {}),
-            ...(options?.reasoningEffort
-              ? { reasoningEffort: options.reasoningEffort }
-              : {}),
-            ...(options?.webSearch !== undefined
-              ? { webSearch: options.webSearch }
-              : {}),
-            ...(options?.temporary ? { temporary: true } : {}),
-          }),
-        });
-
-        await readFrom(res);
-
-        if (!receivedTerminal && !controller.signal.aborted) {
+        if (resumeMessageId) {
+          // resume 모드 — POST 없이 진행 중 turn 에 재연결한다. placeholder assistant 노드를
+          // 만들어 resume 스트림의 message_replace/재생 도구 이벤트/라이브 이벤트를 받도록 한다.
+          lastServerMessageId = resumeMessageId;
+          assistantId = `local-a-${idCounterRef.current++}`;
+          legStartedAt = Date.now();
+          addNode(assistantId, userNodeId, {
+            id: assistantId,
+            role: "assistant",
+            content: "",
+          });
           await driveToTerminal();
+        } else {
+          const res = await apiFetch(`/api/v1/sessions/${sessionId}/messages`, {
+            method: "POST",
+            credentials: "include",
+            signal: controller.signal,
+            headers: {
+              "Content-Type": "application/json",
+              Accept: "text/event-stream",
+            },
+            body: JSON.stringify({
+              content,
+              // P22-T6-04 — 서버 wire format 은 uploadId 만 받는다. 버블 썸네일용
+              // filename/mimeType/previewUrl(blob:) 는 여기서 떼고 uploadId 만 보낸다.
+              ...(attachments && attachments.length > 0
+                ? {
+                    attachments: attachments.map((a) => ({
+                      uploadId: a.uploadId,
+                    })),
+                  }
+                : {}),
+              ...(options?.model ? { model: options.model } : {}),
+              ...(options?.mode ? { mode: options.mode } : {}),
+              ...(options?.reasoningEffort
+                ? { reasoningEffort: options.reasoningEffort }
+                : {}),
+              ...(options?.webSearch !== undefined
+                ? { webSearch: options.webSearch }
+                : {}),
+              ...(options?.temporary ? { temporary: true } : {}),
+            }),
+          });
+
+          await readFrom(res);
+
+          if (!receivedTerminal && !controller.signal.aborted) {
+            await driveToTerminal();
+          }
         }
       } catch (err) {
         if ((err as Error).name !== "AbortError") {
@@ -1190,6 +1240,13 @@ export function useSessionStream(sessionId: string) {
       void dispatchSend(next.content, next.attachments, next.options);
     };
   }, [dispatchSend, syncQueueState]);
+
+  // loadHistory 가 진행 중 run 을 발견하면 이 ref 로 streamTurn 을 resume 모드로 호출한다
+  // (POST 없이 진행 중 messageId 의 스트림에 재연결). streamTurn 정의 이후에 배선한다.
+  useEffect(() => {
+    resumeActiveRunRef.current = (parentNodeId, messageId) =>
+      streamTurn(parentNodeId, "", undefined, undefined, messageId);
+  }, [streamTurn]);
 
   // P22-T6-06 — 단일 모델 비교 leg 하나를 스트리밍한다. 기존 단일경로 POST /messages 엔드포인트를
   // 그대로 재사용하되(모델을 body.model 로 지정), 이벤트를 트리가 아니라 지정된 컬럼 답변에 기록한다.

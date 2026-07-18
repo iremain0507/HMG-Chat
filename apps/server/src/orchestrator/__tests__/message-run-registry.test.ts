@@ -4,6 +4,8 @@ import {
   startMessageRun,
   recordMessageRunEvent,
   subscribeMessageRun,
+  getActiveMessageId,
+  endSessionRuns,
   createMessageRunRegistry,
 } from "../message-run-registry.js";
 import {
@@ -81,6 +83,61 @@ describe("message-run-registry — 16-API-CONTRACT § GET /sessions/:id/messages
 
     const second = await subscribeMessageRun("msg-6", "session-1");
     expect(second.kind).toBe("ok");
+  });
+
+  it("tool_use/progress/result 를 누적하면 구독 시 replayEvents(툴 카드)로 캐치업된다", async () => {
+    // 새로고침/세션이동 후 진행 중 deep_research 서브에이전트 카드를 되살리려면 텍스트뿐
+    // 아니라 도구 이벤트도 캐치업돼야 한다(contentSoFar 는 텍스트 전용).
+    await startMessageRun("msg-replay-1", "session-replay");
+    await recordMessageRunEvent("msg-replay-1", {
+      type: "tool_use",
+      toolCallId: "tc-1",
+      name: "deep_research",
+      args: { query: "q" },
+    });
+    await recordMessageRunEvent("msg-replay-1", {
+      type: "tool_progress",
+      toolCallId: "tc-1",
+      stage: "researching",
+      label: "1/3",
+    });
+    // 최신 progress 만 재생돼야 한다(중간 progress 는 덮어씀).
+    await recordMessageRunEvent("msg-replay-1", {
+      type: "tool_progress",
+      toolCallId: "tc-1",
+      stage: "researching",
+      label: "2/3",
+    });
+
+    const result = await subscribeMessageRun("msg-replay-1", "session-replay");
+    expect(result.kind).toBe("ok");
+    if (result.kind !== "ok") return;
+    expect(result.replayEvents).toEqual([
+      {
+        type: "tool_use",
+        toolCallId: "tc-1",
+        name: "deep_research",
+        args: { query: "q" },
+      },
+      {
+        type: "tool_progress",
+        toolCallId: "tc-1",
+        stage: "researching",
+        label: "2/3",
+      },
+    ]);
+  });
+
+  it("getActiveMessageId 는 세션의 진행 중 messageId 를 돌려주고 endSessionRuns 후 사라진다", async () => {
+    await startMessageRun("msg-active-1", "session-active");
+    expect(await getActiveMessageId("session-active")).toBe("msg-active-1");
+
+    await endSessionRuns("session-active");
+    expect(await getActiveMessageId("session-active")).toBeUndefined();
+    // endSessionRuns 는 진행 중 run 을 terminal 로 만들어 재구독 시 gone 이 된다
+    // (턴 종료 시 resume 중이던 클라가 최종답변 복구 경로로 넘어가게).
+    const result = await subscribeMessageRun("msg-active-1", "session-active");
+    expect(result.kind).toBe("gone");
   });
 
   it("구독 이후 push 된 event 는 async iterable 로 전달되고 terminal stop 에서 close 된다", async () => {

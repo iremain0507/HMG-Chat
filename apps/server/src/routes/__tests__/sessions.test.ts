@@ -12,6 +12,10 @@ import type { AuthedVariables } from "../../middleware/auth-middleware.js";
 import { hitlBridge } from "../../tools/hitl-manager.js";
 import type { ArtifactDataAccess } from "../../db/artifact-service.js";
 import type { Message } from "@wchat/interfaces";
+import {
+  startMessageRun,
+  endSessionRuns,
+} from "../../orchestrator/message-run-registry.js";
 
 // P22-T1-05 — GET /:id 단일 세션 조회 테스트용: byId 만 의미있게 구현하고 나머지 SessionsPort
 // 메서드는 호출되면 실패하는 스텁으로 채운다(이 라우트는 byId 만 사용).
@@ -299,6 +303,45 @@ function messageRow(over: Partial<Message>): Message {
     ...over,
   };
 }
+
+describe("routes/sessions — GET /:id/messages resume 발견(activeRun)", () => {
+  function historyApp(sub: string, sessionId: string, sessionUserId: string) {
+    const sessions = stubSessionsPort(async (id) =>
+      id === sessionId
+        ? sessionRow({ id: sessionId, userId: sessionUserId })
+        : null,
+    );
+    const sessionMessages: SessionMessagesPort = {
+      list: async () => ({ items: [] }),
+      byId: async () => null,
+      delete: async () => {},
+      insert: (() => {
+        throw new Error("not implemented");
+      }) as SessionMessagesPort["insert"],
+    };
+    return appWithAuth(sub, { sessions, sessionMessages });
+  }
+
+  it("진행 중(비종결) run 이 있으면 activeRun.messageId 를 실어 준다(새로고침 resume 발견)", async () => {
+    await endSessionRuns("sess-live"); // 잔여 상태 정리
+    await startMessageRun("msg-live-1", "sess-live");
+    const app = historyApp("user-1", "sess-live", "user-1");
+    const res = await app.request("/sess-live/messages");
+    expect(res.status).toBe(200);
+    const json = (await res.json()) as { activeRun?: { messageId: string } };
+    expect(json.activeRun).toEqual({ messageId: "msg-live-1" });
+    await endSessionRuns("sess-live");
+  });
+
+  it("진행 중 run 이 없으면 activeRun 필드가 없다", async () => {
+    await endSessionRuns("sess-idle");
+    const app = historyApp("user-1", "sess-idle", "user-1");
+    const res = await app.request("/sess-idle/messages");
+    expect(res.status).toBe(200);
+    const json = (await res.json()) as { activeRun?: unknown };
+    expect(json.activeRun).toBeUndefined();
+  });
+});
 
 describe("routes/sessions — POST /:id/clone 대화 복제 (P22-T6-01)", () => {
   interface CloneHarness {

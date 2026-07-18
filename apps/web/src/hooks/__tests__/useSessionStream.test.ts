@@ -957,6 +957,84 @@ describe("useSessionStream", () => {
     });
   });
 
+  it("loadHistory 가 activeRun(진행 중 turn)을 발견하면 resume 스트림으로 재연결해 서브에이전트 카드를 되살리고 최종답변까지 이어받는다 — 새로고침 중 실행중", async () => {
+    const fetchMock = vi.fn(async (url: unknown, init?: RequestInit) => {
+      const u = String(url);
+      if (u.endsWith("/messages/msg-live/stream")) {
+        // 서버 resume: message_replace(텍스트 캐치업) → 누적 도구 카드 재생 → 라이브 완료.
+        return {
+          ok: true,
+          body: sseBody([
+            sseFrame("message_replace", {
+              messageId: "msg-live",
+              contentSoFar: "",
+            }),
+            sseFrame("tool_use", {
+              toolCallId: "tc-1",
+              name: "deep_research",
+              args: { query: "위스키" },
+            }),
+            sseFrame("tool_progress", {
+              toolCallId: "tc-1",
+              stage: "researching",
+              label: "2/3",
+            }),
+            sseFrame("tool_result", {
+              toolCallId: "tc-1",
+              content: { message: "완료", citations: [], subQuestions: [] },
+            }),
+            sseFrame("text_delta", { text: "조사 결과입니다." }),
+            sseFrame("stop", { reason: "end_turn" }),
+          ]),
+        };
+      }
+      if (u.endsWith("/messages") && (!init || init.method === undefined)) {
+        // 진행 중 turn 이라 assistant 행은 아직 없고 user 메시지만 있으며, activeRun 이 실린다.
+        return {
+          ok: true,
+          json: async () => ({
+            data: [
+              {
+                id: "h-u-1",
+                role: "user",
+                content: "위스키 조사해줘",
+                parentMessageId: null,
+              },
+            ],
+            activeRun: { messageId: "msg-live" },
+          }),
+        };
+      }
+      return { ok: false, status: 404 };
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { result } = renderHook(() => useSessionStream("session-1"));
+    await act(async () => {
+      await result.current.loadHistory();
+    });
+
+    // resume 재연결이 실제로 일어났다.
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/v1/sessions/session-1/messages/msg-live/stream",
+      expect.objectContaining({ credentials: "include" }),
+    );
+    const assistant = result.current.messages.find(
+      (m) => m.role === "assistant",
+    );
+    expect(assistant).toBeDefined();
+    // 재생된 도구 카드가 살아나고(중복 없이) 라이브 완료로 done 이 된다.
+    const toolParts = assistant?.parts?.filter((p) => p.type === "tool") ?? [];
+    expect(toolParts).toHaveLength(1);
+    expect(toolParts[0]).toMatchObject({
+      toolCallId: "tc-1",
+      name: "deep_research",
+      status: "done",
+    });
+    expect(assistant?.content).toBe("조사 결과입니다.");
+    expect(result.current.isStreaming).toBe(false);
+  });
+
   it("deleteMessage 는 대상 user 메시지를 지우면 하위 assistant 응답도 함께 트리에서 제거한다 (P20-T6-05)", async () => {
     const fetchMock = deleteFlowFetchMock(true);
     vi.stubGlobal("fetch", fetchMock);

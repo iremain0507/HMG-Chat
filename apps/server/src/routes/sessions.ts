@@ -5,6 +5,7 @@ import { randomUUID } from "node:crypto";
 import { Hono } from "hono";
 import type { Message } from "@wchat/interfaces";
 import { abortRun } from "../orchestrator/run-registry.js";
+import { getActiveMessageId } from "../orchestrator/message-run-registry.js";
 import { resolveHitl, listPendingHitl } from "../tools/hitl-manager.js";
 import { createPgArtifactDataAccess } from "../db/artifact-data-access.js";
 import type { ArtifactDataAccess } from "../db/artifact-service.js";
@@ -416,6 +417,12 @@ export function createSessionRoutes(
       { sessionId },
       { ...(cursor ? { cursor } : {}), limit },
     );
+    // 진행 중(비종결) 턴이 있으면 그 messageId 를 실어, 새로고침/세션이동한 클라가
+    // GET .../messages/:messageId/stream 으로 재연결해 서브에이전트/도구 카드를 되살린다.
+    // 커서 페이지네이션 중(과거 페이지 조회)엔 실지 않는다 — 첫 페이지에서만 resume 트리거.
+    const activeMessageId = cursor
+      ? undefined
+      : await getActiveMessageId(sessionId).catch(() => undefined);
     return c.json({
       data: page.items.map((m) => ({
         id: m.id,
@@ -428,6 +435,7 @@ export function createSessionRoutes(
         tokensOut: m.tokensOut,
         costMicros: m.costMicros,
       })),
+      ...(activeMessageId ? { activeRun: { messageId: activeMessageId } } : {}),
       meta: {
         requestId: randomUUID(),
         ...(page.nextCursor ? { nextCursor: page.nextCursor } : {}),
