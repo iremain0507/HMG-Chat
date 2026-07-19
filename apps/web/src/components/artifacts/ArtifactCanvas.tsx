@@ -277,17 +277,17 @@ export function ArtifactCanvas({
         data-testid="artifact-panel-resizer"
         onPointerDown={onResizeHandlePointerDown}
         style={{ touchAction: "none" }}
-        className="group absolute inset-y-0 left-0 z-10 hidden w-6 -translate-x-1/2 cursor-col-resize items-center justify-center border-0 bg-transparent p-0 md:flex"
+        className="group absolute inset-y-0 left-0 z-20 hidden w-10 -translate-x-1/2 cursor-col-resize items-center justify-center border-0 bg-transparent p-0 md:flex"
       >
-        {/* 항상 보이는 그립(hover/드래그 시 primary) — 터치기기엔 hover 가 없으므로 기본 노출을
-            또렷하게(캡슐+세로 점 3개)해 손으로 잡기 쉽게 한다. */}
+        {/* 터치(iPad) 로 잡기 쉽게 넉넉한 히트영역(w-10=40px). 그립은 항상 또렷하게 보이는
+            캡슐(세로 점 3개) — hover/드래그 시 primary. */}
         <span
           aria-hidden="true"
-          className="flex h-16 w-2 flex-col items-center justify-center gap-1 rounded-full bg-border/80 transition-colors group-hover:bg-primary group-active:bg-primary"
+          className="flex h-20 w-2 flex-col items-center justify-center gap-1.5 rounded-full bg-fg-muted/40 shadow-sm ring-1 ring-border transition-colors group-hover:bg-primary group-active:bg-primary"
         >
-          <span className="h-1 w-1 rounded-full bg-bg/70" />
-          <span className="h-1 w-1 rounded-full bg-bg/70" />
-          <span className="h-1 w-1 rounded-full bg-bg/70" />
+          <span className="h-1 w-1 rounded-full bg-bg" />
+          <span className="h-1 w-1 rounded-full bg-bg" />
+          <span className="h-1 w-1 rounded-full bg-bg" />
         </span>
       </button>
 
