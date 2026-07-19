@@ -737,6 +737,100 @@ describe("POST /:id/messages — tools/toolContext 배선 — P11-T2-02", () => 
     expect(res.status).toBe(200);
     await res.text();
   });
+
+  // claude.ai <artifacts_info> 이식: artifact_create 가 tool set 에 있을 때만 "언제 아티팩트로
+  // 분리할지" 시스템 지침을 주입한다(도구 없으면 지침 불필요 — mode='chat' 등).
+  function captureBlocksProvider(
+    sink: PromptBlock[][],
+    messageId: string,
+  ): LLMProvider {
+    return {
+      name: "fake",
+      models: ["fake-model"],
+      async *chat(req) {
+        sink.push(req.systemBlocks);
+        const events: ChatEvent[] = [
+          {
+            type: "message_start",
+            messageId,
+            meta: { provider: "fake", model: "fake-model" },
+          },
+          { type: "text_delta", text: "ok" },
+          {
+            type: "stop",
+            reason: "end_turn",
+            usage: { inputTokens: 1, outputTokens: 1 },
+          },
+        ];
+        for (const event of events) yield event;
+      },
+    };
+  }
+  function stubTool(name: string): AgentTool {
+    return {
+      spec: {
+        name,
+        description: "x",
+        inputSchema: { type: "object" },
+        permissionTier: "tool",
+        defaultPolicy: "allow",
+      },
+      async invoke({ toolCallId: id }) {
+        return { toolCallId: id, content: { kind: "text", text: "" } };
+      },
+    };
+  }
+
+  it("artifact_create 가 tool set 에 있으면 아티팩트 사용 지침(claude.ai 기준)이 systemBlocks 에 주입된다", async () => {
+    const captured: PromptBlock[][] = [];
+    const routes = createMessageRoutes({
+      provider: captureBlocksProvider(captured, "m-art-1"),
+      model: "fake-model",
+      tools: [stubTool("artifact_create")],
+    });
+    const app = appWithAuth(routes);
+
+    const res = await app.request("/session-1/messages", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "text/event-stream",
+      },
+      body: JSON.stringify({ content: "hi" }),
+    });
+    expect(res.status).toBe(200);
+    await res.text();
+
+    expect(captured).toHaveLength(1);
+    const text = captured[0].map((b) => b.content).join("\n");
+    expect(text).toContain("아티팩트 사용 지침");
+    expect(text).toContain("15줄");
+  });
+
+  it("artifact_create 가 없으면(다른 도구만) 아티팩트 사용 지침을 주입하지 않는다", async () => {
+    const captured: PromptBlock[][] = [];
+    const routes = createMessageRoutes({
+      provider: captureBlocksProvider(captured, "m-art-2"),
+      model: "fake-model",
+      tools: [stubTool("noop_tool")],
+    });
+    const app = appWithAuth(routes);
+
+    const res = await app.request("/session-1/messages", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "text/event-stream",
+      },
+      body: JSON.stringify({ content: "hi" }),
+    });
+    expect(res.status).toBe(200);
+    await res.text();
+
+    expect(captured).toHaveLength(1);
+    const text = captured[0].map((b) => b.content).join("\n");
+    expect(text).not.toContain("아티팩트 사용 지침");
+  });
 });
 
 describe("POST /:id/messages — org settings 배선(트리거 버그 근본해결) — P14-T2-01", () => {

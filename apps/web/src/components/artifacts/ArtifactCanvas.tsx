@@ -15,8 +15,23 @@ import { ArtifactPanel, type ArtifactDto } from "./ArtifactPanel";
 import { ShareDialog } from "./ShareDialog";
 
 const MIN_WIDTH = 320;
-const MAX_WIDTH = 800;
 const DEFAULT_WIDTH = 420;
+
+// 패널 최대 폭 = **화면 가로(window.innerWidth)의 2/3** 까지(사용자 요청). 고정 800px 상한 제거.
+// 단, 메인 채팅이 지나치게 좁아지거나 오버플로하지 않도록, 채팅+패널 컨테이너에서 메인 채팅
+// 최소치(MIN_MAIN_CHAT)를 남기는 값으로도 캡한다. 컨테이너 측정 불가(jsdom 레이아웃 미계산)면
+// 그 캡을 무시하고 화면 2/3 만 적용한다.
+const MIN_MAIN_CHAT = 260;
+function computeMaxPanelWidth(handle: HTMLElement): number {
+  const screenW =
+    typeof window !== "undefined" ? window.innerWidth : DEFAULT_WIDTH * 3;
+  const byRatio = Math.round(screenW * (2 / 3));
+  const container = handle.parentElement?.parentElement ?? null;
+  const containerW = container ? container.getBoundingClientRect().width : 0;
+  const byContainer =
+    containerW > 0 ? Math.round(containerW - MIN_MAIN_CHAT) : Infinity;
+  return Math.max(MIN_WIDTH + 80, Math.min(byRatio, byContainer));
+}
 
 type OuterTab = "artifacts" | "sources" | "activity";
 
@@ -222,25 +237,40 @@ export function ArtifactCanvas({
     };
   }, [tab, active, codeContent]);
 
-  // pointer 이벤트로 마우스+터치(iPad 등)를 함께 지원한다. 핸들에 touch-action:none 을 줘
-  // 드래그 중 페이지 스크롤이 개입하지 않게 하고, window 리스너로 포인터가 핸들을 벗어나도
-  // 부드럽게 따라오게 한다. 좌측 핸들을 왼쪽으로 끌면 패널이 넓어진다.
-  function onResizeHandlePointerDown(e: React.PointerEvent) {
+  // pointer 이벤트로 마우스+터치(iPad 등)를 함께 지원한다. 핵심: 터치는 pointerdown 시 대상
+  // 엘리먼트로 **암시적 포인터 캡처**가 걸려 이후 pointermove/up 이 window 가 아니라 그 엘리먼트로
+  // 간다 — 그래서 window 리스너를 쓰면 iPad 등 터치에서 드래그가 전혀 먹지 않았다. setPointerCapture
+  // 로 마우스도 핸들에 캡처하고, 리스너를 **핸들 자신**에 달아 마우스·터치 모두 잡는다.
+  // touch-action:none(아래 style) 이 드래그 중 스크롤 개입을 막는다.
+  function onResizeHandlePointerDown(e: React.PointerEvent<HTMLButtonElement>) {
     e.preventDefault();
+    const handle = e.currentTarget;
+    const pointerId = e.pointerId;
+    try {
+      handle.setPointerCapture(pointerId);
+    } catch {
+      /* jsdom 등 미구현 환경 — 무시(리스너로도 동작) */
+    }
     const startX = e.clientX;
     const startWidth = width;
+    const maxWidth = computeMaxPanelWidth(handle);
     function onMove(moveEvent: PointerEvent) {
       const next = startWidth - (moveEvent.clientX - startX);
-      setWidth(Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, next)));
+      setWidth(Math.min(maxWidth, Math.max(MIN_WIDTH, next)));
     }
-    function onUp() {
-      window.removeEventListener("pointermove", onMove);
-      window.removeEventListener("pointerup", onUp);
-      window.removeEventListener("pointercancel", onUp);
+    function onUp(upEvent: PointerEvent) {
+      try {
+        handle.releasePointerCapture(upEvent.pointerId);
+      } catch {
+        /* noop */
+      }
+      handle.removeEventListener("pointermove", onMove);
+      handle.removeEventListener("pointerup", onUp);
+      handle.removeEventListener("pointercancel", onUp);
     }
-    window.addEventListener("pointermove", onMove);
-    window.addEventListener("pointerup", onUp);
-    window.addEventListener("pointercancel", onUp);
+    handle.addEventListener("pointermove", onMove);
+    handle.addEventListener("pointerup", onUp);
+    handle.addEventListener("pointercancel", onUp);
   }
 
   if (!hasContent) return null;
@@ -253,7 +283,9 @@ export function ArtifactCanvas({
     <div
       data-testid="artifact-panel"
       style={{ ["--artifact-panel-width" as string]: `${width}px` }}
-      className="fixed inset-0 z-[var(--z-modal)] flex flex-col border-l border-border bg-surface md:static md:inset-auto md:z-auto md:h-full md:w-[var(--artifact-panel-width)] md:shrink-0"
+      // md:relative(≠static) — 좌측 absolute 리사이즈 핸들이 뷰포트가 아니라 이 패널을 기준으로
+      // 위치하도록 positioning context 를 만든다(static 이면 핸들이 화면 맨 왼쪽으로 튀어 못 잡음).
+      className="fixed inset-0 z-[var(--z-modal)] flex flex-col border-l border-border bg-surface md:relative md:inset-auto md:z-auto md:h-full md:w-[var(--artifact-panel-width)] md:shrink-0"
     >
       <button
         type="button"
@@ -261,13 +293,18 @@ export function ArtifactCanvas({
         data-testid="artifact-panel-resizer"
         onPointerDown={onResizeHandlePointerDown}
         style={{ touchAction: "none" }}
-        className="group absolute inset-y-0 left-0 z-10 hidden w-4 -translate-x-1/2 cursor-col-resize items-center justify-center border-0 bg-transparent p-0 md:flex"
+        className="group absolute inset-y-0 left-0 z-20 hidden w-10 -translate-x-1/2 cursor-col-resize items-center justify-center border-0 bg-transparent p-0 md:flex"
       >
-        {/* 항상 보이는 옅은 그립(hover/드래그 시 primary) — 터치기기엔 hover 가 없으므로 기본 노출. */}
+        {/* 터치(iPad) 로 잡기 쉽게 넉넉한 히트영역(w-10=40px). 그립은 항상 또렷하게 보이는
+            캡슐(세로 점 3개) — hover/드래그 시 primary. */}
         <span
           aria-hidden="true"
-          className="h-12 w-1 rounded-full bg-border transition-colors group-hover:bg-primary group-active:bg-primary"
-        />
+          className="flex h-20 w-2 flex-col items-center justify-center gap-1.5 rounded-full bg-fg-muted/40 shadow-sm ring-1 ring-border transition-colors group-hover:bg-primary group-active:bg-primary"
+        >
+          <span className="h-1 w-1 rounded-full bg-bg" />
+          <span className="h-1 w-1 rounded-full bg-bg" />
+          <span className="h-1 w-1 rounded-full bg-bg" />
+        </span>
       </button>
 
       <span

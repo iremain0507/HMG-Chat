@@ -393,6 +393,61 @@ describe("createDeepResearchTool", () => {
     expect(data.report).toContain("###");
   });
 
+  it("긴 종합 리포트(claude.ai 기준 충족)는 markdown 아티팩트로 승격하고 본문 report 는 비운다", async () => {
+    // 실제 딥리서치 리포트는 다수 섹션·수천 자로 '유의미·자립>15줄' 기준을 충족한다 →
+    // artifact_create 와 동일 조건으로 우측 아티팩트 패널에 markdown 으로 렌더.
+    const longReport =
+      "## 종합 리포트\n" +
+      Array.from({ length: 20 }, (_, i) => `- 섹션 ${i} 상세 내용 [1].`).join(
+        "\n",
+      );
+    const da = fakeArtifactDa();
+    const tool = createDeepResearchTool({
+      leadProvider: fakeLeadProvider({
+        plannerResponse: "- 질문 A\n- 질문 B",
+        synthesisResponse: () => longReport,
+        gapCheckResponse: () => "COMPLETE",
+      }),
+      leadModel: "fake-lead-model",
+      workerProvider: fakeWorkerProvider(),
+      workerModel: "fake-worker-model",
+      workerTools: [fakeWorkerTool()],
+      maxTokens: 512,
+      da,
+    });
+
+    const result = await tool.invoke({
+      toolCallId: "call-artifact",
+      args: { query: "리서치 목표" },
+      ctx: fakeToolContext(),
+    });
+
+    if (result.content.kind !== "json") {
+      throw new Error("json content 를 기대함");
+    }
+    const data = result.content.data as {
+      report?: string;
+      artifact?: {
+        artifactId: string;
+        artifactKind: string;
+        filename: string;
+        sizeBytes: number;
+      };
+      citations: unknown[];
+      subQuestions: unknown[];
+    };
+
+    // 리포트 전문은 아티팩트로, 본문 report 는 비운다(중복 없음).
+    expect(data.artifact).toBeDefined();
+    expect(data.artifact!.artifactKind).toBe("markdown");
+    expect(data.artifact!.filename.endsWith(".md")).toBe(true);
+    expect(data.artifact!.sizeBytes).toBeGreaterThan(0);
+    expect(data.report).toBeUndefined();
+    // 인용/하위질문 근거는 그대로 유지(출처 탭·메시지 푸터로 흐른다).
+    expect(data.citations).toHaveLength(2);
+    expect(data.subQuestions).toHaveLength(2);
+  });
+
   it("plan→병렬 researcher→종합 후 인용이 포함된 리포트를 본문에 반환하고, 존재하지 않는 인용 마커[99]는 drop 한다(gapCheck COMPLETE 로 1회 종합에 종료)", async () => {
     const tool = createDeepResearchTool({
       leadProvider: fakeLeadProvider({

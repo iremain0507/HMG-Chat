@@ -37,7 +37,12 @@ export interface ArtifactCreateToolDeps {
 export const artifactCreateToolSpec: AgentToolSpec = {
   name: "artifact_create",
   description:
-    "문서/코드 등 아티팩트를 생성해 우측 패널에 표시합니다. filename/type/content 를 받습니다.",
+    "응답 콘텐츠를 대화 본문에서 분리해 우측 아티팩트 패널에 렌더한다(filename/type/content). " +
+    "언제 쓰는가: 유의미·자립적이며 보통 15줄을 넘고 사용자가 편집·재사용·재참조할 가치가 있거나, " +
+    "본문으로 읽기보다 렌더링(HTML·SVG·mermaid·표가 많은 장문 문서·미리보기 필요한 코드)이 나은 콘텐츠, " +
+    "또는 사용자가 아티팩트/문서/파일로 만들라고 명시 요청한 경우. " +
+    "짧거나 대화 맥락에 종속적이거나 일회성인 응답은 이 도구를 쓰지 말고 본문에 인라인으로 답하라. " +
+    "상세 기준은 시스템의 '아티팩트 사용 지침'을 따른다.",
   inputSchema: {
     type: "object",
     properties: {

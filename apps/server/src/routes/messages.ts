@@ -39,6 +39,7 @@ import {
   DEFAULT_ORG_SETTINGS,
   type ResolvedOrgSettings,
 } from "../lib/org-settings-schema.js";
+import { buildArtifactsPolicyBlock } from "../lib/artifacts-policy.js";
 import type { Citation } from "../knowledge/citation-helper.js";
 
 // 구조화 content({text,parts})/문자열 content 모두에서 사람이 읽는 텍스트를 뽑는다.
@@ -562,6 +563,15 @@ export function createMessageRoutes(
       }
     }
 
+    // 아티팩트 사용 지침(claude.ai <artifacts_info> 이식): artifact_create 가 최종 tool set 에
+    // 있을 때만 "언제 아티팩트로 분리할지" 시스템 지침을 주입한다. 도구가 없으면(mode='chat' 등)
+    // 지침도 불필요 — claude.ai 도 아티팩트 기능이 켜져 있을 때만 이 지침을 넣는다.
+    const artifactsPolicyBlocks: PromptBlock[] = tools.some(
+      (t) => t.spec.name === "artifact_create",
+    )
+      ? [buildArtifactsPolicyBlock()]
+      : [];
+
     // P17-T1-01 — user 메시지를 messages 테이블에 영속(best-effort — 실패해도 turn 은 계속).
     // P19-T2-05 — temporary 턴은 영속 자체를 스킵한다.
     const userMessage = isTemporary
@@ -653,7 +663,11 @@ export function createMessageRoutes(
         const events = runTurn({
           provider: turnProvider,
           model,
-          systemBlocks: [...systemBlocks, ...ephemeralBlock],
+          systemBlocks: [
+            ...systemBlocks,
+            ...artifactsPolicyBlocks,
+            ...ephemeralBlock,
+          ],
           messages,
           maxTokens:
             deps.maxTokens ??
