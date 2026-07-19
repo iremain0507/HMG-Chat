@@ -16,6 +16,18 @@ export function setPendingMessage(sessionId: string, text: string): void {
   }
 }
 
+/** 예약된 첫 메시지를 제거하지 않고 읽기만 한다. 없으면 null.
+ *  React strict-mode(dev) 의 mount→cleanup→mount 이중 실행에서, 첫 pass 가 곧바로 take(소비)
+ *  하면 그 pass 의 자동전송 POST 가 언마운트 정리(abort)로 취소된 뒤 재-mount 때는 값이 없어
+ *  재전송되지 않는다. 그래서 소비는 실제 전송 직전으로 미루고, 여기서는 존재 여부만 확인한다. */
+export function peekPendingMessage(sessionId: string): string | null {
+  try {
+    return sessionStorage.getItem(pendingMessageKey(sessionId));
+  } catch {
+    return null;
+  }
+}
+
 /** 예약된 첫 메시지를 꺼내며 즉시 제거한다(소비형 — 중복 자동전송 방지). 없으면 null. */
 export function takePendingMessage(sessionId: string): string | null {
   try {

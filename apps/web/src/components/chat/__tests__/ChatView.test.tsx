@@ -84,6 +84,98 @@ describe("ChatView", () => {
     expect(fetchSpy).toHaveBeenCalled();
   });
 
+  it("strict-mode(dev) 이중 마운트에서도 pending 자동전송 POST 가 취소되지 않고 응답까지 완료된다", async () => {
+    // 회귀: reactStrictMode=true 에서 effect 가 mount→cleanup→mount 로 2번 실행될 때, 첫 pass
+    // 에서 곧바로 소비+전송하면 언마운트 정리(abortRef.abort)가 그 POST 를 취소하고 pending 은
+    // 이미 소비돼 재전송되지 않아 세션이 생성되지 않았다(홈 컴포저 자동전송 먹통). 아래 mock 은
+    // 실제 fetch 처럼 signal 이 abort 되면 POST 를 reject 한다 — peek+지연소비 수정 전엔 RED.
+    const store = new Map<string, string>();
+    vi.stubGlobal("sessionStorage", {
+      getItem: (k: string) => store.get(k) ?? null,
+      setItem: (k: string, v: string) => store.set(k, String(v)),
+      removeItem: (k: string) => store.delete(k),
+      clear: () => store.clear(),
+    });
+    store.set("wchat:pending:session-strict", "홈에서 보낸 질문");
+
+    const encoder = new TextEncoder();
+    const okBody = () =>
+      new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.enqueue(
+            encoder.encode(
+              sseFrame("message_start", {
+                messageId: "m-strict",
+                meta: { provider: "fake", model: "fake-model" },
+              }),
+            ),
+          );
+          controller.enqueue(
+            encoder.encode(sseFrame("text_delta", { text: "답변" })),
+          );
+          controller.enqueue(
+            encoder.encode(
+              sseFrame("stop", {
+                reason: "end_turn",
+                usage: { inputTokens: 1, outputTokens: 1 },
+              }),
+            ),
+          );
+          controller.close();
+        },
+      });
+
+    const fetchMock = vi.fn((url: unknown, init?: RequestInit) => {
+      const u = String(url);
+      if (init?.method === "POST" && u.endsWith("/messages")) {
+        return new Promise((resolve, reject) => {
+          const signal = init.signal;
+          if (signal?.aborted) {
+            reject(new DOMException("aborted", "AbortError"));
+            return;
+          }
+          signal?.addEventListener(
+            "abort",
+            () => reject(new DOMException("aborted", "AbortError")),
+            { once: true },
+          );
+          // 마이크로태스크로 resolve — strict-mode 정리의 동기 abort 가 먼저 일어나 취소를 재현.
+          queueMicrotask(() => {
+            if (signal?.aborted) return;
+            resolve({ body: okBody() });
+          });
+        });
+      }
+      // 마운트 훅(useCurrentUser/loadHistory 등) 의 부수 fetch 는 안전한 기본값으로 흘린다.
+      return Promise.resolve({
+        ok: true,
+        json: async () => ({ data: [] }),
+        body: new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.close();
+          },
+        }),
+      });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(
+      <React.StrictMode>
+        <ChatView sessionId="session-strict" />
+      </React.StrictMode>,
+    );
+
+    // 자동전송 메시지 + 그 응답까지 뜬다 = POST 가 취소되지 않고 완료됐다는 증거.
+    await waitFor(() => {
+      expect(screen.getByText("답변")).toBeInTheDocument();
+    });
+    expect(store.has("wchat:pending:session-strict")).toBe(false);
+    const postCalls = fetchMock.mock.calls.filter(
+      ([u, i]) => String(u).endsWith("/messages") && i?.method === "POST",
+    );
+    expect(postCalls).toHaveLength(1);
+  });
+
   it("메시지를 보내면 SSE text_delta 가 화면에 표시되고 스트리밍 종료 시 Stop 버튼이 사라진다", async () => {
     const encoder = new TextEncoder();
     vi.stubGlobal(

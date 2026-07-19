@@ -18,7 +18,10 @@ import {
 import { useCurrentUser } from "../../hooks/useCurrentUser";
 import { usePrompts } from "../../hooks/usePrompts";
 import { randomUUID } from "../../lib/uuid";
-import { takePendingMessage } from "../../lib/pending-message";
+import {
+  peekPendingMessage,
+  takePendingMessage,
+} from "../../lib/pending-message";
 import { showToast } from "../../lib/toast";
 import { apiFetch } from "../../lib/fetch-with-refresh";
 import { substitutePromptVariables } from "../../lib/promptVariables";
@@ -120,15 +123,26 @@ export function ChatView({ sessionId }: { sessionId: string }) {
   const { projectId, setProject } = useSessionProject(sessionId);
 
   // 홈 컴포저에서 질문을 입력하고 Enter 하면 새 세션 id 로 이동하며 첫 메시지를 pending 으로
-  // 예약해둔다. 여기서 마운트 시 1회 소비(take)해 자동전송 → 홈에서 바로 대화가 시작된다.
+  // 예약해둔다. 여기서 마운트 시 1회 소비해 자동전송 → 홈에서 바로 대화가 시작된다.
+  // React strict-mode(dev) 는 effect 를 mount→cleanup→mount 로 2번 실행하는데, 그 사이 언마운트
+  // 정리(useSessionStream 의 abortRef.abort)가 in-flight POST 를 취소한다. 첫 pass 에서 곧바로
+  // 소비+전송하면 그 POST 가 취소되고 pending 은 이미 소비돼(재-mount 때 null) 재전송되지 않아
+  // 세션이 생성되지 않는다(홈 컴포저 자동전송이 "먹통"이 되던 버그). → peek 로 존재만 확인하고
+  // 실제 소비+전송은 한 macrotask 뒤(strict-mode 정리가 끝난 시점)로 미룬다. cleanup 이 타이머를
+  // 취소하므로 첫 pass 타이머는 취소되고 살아남은 타이머 하나만 정확히 1회 소비+전송한다.
   const autoSentRef = useRef(false);
   useEffect(() => {
     if (autoSentRef.current) return;
-    const pending = takePendingMessage(sessionId);
-    if (pending && pending.trim()) {
-      autoSentRef.current = true;
-      void send(pending);
-    }
+    const pending = peekPendingMessage(sessionId);
+    if (!pending || !pending.trim()) return;
+    const timer = window.setTimeout(() => {
+      const msg = takePendingMessage(sessionId);
+      if (msg && msg.trim()) {
+        autoSentRef.current = true;
+        void send(msg);
+      }
+    }, 0);
+    return () => window.clearTimeout(timer);
   }, [sessionId, send]);
 
   const [autoFollow, setAutoFollow] = useState(true);
