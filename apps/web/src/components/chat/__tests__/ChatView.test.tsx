@@ -13,7 +13,7 @@ import {
   within,
 } from "@testing-library/react";
 import "@testing-library/jest-dom/vitest";
-import { ChatView } from "../ChatView";
+import { ChatView, MessageItem } from "../ChatView";
 import { ToastContainer } from "../../layout/ToastContainer";
 import { __resetToastsForTest } from "../../../lib/toast";
 
@@ -30,6 +30,150 @@ describe("ChatView", () => {
     cleanup();
     vi.unstubAllGlobals();
     __resetToastsForTest();
+  });
+
+  it("홈에서 예약된 pending 첫 메시지가 있으면 마운트 시 1회 자동전송한다", async () => {
+    // 홈 컴포저 → setPendingMessage 로 예약된 상태를 재현(sessionStorage 스텁).
+    const store = new Map<string, string>();
+    vi.stubGlobal("sessionStorage", {
+      getItem: (k: string) => store.get(k) ?? null,
+      setItem: (k: string, v: string) => store.set(k, String(v)),
+      removeItem: (k: string) => store.delete(k),
+      clear: () => store.clear(),
+    });
+    store.set("wchat:pending:session-auto", "홈에서 보낸 질문");
+
+    const encoder = new TextEncoder();
+    const fetchSpy = vi.fn(async () => ({
+      body: new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.enqueue(
+            encoder.encode(
+              sseFrame("message_start", {
+                messageId: "m-auto",
+                meta: { provider: "fake", model: "fake-model" },
+              }),
+            ),
+          );
+          controller.enqueue(
+            encoder.encode(sseFrame("text_delta", { text: "답변" })),
+          );
+          controller.enqueue(
+            encoder.encode(
+              sseFrame("stop", {
+                reason: "end_turn",
+                usage: { inputTokens: 1, outputTokens: 1 },
+              }),
+            ),
+          );
+          controller.close();
+        },
+      }),
+    }));
+    vi.stubGlobal("fetch", fetchSpy);
+
+    render(<ChatView sessionId="session-auto" />);
+
+    // 사용자가 아무것도 안 눌러도 예약 메시지가 자동전송되어 화면에 뜬다.
+    await waitFor(() => {
+      expect(screen.getByText("홈에서 보낸 질문")).toBeInTheDocument();
+    });
+    // pending 은 1회 소비되어 제거된다(중복 자동전송 방지).
+    expect(store.has("wchat:pending:session-auto")).toBe(false);
+    // 실제 전송(fetch) 이 일어났다.
+    expect(fetchSpy).toHaveBeenCalled();
+  });
+
+  it("strict-mode(dev) 이중 마운트에서도 pending 자동전송 POST 가 취소되지 않고 응답까지 완료된다", async () => {
+    // 회귀: reactStrictMode=true 에서 effect 가 mount→cleanup→mount 로 2번 실행될 때, 첫 pass
+    // 에서 곧바로 소비+전송하면 언마운트 정리(abortRef.abort)가 그 POST 를 취소하고 pending 은
+    // 이미 소비돼 재전송되지 않아 세션이 생성되지 않았다(홈 컴포저 자동전송 먹통). 아래 mock 은
+    // 실제 fetch 처럼 signal 이 abort 되면 POST 를 reject 한다 — peek+지연소비 수정 전엔 RED.
+    const store = new Map<string, string>();
+    vi.stubGlobal("sessionStorage", {
+      getItem: (k: string) => store.get(k) ?? null,
+      setItem: (k: string, v: string) => store.set(k, String(v)),
+      removeItem: (k: string) => store.delete(k),
+      clear: () => store.clear(),
+    });
+    store.set("wchat:pending:session-strict", "홈에서 보낸 질문");
+
+    const encoder = new TextEncoder();
+    const okBody = () =>
+      new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.enqueue(
+            encoder.encode(
+              sseFrame("message_start", {
+                messageId: "m-strict",
+                meta: { provider: "fake", model: "fake-model" },
+              }),
+            ),
+          );
+          controller.enqueue(
+            encoder.encode(sseFrame("text_delta", { text: "답변" })),
+          );
+          controller.enqueue(
+            encoder.encode(
+              sseFrame("stop", {
+                reason: "end_turn",
+                usage: { inputTokens: 1, outputTokens: 1 },
+              }),
+            ),
+          );
+          controller.close();
+        },
+      });
+
+    const fetchMock = vi.fn((url: unknown, init?: RequestInit) => {
+      const u = String(url);
+      if (init?.method === "POST" && u.endsWith("/messages")) {
+        return new Promise((resolve, reject) => {
+          const signal = init.signal;
+          if (signal?.aborted) {
+            reject(new DOMException("aborted", "AbortError"));
+            return;
+          }
+          signal?.addEventListener(
+            "abort",
+            () => reject(new DOMException("aborted", "AbortError")),
+            { once: true },
+          );
+          // 마이크로태스크로 resolve — strict-mode 정리의 동기 abort 가 먼저 일어나 취소를 재현.
+          queueMicrotask(() => {
+            if (signal?.aborted) return;
+            resolve({ body: okBody() });
+          });
+        });
+      }
+      // 마운트 훅(useCurrentUser/loadHistory 등) 의 부수 fetch 는 안전한 기본값으로 흘린다.
+      return Promise.resolve({
+        ok: true,
+        json: async () => ({ data: [] }),
+        body: new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.close();
+          },
+        }),
+      });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(
+      <React.StrictMode>
+        <ChatView sessionId="session-strict" />
+      </React.StrictMode>,
+    );
+
+    // 자동전송 메시지 + 그 응답까지 뜬다 = POST 가 취소되지 않고 완료됐다는 증거.
+    await waitFor(() => {
+      expect(screen.getByText("답변")).toBeInTheDocument();
+    });
+    expect(store.has("wchat:pending:session-strict")).toBe(false);
+    const postCalls = fetchMock.mock.calls.filter(
+      ([u, i]) => String(u).endsWith("/messages") && i?.method === "POST",
+    );
+    expect(postCalls).toHaveLength(1);
   });
 
   it("메시지를 보내면 SSE text_delta 가 화면에 표시되고 스트리밍 종료 시 Stop 버튼이 사라진다", async () => {
@@ -248,6 +392,134 @@ describe("ChatView", () => {
     );
   });
 
+  it("실 stop 이벤트의 usage 가 Info 팝오버 DOM 까지 도달한다(L1 last-mile, P20-T6-06)", async () => {
+    const encoder = new TextEncoder();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({
+        body: new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.enqueue(
+              encoder.encode(
+                sseFrame("message_start", {
+                  messageId: "msg-1",
+                  meta: { provider: "fake", model: "fake-model" },
+                }),
+              ),
+            );
+            controller.enqueue(
+              encoder.encode(sseFrame("text_delta", { text: "hello" })),
+            );
+            controller.enqueue(
+              encoder.encode(
+                sseFrame("stop", {
+                  reason: "end_turn",
+                  usage: { inputTokens: 12, outputTokens: 34 },
+                }),
+              ),
+            );
+            controller.close();
+          },
+        }),
+      })),
+    );
+
+    render(<ChatView sessionId="session-1" />);
+    fireEvent.change(screen.getByLabelText("메시지 입력"), {
+      target: { value: "hi" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "전송" }));
+
+    await waitFor(() => {
+      expect(screen.getByText("hello")).toBeInTheDocument();
+    });
+
+    expect(
+      screen.queryByTestId("message-info-popover"),
+    ).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "정보" }));
+
+    const popover = screen.getByTestId("message-info-popover");
+    expect(popover).toHaveTextContent("12");
+    expect(popover).toHaveTextContent("34");
+    expect(popover).toHaveTextContent("fake-model");
+  });
+
+  it("메시지 삭제 버튼을 두 번 클릭하면 DELETE 요청 후 해당 메시지가 화면에서 사라진다 (P20-T6-05)", async () => {
+    const encoder = new TextEncoder();
+    // 트리 노드 키는 서버 messageId 와 무관한 local-* 라(message_start 참고) deleteMessage 는
+    // 삭제 전 GET /:id/messages 로 영속된 실제 id 를 역산해 그 id 로 DELETE 를 보낸다.
+    // ChatView 마운트 시 loadHistory 가 자동으로 같은 GET 엔드포인트를 먼저 호출하므로
+    // (새 세션 = 빈 히스토리), 첫 호출은 빈 배열을 반환하고 이후(삭제 시점의 역산 조회)
+    // 호출부터 방금 전송된 턴이 영속된 것으로 실제 id 를 반환한다.
+    let messagesGetCalls = 0;
+    const fetchMock = vi.fn(async (url: unknown, init?: RequestInit) => {
+      const u = String(url);
+      if (init?.method === "DELETE") {
+        return { ok: true, status: 204 };
+      }
+      if (u.endsWith("/messages") && (!init || init.method === undefined)) {
+        messagesGetCalls += 1;
+        if (messagesGetCalls === 1) {
+          return { ok: true, json: async () => ({ data: [] }) };
+        }
+        return {
+          ok: true,
+          json: async () => ({
+            data: [
+              { id: "real-u-1", role: "user", parentMessageId: null },
+              {
+                id: "real-a-1",
+                role: "assistant",
+                parentMessageId: "real-u-1",
+              },
+            ],
+          }),
+        };
+      }
+      return {
+        body: new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.enqueue(
+              encoder.encode(sseFrame("message_start", { messageId: "msg-1" })),
+            );
+            controller.enqueue(
+              encoder.encode(sseFrame("text_delta", { text: "hello" })),
+            );
+            controller.enqueue(
+              encoder.encode(sseFrame("stop", { reason: "end_turn" })),
+            );
+            controller.close();
+          },
+        }),
+      };
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<ChatView sessionId="session-1" />);
+    fireEvent.change(screen.getByLabelText("메시지 입력"), {
+      target: { value: "hi" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "전송" }));
+
+    await waitFor(() => {
+      expect(screen.getByText("hello")).toBeInTheDocument();
+    });
+
+    // user("hi")와 assistant("hello") 메시지 둘 다 삭제 버튼을 갖는다 — 마지막(assistant)을 클릭.
+    const deleteButtons = screen.getAllByRole("button", { name: "삭제" });
+    fireEvent.click(deleteButtons[deleteButtons.length - 1]!);
+    fireEvent.click(screen.getByRole("button", { name: "정말 삭제?" }));
+
+    await waitFor(() => {
+      expect(screen.queryByText("hello")).not.toBeInTheDocument();
+    });
+    expect(fetchMock).toHaveBeenLastCalledWith(
+      "/api/v1/sessions/session-1/messages/real-a-1",
+      expect.objectContaining({ method: "DELETE" }),
+    );
+  });
+
   it("첫 토큰 도착 전에는 shimmer 스켈레톤을 보여주고 델타 도착 시 사라진다", async () => {
     const encoder = new TextEncoder();
     let sendDelta: (() => void) | undefined;
@@ -344,6 +616,155 @@ describe("ChatView", () => {
     expect(
       screen.queryByRole("button", { name: "최신으로↓" }),
     ).not.toBeInTheDocument();
+  });
+
+  it("메시지 카운트가 그대로인 토큰 델타에는 강제 스크롤이 재실행되지 않는다(UX-25, P21-T6-18)", async () => {
+    const encoder = new TextEncoder();
+    let sendSecondDelta: (() => void) | undefined;
+    const streamingBody = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(
+          encoder.encode(sseFrame("message_start", { messageId: "msg-1" })),
+        );
+        controller.enqueue(
+          encoder.encode(sseFrame("text_delta", { text: "hel" })),
+        );
+        sendSecondDelta = () => {
+          controller.enqueue(
+            encoder.encode(sseFrame("text_delta", { text: "lo world" })),
+          );
+          controller.enqueue(
+            encoder.encode(sseFrame("stop", { reason: "end_turn" })),
+          );
+          controller.close();
+        };
+      },
+    });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({ body: streamingBody })),
+    );
+
+    render(<ChatView sessionId="session-1" />);
+    fireEvent.change(screen.getByLabelText("메시지 입력"), {
+      target: { value: "hi" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "전송" }));
+
+    await waitFor(() => {
+      expect(screen.getByText("hel")).toBeInTheDocument();
+    });
+
+    const scrollEl = screen.getByTestId("chat-scroll");
+    Object.defineProperty(scrollEl, "scrollHeight", {
+      value: 900,
+      configurable: true,
+    });
+    Object.defineProperty(scrollEl, "clientHeight", {
+      value: 500,
+      configurable: true,
+    });
+    let scrollTopSets = 0;
+    let scrollTopValue = 900;
+    Object.defineProperty(scrollEl, "scrollTop", {
+      configurable: true,
+      get() {
+        return scrollTopValue;
+      },
+      set(v) {
+        scrollTopSets++;
+        scrollTopValue = v;
+      },
+    });
+
+    sendSecondDelta?.();
+
+    await waitFor(() => {
+      expect(screen.getByText("hello world")).toBeInTheDocument();
+    });
+
+    // 메시지 개수는 그대로(user 1 + assistant 1)이고 내용만 자란 토큰 델타이므로
+    // 강제 scrollTop 대입이 재실행되면 안 된다(사용자의 미세 스크롤과 충돌 방지).
+    expect(scrollTopSets).toBe(0);
+  });
+
+  it("유저가 하단에서 벗어나 있으면 새 턴이 도착해도 하단으로 낚아채지 않는다(UX-25, P21-T6-18)", async () => {
+    const encoder = new TextEncoder();
+    const fetchMock = vi.fn(async () => ({
+      body: new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.enqueue(
+            encoder.encode(sseFrame("message_start", { messageId: "msg-1" })),
+          );
+          controller.enqueue(
+            encoder.encode(sseFrame("text_delta", { text: "hello" })),
+          );
+          controller.enqueue(
+            encoder.encode(sseFrame("stop", { reason: "end_turn" })),
+          );
+          controller.close();
+        },
+      }),
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<ChatView sessionId="session-1" />);
+    fireEvent.change(screen.getByLabelText("메시지 입력"), {
+      target: { value: "hi" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "전송" }));
+
+    await waitFor(() => {
+      expect(screen.getByText("hello")).toBeInTheDocument();
+    });
+
+    const scrollEl = screen.getByTestId("chat-scroll");
+    Object.defineProperty(scrollEl, "scrollHeight", {
+      value: 1000,
+      configurable: true,
+    });
+    Object.defineProperty(scrollEl, "clientHeight", {
+      value: 500,
+      configurable: true,
+    });
+    scrollEl.scrollTop = 0;
+    fireEvent.scroll(scrollEl);
+
+    // 자동추종 해제 확인('최신으로↓' pill 노출).
+    await screen.findByRole("button", { name: "최신으로↓" });
+    expect(scrollEl.scrollTop).toBe(0);
+
+    fetchMock.mockImplementationOnce(async () => ({
+      body: new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.enqueue(
+            encoder.encode(sseFrame("message_start", { messageId: "msg-2" })),
+          );
+          controller.enqueue(
+            encoder.encode(sseFrame("text_delta", { text: "world" })),
+          );
+          controller.enqueue(
+            encoder.encode(sseFrame("stop", { reason: "end_turn" })),
+          );
+          controller.close();
+        },
+      }),
+    }));
+    fireEvent.change(screen.getByLabelText("메시지 입력"), {
+      target: { value: "again" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "전송" }));
+
+    await waitFor(() => {
+      expect(screen.getByText("world")).toBeInTheDocument();
+    });
+
+    // 새 user+assistant 메시지(카운트 변화)가 도착해도 유저가 위로 스크롤해둔
+    // 상태(autoFollow=false)라면 하단으로 강제 이동시키지 않는다.
+    expect(scrollEl.scrollTop).toBe(0);
+    expect(
+      screen.getByRole("button", { name: "최신으로↓" }),
+    ).toBeInTheDocument();
   });
 
   it("스트리밍 컨테이너에 role=log + aria-live=polite + aria-atomic=false 가 있다", () => {
@@ -1261,6 +1682,76 @@ describe("ChatView", () => {
     expect(sourceItem).toHaveTextContent("manual.pdf");
   });
 
+  it("Reference 는 기본 5개만 보이고 나머지는 토글로 접고 펼친다(deep_research 긴 출처)", async () => {
+    const encoder = new TextEncoder();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({
+        body: new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.enqueue(
+              encoder.encode(sseFrame("message_start", { messageId: "msg-1" })),
+            );
+            controller.enqueue(
+              encoder.encode(
+                sseFrame("text_delta", { text: "조사 결과입니다." }),
+              ),
+            );
+            for (let n = 1; n <= 7; n += 1) {
+              controller.enqueue(
+                encoder.encode(
+                  sseFrame("citation", {
+                    index: n,
+                    source: "web",
+                    filename: `src-${n}.com`,
+                    snippet: `내용 ${n}`,
+                  }),
+                ),
+              );
+            }
+            controller.enqueue(
+              encoder.encode(sseFrame("stop", { reason: "end_turn" })),
+            );
+            controller.close();
+          },
+        }),
+      })),
+    );
+
+    render(<ChatView sessionId="session-1" />);
+    fireEvent.change(screen.getByLabelText("메시지 입력"), {
+      target: { value: "조사해줘" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "전송" }));
+
+    // 기본: 처음 5개만 노출, 6·7번은 숨김.
+    await waitFor(() => {
+      expect(screen.getByTestId("citation-ref-5")).toBeInTheDocument();
+    });
+    expect(screen.queryByTestId("citation-ref-6")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("citation-ref-7")).not.toBeInTheDocument();
+
+    // 토글: "출처 2개 더 보기" → 전체 노출.
+    const toggle = screen.getByTestId("citation-toggle");
+    expect(toggle).toHaveTextContent("출처 2개 더 보기");
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
+    fireEvent.click(toggle);
+
+    expect(screen.getByTestId("citation-ref-6")).toBeInTheDocument();
+    expect(screen.getByTestId("citation-ref-7")).toBeInTheDocument();
+    expect(screen.getByTestId("citation-toggle")).toHaveTextContent(
+      "출처 접기",
+    );
+    expect(screen.getByTestId("citation-toggle")).toHaveAttribute(
+      "aria-expanded",
+      "true",
+    );
+
+    // 다시 접으면 5개로.
+    fireEvent.click(screen.getByTestId("citation-toggle"));
+    expect(screen.queryByTestId("citation-ref-6")).not.toBeInTheDocument();
+  });
+
   it("우패널 출처 하이라이트는 클릭 2초 후 자동으로 사라진다(primary-100 페이드)", async () => {
     const encoder = new TextEncoder();
     vi.stubGlobal(
@@ -1885,6 +2376,52 @@ describe("ChatView", () => {
     );
   });
 
+  it("user 메시지 편집 진입 시 textarea 에 autofocus 되고, Escape 로 취소하면 원문이 복원된다 (P21-T6-11, UX-03)", async () => {
+    const encoder = new TextEncoder();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({
+        body: new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.enqueue(
+              encoder.encode(sseFrame("message_start", { messageId: "msg-1" })),
+            );
+            controller.enqueue(
+              encoder.encode(sseFrame("text_delta", { text: "첫 응답" })),
+            );
+            controller.enqueue(
+              encoder.encode(sseFrame("stop", { reason: "end_turn" })),
+            );
+            controller.close();
+          },
+        }),
+      })),
+    );
+
+    render(<ChatView sessionId="session-1" />);
+    fireEvent.change(screen.getByLabelText("메시지 입력"), {
+      target: { value: "원본 질문" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "전송" }));
+
+    await waitFor(() => {
+      expect(screen.getByText("첫 응답")).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "편집" }));
+    const editTextarea = screen.getByLabelText("메시지 편집");
+    expect(editTextarea).toHaveFocus();
+
+    fireEvent.change(editTextarea, {
+      target: { value: "취소될 편집" },
+    });
+    fireEvent.keyDown(editTextarea, { key: "Escape" });
+
+    expect(screen.queryByLabelText("메시지 편집")).not.toBeInTheDocument();
+    expect(screen.getByText("원본 질문")).toBeInTheDocument();
+    expect(screen.queryByText("취소될 편집")).not.toBeInTheDocument();
+  });
+
   it("세션을 열면 GET /:id/messages 로 과거 대화를 복원한다 (P17-T6-01, TS-08)", async () => {
     const fetchMock = vi.fn(async (url: string) => {
       const u = String(url);
@@ -2128,5 +2665,56 @@ describe("ChatView", () => {
     await waitFor(() => {
       expect(screen.getByText("후속질문A")).toBeInTheDocument();
     });
+  });
+});
+
+describe("MessageItem 첨부 썸네일(P22-T6-04)", () => {
+  afterEach(() => {
+    cleanup();
+  });
+
+  it("유저 버블은 이미지 첨부를 previewUrl 썸네일(<img>)로 렌더한다", () => {
+    render(
+      <ul>
+        <MessageItem
+          role="user"
+          content="이 사진 분석해줘"
+          streaming={false}
+          attachments={[
+            {
+              uploadId: "up-1",
+              filename: "photo.png",
+              mimeType: "image/png",
+              previewUrl: "blob:preview-abc",
+            },
+          ]}
+        />
+      </ul>,
+    );
+
+    const thumb = screen.getByRole("img", { name: "photo.png" });
+    expect(thumb).toHaveAttribute("src", "blob:preview-abc");
+  });
+
+  it("비이미지 첨부는 파일명 칩으로만 표시(썸네일 없음)한다", () => {
+    render(
+      <ul>
+        <MessageItem
+          role="user"
+          content="이 문서 요약해줘"
+          streaming={false}
+          attachments={[
+            {
+              uploadId: "up-2",
+              filename: "spec.pdf",
+              mimeType: "application/pdf",
+            },
+          ]}
+        />
+      </ul>,
+    );
+
+    expect(screen.queryByRole("img", { name: "spec.pdf" })).toBeNull();
+    expect(screen.getByText("spec.pdf")).toBeInTheDocument();
   });
 });

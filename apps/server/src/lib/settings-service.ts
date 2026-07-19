@@ -59,7 +59,10 @@ export function createSettingsService(
       });
       return DEFAULT_ORG_SETTINGS;
     }
-    return { ...DEFAULT_ORG_SETTINGS, ...parsed.data };
+    // parsed.data 의 optional 필드는 값 타입에도 `| undefined` 가 섞여 있어(zod .optional())
+    // 스프레드 결과 타입에 undefined 가 새어나오지만, JSON(JSONB)엔 literal undefined 값이
+    // 존재할 수 없으므로(키가 없거나 실값) 런타임엔 DEFAULT_ORG_SETTINGS 로 항상 채워진다.
+    return { ...DEFAULT_ORG_SETTINGS, ...parsed.data } as ResolvedOrgSettings;
   }
 
   async function resolve(orgId: string): Promise<ResolvedOrgSettings> {

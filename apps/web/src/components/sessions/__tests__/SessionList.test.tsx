@@ -290,6 +290,70 @@ describe("SessionList", () => {
     expect(screen.getByText("오늘")).toBeInTheDocument();
   });
 
+  it("폴더 프롬프트 편집 버튼으로 systemPrompt 를 PATCH 한다(P20-T1-03)", async () => {
+    const fetchMock = vi.fn(
+      async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        if (
+          url === "/api/v1/folders" &&
+          (!init?.method || init.method === "GET")
+        ) {
+          return {
+            ok: true,
+            status: 200,
+            json: async () => ({
+              data: [
+                {
+                  id: "folder-1",
+                  name: "업무",
+                  systemPrompt: null,
+                  createdAt: "2026-07-14T00:00:00Z",
+                },
+              ],
+            }),
+          };
+        }
+        if (url === "/api/v1/folders/folder-1" && init?.method === "PATCH") {
+          return {
+            ok: true,
+            status: 200,
+            json: async () => ({
+              data: {
+                id: "folder-1",
+                name: "업무",
+                systemPrompt: "너는 코드리뷰어다",
+                createdAt: "2026-07-14T00:00:00Z",
+              },
+            }),
+          };
+        }
+        return { ok: true, status: 200, json: async () => ({ data: [] }) };
+      },
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<SessionList now={new Date("2026-07-14T12:00:00Z")} />);
+
+    await waitFor(() => {
+      expect(screen.getByText("업무")).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByLabelText("폴더 프롬프트 편집: 업무"));
+    const textarea = screen.getByLabelText("폴더 시스템 프롬프트: 업무");
+    fireEvent.change(textarea, { target: { value: "너는 코드리뷰어다" } });
+    fireEvent.blur(textarea);
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/v1/folders/folder-1",
+        expect.objectContaining({
+          method: "PATCH",
+          body: JSON.stringify({ systemPrompt: "너는 코드리뷰어다" }),
+        }),
+      );
+    });
+  });
+
   it("세션을 폴더에 할당하면 PATCH /sessions/:id 를 folderId 와 함께 호출한다", async () => {
     const fetchMock = vi.fn(
       async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -357,6 +421,404 @@ describe("SessionList", () => {
     fireEvent.click(screen.getByLabelText("폴더 지정: 세션 A"));
     const menu = screen.getByTestId("folder-menu-sess-a");
     fireEvent.click(within(menu).getByText("업무"));
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/v1/sessions/sess-a",
+        expect.objectContaining({
+          method: "PATCH",
+          body: JSON.stringify({ folderId: "folder-1" }),
+        }),
+      );
+    });
+  });
+
+  it("세션 카드를 폴더 헤더로 드래그앤드롭하면 PATCH /sessions/:id 를 folderId 와 함께 호출한다", async () => {
+    const fetchMock = vi.fn(
+      async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        if (
+          url === "/api/v1/folders" &&
+          (!init?.method || init.method === "GET")
+        ) {
+          return {
+            ok: true,
+            status: 200,
+            json: async () => ({
+              data: [
+                {
+                  id: "folder-1",
+                  name: "업무",
+                  createdAt: "2026-07-14T00:00:00Z",
+                },
+              ],
+            }),
+          };
+        }
+        if (url === "/api/v1/sessions/sess-a" && init?.method === "PATCH") {
+          return {
+            ok: true,
+            status: 200,
+            json: async () => ({
+              data: { id: "sess-a", folderId: "folder-1" },
+            }),
+          };
+        }
+        if (
+          url === "/api/v1/sessions" &&
+          (!init?.method || init.method === "GET")
+        ) {
+          return {
+            ok: true,
+            status: 200,
+            json: async () => ({
+              data: [
+                {
+                  id: "sess-a",
+                  title: "세션 A",
+                  lastMessageAt: "2026-07-14T01:00:00Z",
+                  projectId: null,
+                  archived: false,
+                  pinned: false,
+                  folderId: null,
+                },
+              ],
+            }),
+          };
+        }
+        return { ok: true, status: 200, json: async () => ({ data: [] }) };
+      },
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<SessionList now={new Date("2026-07-14T12:00:00Z")} />);
+
+    await waitFor(() => {
+      expect(screen.getByText("세션 A")).toBeInTheDocument();
+    });
+
+    const folderHeader = screen.getByTestId("folder-header-folder-1");
+    fireEvent.drop(folderHeader, {
+      dataTransfer: { getData: () => "sess-a" },
+    });
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/v1/sessions/sess-a",
+        expect.objectContaining({
+          method: "PATCH",
+          body: JSON.stringify({ folderId: "folder-1" }),
+        }),
+      );
+    });
+  });
+
+  it("중첩 폴더는 부모 폴더 아래 들여쓰기되어 렌더된다(P20-T1-06)", async () => {
+    const fetchMock = vi.fn(
+      async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        if (
+          url === "/api/v1/folders" &&
+          (!init?.method || init.method === "GET")
+        ) {
+          return {
+            ok: true,
+            status: 200,
+            json: async () => ({
+              data: [
+                {
+                  id: "folder-parent",
+                  name: "부모",
+                  parentFolderId: null,
+                  createdAt: "2026-07-14T00:00:00Z",
+                },
+                {
+                  id: "folder-child",
+                  name: "자식",
+                  parentFolderId: "folder-parent",
+                  createdAt: "2026-07-14T00:00:00Z",
+                },
+              ],
+            }),
+          };
+        }
+        return { ok: true, status: 200, json: async () => ({ data: [] }) };
+      },
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<SessionList now={new Date("2026-07-14T12:00:00Z")} />);
+
+    await waitFor(() => {
+      expect(screen.getByText("부모")).toBeInTheDocument();
+    });
+    expect(screen.getByText("자식")).toBeInTheDocument();
+
+    const parentHeader = screen.getByTestId("folder-header-folder-parent");
+    const childHeader = screen.getByTestId("folder-header-folder-child");
+    const parentPaddingLeft = parseFloat(
+      (parentHeader as HTMLElement).style.paddingLeft || "0",
+    );
+    const childPaddingLeft = parseFloat(
+      (childHeader as HTMLElement).style.paddingLeft || "0",
+    );
+    expect(childPaddingLeft).toBeGreaterThan(parentPaddingLeft);
+  });
+
+  it("부모 폴더를 접으면 자식 폴더도 함께 숨겨진다(P20-T1-06)", async () => {
+    const fetchMock = vi.fn(
+      async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        if (
+          url === "/api/v1/folders" &&
+          (!init?.method || init.method === "GET")
+        ) {
+          return {
+            ok: true,
+            status: 200,
+            json: async () => ({
+              data: [
+                {
+                  id: "folder-parent",
+                  name: "부모",
+                  parentFolderId: null,
+                  createdAt: "2026-07-14T00:00:00Z",
+                },
+                {
+                  id: "folder-child",
+                  name: "자식",
+                  parentFolderId: "folder-parent",
+                  createdAt: "2026-07-14T00:00:00Z",
+                },
+              ],
+            }),
+          };
+        }
+        return { ok: true, status: 200, json: async () => ({ data: [] }) };
+      },
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<SessionList now={new Date("2026-07-14T12:00:00Z")} />);
+
+    await waitFor(() => {
+      expect(screen.getByText("자식")).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByLabelText("접기: 부모"));
+
+    await waitFor(() => {
+      expect(screen.queryByText("자식")).not.toBeInTheDocument();
+    });
+  });
+
+  it("중첩(비-루트) 폴더에 할당된 세션은 해당 폴더 아래 렌더되고 미분류 목록에 나타나지 않는다(P20-T1-06)", async () => {
+    const fetchMock = vi.fn(
+      async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        if (
+          url === "/api/v1/folders" &&
+          (!init?.method || init.method === "GET")
+        ) {
+          return {
+            ok: true,
+            status: 200,
+            json: async () => ({
+              data: [
+                {
+                  id: "folder-parent",
+                  name: "부모",
+                  parentFolderId: null,
+                  createdAt: "2026-07-14T00:00:00Z",
+                },
+                {
+                  id: "folder-child",
+                  name: "자식",
+                  parentFolderId: "folder-parent",
+                  createdAt: "2026-07-14T00:00:00Z",
+                },
+              ],
+            }),
+          };
+        }
+        if (
+          url === "/api/v1/sessions" &&
+          (!init?.method || init.method === "GET")
+        ) {
+          return {
+            ok: true,
+            status: 200,
+            json: async () => ({
+              data: [
+                {
+                  id: "sess-nested",
+                  title: "중첩 폴더 세션",
+                  lastMessageAt: "2026-07-14T01:00:00Z",
+                  projectId: null,
+                  archived: false,
+                  pinned: false,
+                  folderId: "folder-child",
+                },
+              ],
+            }),
+          };
+        }
+        return { ok: true, status: 200, json: async () => ({ data: [] }) };
+      },
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<SessionList now={new Date("2026-07-14T12:00:00Z")} />);
+
+    await waitFor(() => {
+      expect(screen.getByText("중첩 폴더 세션")).toBeInTheDocument();
+    });
+    expect(screen.queryByText("세션이 없습니다.")).not.toBeInTheDocument();
+    expect(screen.queryByText("오늘")).not.toBeInTheDocument();
+  });
+
+  it("폴더 헤더를 다른 폴더 헤더로 드래그하면 moveFolder(PATCH parentFolderId) 를 호출한다(P20-T1-06)", async () => {
+    const fetchMock = vi.fn(
+      async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        if (
+          url === "/api/v1/folders" &&
+          (!init?.method || init.method === "GET")
+        ) {
+          return {
+            ok: true,
+            status: 200,
+            json: async () => ({
+              data: [
+                {
+                  id: "folder-1",
+                  name: "폴더1",
+                  parentFolderId: null,
+                  createdAt: "2026-07-14T00:00:00Z",
+                },
+                {
+                  id: "folder-2",
+                  name: "폴더2",
+                  parentFolderId: null,
+                  createdAt: "2026-07-14T00:00:00Z",
+                },
+              ],
+            }),
+          };
+        }
+        if (url === "/api/v1/folders/folder-2" && init?.method === "PATCH") {
+          return {
+            ok: true,
+            status: 200,
+            json: async () => ({
+              data: {
+                id: "folder-2",
+                name: "폴더2",
+                parentFolderId: "folder-1",
+                createdAt: "2026-07-14T00:00:00Z",
+              },
+            }),
+          };
+        }
+        return { ok: true, status: 200, json: async () => ({ data: [] }) };
+      },
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<SessionList now={new Date("2026-07-14T12:00:00Z")} />);
+
+    await waitFor(() => {
+      expect(screen.getByText("폴더1")).toBeInTheDocument();
+    });
+
+    const targetHeader = screen.getByTestId("folder-header-folder-1");
+    fireEvent.drop(targetHeader, {
+      dataTransfer: {
+        types: ["application/x-wchat-folder-id"],
+        getData: (type: string) =>
+          type === "application/x-wchat-folder-id" ? "folder-2" : "",
+      },
+    });
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/v1/folders/folder-2",
+        expect.objectContaining({
+          method: "PATCH",
+          body: JSON.stringify({ parentFolderId: "folder-1" }),
+        }),
+      );
+    });
+  });
+
+  it("세션 카드를 폴더 헤더로 드래그앤드롭하면 여전히 세션 할당을 호출한다(폴더 드래그 타입 미검출 시 회귀 방지)", async () => {
+    const fetchMock = vi.fn(
+      async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        if (
+          url === "/api/v1/folders" &&
+          (!init?.method || init.method === "GET")
+        ) {
+          return {
+            ok: true,
+            status: 200,
+            json: async () => ({
+              data: [
+                {
+                  id: "folder-1",
+                  name: "업무",
+                  createdAt: "2026-07-14T00:00:00Z",
+                },
+              ],
+            }),
+          };
+        }
+        if (url === "/api/v1/sessions/sess-a" && init?.method === "PATCH") {
+          return {
+            ok: true,
+            status: 200,
+            json: async () => ({
+              data: { id: "sess-a", folderId: "folder-1" },
+            }),
+          };
+        }
+        if (
+          url === "/api/v1/sessions" &&
+          (!init?.method || init.method === "GET")
+        ) {
+          return {
+            ok: true,
+            status: 200,
+            json: async () => ({
+              data: [
+                {
+                  id: "sess-a",
+                  title: "세션 A",
+                  lastMessageAt: "2026-07-14T01:00:00Z",
+                  projectId: null,
+                  archived: false,
+                  pinned: false,
+                  folderId: null,
+                },
+              ],
+            }),
+          };
+        }
+        return { ok: true, status: 200, json: async () => ({ data: [] }) };
+      },
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<SessionList now={new Date("2026-07-14T12:00:00Z")} />);
+
+    await waitFor(() => {
+      expect(screen.getByText("세션 A")).toBeInTheDocument();
+    });
+
+    const folderHeader = screen.getByTestId("folder-header-folder-1");
+    fireEvent.drop(folderHeader, {
+      dataTransfer: { getData: () => "sess-a" },
+    });
 
     await waitFor(() => {
       expect(fetchMock).toHaveBeenCalledWith(
@@ -775,5 +1237,239 @@ describe("SessionList", () => {
     expect(
       screen.getByText("…3분기 예산은 전년 대비 12% 증가…"),
     ).toBeInTheDocument();
+  });
+
+  it("세션 목록 로드 실패 시 '세션이 없습니다' 대신 에러+재시도 UI 를 렌더한다(UX-19)", async () => {
+    const fetchMock = vi.fn(async () => ({
+      ok: false,
+      status: 500,
+      json: async () => ({ error: "internal" }),
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<SessionList now={new Date("2026-07-14T12:00:00Z")} />);
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("세션 목록을 불러오지 못했습니다."),
+      ).toBeInTheDocument();
+    });
+    expect(screen.queryByText("세션이 없습니다.")).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "다시 시도" }),
+    ).toBeInTheDocument();
+  });
+
+  it("검색 결과가 없으면 '세션이 없습니다' 대신 '검색 결과 없음' 을 렌더한다(UX-19)", async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.startsWith("/api/v1/sessions/search")) {
+        return { ok: true, status: 200, json: async () => ({ data: [] }) };
+      }
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          data: [
+            {
+              id: "sess-a",
+              title: "예산 회의록",
+              lastMessageAt: "2026-07-12T01:00:00Z",
+              projectId: null,
+              archived: false,
+            },
+          ],
+        }),
+      };
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<SessionList now={new Date("2026-07-14T12:00:00Z")} />);
+    await waitFor(() => {
+      expect(screen.getByText("예산 회의록")).toBeInTheDocument();
+    });
+
+    fireEvent.change(screen.getByTestId("session-search-input"), {
+      target: { value: "없는검색어" },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("검색 결과 없음")).toBeInTheDocument();
+    });
+    expect(screen.queryByText("세션이 없습니다.")).not.toBeInTheDocument();
+  });
+
+  it("목록 하단 sentinel 이 뷰포트에 들어오면 다음 페이지를 로드해 세션을 append 한다", async () => {
+    const callbackRef: { current: IntersectionObserverCallback | null } = {
+      current: null,
+    };
+    const observe = vi.fn();
+    const disconnect = vi.fn();
+    class FakeIntersectionObserver {
+      constructor(cb: IntersectionObserverCallback) {
+        callbackRef.current = cb;
+      }
+      observe = observe;
+      disconnect = disconnect;
+      unobserve = vi.fn();
+    }
+    vi.stubGlobal("IntersectionObserver", FakeIntersectionObserver);
+
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === "/api/v1/sessions") {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            data: [
+              {
+                id: "sess-page1",
+                title: "첫 페이지 세션",
+                lastMessageAt: "2026-07-14T01:00:00Z",
+                projectId: null,
+                archived: false,
+              },
+            ],
+            meta: { requestId: "r1", nextCursor: "cursor-1" },
+          }),
+        };
+      }
+      if (url === "/api/v1/sessions?cursor=cursor-1") {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            data: [
+              {
+                id: "sess-page2",
+                title: "두번째 페이지 세션",
+                lastMessageAt: "2026-07-09T01:00:00Z",
+                projectId: null,
+                archived: false,
+              },
+            ],
+            meta: { requestId: "r2" },
+          }),
+        };
+      }
+      return { ok: true, status: 200, json: async () => ({ data: [] }) };
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<SessionList now={new Date("2026-07-14T12:00:00Z")} />);
+    await waitFor(() => {
+      expect(screen.getByText("첫 페이지 세션")).toBeInTheDocument();
+    });
+    expect(observe).toHaveBeenCalled();
+
+    await waitFor(() => {
+      expect(callbackRef.current).not.toBeNull();
+    });
+    callbackRef.current?.(
+      [{ isIntersecting: true } as IntersectionObserverEntry],
+      {} as IntersectionObserver,
+    );
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/v1/sessions?cursor=cursor-1",
+        expect.objectContaining({ credentials: "include" }),
+      );
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("두번째 페이지 세션")).toBeInTheDocument();
+    });
+  });
+
+  it("선택 모드에서 체크박스로 3개 선택 후 일괄 보관하면 3건 모두 목록에서 사라진다(P20-T6-08)", async () => {
+    const archiveCalls: string[] = [];
+    const fetchMock = vi.fn(
+      async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        if (
+          url === "/api/v1/sessions" &&
+          (!init?.method || init.method === "GET")
+        ) {
+          return {
+            ok: true,
+            status: 200,
+            json: async () => ({
+              data: [
+                {
+                  id: "sess-a",
+                  title: "세션 A",
+                  lastMessageAt: "2026-07-14T01:00:00Z",
+                  projectId: null,
+                  archived: false,
+                  pinned: false,
+                  folderId: null,
+                  tags: [],
+                },
+                {
+                  id: "sess-b",
+                  title: "세션 B",
+                  lastMessageAt: "2026-07-14T01:00:00Z",
+                  projectId: null,
+                  archived: false,
+                  pinned: false,
+                  folderId: null,
+                  tags: [],
+                },
+                {
+                  id: "sess-c",
+                  title: "세션 C",
+                  lastMessageAt: "2026-07-14T01:00:00Z",
+                  projectId: null,
+                  archived: false,
+                  pinned: false,
+                  folderId: null,
+                  tags: [],
+                },
+              ],
+            }),
+          };
+        }
+        const archiveMatch = url.match(
+          /^\/api\/v1\/sessions\/(sess-[abc])\/archive$/,
+        );
+        if (archiveMatch && init?.method === "PATCH") {
+          const id = archiveMatch[1] as string;
+          archiveCalls.push(id);
+          return {
+            ok: true,
+            status: 200,
+            json: async () => ({ data: { id, archived: true } }),
+          };
+        }
+        return { ok: true, status: 200, json: async () => ({ data: [] }) };
+      },
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<SessionList now={new Date("2026-07-14T12:00:00Z")} />);
+
+    await waitFor(() => {
+      expect(screen.getByText("세션 A")).toBeInTheDocument();
+      expect(screen.getByText("세션 B")).toBeInTheDocument();
+      expect(screen.getByText("세션 C")).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "다중 선택" }));
+
+    fireEvent.click(screen.getByLabelText("선택: 세션 A"));
+    fireEvent.click(screen.getByLabelText("선택: 세션 B"));
+    fireEvent.click(screen.getByLabelText("선택: 세션 C"));
+
+    fireEvent.click(screen.getByRole("button", { name: /선택 항목 보관/ }));
+
+    await waitFor(() => {
+      expect(archiveCalls.sort()).toEqual(["sess-a", "sess-b", "sess-c"]);
+    });
+    await waitFor(() => {
+      expect(screen.queryByText("세션 A")).not.toBeInTheDocument();
+      expect(screen.queryByText("세션 B")).not.toBeInTheDocument();
+      expect(screen.queryByText("세션 C")).not.toBeInTheDocument();
+    });
   });
 });

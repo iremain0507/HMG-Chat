@@ -58,3 +58,4 @@ apps/converter-worker/**/__pycache__/
 *.pyc
 .pytest_cache/
 **/.pytest_cache/
+/test-results/

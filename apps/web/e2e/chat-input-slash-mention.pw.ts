@@ -61,4 +61,22 @@ test.describe("P10 preview — ChatInput 슬래시/멘션", () => {
     await expect(popover).toBeHidden();
     await expect(textarea).toHaveValue("/대");
   });
+
+  // P21-T6-07 — 데스크톱(≥md, 이 프로젝트 기본 Desktop Chrome 뷰포트) 바깥클릭 해제.
+  // backdrop 이 md:hidden 이라 모바일에서만 동작하던 갭을 useDismiss 로 메운다.
+  test("UX-01: 데스크톱 뷰포트에서 팝오버 밖 pointerdown 시 팝오버가 닫히고 입력 텍스트는 유지된다", async ({
+    page,
+  }) => {
+    await page.goto("/preview");
+    const section = page.getByTestId("preview-chat-input");
+    const textarea = section.getByLabel("메시지 입력");
+    await textarea.fill("/검");
+
+    const popover = section.getByTestId("composer-popover");
+    await expect(popover).toBeVisible();
+
+    await page.mouse.click(10, 10);
+    await expect(popover).toBeHidden();
+    await expect(textarea).toHaveValue("/검");
+  });
 });

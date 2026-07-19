@@ -14,27 +14,24 @@ import {
   Settings,
   ShieldCheck,
 } from "lucide-react";
+import { useTranslations } from "next-intl";
 import { useCurrentUser } from "../../hooks/useCurrentUser";
 import { ThemeToggle } from "./ThemeToggle";
 
 interface NavItem {
-  key: string;
-  label: string;
+  /** nav 카탈로그(lib/i18n/messages)의 키이자 data-testid 접미사 */
+  key: "home" | "projects" | "agents" | "connectors" | "settings";
   href: string;
   icon: React.ComponentType<{ size?: number; strokeWidth?: number }>;
 }
 
+// P22-T6-15(C11): 라벨은 하드코딩 대신 nav.<key> 카탈로그에서 — 언어 전환 시 즉시 재렌더.
 const NAV_ITEMS: NavItem[] = [
-  { key: "home", label: "홈", href: "/", icon: Home },
-  { key: "projects", label: "프로젝트", href: "/projects", icon: Briefcase },
-  { key: "agents", label: "에이전트", href: "/settings/skills", icon: Bot },
-  { key: "connectors", label: "커넥터", href: "/settings/mcp", icon: Plug },
-  {
-    key: "settings",
-    label: "설정",
-    href: "/settings",
-    icon: Settings,
-  },
+  { key: "home", href: "/", icon: Home },
+  { key: "projects", href: "/projects", icon: Briefcase },
+  { key: "agents", href: "/settings/agents", icon: Bot },
+  { key: "connectors", href: "/settings/mcp", icon: Plug },
+  { key: "settings", href: "/settings", icon: Settings },
 ];
 
 function isActivePath(pathname: string | null, href: string): boolean {
@@ -53,17 +50,19 @@ function railItemClass(active: boolean): string {
 
 export function NavRail() {
   const pathname = usePathname();
+  const t = useTranslations("nav");
   const { user } = useCurrentUser();
   const isAdmin = user?.role === "admin" || user?.role === "owner";
 
   return (
     <nav
       data-testid="app-shell-nav-rail"
-      aria-label="주 내비게이션"
+      aria-label={t("primary")}
       className="flex w-16 shrink-0 flex-col items-center gap-1 border-r border-border py-2.5"
     >
-      {NAV_ITEMS.map(({ key, label, href, icon: Icon }) => {
+      {NAV_ITEMS.map(({ key, href, icon: Icon }) => {
         const active = isActivePath(pathname, href);
+        const label = t(key);
         return (
           <Link
             key={key}
@@ -81,10 +80,10 @@ export function NavRail() {
       {isAdmin && (
         <Link
           href="/admin"
-          aria-label="관리"
+          aria-label={t("admin")}
           aria-current={isActivePath(pathname, "/admin") ? "page" : undefined}
           data-testid="nav-rail-admin"
-          title="관리"
+          title={t("admin")}
           className={railItemClass(isActivePath(pathname, "/admin"))}
         >
           <ShieldCheck size={17} strokeWidth={1.8} />

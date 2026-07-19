@@ -10,6 +10,7 @@ import {
   fireEvent,
   waitFor,
   cleanup,
+  act,
 } from "@testing-library/react";
 import "@testing-library/jest-dom/vitest";
 
@@ -94,6 +95,44 @@ describe("ArtifactCanvas", () => {
     expect(onClose).toHaveBeenCalled();
   });
 
+  it("좌측 리사이즈 핸들을 포인터로 드래그하면 패널 폭이 바뀐다(마우스+터치 공통)", () => {
+    render(
+      <ArtifactCanvas
+        artifacts={makeArtifacts()}
+        activeIndex={0}
+        onActiveIndexChange={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+
+    const panel = screen.getByTestId("artifact-panel");
+    // 기본 폭 420px.
+    expect(panel.style.getPropertyValue("--artifact-panel-width")).toBe(
+      "420px",
+    );
+
+    const resizer = screen.getByTestId("artifact-panel-resizer");
+    // 좌측 핸들을 왼쪽으로 100px 끌면 폭이 +100 된다(pointer=마우스/터치 공통).
+    // jsdom 은 PointerEvent 의 clientX 를 흘리므로 clientX 를 담는 MouseEvent 로 pointer 타입을 발화.
+    act(() => {
+      resizer.dispatchEvent(
+        new MouseEvent("pointerdown", {
+          clientX: 600,
+          bubbles: true,
+          cancelable: true,
+        }),
+      );
+    });
+    act(() => {
+      window.dispatchEvent(new MouseEvent("pointermove", { clientX: 500 }));
+      window.dispatchEvent(new MouseEvent("pointerup", {}));
+    });
+
+    expect(panel.style.getPropertyValue("--artifact-panel-width")).toBe(
+      "520px",
+    );
+  });
+
   it("코드 탭을 클릭하면 원본 콘텐츠를 fetch 해 보여준다", async () => {
     vi.stubGlobal(
       "fetch",
@@ -157,6 +196,58 @@ describe("ArtifactCanvas", () => {
       "v1 / 2",
     );
     expect(screen.getByRole("button", { name: "이전 버전" })).toBeDisabled();
+  });
+
+  it("이미 최신 버전을 보고 있으면 복원 버튼이 렌더되지 않는다", () => {
+    render(
+      <ArtifactCanvas
+        artifacts={makeArtifacts()}
+        activeIndex={1}
+        onActiveIndexChange={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+    expect(
+      screen.queryByRole("button", { name: "이 버전으로 복원" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("복원 버튼 클릭 시 선택 버전이 최신(v M/M)으로 승격되고 이후 콘텐츠도 승격된 버전을 반영한다", () => {
+    const onActiveIndexChange = vi.fn();
+    const { rerender } = render(
+      <ArtifactCanvas
+        artifacts={makeArtifacts()}
+        activeIndex={0}
+        onActiveIndexChange={onActiveIndexChange}
+        onClose={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByTestId("artifact-version-pager")).toHaveTextContent(
+      "v1 / 2",
+    );
+    expect(screen.getByTestId("artifact-panel-preview")).toHaveTextContent(
+      "report-v1.md",
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "이 버전으로 복원" }));
+    expect(onActiveIndexChange).toHaveBeenCalledWith(1);
+
+    rerender(
+      <ArtifactCanvas
+        artifacts={makeArtifacts()}
+        activeIndex={1}
+        onActiveIndexChange={onActiveIndexChange}
+        onClose={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByTestId("artifact-version-pager")).toHaveTextContent(
+      "v2 / 2",
+    );
+    expect(screen.getByTestId("artifact-panel-preview")).toHaveTextContent(
+      "report-v1.md",
+    );
   });
 
   it("공유 버튼을 클릭하면 ShareDialog 가 열린다", () => {

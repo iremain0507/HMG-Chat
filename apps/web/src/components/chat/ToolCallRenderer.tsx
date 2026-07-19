@@ -12,6 +12,7 @@ import type {
 } from "../../hooks/useSessionStream";
 import { StatusChip } from "./StatusChip";
 import { WorkerCard } from "./ActivityPanel";
+import { Markdown } from "./Markdown";
 
 const LARGE_PAYLOAD_CHARS = 400;
 
@@ -55,11 +56,27 @@ interface ResearchArtifact {
   filename: string;
   sizeBytes: number;
   downloadUrl?: string;
+  mimeType?: string;
+}
+
+// image_generate(및 이미지 kind 아티팩트) 는 파일 카드가 아니라 인라인 <img> 로 미리 본다(P22-T1-08).
+function isImageArtifact(a: ResearchArtifact): boolean {
+  return (
+    a.artifactKind === "image" || (a.mimeType?.startsWith("image/") ?? false)
+  );
+}
+interface ResearchSubQuestion {
+  title: string;
+  citations?: Citation[];
 }
 interface ResearchResult {
   message?: string;
   citations?: Citation[];
   artifact?: ResearchArtifact;
+  // deep_research 종합 리포트(markdown) — 아티팩트가 아니라 본문에 그대로 렌더한다.
+  report?: string;
+  // 하위질문별 출처(서버 duck-typed json 추가 필드) — 서브에이전트 펼침에서 출처 목록 표시.
+  subQuestions?: ResearchSubQuestion[];
 }
 
 // deep_research tool_result(kind:json data = {message, citations, artifact}) duck-type 파싱.
@@ -74,14 +91,21 @@ function parseResearchResult(result: unknown): ResearchResult | null {
     typeof r.artifact === "object" &&
     !Array.isArray(r.artifact);
   const hasShape =
-    Array.isArray(r.citations) || hasArtifact || typeof r.message === "string";
+    Array.isArray(r.citations) ||
+    hasArtifact ||
+    typeof r.message === "string" ||
+    typeof r.report === "string";
   if (!hasShape) return null;
   return {
     ...(typeof r.message === "string" ? { message: r.message } : {}),
+    ...(typeof r.report === "string" ? { report: r.report } : {}),
     ...(Array.isArray(r.citations)
       ? { citations: r.citations as Citation[] }
       : {}),
     ...(hasArtifact ? { artifact: r.artifact as ResearchArtifact } : {}),
+    ...(Array.isArray(r.subQuestions)
+      ? { subQuestions: r.subQuestions as ResearchSubQuestion[] }
+      : {}),
   };
 }
 
@@ -194,8 +218,14 @@ export function ToolCallRenderer({
           )}
         </span>
         <span className="flex flex-none items-center gap-2">
-          {isMultiAgent && running && (
-            <span className="font-mono text-xs tabular-nums text-fg-muted">
+          {/* 경과 시간 — 실행 중엔 매초 갱신(생존 신호), 완료 시엔 최종 소요시간으로 고정 표시.
+              (client 측 측정이라 히스토리 로드된 done 은 0 → 숨김) */}
+          {(running || (status === "done" && elapsedMs > 0)) && (
+            <span
+              data-testid="tool-elapsed"
+              className="font-mono text-xs tabular-nums text-fg-muted"
+              title={status === "done" ? "소요 시간" : "경과 시간"}
+            >
               {fmtElapsed(elapsedMs)}
             </span>
           )}
@@ -238,12 +268,42 @@ export function ToolCallRenderer({
         </>
       )}
 
-      {/* 접힘 + 완료: 요약 한 줄 */}
-      {status === "done" && collapsedSummary && !expanded && (
-        <p className="truncate border-t border-border px-3 pb-2 pt-2 text-xs text-fg-muted">
-          {summarize(collapsedSummary)}
-        </p>
+      {/* 접힘 + 완료: 요약 한 줄 (이미지 아티팩트는 아래에서 인라인 미리보기로 대체) */}
+      {status === "done" &&
+        collapsedSummary &&
+        !expanded &&
+        !(research?.artifact && isImageArtifact(research.artifact)) && (
+          <p className="truncate border-t border-border px-3 pb-2 pt-2 text-xs text-fg-muted">
+            {summarize(collapsedSummary)}
+          </p>
+        )}
+
+      {/* 완료 리포트(deep_research): 카드 접힘 여부와 무관하게 본문에 항상 마크다운으로 렌더한다
+          — 사용자가 카드를 펼치거나 아티팩트를 열지 않아도 리포트 전문을 본문에서 바로 읽는다. */}
+      {status === "done" && research?.report && (
+        <div
+          data-testid="research-report"
+          className="border-t border-border px-3 py-3 text-sm"
+        >
+          <Markdown>{research.report}</Markdown>
+        </div>
       )}
+
+      {/* 완료 + 이미지 아티팩트: 생성 이미지를 인라인으로 즉시 표시(펼침 여부 무관, P22-T1-08). */}
+      {status === "done" &&
+        research?.artifact &&
+        isImageArtifact(research.artifact) &&
+        research.artifact.downloadUrl && (
+          <div className="border-t border-border px-3 py-2">
+            {/* 서버 아티팩트 스트림(동적 id) — next/image 부적합, 순수 img 사용 */}
+            <img
+              data-testid="tool-image-artifact"
+              src={research.artifact.downloadUrl}
+              alt={research.artifact.filename}
+              className="max-h-80 w-auto rounded-lg border border-border"
+            />
+          </div>
+        )}
 
       {expanded && (
         <div className="space-y-2 border-t border-border px-3 py-2">
@@ -265,7 +325,12 @@ export function ToolCallRenderer({
               </div>
               <div className="space-y-1.5">
                 {progress.tasks.map((t, i) => (
-                  <WorkerCard key={t.id} task={t} index={i} />
+                  <WorkerCard
+                    key={t.id}
+                    task={t}
+                    index={i}
+                    citations={research?.subQuestions?.[i]?.citations}
+                  />
                 ))}
               </div>
             </div>
@@ -276,6 +341,7 @@ export function ToolCallRenderer({
               {research.message && (
                 <div className="text-xs text-fg-muted">{research.message}</div>
               )}
+              {/* 리포트(research.report)는 위에서 접힘 여부와 무관하게 항상 렌더하므로 여기선 생략. */}
               {research.citations && research.citations.length > 0 && (
                 <div>
                   <div className="mb-1 text-xs font-medium text-fg-muted">

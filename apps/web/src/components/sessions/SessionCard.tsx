@@ -2,7 +2,7 @@
 
 // components/sessions/SessionCard.tsx — design-reference README §Screens/AppShell.
 // 세션 1건: 클릭 시 이동, hover 시 이름변경(인라인 편집 → PATCH)·고정(로컬)·폴더 지정·삭제.
-import React, { useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   Archive,
   ArchiveRestore,
@@ -18,6 +18,45 @@ import type {
   SessionFolder,
   SessionListItemDto,
 } from "../../hooks/useSessions";
+import { useDismiss } from "../../hooks/useDismiss";
+import { useExclusiveOverlay } from "../../hooks/useExclusiveOverlay";
+
+function focusMenuItem(
+  menuRef: React.RefObject<HTMLElement | null>,
+  index: number,
+): void {
+  const items =
+    menuRef.current?.querySelectorAll<HTMLElement>('[role="menuitem"]');
+  items?.[index]?.focus();
+}
+
+function handleMenuKeyDown(
+  e: React.KeyboardEvent,
+  menuRef: React.RefObject<HTMLElement | null>,
+  close: () => void,
+): void {
+  const items = Array.from(
+    menuRef.current?.querySelectorAll<HTMLElement>('[role="menuitem"]') ?? [],
+  );
+  if (items.length === 0) return;
+  const currentIndex = items.indexOf(document.activeElement as HTMLElement);
+
+  if (e.key === "ArrowDown") {
+    e.preventDefault();
+    items[(currentIndex + 1 + items.length) % items.length]?.focus();
+  } else if (e.key === "ArrowUp") {
+    e.preventDefault();
+    items[(currentIndex - 1 + items.length) % items.length]?.focus();
+  } else if (e.key === "Home") {
+    e.preventDefault();
+    items[0]?.focus();
+  } else if (e.key === "End") {
+    e.preventDefault();
+    items[items.length - 1]?.focus();
+  } else if (e.key === "Tab") {
+    close();
+  }
+}
 
 export interface SessionCardProps {
   session: SessionListItemDto;
@@ -25,12 +64,16 @@ export interface SessionCardProps {
   folders: SessionFolder[];
   onOpen: (id: string) => void;
   onRename: (id: string, title: string) => void;
-  onDelete: (id: string) => void;
+  onDelete: (id: string) => void | Promise<void>;
   onTogglePin: (id: string) => void;
   onAssignFolder: (id: string, folderId: string | null) => void;
   onAddTag: (id: string, tag: string) => void;
   onRemoveTag: (id: string, tag: string) => void;
-  onArchive: (id: string) => void;
+  onArchive: (id: string) => void | Promise<void>;
+  onClone?: (id: string) => void | Promise<void>;
+  selectionMode?: boolean;
+  selected?: boolean;
+  onToggleSelect?: (id: string) => void;
 }
 
 export function SessionCard({
@@ -45,20 +88,119 @@ export function SessionCard({
   onAddTag,
   onRemoveTag,
   onArchive,
+  onClone,
+  selectionMode = false,
+  selected = false,
+  onToggleSelect,
 }: SessionCardProps) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(session.title ?? "");
-  const [folderMenuOpen, setFolderMenuOpen] = useState(false);
-  const [tagMenuOpen, setTagMenuOpen] = useState(false);
   const [tagDraft, setTagDraft] = useState("");
+  const [tagError, setTagError] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const [archiving, setArchiving] = useState(false);
+  const [cloning, setCloning] = useState(false);
   const label = session.title ?? "(제목 없음)";
+  const TITLE_MAX_LENGTH = 200;
+  const TAG_MAX_LENGTH = 40;
+
+  const mountedRef = useRef(true);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
+
+  async function handleDelete() {
+    if (deleting) return;
+    setDeleting(true);
+    try {
+      await onDelete(session.id);
+    } finally {
+      if (mountedRef.current) setDeleting(false);
+    }
+  }
+
+  async function handleArchive() {
+    if (archiving) return;
+    setArchiving(true);
+    try {
+      await onArchive(session.id);
+    } finally {
+      if (mountedRef.current) setArchiving(false);
+    }
+  }
+
+  // P22-T6-01 — 대화 복제. 보관/삭제와 동일한 이중 제출 가드(cloning)로 재클릭 시 중복 복제를
+  // 막고, 복제가 끝나면 컨텍스트 메뉴를 닫는다(메뉴는 복제 진행 중에는 열린 채 disabled 유지).
+  async function handleClone() {
+    if (cloning || !onClone) return;
+    setCloning(true);
+    try {
+      await onClone(session.id);
+      contextMenu.close();
+    } finally {
+      if (mountedRef.current) setCloning(false);
+    }
+  }
+
+  const cardRef = useRef<HTMLDivElement>(null);
+  const contextMenuRef = useRef<HTMLDivElement>(null);
+  const folderMenuRef = useRef<HTMLDivElement>(null);
+  const tagMenuRef = useRef<HTMLDivElement>(null);
+  const folderTriggerRef = useRef<HTMLButtonElement>(null);
+  const tagTriggerRef = useRef<HTMLButtonElement>(null);
+
+  const contextMenu = useExclusiveOverlay(`session-context-${session.id}`);
+  const folderMenu = useExclusiveOverlay(`session-folder-${session.id}`);
+  const tagMenu = useExclusiveOverlay(`session-tag-${session.id}`);
+
+  useDismiss(
+    contextMenuRef,
+    () => {
+      contextMenu.close();
+      cardRef.current?.focus();
+    },
+    { enabled: contextMenu.isOpen, triggerRef: cardRef },
+  );
+  useDismiss(
+    folderMenuRef,
+    () => {
+      folderMenu.close();
+      folderTriggerRef.current?.focus();
+    },
+    { enabled: folderMenu.isOpen, triggerRef: folderTriggerRef },
+  );
+  useDismiss(
+    tagMenuRef,
+    () => {
+      tagMenu.close();
+      tagTriggerRef.current?.focus();
+    },
+    { enabled: tagMenu.isOpen, triggerRef: tagTriggerRef },
+  );
+
+  useEffect(() => {
+    if (contextMenu.isOpen) focusMenuItem(contextMenuRef, 0);
+  }, [contextMenu.isOpen]);
+
+  useEffect(() => {
+    if (folderMenu.isOpen) focusMenuItem(folderMenuRef, 0);
+  }, [folderMenu.isOpen]);
 
   function submitNewTag(e: React.FormEvent) {
     e.preventDefault();
     const tag = tagDraft.trim();
-    if (tag) onAddTag(session.id, tag);
+    if (!tag) return;
+    if (session.tags.includes(tag)) {
+      setTagError("이미 있는 태그입니다.");
+      return;
+    }
+    onAddTag(session.id, tag);
     setTagDraft("");
-    setTagMenuOpen(false);
+    setTagError(null);
+    tagMenu.close();
   }
 
   function startEdit() {
@@ -79,6 +221,7 @@ export function SessionCard({
         <input
           autoFocus
           value={draft}
+          maxLength={TITLE_MAX_LENGTH}
           onChange={(e) => setDraft(e.target.value)}
           onBlur={submitEdit}
           onKeyDown={(e) => {
@@ -92,13 +235,38 @@ export function SessionCard({
 
   return (
     <div
+      ref={cardRef}
+      tabIndex={-1}
       data-testid={`session-card-${session.id}`}
-      className="group relative flex flex-col gap-0.5 rounded-md px-2 py-1.5 hover:bg-bg"
+      draggable
+      aria-haspopup="menu"
+      aria-expanded={contextMenu.isOpen}
+      onDragStart={(e) => {
+        e.dataTransfer.setData("application/x-wchat-session-id", session.id);
+        e.dataTransfer.effectAllowed = "move";
+      }}
+      onContextMenu={(e) => {
+        e.preventDefault();
+        if (contextMenu.isOpen) contextMenu.close();
+        else contextMenu.open();
+      }}
+      className="group relative flex flex-col gap-0.5 rounded-md px-2 py-1.5 outline-none hover:bg-bg focus-visible:ring-2 focus-visible:ring-primary"
     >
       <div className="flex items-center gap-1">
+        {selectionMode && (
+          <input
+            type="checkbox"
+            aria-label={`선택: ${label}`}
+            checked={selected}
+            onChange={() => onToggleSelect?.(session.id)}
+            className="shrink-0 accent-primary"
+          />
+        )}
         <button
           type="button"
-          onClick={() => onOpen(session.id)}
+          onClick={() =>
+            selectionMode ? onToggleSelect?.(session.id) : onOpen(session.id)
+          }
           className="min-w-0 flex-1 truncate text-left text-sm text-fg"
         >
           {label}
@@ -129,10 +297,15 @@ export function SessionCard({
           <Pencil size={12} strokeWidth={1.8} />
         </button>
         <button
+          ref={folderTriggerRef}
           type="button"
           aria-label={`폴더 지정: ${label}`}
           title={`폴더 지정: ${label}`}
-          onClick={() => setFolderMenuOpen((prev) => !prev)}
+          aria-haspopup="menu"
+          aria-expanded={folderMenu.isOpen}
+          onClick={() =>
+            folderMenu.isOpen ? folderMenu.close() : folderMenu.open()
+          }
           className={`shrink-0 rounded p-1 text-xs group-hover:block ${
             session.folderId
               ? "block text-primary"
@@ -142,10 +315,20 @@ export function SessionCard({
           <FolderInput size={12} strokeWidth={1.8} />
         </button>
         <button
+          ref={tagTriggerRef}
           type="button"
           aria-label={`태그 지정: ${label}`}
           title={`태그 지정: ${label}`}
-          onClick={() => setTagMenuOpen((prev) => !prev)}
+          aria-haspopup="dialog"
+          aria-expanded={tagMenu.isOpen}
+          onClick={() => {
+            setTagError(null);
+            if (tagMenu.isOpen) {
+              tagMenu.close();
+            } else {
+              tagMenu.open();
+            }
+          }}
           className={`shrink-0 rounded p-1 text-xs group-hover:block ${
             session.tags.length > 0
               ? "block text-primary"
@@ -158,8 +341,9 @@ export function SessionCard({
           type="button"
           aria-label={session.archived ? `복원: ${label}` : `보관: ${label}`}
           title={session.archived ? `복원: ${label}` : `보관: ${label}`}
-          onClick={() => onArchive(session.id)}
-          className="hidden shrink-0 rounded p-1 text-xs text-fg-muted hover:text-fg group-hover:block"
+          onClick={handleArchive}
+          disabled={archiving}
+          className="hidden shrink-0 rounded p-1 text-xs text-fg-muted hover:text-fg group-hover:block disabled:opacity-50"
         >
           {session.archived ? (
             <ArchiveRestore size={12} strokeWidth={1.8} />
@@ -171,8 +355,9 @@ export function SessionCard({
           type="button"
           aria-label={`삭제: ${label}`}
           title={`삭제: ${label}`}
-          onClick={() => onDelete(session.id)}
-          className="hidden shrink-0 rounded p-1 text-xs text-fg-muted hover:text-accent group-hover:block"
+          onClick={handleDelete}
+          disabled={deleting}
+          className="hidden shrink-0 rounded p-1 text-xs text-fg-muted hover:text-accent group-hover:block disabled:opacity-50"
         >
           <Trash2 size={12} strokeWidth={1.8} />
         </button>
@@ -198,8 +383,11 @@ export function SessionCard({
           ))}
         </div>
       )}
-      {tagMenuOpen && (
+      {tagMenu.isOpen && (
         <div
+          ref={tagMenuRef}
+          role="dialog"
+          aria-label={`태그 지정: ${label}`}
           data-testid={`tag-menu-${session.id}`}
           className="absolute right-0 top-full z-10 mt-1 w-40 rounded-[10px] border border-border bg-surface p-1 shadow-lg"
         >
@@ -207,19 +395,38 @@ export function SessionCard({
             <input
               autoFocus
               value={tagDraft}
-              onChange={(e) => setTagDraft(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Escape") setTagMenuOpen(false);
+              maxLength={TAG_MAX_LENGTH}
+              aria-invalid={tagError ? true : undefined}
+              aria-describedby={
+                tagError ? `tag-error-${session.id}` : undefined
+              }
+              onChange={(e) => {
+                setTagDraft(e.target.value);
+                if (tagError) setTagError(null);
               }}
               placeholder="새 태그"
               className="w-full rounded-md border border-primary bg-bg px-2 py-1 text-sm text-fg outline-none"
             />
+            {tagError && (
+              <span
+                id={`tag-error-${session.id}`}
+                className="mt-1 block text-xs text-accent"
+              >
+                {tagError}
+              </span>
+            )}
           </form>
         </div>
       )}
-      {folderMenuOpen && (
+      {folderMenu.isOpen && (
         <div
+          ref={folderMenuRef}
+          role="menu"
+          aria-label={`폴더 지정: ${label}`}
           data-testid={`folder-menu-${session.id}`}
+          onKeyDown={(e) =>
+            handleMenuKeyDown(e, folderMenuRef, folderMenu.close)
+          }
           className="absolute right-0 top-full z-10 mt-1 w-40 rounded-[10px] border border-border bg-surface p-1 shadow-lg"
         >
           {folders.length === 0 ? (
@@ -229,9 +436,10 @@ export function SessionCard({
               <button
                 key={folder.id}
                 type="button"
+                role="menuitem"
                 onClick={() => {
                   onAssignFolder(session.id, folder.id);
-                  setFolderMenuOpen(false);
+                  folderMenu.close();
                 }}
                 className="block w-full truncate rounded-md px-2 py-1.5 text-left text-sm text-fg hover:bg-bg"
               >
@@ -242,15 +450,91 @@ export function SessionCard({
           {session.folderId && (
             <button
               type="button"
+              role="menuitem"
               onClick={() => {
                 onAssignFolder(session.id, null);
-                setFolderMenuOpen(false);
+                folderMenu.close();
               }}
               className="block w-full rounded-md px-2 py-1.5 text-left text-sm text-fg-muted hover:bg-bg"
             >
               폴더 해제
             </button>
           )}
+        </div>
+      )}
+      {contextMenu.isOpen && (
+        <div
+          ref={contextMenuRef}
+          role="menu"
+          aria-label={`${label} 메뉴`}
+          data-testid={`context-menu-${session.id}`}
+          onKeyDown={(e) =>
+            handleMenuKeyDown(e, contextMenuRef, () => {
+              contextMenu.close();
+              cardRef.current?.focus();
+            })
+          }
+          className="absolute right-0 top-full z-10 mt-1 w-36 rounded-[10px] border border-border bg-surface p-1 shadow-lg"
+        >
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => {
+              contextMenu.close();
+              folderMenu.open();
+            }}
+            className="block w-full rounded-md px-2 py-1.5 text-left text-sm text-fg hover:bg-bg"
+          >
+            이동
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => {
+              onTogglePin(session.id);
+              contextMenu.close();
+            }}
+            className="block w-full rounded-md px-2 py-1.5 text-left text-sm text-fg hover:bg-bg"
+          >
+            {pinned ? "고정 해제" : "고정"}
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            disabled={archiving}
+            onClick={() => {
+              void handleArchive();
+              contextMenu.close();
+            }}
+            className="block w-full rounded-md px-2 py-1.5 text-left text-sm text-fg hover:bg-bg disabled:opacity-50"
+          >
+            {session.archived ? "복원" : "보관"}
+          </button>
+          {onClone && (
+            <button
+              type="button"
+              role="menuitem"
+              disabled={cloning}
+              onClick={() => {
+                void handleClone();
+              }}
+              className="block w-full rounded-md px-2 py-1.5 text-left text-sm text-fg hover:bg-bg disabled:opacity-50"
+            >
+              복제
+            </button>
+          )}
+          <button
+            type="button"
+            role="menuitem"
+            disabled={deleting}
+            onClick={() => {
+              void handleDelete();
+              contextMenu.close();
+            }}
+            className="block w-full rounded-md px-2 py-1.5 text-left text-sm text-fg hover:text-accent hover:bg-bg disabled:opacity-50"
+          >
+            삭제
+          </button>
         </div>
       )}
     </div>

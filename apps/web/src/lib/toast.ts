@@ -12,6 +12,9 @@ export interface ToastItem {
 
 type Listener = (toasts: ToastItem[]) => void;
 
+// 동시 노출 상한 — 초과 시 가장 오래된 항목부터 evict(FIFO, UX-22/T48).
+export const MAX_TOASTS = 5;
+
 let toasts: ToastItem[] = [];
 let listeners: Listener[] = [];
 let seq = 0;
@@ -25,8 +28,16 @@ export function showToast(
   message: string,
   durationMs = 4000,
 ): string {
+  // 동일 kind+message 가 이미 떠 있으면 새로 쌓지 않고 기존 항목을 재사용(coalesce, UX-22).
+  const existing = toasts.find((t) => t.kind === kind && t.message === message);
+  if (existing) {
+    return existing.id;
+  }
+
   const id = `toast-${seq++}`;
-  toasts = [...toasts, { id, kind, message }];
+  const next = [...toasts, { id, kind, message }];
+  toasts =
+    next.length > MAX_TOASTS ? next.slice(next.length - MAX_TOASTS) : next;
   notify();
   if (durationMs > 0) {
     setTimeout(() => dismissToast(id), durationMs);

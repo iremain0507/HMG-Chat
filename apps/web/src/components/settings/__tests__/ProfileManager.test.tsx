@@ -13,6 +13,18 @@ import {
 } from "@testing-library/react";
 import "@testing-library/jest-dom/vitest";
 import { ProfileManager } from "../ProfileManager";
+import { LocaleProvider } from "../../i18n/LocaleProvider";
+
+// P22-T6-15(C11): 라벨이 settings.profile.* 카탈로그에서 오고 언어 선택기가
+// useLocaleSetting 을 쓰므로 LocaleProvider 가 필요하다. 로케일을 ko 로 고정해
+// 기존 한국어 단언을 그대로 유지하고, 초기 /auth/me 조회는 건너뛴다.
+function renderProfileManager() {
+  return render(
+    <LocaleProvider initialLocale="ko">
+      <ProfileManager />
+    </LocaleProvider>,
+  );
+}
 
 function stubFetch(patchSpy?: (body: unknown) => void) {
   vi.stubGlobal(
@@ -71,7 +83,7 @@ describe("ProfileManager", () => {
 
   it("현재 이름과 커스텀 지침을 불러와 폼에 채운다", async () => {
     stubFetch();
-    render(<ProfileManager />);
+    renderProfileManager();
 
     await waitFor(() => {
       expect(screen.getByLabelText("이름")).toHaveValue("김민수");
@@ -84,7 +96,7 @@ describe("ProfileManager", () => {
   it("저장 시 PATCH /auth/me 로 name·customInstructions 를 전송한다", async () => {
     const patchSpy = vi.fn();
     stubFetch(patchSpy);
-    render(<ProfileManager />);
+    renderProfileManager();
 
     await waitFor(() => {
       expect(screen.getByLabelText("이름")).toHaveValue("김민수");

@@ -27,10 +27,7 @@ import {
   matchCitations,
   type Citation,
 } from "../../knowledge/citation-helper.js";
-import {
-  createArtifactService,
-  type ArtifactDataAccess,
-} from "../../db/artifact-service.js";
+import type { ArtifactDataAccess } from "../../db/artifact-service.js";
 import type { ResolvedOrgSettings } from "../../lib/org-settings-schema.js";
 
 export const DEFAULT_MAX_SUB_QUESTIONS = 4;
@@ -46,7 +43,19 @@ const DEEP_RESEARCH_TIMEOUT_MS = 300_000;
 // lib/settings-service.ts 를 직접 import 하지 않고 org-settings-schema.ts 의 ResolvedOrgSettings
 // 형태만 재사용).
 export interface ToolSettingsResolverPort {
-  resolve(orgId: string): Promise<Pick<ResolvedOrgSettings, "toolMaxTokens">>;
+  // 새 필드(deepResearch*)는 기존 fake/구현 하위호환을 위해 Partial 로 넓힌다 — 미제공 시
+  // 핸들러가 deps/DEFAULT 로 폴백한다.
+  resolve(
+    orgId: string,
+  ): Promise<
+    Pick<ResolvedOrgSettings, "toolMaxTokens"> &
+      Partial<
+        Pick<
+          ResolvedOrgSettings,
+          "deepResearchMaxSubQuestions" | "deepResearchMaxGapIterations"
+        >
+      >
+  >;
 }
 
 export interface DeepResearchToolDeps {
@@ -59,7 +68,10 @@ export interface DeepResearchToolDeps {
   // settings 미주입/조회 실패/org 미설정 시 fail-soft 폴백(항상 DEFAULT_ORG_SETTINGS.toolMaxTokens
   // 와 동일값 유지 — 21-LOOP-LESSONS.md L2).
   maxTokens: number;
-  da: ArtifactDataAccess;
+  // (구) 종합 리포트를 markdown 아티팩트로 저장할 때 쓰던 포트. 이제 리포트는 본문에 렌더하고
+  // 아티팩트는 만들지 않으므로(정책: 아티팩트는 HTML 등 렌더링 필요/명시 요구 시만) 미사용.
+  // 조립부(assemble-builtin-tools) 하위호환을 위해 선택적으로만 남긴다.
+  da?: ArtifactDataAccess;
   // 하위 질문 개수 상한(effort cap) — 무제한 fan-out 방지. 기본 4.
   maxSubQuestions?: number;
   // gap 반성/재검색 라운드 hard cap(MAST 종료조건 가드) — 기본 2.
@@ -71,34 +83,49 @@ export interface DeepResearchToolDeps {
 
 // settings 미주입/조회 실패는 절대 throw 하지 않고 deps.maxTokens 로 fail-soft 한다
 // (messages.ts resolveSettingsSafely 와 동일 원칙, L2/L5).
-async function resolveToolMaxTokens(
+// deep_research 의 org-scoped 파라미터(토큰 예산·병렬 조사 폭·반성 횟수)를 invoke 시점에 한 번에
+// 해석한다. settings 미주입/조회 실패/미설정 필드는 정적 deps → 코드 DEFAULT 로 fail-soft(L2).
+interface ResolvedDeepResearchSettings {
+  maxTokens: number;
+  maxSubQuestions: number;
+  maxGapIterations: number;
+}
+async function resolveDeepResearchSettings(
   deps: DeepResearchToolDeps,
   orgId: string,
   logger: ToolContext["logger"] | undefined,
-): Promise<number> {
-  if (!deps.settings) return deps.maxTokens;
+): Promise<ResolvedDeepResearchSettings> {
+  const fallback: ResolvedDeepResearchSettings = {
+    maxTokens: deps.maxTokens,
+    maxSubQuestions: deps.maxSubQuestions ?? DEFAULT_MAX_SUB_QUESTIONS,
+    maxGapIterations: deps.maxGapIterations ?? DEFAULT_MAX_GAP_ITERATIONS,
+  };
+  if (!deps.settings) return fallback;
   try {
     const resolved = await deps.settings.resolve(orgId);
-    // ResolvedOrgSettings 의 각 필드는 zod `.optional()` 기반이라 Required<> 로도
-    // `| undefined` 가 남는다(messages.ts SAFE_DEFAULT_MAX_TOKENS 와 동일 TS 특성) —
-    // `??` 는 그 잔여 undefined 에 대한 최종 non-null 보강일 뿐, 정상 케이스는 항상
-    // DEFAULT_ORG_SETTINGS.toolMaxTokens(4096) 이상의 값을 갖는다.
-    return resolved.toolMaxTokens ?? deps.maxTokens;
+    // ResolvedOrgSettings 필드는 zod `.optional()` 기반이라 `??` 로 잔여 undefined 를 보강한다.
+    return {
+      maxTokens: resolved.toolMaxTokens ?? fallback.maxTokens,
+      maxSubQuestions:
+        resolved.deepResearchMaxSubQuestions ?? fallback.maxSubQuestions,
+      maxGapIterations:
+        resolved.deepResearchMaxGapIterations ?? fallback.maxGapIterations,
+    };
   } catch (error) {
     logger?.warn({
       category: "system",
-      msg: "deep_research: org settings resolve 실패 — 정적 deps.maxTokens 로 폴백",
+      msg: "deep_research: org settings resolve 실패 — 정적 deps 값으로 폴백",
       orgId,
       context: { error: String(error) },
     });
-    return deps.maxTokens;
+    return fallback;
   }
 }
 
 export const deepResearchToolSpec: AgentToolSpec = {
   name: "deep_research",
   description:
-    "복잡한 리서치 질문을 하위 질문으로 분해해 병렬로 조사하고, 인용이 포함된 markdown 리포트 아티팩트로 종합한다.",
+    "복잡한 리서치 질문을 하위 질문으로 분해해 병렬로 조사하고, 인용이 포함된 markdown 리포트로 종합한다. **중요: 리포트 전문(result.report)은 이 도구 카드에 이미 그대로 렌더되어 사용자에게 보인다. 따라서 리포트 내용을 답변에 다시 옮겨 적지 말 것(중복 방지). '아티팩트'·'우측 패널'도 언급하지 말 것. 답변은 '조사를 마쳤고 아래 리포트를 참고하라'는 취지의 한두 문장으로 짧게 끝내라.**",
   inputSchema: {
     type: "object",
     properties: { query: { type: "string" } },
@@ -290,15 +317,21 @@ async function runResearcher(
 function remapFindingCitations(findings: ResearchFinding[]): {
   combinedText: string;
   citations: Citation[];
+  // 하위질문별 출처(전역 인덱스) — 클라가 서브에이전트를 펼치면 어떤 출처를 썼는지 보여준다.
+  subQuestions: { title: string; citations: Citation[] }[];
 } {
   const citations: Citation[] = [];
   const sections: string[] = [];
+  const subQuestions: { title: string; citations: Citation[] }[] = [];
   for (const finding of findings) {
     const localToGlobal = new Map<number, number>();
+    const findingCitations: Citation[] = [];
     for (const citation of finding.citations) {
       const globalIndex = citations.length + 1;
       localToGlobal.set(citation.index, globalIndex);
-      citations.push({ ...citation, index: globalIndex });
+      const remapped = { ...citation, index: globalIndex };
+      citations.push(remapped);
+      findingCitations.push(remapped);
     }
     const remappedText = finding.text.replace(
       /\[(\d+)\]/g,
@@ -308,14 +341,16 @@ function remapFindingCitations(findings: ResearchFinding[]): {
       },
     );
     sections.push(`### ${finding.subQuestion}\n${remappedText}`);
+    subQuestions.push({
+      title: finding.subQuestion,
+      citations: findingCitations,
+    });
   }
-  return { combinedText: sections.join("\n\n"), citations };
+  return { combinedText: sections.join("\n\n"), citations, subQuestions };
 }
 
 export function createDeepResearchTool(deps: DeepResearchToolDeps): AgentTool {
-  const maxSubQuestions = deps.maxSubQuestions ?? DEFAULT_MAX_SUB_QUESTIONS;
-  const maxGapIterations = deps.maxGapIterations ?? DEFAULT_MAX_GAP_ITERATIONS;
-  const service = createArtifactService(deps.da);
+  // maxSubQuestions/maxGapIterations 는 이제 invoke 시점에 org-scoped 로 해석한다(아래).
 
   return {
     spec: deepResearchToolSpec,
@@ -342,15 +377,19 @@ export function createDeepResearchTool(deps: DeepResearchToolDeps): AgentTool {
       //   무한 "조사 중" 대신 재시도 가능한 error 로 종단된다. 아래 본문 전체가 이 ctx(=linked
       //   signal) 를 쓰므로 sub-call(runResearcher/runIsolatedText)에 그대로 전파된다.
       const timeoutController = new AbortController();
-      setTimeout(() => timeoutController.abort(), DEEP_RESEARCH_TIMEOUT_MS);
+      const overallTimeoutId = setTimeout(
+        () => timeoutController.abort(),
+        DEEP_RESEARCH_TIMEOUT_MS,
+      );
       const ctx: ToolContext = {
         ...baseCtx,
         signal: AbortSignal.any([baseCtx.signal, timeoutController.signal]),
       };
 
-      // P15-T2-02 — 정적 deps.maxTokens 를 조용히 쓰지 않도록 invoke 시점에 ctx.orgId 로
-      // org-scoped toolMaxTokens 를 조회(L1). settings 미주입/조회 실패 시 deps.maxTokens 유지.
-      const maxTokens = await resolveToolMaxTokens(deps, ctx.orgId, ctx.logger);
+      // P15-T2-02 + deep_research org 설정 — invoke 시점에 ctx.orgId 로 org-scoped 파라미터
+      // (토큰 예산·하위질문 수·반성 횟수)를 한 번에 조회(L1). 미주입/실패/미설정은 deps→DEFAULT 폴백.
+      const { maxTokens, maxSubQuestions, maxGapIterations } =
+        await resolveDeepResearchSettings(deps, ctx.orgId, ctx.logger);
 
       ctx.emitProgress?.({ stage: "planning", label: "조사 계획 수립 중" });
       const plannerText = await runIsolatedText(
@@ -410,67 +449,77 @@ export function createDeepResearchTool(deps: DeepResearchToolDeps): AgentTool {
       });
       let reportText = "";
       let citations: Citation[] = [];
-      for (let iteration = 1; iteration <= maxGapIterations; iteration += 1) {
-        const merged = remapFindingCitations(findings);
-        citations = merged.citations;
-        reportText = await runIsolatedText(
-          merged.combinedText,
-          deps.leadProvider,
-          deps.leadModel,
-          buildSynthesisSystemBlocks(),
-          maxTokens,
-          ctx,
-        );
+      let subQuestionBreakdown: { title: string; citations: Citation[] }[] = [];
+      // 종합 실패 시 폴백용 — 이미 remap 된 findings 원문(하위질문별 텍스트+[N] 인용).
+      let combinedFindings = "";
+      let synthesisDegraded = false;
+      // 종합은 이 루프 안에서 이뤄지므로 최소 1라운드는 돌아야 한다(반성 0회여도 1회 종합).
+      // gapRounds=1 이면 종합 1회 후 gapCheck 없이 종료(반성 없음). org 설정 0 → 반성 없이 1회 종합.
+      const gapRounds = Math.max(1, maxGapIterations);
+      try {
+        for (let iteration = 1; iteration <= gapRounds; iteration += 1) {
+          const merged = remapFindingCitations(findings);
+          citations = merged.citations;
+          subQuestionBreakdown = merged.subQuestions;
+          combinedFindings = merged.combinedText;
+          reportText = await runIsolatedText(
+            merged.combinedText,
+            deps.leadProvider,
+            deps.leadModel,
+            buildSynthesisSystemBlocks(),
+            maxTokens,
+            ctx,
+          );
 
-        // hard cap 도달 — gapCheck 자체를 호출하지 않고 즉시 종료(MAST 종료조건 가드,
-        // 응답 내용과 무관하게 무한루프를 원천 차단).
-        if (iteration === maxGapIterations) break;
+          // hard cap 도달 — gapCheck 자체를 호출하지 않고 즉시 종료(MAST 종료조건 가드,
+          // 응답 내용과 무관하게 무한루프를 원천 차단).
+          if (iteration === gapRounds) break;
 
-        const gapCheckText = await runIsolatedText(
-          reportText,
-          deps.leadProvider,
-          deps.leadModel,
-          buildGapCheckSystemBlocks(),
-          maxTokens,
-          ctx,
-        );
-        const gap = parseGapCheck(gapCheckText);
-        if (gap.complete || !gap.gapQuestion) break;
+          const gapCheckText = await runIsolatedText(
+            reportText,
+            deps.leadProvider,
+            deps.leadModel,
+            buildGapCheckSystemBlocks(),
+            maxTokens,
+            ctx,
+          );
+          const gap = parseGapCheck(gapCheckText);
+          if (gap.complete || !gap.gapQuestion) break;
 
-        const extra = await runResearcher(
-          gap.gapQuestion,
-          deps,
-          maxTokens,
-          ctx,
-        );
-        findings = [...findings, extra];
-        tasks.push({
-          id: `gap-${iteration}`,
-          title: gap.gapQuestion,
-          status: "done",
-          sourceCount: extra.citations.length,
-        });
-        ctx.emitProgress?.({
-          stage: "synthesizing",
-          label: "추가 조사 반영 중",
-          tasks: tasks.map((t) => ({ ...t })),
-        });
+          const extra = await runResearcher(
+            gap.gapQuestion,
+            deps,
+            maxTokens,
+            ctx,
+          );
+          findings = [...findings, extra];
+          tasks.push({
+            id: `gap-${iteration}`,
+            title: gap.gapQuestion,
+            status: "done",
+            sourceCount: extra.citations.length,
+          });
+          ctx.emitProgress?.({
+            stage: "synthesizing",
+            label: "추가 조사 반영 중",
+            tasks: tasks.map((t) => ({ ...t })),
+          });
+        }
+      } catch (error) {
+        // 종합/gap 단계가 응답 없이 멈추거나(전체 상한 타임아웃 abort) 실패해도, 이미 모은
+        // findings 를 리포트로 폴백한다 — "결과 종합 중" 무한 hang·무결과 방지. 단, 사용자
+        // 취소(baseCtx.signal)는 중단 의사이므로 그대로 전파한다.
+        if (baseCtx.signal.aborted) throw error;
+        reportText = reportText || combinedFindings;
+        synthesisDegraded = true;
+      } finally {
+        clearTimeout(overallTimeoutId);
       }
 
       const { unmatchedIndexes } = matchCitations(reportText, citations);
       const finalText = dropUnmatchedCitationMarkers(
         reportText,
         unmatchedIndexes,
-      );
-
-      const record = await service.createArtifact(
-        { userId: ctx.userId },
-        {
-          sessionId: ctx.sessionId,
-          type: "markdown",
-          filename: `deep-research-${toolCallId}.md`,
-          data: Buffer.from(finalText, "utf-8"),
-        },
       );
 
       ctx.emitProgress?.({
@@ -483,15 +532,15 @@ export function createDeepResearchTool(deps: DeepResearchToolDeps): AgentTool {
         content: {
           kind: "json",
           data: {
-            artifact: {
-              artifactId: record.id,
-              artifactKind: record.type,
-              filename: record.filename,
-              sizeBytes: record.sizeBytes,
-              downloadUrl: `/api/v1/artifacts/${record.id}/content`,
-            },
+            // 종합 리포트(markdown) 를 본문에 그대로 렌더한다 — 아티팩트로 밀어넣지 않는다(정책:
+            // 아티팩트는 HTML 등 렌더링 필요/명시 요구 시만). 클라 ToolCallRenderer 가 <Markdown> 렌더.
+            report: finalText,
             citations,
-            message: `${subQuestions.length}개 하위 질문을 조사해 리포트로 종합했습니다.`,
+            // 하위질문별 출처(전역 인덱스) — 클라 WorkerCard 펼침에서 사용(duck-typed json 추가 필드).
+            subQuestions: subQuestionBreakdown,
+            message: synthesisDegraded
+              ? `${subQuestions.length}개 하위 질문 조사 결과입니다(최종 종합이 시간 내 완료되지 않아 조사 원문을 제공).`
+              : `${subQuestions.length}개 하위 질문을 조사해 리포트로 종합했습니다.`,
           },
         },
       };

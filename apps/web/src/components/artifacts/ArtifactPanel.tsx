@@ -4,7 +4,9 @@
 // 16-API-CONTRACT § 7 GET /artifacts/:id 응답 shape 을 그대로 반영한 DTO.
 // P13-T6-15: 포커스 링 토큰 정렬.
 // markdown/html 은 콘텐츠(text)를 fetch 해 인패널 렌더(markdown=채팅 Markdown 재사용,
-//   html=scripts 차단 sandbox iframe). pdf/pptx 는 전용 렌더러. 그 외는 다운로드 안내.
+//   html=sandbox="allow-scripts" iframe — allow-same-origin 은 절대 병기하지 않아 불투명
+//   origin 유지(앱 DOM/쿠키/localStorage 접근 불가), 스크립트 실행만 허용). pdf/pptx 는
+//   전용 렌더러. 그 외는 다운로드 안내.
 import React, { useEffect, useState } from "react";
 import { PdfRenderer } from "./PdfRenderer";
 import { PptxRenderer } from "./PptxRenderer";
@@ -76,7 +78,7 @@ export function ArtifactPanel({ artifact }: { artifact: ArtifactDto }) {
         ) : (
           <iframe
             title={artifact.filename}
-            sandbox=""
+            sandbox="allow-scripts"
             srcDoc={content}
             data-testid="artifact-html"
             className="mt-3 h-[60vh] w-full rounded-md border border-border"

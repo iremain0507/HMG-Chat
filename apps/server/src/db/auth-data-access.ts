@@ -22,6 +22,8 @@ function toOrganization(row: Record<string, unknown>): Organization {
       (row.default_token_budget_micros as string | null) === null
         ? null
         : Number(row.default_token_budget_micros),
+    // 0033_org_retention_days — NULL = 무기한 보존(부록 H 3번).
+    retentionDays: (row.retention_days as number | null) ?? null,
     createdAt: row.created_at as Date,
     updatedAt: row.updated_at as Date,
   };
@@ -35,6 +37,8 @@ function toUser(row: Record<string, unknown>): User {
     name: (row.name as string | null) ?? null,
     role: row.role as User["role"],
     customInstructions: (row.custom_instructions as string | null) ?? null,
+    // 0036_user_language — NULL = 서버 기본(ko).
+    language: (row.language as string | null) ?? null,
     status: row.status as User["status"],
     lastLoginAt: (row.last_login_at as Date | null) ?? null,
     createdAt: row.created_at as Date,
@@ -139,8 +143,8 @@ export function createPgAuthDataAccess(): AuthDataAccess {
     users: {
       async insert(data) {
         const res = await pgPool.query(
-          `INSERT INTO users (org_id, email, name, role, custom_instructions, status, last_login_at)
-           VALUES ($1, $2, $3, COALESCE($4, 'member'), $5, COALESCE($6, 'active'), $7)
+          `INSERT INTO users (org_id, email, name, role, custom_instructions, status, last_login_at, language)
+           VALUES ($1, $2, $3, COALESCE($4, 'member'), $5, COALESCE($6, 'active'), $7, $8)
            RETURNING *`,
           [
             data.orgId,
@@ -150,6 +154,7 @@ export function createPgAuthDataAccess(): AuthDataAccess {
             data.customInstructions ?? null,
             data.status ?? null,
             data.lastLoginAt ?? null,
+            data.language ?? null,
           ],
         );
         return toUser(res.rows[0]);
@@ -164,7 +169,10 @@ export function createPgAuthDataAccess(): AuthDataAccess {
              role = COALESCE($3, role),
              custom_instructions = COALESCE($4, custom_instructions),
              status = COALESCE($5, status),
-             last_login_at = COALESCE($6, last_login_at)
+             last_login_at = COALESCE($6, last_login_at),
+             -- language 는 null 로 되돌리는 것(=서버 기본 ko)이 유효한 값이라
+             -- COALESCE 대신 "키 존재 여부"($7)로 갱신 여부를 가른다.
+             language = CASE WHEN $7::boolean THEN $8 ELSE language END
            WHERE id = $1 RETURNING *`,
           [
             id,
@@ -173,6 +181,8 @@ export function createPgAuthDataAccess(): AuthDataAccess {
             data.customInstructions ?? null,
             data.status ?? null,
             data.lastLoginAt ?? null,
+            "language" in data,
+            data.language ?? null,
           ],
         );
         if (res.rows.length === 0) throw new Error("user not found");
@@ -203,6 +213,23 @@ export function createPgAuthDataAccess(): AuthDataAccess {
           : "";
         const res = await pgPool.query(`SELECT * FROM users ${where}`, params);
         return { items: res.rows.map(toUser) };
+      },
+      // P22-T1-13(C4) — 비밀번호 로그인 전용 자격증명 조회. password_hash 는 여기서만
+      // 읽고 toUser()(User DTO) 에는 절대 싣지 않는다. email 은 CITEXT 라 대소문자 무관.
+      // status='active' 인 계정만 로그인 대상(삭제/정지 계정은 자격증명 부재로 취급).
+      async credentialsByEmail(email) {
+        const res = await pgPool.query(
+          `SELECT id, org_id, password_hash FROM users
+            WHERE email = $1 AND status = 'active' LIMIT 1`,
+          [email.trim().toLowerCase()],
+        );
+        const row = res.rows[0];
+        if (!row) return null;
+        return {
+          userId: row.id as string,
+          orgId: row.org_id as string,
+          passwordHash: (row.password_hash as string | null) ?? null,
+        };
       },
     },
     magicLinkTokens: {

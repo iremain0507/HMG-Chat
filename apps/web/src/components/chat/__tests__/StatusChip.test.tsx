@@ -34,19 +34,21 @@ describe("StatusChip", () => {
     }
   });
 
-  it("running 상태의 도트만 펄스 애니메이션 클래스를 갖는다", () => {
+  it("running 상태는 회전 스피너(animate-spin)를 갖는다 — 정적 도트보다 '작동 중'이 확실히 보임", () => {
     render(<StatusChip status="running" />);
     const dot = screen.getByTestId("status-chip-dot");
-    expect(dot.className).toMatch(/animate-\[pulse/);
+    expect(dot.className).toMatch(/animate-spin/);
+    expect(dot).toHaveAttribute("data-spinner", "true");
   });
 
-  it("queued/done/error/pending-approval 도트는 펄스 클래스가 없다", () => {
+  it("queued/done/error/pending-approval 은 스피너가 아니다(정적 도트)", () => {
     const statuses = ["queued", "done", "error", "pending-approval"] as const;
     for (const status of statuses) {
       cleanup();
       render(<StatusChip status={status} />);
       const dot = screen.getByTestId("status-chip-dot");
-      expect(dot.className).not.toMatch(/animate-\[pulse/);
+      expect(dot.className).not.toMatch(/animate-spin/);
+      expect(dot).not.toHaveAttribute("data-spinner");
     }
   });
 

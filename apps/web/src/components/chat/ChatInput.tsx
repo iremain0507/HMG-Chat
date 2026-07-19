@@ -21,11 +21,15 @@ import React, {
   type FormEvent,
   type KeyboardEvent,
 } from "react";
-import { Plus, AtSign, Slash, ArrowUp, Square } from "lucide-react";
+import { Plus, AtSign, Slash, Hash, ArrowUp, Square, Mic } from "lucide-react";
 import { useAttachments } from "../../hooks/useAttachments";
-import type { SendOptions } from "../../hooks/useSessionStream";
+import { useDismiss } from "../../hooks/useDismiss";
+import { useSpeechRecognition } from "../../hooks/useSpeechRecognition";
+import { useAutocomplete } from "../../hooks/useAutocomplete";
+import type { QueuedMessage, SendOptions } from "../../hooks/useSessionStream";
 import {
   ComposerPopover,
+  optionDomId,
   type ComposerPopoverCategory,
   type ComposerPopoverItem,
 } from "./ComposerPopover";
@@ -85,15 +89,18 @@ const POLICY_BADGE: Record<
 };
 
 interface TriggerState {
-  type: "slash" | "mention";
+  type: "slash" | "mention" | "document";
   start: number;
   end: number;
   query: string;
 }
 
+// P20-T6-09 — `#` 는 업로드 문서 인라인 참조 트리거. `@` 와 동일하게 커서 위치 어디서든
+// 열리되(슬래시만 메시지 시작 위치 한정), 선택 시 attachments 는 그대로(useAttachments 가
+// 이미 완료 첨부 전부를 자동 포함) 두고 본문에 `#filename` 참조 텍스트만 삽입한다.
 function detectTrigger(value: string, cursor: number): TriggerState | null {
   let i = cursor - 1;
-  while (i >= 0 && value[i] !== "/" && value[i] !== "@") {
+  while (i >= 0 && value[i] !== "/" && value[i] !== "@" && value[i] !== "#") {
     if (/\s/.test(value[i] ?? "")) return null;
     i--;
   }
@@ -102,7 +109,7 @@ function detectTrigger(value: string, cursor: number): TriggerState | null {
   if (ch === undefined) return null;
   if (ch === "/" && i !== 0) return null;
   return {
-    type: ch === "/" ? "slash" : "mention",
+    type: ch === "/" ? "slash" : ch === "#" ? "document" : "mention",
     start: i,
     end: cursor,
     query: value.slice(i + 1, cursor).toLowerCase(),
@@ -129,10 +136,29 @@ export interface ChatInputProps {
   isStreaming: boolean;
   onSend: (
     content: string,
-    attachments: Array<{ uploadId: string }>,
+    // P22-T6-04 — uploadId 외 filename/mimeType/previewUrl(이미지 objectURL)을 함께 넘겨
+    // 낙관적 유저 버블이 이미지 썸네일을 그릴 수 있게 한다. 서버 요청 body 에는
+    // useSessionStream 이 uploadId 만 추린다(추가 필드는 무시).
+    attachments: Array<{
+      uploadId: string;
+      filename: string;
+      mimeType: string;
+      previewUrl?: string;
+    }>,
+    options?: SendOptions,
+  ) => void | Promise<void>;
+  // P22-T6-06 — 멀티모델 비교 전송. 비교 모드에서 2+ 모델이 선택되면 onSend 대신 이 콜백으로
+  // 프롬프트를 팬아웃한다. 미주입 시 비교 토글 자체가 렌더되지 않는다(하위호환).
+  onSendCompare?: (
+    content: string,
+    models: string[],
     options?: SendOptions,
   ) => void | Promise<void>;
   onStop: () => void;
+  // P22-T6-05 — 응답 생성 중 대기열에 쌓인(아직 미전송) 메시지. 컴포저에 취소 가능한 칩으로
+  // 렌더하고, 취소 시 onRemoveQueued(id) 로 상위(useSessionStream)에 드롭을 위임한다.
+  queuedMessages?: QueuedMessage[];
+  onRemoveQueued?: (id: string) => void;
   slashCommands?: SlashCommand[];
   onSlashCommand?: (command: SlashCommand) => void;
   mentionEntities?: MentionEntity[];
@@ -143,6 +169,11 @@ export interface ChatInputProps {
   // P13-T6-04 — F05 액션바 우측 컨텍스트 게이지. 실 토큰 사용량 배선은 별도 태스크 소관이라
   // 호출부가 값을 넘기지 않으면(undefined) 게이지를 렌더하지 않는다.
   contextUsagePercent?: number;
+  // P22-T6-16 — 입력 자동완성(ghost text). org 설정(autocompleteEnabled)과 사용자 설정이
+  // 모두 켜졌을 때만 호출부가 true 를 넘긴다. 기본 off — 미지정 호출부는 기존과 동일하게 동작.
+  // (org 가 꺼져 있으면 서버가 403 FEATURE_DISABLED 로 거절하고 훅이 스스로 재요청을 멈춘다.)
+  autocompleteEnabled?: boolean;
+  autocompleteDelayMs?: number;
 }
 
 export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
@@ -151,7 +182,10 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
       sessionId,
       isStreaming,
       onSend,
+      onSendCompare,
       onStop,
+      queuedMessages = [],
+      onRemoveQueued,
       slashCommands = [],
       onSlashCommand,
       mentionEntities = [],
@@ -159,6 +193,8 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
       availableTools = [],
       disabled = false,
       contextUsagePercent,
+      autocompleteEnabled = false,
+      autocompleteDelayMs,
     },
     ref,
   ) {
@@ -172,11 +208,66 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
     const [mode, setMode] = useState<ChatMode>("agent");
     const [webSearch, setWebSearch] = useState(false);
     const [temporary, setTemporary] = useState(false);
+    // P22-T6-06 — 멀티모델 비교 모드 + 선택 모델 집합.
+    const [compareMode, setCompareMode] = useState(false);
+    const [compareModels, setCompareModels] = useState<string[]>([]);
     const taRef = useRef<HTMLTextAreaElement>(null);
+    const popoverRef = useRef<HTMLDivElement>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
-    const { items, addFiles, remove, clear, readyUploadIds } =
+    const { items, addFiles, remove, clear, readyAttachments } =
       useAttachments(sessionId);
     const webSearchAvailable = availableTools.includes("web_search");
+
+    // P22-T6-16 — 입력 자동완성. 스트리밍 중이거나 트리거 팝오버(/·@·#)가 열려 있는 동안에는
+    // 제안을 만들지 않는다 — Tab/Escape 가 팝오버 조작과 충돌하고, 응답 대기 중 입력은 큐잉되기 때문.
+    const autocomplete = useAutocomplete({
+      draft: input,
+      enabled: autocompleteEnabled && !isStreaming && !disabled && !trigger,
+      ...(autocompleteDelayMs !== undefined
+        ? { delayMs: autocompleteDelayMs }
+        : {}),
+    });
+    const ghost = autocomplete.suggestion;
+
+    function acceptSuggestion() {
+      const next = input + ghost;
+      setInput(next);
+      autocomplete.dismiss();
+      requestAnimationFrame(() => {
+        const ta = taRef.current;
+        if (!ta) return;
+        ta.setSelectionRange(next.length, next.length);
+        autogrow();
+      });
+    }
+
+    // P22-T6-08 — 음성 입력(STT): 녹음 시작 시점의 커서 위치를 기억해, 인식되는 최종 텍스트를
+    // 그 지점에서부터 순서대로 삽입한다(다중 결과에도 삽입 지점이 앞으로 전진). 값은 함수형
+    // setInput 으로 갱신해 비동기 인식 콜백에서 stale 클로저를 피한다.
+    const speechInsertPosRef = useRef<number | null>(null);
+    function insertTranscript(text: string) {
+      setInput((prev) => {
+        const pos = speechInsertPosRef.current ?? prev.length;
+        const needsSpace = pos > 0 && !/\s$/.test(prev.slice(0, pos));
+        const chunk = (needsSpace ? " " : "") + text;
+        speechInsertPosRef.current = pos + chunk.length;
+        return prev.slice(0, pos) + chunk + prev.slice(pos);
+      });
+      requestAnimationFrame(() => autogrow());
+    }
+    const speech = useSpeechRecognition({
+      onFinalTranscript: insertTranscript,
+    });
+    function toggleMic() {
+      if (speech.listening) {
+        speech.stop();
+        return;
+      }
+      const ta = taRef.current;
+      speechInsertPosRef.current = ta?.selectionStart ?? input.length;
+      speech.start();
+      requestAnimationFrame(() => ta?.focus());
+    }
 
     // availableModels 가 마운트 후 비동기로 로드되면(useCurrentUser → org.allowedModels) 첫 항목을 기본 선택.
     useEffect(() => {
@@ -210,6 +301,25 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
     const allMentionEntities = useMemo(
       () => [...fileMentionEntities, ...mentionEntities],
       [fileMentionEntities, mentionEntities],
+    );
+
+    // P20-T6-09 — `#` 문서 피커: 업로드가 완료(uploadId 확보)된 첨부만 참조 가능하게 한다.
+    // id 를 uploadId 로 둬 attachments[].uploadId 와 대응이 명확하도록 한다.
+    const documentEntities = useMemo(
+      () =>
+        items
+          .filter((it) => it.status === "done" && it.uploadId !== null)
+          .map((it) => ({ id: it.uploadId as string, label: it.filename })),
+      [items],
+    );
+    const filteredDocumentEntities = useMemo(
+      () =>
+        trigger?.type === "document"
+          ? documentEntities.filter((e) =>
+              e.label.toLowerCase().includes(trigger.query),
+            )
+          : [],
+      [trigger, documentEntities],
     );
 
     const filteredSlashCommands = useMemo(
@@ -247,7 +357,26 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
                 badgeVariant: policyBadge?.variant,
               };
             })
-          : [];
+          : trigger?.type === "document"
+            ? filteredDocumentEntities.map((e) => ({
+                id: e.id,
+                label: e.label,
+                subtitle: "문서",
+              }))
+            : [];
+
+    const activeOptionId =
+      trigger && popoverItems.length > 0
+        ? optionDomId(popoverItems[activeIndex]?.id ?? "")
+        : undefined;
+
+    // P21-T6-07 — 데스크톱(≥md)에서도 팝오버 밖 pointerdown 시 닫히도록(backdrop 은
+    // md:hidden 이라 모바일에서만 유효했다). textarea 는 계속 편집 가능해야 하므로
+    // triggerRef 로 제외한다.
+    useDismiss(popoverRef, () => setTrigger(null), {
+      enabled: !!trigger && popoverItems.length > 0,
+      triggerRef: taRef,
+    });
 
     function selectPopoverItem(item: ComposerPopoverItem) {
       if (!trigger) return;
@@ -256,6 +385,16 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
         setInput("");
         setTrigger(null);
         if (command) onSlashCommand?.(command);
+        taRef.current?.focus();
+        return;
+      }
+      if (trigger.type === "document") {
+        const doc = filteredDocumentEntities.find((e) => e.id === item.id);
+        if (!doc) return;
+        const before = input.slice(0, trigger.start);
+        const after = input.slice(trigger.end);
+        setInput(`${before}#${doc.label} ${after}`);
+        setTrigger(null);
         taRef.current?.focus();
         return;
       }
@@ -308,6 +447,23 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
       });
     }
 
+    // P20-T6-09 — [#] 액션바 버튼: @/mention 과 동일한 삽입 경로로 문서 피커를 연다.
+    function triggerDocument() {
+      const ta = taRef.current;
+      const cursor = ta?.selectionStart ?? input.length;
+      const before = input.slice(0, cursor);
+      const after = input.slice(cursor);
+      const nextValue = `${before}#${after}`;
+      const nextCursor = cursor + 1;
+      setInput(nextValue);
+      setTrigger(detectTrigger(nextValue, nextCursor));
+      setActiveIndex(0);
+      requestAnimationFrame(() => {
+        ta?.focus();
+        ta?.setSelectionRange(nextCursor, nextCursor);
+      });
+    }
+
     function triggerSlash() {
       if (input.length > 0) return;
       const ta = taRef.current;
@@ -321,18 +477,27 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
     }
 
     const uploading = items.some((it) => it.status === "uploading");
-    const canSend =
-      input.trim().length > 0 && !isStreaming && !uploading && !disabled;
+    // P22-T6-05 — 생성 중에도 전송을 막지 않는다: onSend 가 스트리밍 중이면 큐잉하고(early-return
+    // 하지 않음), 종료 시 FIFO 로 자동 디스패치한다. isStreaming 은 canSend 조건에서 제외.
+    const canSend = input.trim().length > 0 && !uploading && !disabled;
 
     async function submit() {
       if (!canSend) return;
       const content = input.trim();
-      const attachments = readyUploadIds;
+      const attachments = readyAttachments;
       setInput("");
       setTrigger(null);
       if (taRef.current) taRef.current.style.height = "auto";
       clear();
-      if (availableModels.length > 0) {
+      // P22-T6-06 — 비교 모드 + 2+ 모델 선택 시엔 팬아웃 전송(컬럼 스트리밍). 그 외엔 기존 단일
+      // 전송 경로를 그대로 태워 단일모델 동작을 보존한다(하위호환).
+      if (onSendCompare && compareMode && compareModels.length >= 2) {
+        await onSendCompare(content, compareModels, {
+          mode,
+          reasoningEffort: effort,
+          ...(webSearchAvailable ? { webSearch } : {}),
+        });
+      } else if (availableModels.length > 0) {
         await onSend(content, attachments, {
           model,
           mode,
@@ -377,6 +542,24 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
           setTrigger(null);
           return;
         }
+      }
+      // P22-T6-08 — 녹음 중 Escape 는 음성 인식을 멈춘다(팝오버가 열려있지 않을 때).
+      if (e.key === "Escape" && speech.listening) {
+        e.preventDefault();
+        speech.stop();
+        return;
+      }
+      // P22-T6-16 — ghost text 가 떠 있을 때만 Tab 을 가로채 제안을 수락한다. 제안이 없으면
+      // preventDefault 하지 않아 Tab 의 기본 포커스 이동(접근성)을 그대로 보존한다.
+      if (e.key === "Tab" && ghost) {
+        e.preventDefault();
+        acceptSuggestion();
+        return;
+      }
+      if (e.key === "Escape" && ghost) {
+        e.preventDefault();
+        autocomplete.dismiss();
+        return;
       }
       if (e.key === "Enter" && !e.shiftKey) {
         e.preventDefault();
@@ -437,10 +620,17 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
             activeIndex={activeIndex}
             onHover={setActiveIndex}
             onSelect={selectPopoverItem}
-            label={trigger.type === "slash" ? "명령 선택" : "멘션 선택"}
+            label={
+              trigger.type === "slash"
+                ? "명령 선택"
+                : trigger.type === "document"
+                  ? "문서 선택"
+                  : "멘션 선택"
+            }
             query={trigger.query}
             showFooterHints
             onDismiss={() => setTrigger(null)}
+            panelRef={popoverRef}
             {...(trigger.type === "mention"
               ? {
                   categories: MENTION_CATEGORIES,
@@ -449,6 +639,33 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
                 }
               : {})}
           />
+        )}
+        {queuedMessages.length > 0 && (
+          // P22-T6-05 — 응답 생성 중 큐잉된 메시지: 종료 후 FIFO 로 전송된다. 각 칩은 취소(제거)
+          // 가능. Open WebUI 의 "대기 중 메시지" 파리티(시각은 우리 토큰/현대위아 CI).
+          <ul
+            aria-label="대기 중 메시지"
+            data-testid="queued-messages"
+            className="flex flex-wrap gap-2 px-1"
+          >
+            {queuedMessages.map((q) => (
+              <li
+                key={q.id}
+                data-testid={`queued-message-${q.id}`}
+                className="flex items-center gap-1.5 rounded-full border border-primary-200 bg-primary-50 py-1 pl-2.5 pr-2 text-xs text-primary"
+              >
+                <span className="max-w-[12rem] truncate">{q.content}</span>
+                <button
+                  type="button"
+                  aria-label={`${q.content} 대기열에서 제거`}
+                  onClick={() => onRemoveQueued?.(q.id)}
+                  className="grid h-4 w-4 flex-none place-items-center rounded-full text-primary hover:bg-primary-200/60"
+                >
+                  ×
+                </button>
+              </li>
+            ))}
+          </ul>
         )}
         {items.length > 0 && (
           <ul
@@ -461,8 +678,18 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
                 key={it.localId}
                 data-testid={`attachment-chip-${it.localId}`}
                 data-status={it.status}
-                className="flex items-center gap-1.5 rounded-full border border-border bg-bg px-2.5 py-1 text-xs text-fg-muted data-[status=error]:border-accent data-[status=error]:text-accent"
+                className="flex items-center gap-1.5 rounded-full border border-border bg-bg py-1 pl-1.5 pr-2.5 text-xs text-fg-muted data-[status=error]:border-accent data-[status=error]:text-accent"
               >
+                {it.previewUrl && (
+                  // P22-T6-04 — 이미지 첨부는 파일명 대신 실제 썸네일을 보여준다(멀티모달 파리티).
+                  // 동적 blob: URL 이라 next/image 부적합, 순수 img 사용(ToolCallRenderer 패턴).
+                  <img
+                    src={it.previewUrl}
+                    alt={it.filename}
+                    data-testid={`attachment-thumb-${it.localId}`}
+                    className="h-6 w-6 flex-none rounded-md object-cover"
+                  />
+                )}
                 <span className="max-w-[10rem] truncate">
                   {it.status === "uploading" ? "업로드 중… " : ""}
                   {it.filename}
@@ -495,30 +722,51 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
             🕶️ 임시 채팅 — 이 대화는 저장되지 않습니다
           </p>
         )}
-        <textarea
-          id="chat-input"
-          ref={taRef}
-          rows={1}
-          aria-label="메시지 입력"
-          value={input}
-          onChange={(e) => {
-            const value = e.target.value;
-            const cursor = e.target.selectionStart ?? value.length;
-            setInput(value);
-            autogrow();
-            setTrigger(detectTrigger(value, cursor));
-            setActiveIndex(0);
-            setMentionCategory("all");
-          }}
-          onKeyDown={onKeyDown}
-          onPaste={onPaste}
-          placeholder={
-            disabled
-              ? "오프라인 상태입니다 — 연결이 복구되면 전송할 수 있어요."
-              : "메시지를 입력하세요…  (Enter 전송 · Shift+Enter 줄바꿈)"
-          }
-          className="max-h-[200px] w-full resize-none bg-transparent px-1 py-1 text-fg outline-none placeholder:text-fg-muted"
-        />
+        {/* P22-T6-16 — ghost text 오버레이. 초안과 동일한 타이포/패딩의 미러 레이어를 textarea
+            뒤에 깔고, 초안 부분은 투명하게·이어쓰기 조각만 흐린 색으로 그려 커서 바로 뒤에
+            이어지는 것처럼 보이게 한다. textarea 는 bg-transparent 라 그대로 비친다.
+            aria-hidden + pointer-events-none — 스크린리더/클릭 대상은 textarea 하나로 유지. */}
+        <div className="relative">
+          {ghost && (
+            <div
+              aria-hidden="true"
+              className="pointer-events-none absolute inset-0 max-h-[200px] overflow-hidden whitespace-pre-wrap break-words px-1 py-1"
+            >
+              <span className="text-transparent">{input}</span>
+              <span data-testid="composer-ghost-text" className="text-fg-muted">
+                {ghost}
+              </span>
+              <span className="ml-1 rounded border border-border px-1 text-[10px] text-fg-muted">
+                Tab
+              </span>
+            </div>
+          )}
+          <textarea
+            id="chat-input"
+            ref={taRef}
+            rows={1}
+            aria-label="메시지 입력"
+            aria-activedescendant={activeOptionId}
+            value={input}
+            onChange={(e) => {
+              const value = e.target.value;
+              const cursor = e.target.selectionStart ?? value.length;
+              setInput(value);
+              autogrow();
+              setTrigger(detectTrigger(value, cursor));
+              setActiveIndex(0);
+              setMentionCategory("all");
+            }}
+            onKeyDown={onKeyDown}
+            onPaste={onPaste}
+            placeholder={
+              disabled
+                ? "오프라인 상태입니다 — 연결이 복구되면 전송할 수 있어요."
+                : "메시지를 입력하세요…  (Enter 전송 · Shift+Enter 줄바꿈)"
+            }
+            className="relative max-h-[200px] w-full resize-none bg-transparent px-1 py-1 text-fg outline-none placeholder:text-fg-muted"
+          />
+        </div>
         <div className="flex flex-wrap items-center gap-1.5">
           <button
             type="button"
@@ -549,6 +797,31 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
           >
             <Slash size={13} strokeWidth={2} aria-hidden="true" />
           </button>
+          <button
+            type="button"
+            aria-label="문서 참조 삽입"
+            data-testid="composer-trigger-document"
+            onClick={triggerDocument}
+            aria-pressed={trigger?.type === "document"}
+            className="grid h-7 w-7 flex-none place-items-center rounded-md border border-border text-fg-muted hover:bg-bg hover:text-fg aria-pressed:border-primary-200 aria-pressed:bg-primary-50 aria-pressed:text-primary"
+          >
+            <Hash size={13} strokeWidth={2} aria-hidden="true" />
+          </button>
+          {speech.supported && (
+            // P22-T6-08 — 음성 입력(STT) 토글. 녹음 중엔 accent(레드)로 '진행 중'을 강조하고
+            // 펄스로 라이브 상태를 알린다(accent=강조/Stop 전용 소량 규칙에 부합). 미지원
+            // 브라우저에서는 아예 렌더하지 않는다(speech.supported=false).
+            <button
+              type="button"
+              aria-label={speech.listening ? "음성 입력 중지" : "음성 입력"}
+              data-testid="composer-trigger-mic"
+              onClick={toggleMic}
+              aria-pressed={speech.listening}
+              className="grid h-7 w-7 flex-none place-items-center rounded-md border border-border text-fg-muted hover:bg-bg hover:text-fg aria-pressed:animate-pulse aria-pressed:border-accent aria-pressed:bg-accent/10 aria-pressed:text-accent"
+            >
+              <Mic size={13} strokeWidth={2} aria-hidden="true" />
+            </button>
+          )}
           <ModelModePicker
             models={availableModels}
             model={model}
@@ -562,6 +835,20 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
             onWebSearchChange={setWebSearch}
             temporary={temporary}
             onTemporaryChange={setTemporary}
+            {...(onSendCompare
+              ? {
+                  compareMode,
+                  onCompareModeChange: (next: boolean) => {
+                    setCompareMode(next);
+                    // 비교 켜는 순간 현재 단일 모델을 기본 선택에 포함(2+ 유도).
+                    if (next && compareModels.length === 0 && model) {
+                      setCompareModels([model]);
+                    }
+                  },
+                  compareModels,
+                  onCompareModelsChange: setCompareModels,
+                }
+              : {})}
           />
           <span className="flex-1" />
           {contextUsagePercent !== undefined && (

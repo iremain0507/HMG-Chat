@@ -1,0 +1,31 @@
+# P22 브라우저 검증 부채 (Tier2/Tier3 ★needsBrowser)
+
+기능(server+web+RTL) 은 green 커밋됨. 아래 항목은 (B) Playwright /preview 스펙 및/또는
+(C) 실앱 Claude-in-Chrome UAT 를 **계약게이트 도달 후 스택 기동 일괄 패스**에서 완료한다.
+(A) RTL 단위는 커밋에 포함. 근거: 실앱/admin 흐름은 루프 headless 에서 구동 불가(L1 정직 원칙).
+
+| task                       | (A)RTL | (B)Playwright/preview                                     | (C)실앱 UAT | 비고                                                                                                                                           |
+| -------------------------- | ------ | --------------------------------------------------------- | ----------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| P22-T1-07 groups grant     | ✅     | ✅ group-grants.pw.ts                                     | ⏳          | admin 그룹 grant 토글 실반영                                                                                                                   |
+| P22-T1-08 image-generation | ✅     | ⏳                                                        | ⏳          | 채팅 내 이미지 생성 + admin 설정                                                                                                               |
+| P22-T6-01 session-clone    | ✅     | ✅ session-clone.pw.ts                                    | ⏳          | 컨텍스트메뉴 복제→목록 최상단 prepend                                                                                                          |
+| P22-T6-05 message-queue    | ✅     | ✅ message-queue.pw.ts                                    | ⏳          | 응답 생성 중 메시지 큐잉                                                                                                                       |
+| P22-T6-14 Connections      | ✅     | ✅ connections.pw.ts                                      | ⏳          | 외부 provider 연결 admin                                                                                                                       |
+| P22-T6-15 i18n             | ✅     | ✅ i18n-language-switch.pw.ts                             | ⏳          | 언어 전환                                                                                                                                      |
+| P22-T6-17 Notes            | ✅     | ✅ notes.pw.ts                                            | ⏳          | 노트 워크스페이스                                                                                                                              |
+| P22-T6-18 스킬 작성/토글   | ✅     | ✅ skills-authoring.pw.ts                                 | ⏳          | 작성 모달·활성화 토글·삭제 실반영                                                                                                              |
+| P22-T6-19 비용/툴지표      | ✅     | ✅ quota-by-model.pw.ts + tool-metrics-source-trend.pw.ts | ⏳          | 모델별 비용 합계 일치·출처/추이 실데이터. **추가 부채**: migration 0039 실 Postgres 미적용, tool_metrics 프로덕션 writer 미배선(app.ts)        |
+| P22-T6-12 Channels         | ✅     | ✅ channels.pw.ts                                         | ⏳          | 실시간 다중사용자 채널(SSE)                                                                                                                    |
+| P22-T6-21 OpenAPI 툴서버   | ✅     | ✅ openapi-tool-servers.pw.ts                             | ⏳          | admin `/admin/tool-servers` 에서 실 spec URL 등록 → 도구 발견 확인 → 채팅에서 해당 openapi:\* 툴 호출 라운드트립(= P22-T1-12 4번째 acceptance) |
+| P22-T6-21 OpenAPI admin    | ✅     | ✅                                                        | ⏳          | 툴서버 등록 패널                                                                                                                               |
+| P22-T6-22 LDAP admin       | ✅     | ✅ identity-ldap.pw.ts                                    | ⏳          | LDAP 설정+연결테스트                                                                                                                           |
+
+## 실앱 UAT 실행 결과 (2026-07-18, running stack wchat_dev + Claude-in-Chrome)
+
+- 마이그레이션 0032~0041 을 wchat_dev 에 적용(additive/nullable-first).
+- ✅ Agent 레지스트리(/settings/agents) 렌더
+- ✅ Connections(/settings/connections) 렌더(키 암호화·앞자리만 안내)
+- ✅ Notes(/notes) 렌더 + **새 노트 생성 write-path 검증**(DB notes 1행 실제 생성 후 정리)
+- ✅ 관리자 설정: 툴서버(OpenAPI, T6-21) 탭 + Identity/LDAP(T6-22) 탭 렌더(비번=env참조, RFC4515 필터, ldapEnabled 기본 off)
+- ✅ 홈: PWA '앱 설치', i18n 언어 스위처, 커넥터/에이전트/스킬 카운트, 이미지생성 admin 토글 노출
+- 나머지 needsBrowser(Channels 멀티유저·STT/TTS·이미지생성 실호출 등)는 대표검증으로 대체, 실 외부시스템(LDAP/IdP)·멀티유저는 배포 스테이징에서.

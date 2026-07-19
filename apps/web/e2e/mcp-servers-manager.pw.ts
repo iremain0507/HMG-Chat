@@ -117,6 +117,26 @@ test.describe("P13 preview — 커넥터(MCP) 설정(F10) 핸드오프 정렬", 
     });
   });
 
+  test("등록 모달이 포커스 트랩+Escape 로 닫히고 트리거로 포커스가 복귀한다(P21-T6-09)", async ({
+    page,
+  }) => {
+    await mockBackend(page);
+    await page.goto("/preview");
+
+    const section = page.getByTestId("preview-mcp-servers-manager");
+    await section.getByTestId("mcp-servers-manager-preview-trigger").click();
+
+    const trigger = section.getByRole("button", { name: "＋ 커넥터 등록" });
+    await trigger.click();
+
+    const nameInput = section.getByLabel("서버 이름");
+    await expect(nameInput).toBeFocused();
+
+    await page.keyboard.press("Escape");
+    await expect(section.getByRole("dialog")).toBeHidden();
+    await expect(trigger).toBeFocused();
+  });
+
   test("다크 테마에서도 커넥터 카드가 정상 렌더된다", async ({ page }) => {
     await page.addInitScript(() => {
       window.localStorage.setItem("wchat-theme", "dark");

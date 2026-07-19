@@ -17,6 +17,7 @@ import { ConnectorsTab } from "./ConnectorsTab";
 import { BrandingTab, type BrandingErrors } from "./BrandingTab";
 import { PermissionsTab } from "./PermissionsTab";
 import { QuotaTab, type QuotaErrors } from "./QuotaTab";
+import { IdentityLdapTab, type IdentityLdapValue } from "./IdentityLdapTab";
 import { AdminSubNav } from "../AdminSubNav";
 
 interface TabDef {
@@ -57,6 +58,20 @@ function validateFields(s: AdminOrgSettings): AllErrors {
     s.toolMaxTokens > MAX_TOKENS_LIMIT
   ) {
     errors.toolMaxTokens = `1~${MAX_TOKENS_LIMIT.toLocaleString()} 사이의 정수를 입력하세요.`;
+  }
+  if (
+    !Number.isInteger(s.deepResearchMaxSubQuestions) ||
+    s.deepResearchMaxSubQuestions < 1 ||
+    s.deepResearchMaxSubQuestions > 10
+  ) {
+    errors.deepResearchMaxSubQuestions = "1~10 사이의 정수를 입력하세요.";
+  }
+  if (
+    !Number.isInteger(s.deepResearchMaxGapIterations) ||
+    s.deepResearchMaxGapIterations < 0 ||
+    s.deepResearchMaxGapIterations > 5
+  ) {
+    errors.deepResearchMaxGapIterations = "0~5 사이의 정수를 입력하세요.";
   }
   if (!Number.isInteger(s.ragTopK) || s.ragTopK < 1 || s.ragTopK > 100) {
     errors.ragTopK = "1~100 사이의 정수를 입력하세요.";
@@ -120,7 +135,27 @@ const TABS: TabDef[] = [
   { id: "branding", label: "General/Branding" },
   { id: "permissions", label: "Users & Permissions" },
   { id: "quota", label: "Quota/Limits" },
+  { id: "identity", label: "Identity/LDAP" },
 ];
+
+// P22-T6-22 — ldap* 는 AdminOrgSettings 에서 optional(서버 미응답 픽스처 비파괴)이라
+//   탭에 넘기기 전 서버 기본값(lib/org-settings-schema.ts:220~230)과 같은 값으로 채운다.
+function toLdapValue(s: AdminOrgSettings): IdentityLdapValue {
+  return {
+    ldapEnabled: s.ldapEnabled ?? false,
+    ldapUrl: s.ldapUrl ?? "",
+    ldapBindDn: s.ldapBindDn ?? "",
+    ldapBindPasswordRef: s.ldapBindPasswordRef ?? "",
+    ldapBaseDn: s.ldapBaseDn ?? "",
+    ldapUserFilter:
+      s.ldapUserFilter ?? "(|(sAMAccountName={{username}})(mail={{username}}))",
+    ldapEmailAttribute: s.ldapEmailAttribute ?? "mail",
+    ldapNameAttribute: s.ldapNameAttribute ?? "displayName",
+    ldapGroupAttribute: s.ldapGroupAttribute ?? "memberOf",
+    ldapGroupRoleMap: s.ldapGroupRoleMap ?? {},
+    ldapTlsRejectUnauthorized: s.ldapTlsRejectUnauthorized ?? true,
+  };
+}
 
 export function AdminSettingsScreen() {
   const { settings, loading, error, reload } = useAdminSettings();
@@ -286,6 +321,13 @@ export function AdminSettingsScreen() {
                         orgDefaultTokenBudgetMicros={
                           org?.defaultTokenBudgetMicros ?? null
                         }
+                        onChange={onChange}
+                      />
+                    );
+                  case "identity":
+                    return (
+                      <IdentityLdapTab
+                        value={toLdapValue(draft)}
                         onChange={onChange}
                       />
                     );

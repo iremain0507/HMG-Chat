@@ -1712,3 +1712,84 @@ describe("orchestrator.runTurn — 툴 관측: tool-metrics + gen_ai.* span (P11
     expect(result.some((e) => e.type === "tool_result")).toBe(true);
   });
 });
+
+// P22-T6-19(C17B) RED: instrumentedInvoke 가 recordToolMetric 에 source 를 넘기지 않아
+//   tool_metrics.source 가 항상 NULL 이 되고 admin 화면의 '출처' 컬럼이 채워질 수 없다.
+describe("orchestrator.runTurn — tool-metrics source (P22-T6-19 / C17B)", () => {
+  async function runWithTool(toolName: string) {
+    let calls = 0;
+    const fakeProvider: LLMProvider = {
+      name: "fake",
+      models: ["fake-model"],
+      async *chat() {
+        calls += 1;
+        if (calls === 1) {
+          yield {
+            type: "tool_use",
+            toolCallId: "call-1",
+            name: toolName,
+            args: {},
+          };
+          yield {
+            type: "stop",
+            reason: "tool_use",
+            usage: { inputTokens: 1, outputTokens: 1 },
+          };
+          return;
+        }
+        yield { type: "text_delta", text: "done" };
+        yield {
+          type: "stop",
+          reason: "end_turn",
+          usage: { inputTokens: 1, outputTokens: 1 },
+        };
+      },
+    };
+    const tool: AgentTool = {
+      spec: {
+        name: toolName,
+        description: "출처 계측 대상 툴",
+        inputSchema: { type: "object" },
+        permissionTier: "tool",
+        defaultPolicy: "allow",
+      },
+      async invoke(input) {
+        return {
+          toolCallId: input.toolCallId,
+          content: { kind: "text", text: "ok-result" },
+        };
+      },
+    };
+    const { toolContext } = fakeToolContextWithLoggerSpy();
+    const toolMetrics = fakeToolMetricRepo();
+    for await (const event of runTurn({
+      provider: fakeProvider,
+      model: "fake-model",
+      systemBlocks: [],
+      messages: [{ role: "user", content: "hi" }],
+      maxTokens: 512,
+      signal: new AbortController().signal,
+      tools: [tool],
+      toolContext,
+      toolMetrics,
+    })) {
+      void event;
+    }
+    return toolMetrics;
+  }
+
+  it("mcp: 네임스페이스 툴은 source=mcp 로 기록한다", async () => {
+    const toolMetrics = await runWithTool("mcp:srv-1:search");
+    expect(toolMetrics.appended[0]?.source).toBe("mcp");
+  });
+
+  it("openapi: 네임스페이스 툴은 source=openapi 로 기록한다", async () => {
+    const toolMetrics = await runWithTool("openapi:srv-1:getPet");
+    expect(toolMetrics.appended[0]?.source).toBe("openapi");
+  });
+
+  it("네임스페이스 없는 내장 툴은 source=builtin 으로 기록한다", async () => {
+    const toolMetrics = await runWithTool("knowledge_search");
+    expect(toolMetrics.appended[0]?.source).toBe("builtin");
+  });
+});

@@ -11,7 +11,15 @@ import { apiFetch } from "../../../lib/fetch-with-refresh";
 import { showToast } from "../../../lib/toast";
 
 export type ModelsGenerationErrors = Partial<
-  Record<"maxTokens" | "temperature" | "topP" | "toolMaxTokens", string>
+  Record<
+    | "maxTokens"
+    | "temperature"
+    | "topP"
+    | "toolMaxTokens"
+    | "deepResearchMaxSubQuestions"
+    | "deepResearchMaxGapIterations",
+    string
+  >
 >;
 
 export interface ModelsGenerationTabProps {
@@ -21,11 +29,27 @@ export interface ModelsGenerationTabProps {
   onChange: (patch: Partial<AdminOrgSettings>) => void;
 }
 
+// 빈 입력을 Number("")=0 으로 무음 강제하지 않기 위해 NaN 을 대신 전달한다 —
+// 상위 validateFields 의 !Number.isInteger/!Number.isFinite 가 NaN 을 이미 걸러내
+// 필드 에러로 표시한다(UX-23).
+function parseNumberField(raw: string): number {
+  return raw.trim() === "" ? NaN : Number(raw);
+}
+
+// 빈 입력은 상태에 NaN 으로 담아 검증이 잡게 하되(위), controlled input 의 value 로 NaN 을
+// 그대로 주면 React 가 "Received NaN for the `value` attribute" 를 경고한다 — NaN 은 빈 문자열로
+// 표시한다(검증 에러 메시지는 별도로 이미 노출됨).
+function numberFieldValue(n: number): number | string {
+  return Number.isNaN(n) ? "" : n;
+}
+
 const LABEL_CLASS = "block text-xs font-medium text-fg-muted";
 const INPUT_CLASS =
   "mt-1 w-full rounded-md border border-border bg-bg px-2.5 py-1.5 text-sm text-fg outline-none focus-visible:border-primary-400";
 const ERROR_CLASS = "mt-1 block text-xs text-accent";
 const HINT_CLASS = "mt-1 block text-xs text-fg-subtle";
+const CHECKBOX_LABEL_CLASS =
+  "flex items-center gap-2 text-xs font-medium text-fg-muted";
 
 export function ModelsGenerationTab({
   value,
@@ -94,8 +118,10 @@ export function ModelsGenerationTab({
           type="number"
           data-testid="admin-settings-maxTokens"
           className={INPUT_CLASS}
-          value={value.maxTokens}
-          onChange={(e) => onChange({ maxTokens: Number(e.target.value) })}
+          value={numberFieldValue(value.maxTokens)}
+          onChange={(e) =>
+            onChange({ maxTokens: parseNumberField(e.target.value) })
+          }
         />
         {errors.maxTokens && (
           <span
@@ -114,8 +140,10 @@ export function ModelsGenerationTab({
           step="0.1"
           data-testid="admin-settings-temperature"
           className={INPUT_CLASS}
-          value={value.temperature}
-          onChange={(e) => onChange({ temperature: Number(e.target.value) })}
+          value={numberFieldValue(value.temperature)}
+          onChange={(e) =>
+            onChange({ temperature: parseNumberField(e.target.value) })
+          }
         />
         {errors.temperature && (
           <span
@@ -134,8 +162,8 @@ export function ModelsGenerationTab({
           step="0.1"
           data-testid="admin-settings-topP"
           className={INPUT_CLASS}
-          value={value.topP}
-          onChange={(e) => onChange({ topP: Number(e.target.value) })}
+          value={numberFieldValue(value.topP)}
+          onChange={(e) => onChange({ topP: parseNumberField(e.target.value) })}
         />
         {errors.topP && (
           <span data-testid="admin-settings-topP-error" className={ERROR_CLASS}>
@@ -166,8 +194,10 @@ export function ModelsGenerationTab({
           type="number"
           data-testid="admin-settings-toolMaxTokens"
           className={INPUT_CLASS}
-          value={value.toolMaxTokens}
-          onChange={(e) => onChange({ toolMaxTokens: Number(e.target.value) })}
+          value={numberFieldValue(value.toolMaxTokens)}
+          onChange={(e) =>
+            onChange({ toolMaxTokens: parseNumberField(e.target.value) })
+          }
         />
         {errors.toolMaxTokens && (
           <span
@@ -177,6 +207,77 @@ export function ModelsGenerationTab({
             {errors.toolMaxTokens}
           </span>
         )}
+      </label>
+
+      {/* 딥리서치(멀티에이전트) — 병렬 조사 폭·반성 횟수. deep-research-handler 가 invoke 시점에
+          org-scoped 로 읽는다. 설명(HINT) 으로 각 설정의 역할을 안내한다. */}
+      <label className={`${LABEL_CLASS} sm:col-span-2`}>
+        딥리서치 하위 질문 수(deepResearchMaxSubQuestions)
+        <input
+          type="number"
+          data-testid="admin-settings-deepResearchMaxSubQuestions"
+          className={INPUT_CLASS}
+          value={numberFieldValue(value.deepResearchMaxSubQuestions)}
+          onChange={(e) =>
+            onChange({
+              deepResearchMaxSubQuestions: parseNumberField(e.target.value),
+            })
+          }
+        />
+        <span className={HINT_CLASS}>
+          딥리서치가 질문을 몇 개의 하위 질문으로 나눠 병렬 조사할지 상한(1~10).
+          하위 질문마다 조사 에이전트 1개가 동시에 돕니다. 값이 클수록 더 폭넓게
+          조사하지만 비용·시간이 늘어납니다. 기본 4.
+        </span>
+        {errors.deepResearchMaxSubQuestions && (
+          <span
+            data-testid="admin-settings-deepResearchMaxSubQuestions-error"
+            className={ERROR_CLASS}
+          >
+            {errors.deepResearchMaxSubQuestions}
+          </span>
+        )}
+      </label>
+
+      <label className={`${LABEL_CLASS} sm:col-span-2`}>
+        딥리서치 반성(재조사) 횟수(deepResearchMaxGapIterations)
+        <input
+          type="number"
+          data-testid="admin-settings-deepResearchMaxGapIterations"
+          className={INPUT_CLASS}
+          value={numberFieldValue(value.deepResearchMaxGapIterations)}
+          onChange={(e) =>
+            onChange({
+              deepResearchMaxGapIterations: parseNumberField(e.target.value),
+            })
+          }
+        />
+        <span className={HINT_CLASS}>
+          1차 종합 후 답변이 충분한지 스스로 점검해, 부족하면 빠진 부분을 추가로
+          조사하고 다시 종합하는 반성(reflection) 루프의 최대 반복 횟수(0~5).
+          0이면 반성 없이 1회만 종합합니다. 값이 클수록 완성도가 오르지만 시간이
+          늘어납니다. 기본 2.
+        </span>
+        {errors.deepResearchMaxGapIterations && (
+          <span
+            data-testid="admin-settings-deepResearchMaxGapIterations-error"
+            className={ERROR_CLASS}
+          >
+            {errors.deepResearchMaxGapIterations}
+          </span>
+        )}
+      </label>
+
+      {/* P22-T1-08 — 이미지 생성(image_generate) org 게이트. 켜면 채팅에서 모델이 이미지를
+          생성해 인라인 표시한다(끄면 도구 자체가 조립되지 않음). webSearchEnabled 와 동일 토글 패턴. */}
+      <label className={`${CHECKBOX_LABEL_CLASS} sm:col-span-2`}>
+        <input
+          type="checkbox"
+          data-testid="admin-settings-imageGenEnabled"
+          checked={value.imageGenEnabled ?? false}
+          onChange={(e) => onChange({ imageGenEnabled: e.target.checked })}
+        />
+        이미지 생성 사용(imageGenEnabled)
       </label>
 
       <label className={`${LABEL_CLASS} sm:col-span-2`}>

@@ -9,8 +9,9 @@
 // 발견된 도구 확인). 실제 등록/삭제는 useMcpServers 의 기존 create/remove 그대로 사용 —
 // discovery 는 서버가 POST 응답에 동기 반환하므로 별도 폴링 없이 create() 완료 후 바로
 // 3단계로 전환한다.
-import React, { useState } from "react";
+import React, { useRef, useState } from "react";
 import { useMcpServers, type McpServerDto } from "../../hooks/useMcpServers";
+import { useFocusTrap } from "../../hooks/useFocusTrap";
 
 function scopeLabel(server: McpServerDto): string {
   if (server.userId) return "개인";
@@ -74,6 +75,22 @@ export function McpServersManager() {
     useState<McpServerDto["transport"]>("streamable_http");
   const [scope, setScope] = useState<"personal" | "project" | "org">("org");
   const [hoveredId, setHoveredId] = useState<string | null>(null);
+  const [removingIds, setRemovingIds] = useState<Set<string>>(new Set());
+  const dialogRef = useRef<HTMLDivElement>(null);
+
+  async function handleRemove(id: string) {
+    if (removingIds.has(id)) return;
+    setRemovingIds((prev) => new Set(prev).add(id));
+    try {
+      await remove(id);
+    } finally {
+      setRemovingIds((prev) => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
+    }
+  }
 
   function openModal() {
     setStep("info");
@@ -96,6 +113,8 @@ export function McpServersManager() {
   }
 
   const registered = servers.find((s) => s.name === name && s.url === url);
+
+  useFocusTrap(dialogRef, { active: showModal, onClose: closeModal });
 
   return (
     <section>
@@ -172,8 +191,9 @@ export function McpServersManager() {
                   · {formatSyncedAt(s.lastDiscoveredAt)}
                   {hoveredId === s.id && s.supportedTools.length > 0 && (
                     <div
+                      role="tooltip"
                       data-testid={`mcp-tools-popover-${s.id}`}
-                      className="absolute left-0 top-full z-[var(--z-modal)] mt-1.5 w-[250px] rounded-[10px] border border-border bg-bg p-2 shadow-lg"
+                      className="absolute left-0 top-full z-10 mt-1.5 w-[250px] rounded-[10px] border border-border bg-bg p-2 shadow-lg"
                     >
                       {s.supportedTools.map((t) => (
                         <div
@@ -216,8 +236,9 @@ export function McpServersManager() {
                 )}
                 <button
                   type="button"
-                  onClick={() => remove(s.id)}
-                  className={`h-7 rounded-md px-2.5 text-xs text-fg-muted ${FOCUS_RING}`}
+                  onClick={() => void handleRemove(s.id)}
+                  disabled={removingIds.has(s.id)}
+                  className={`h-7 rounded-md px-2.5 text-xs text-fg-muted disabled:opacity-50 ${FOCUS_RING}`}
                 >
                   비활성화
                 </button>
@@ -233,6 +254,7 @@ export function McpServersManager() {
           onClick={closeModal}
         >
           <div
+            ref={dialogRef}
             role="dialog"
             aria-label="커넥터 등록"
             aria-modal="true"

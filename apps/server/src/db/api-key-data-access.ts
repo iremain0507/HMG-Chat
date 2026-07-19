@@ -24,6 +24,7 @@ export interface ApiKeyAuth {
   orgId: string;
   userId: string;
   role: "member" | "admin" | "owner";
+  scopes: string[];
 }
 
 function toApiKey(row: Record<string, unknown>): ApiKey {
@@ -92,7 +93,7 @@ export function createPgApiKeyDataAccess(): ApiKeyDataAccess {
     async findActiveByRawKey(rawKey) {
       const keyHash = hashApiKey(rawKey);
       const res = await pgPool.query(
-        `SELECT ak.id, ak.org_id, ak.user_id, u.role
+        `SELECT ak.id, ak.org_id, ak.user_id, ak.scopes, u.role
          FROM api_keys ak
          JOIN users u ON u.id = ak.user_id
          WHERE ak.key_hash = $1 AND ak.revoked_at IS NULL`,
@@ -105,6 +106,7 @@ export function createPgApiKeyDataAccess(): ApiKeyDataAccess {
         orgId: row.org_id as string,
         userId: row.user_id as string,
         role: row.role as "member" | "admin" | "owner",
+        scopes: (row.scopes as string[]) ?? [],
       };
     },
     async touchLastUsed(id) {

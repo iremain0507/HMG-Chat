@@ -119,4 +119,27 @@ describe("Markdown", () => {
     expect(tooltip).toHaveTextContent("p.3");
     expect(tooltip).toHaveTextContent("42 는 만물의 답이다.");
   });
+
+  it("인용 칩에 키보드 포커스를 주면 툴팁이 표시되고, Escape 로 닫힌다(UX-27)", () => {
+    const citations: Citation[] = [
+      {
+        index: 1,
+        source: "project",
+        filename: "manual.pdf",
+        page: 3,
+        snippet: "42 는 만물의 답이다.",
+      },
+    ];
+    render(<Markdown citations={citations}>{"정답은 42입니다[1]."}</Markdown>);
+
+    const chip = screen.getByTestId("citation-chip-1");
+    const tooltip = screen.getByTestId("citation-tooltip-1");
+    expect(tooltip).toHaveAttribute("data-open", "false");
+
+    fireEvent.focus(chip);
+    expect(tooltip).toHaveAttribute("data-open", "true");
+
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(tooltip).toHaveAttribute("data-open", "false");
+  });
 });

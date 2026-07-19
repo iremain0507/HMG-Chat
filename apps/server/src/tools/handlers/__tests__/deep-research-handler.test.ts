@@ -354,8 +354,46 @@ describe("createDeepResearchTool", () => {
     await expect(invokePromise).rejects.toThrow();
   });
 
-  it("plan→병렬 researcher→종합 후 인용이 포함된 markdown 아티팩트를 생성하고, 존재하지 않는 인용 마커[99]는 drop 한다(gapCheck COMPLETE 로 1회 종합에 종료)", async () => {
+  it("종합 LLM 이 멈추거나 실패해도(사용자 취소 아님) 모은 findings 로 폴백해 kind:json 으로 완료한다 — 클라 tool 이 '결과 종합 중' 에 고착되지 않는다", async () => {
     const da = fakeArtifactDa();
+    const tool = createDeepResearchTool({
+      leadProvider: fakeLeadProvider({
+        plannerResponse: "- 질문 A\n- 질문 B",
+        synthesisResponse: () => {
+          throw new Error("synthesis stalled"); // 종합 단계 실패/멈춤 모사(타임아웃 abort 동등)
+        },
+        gapCheckResponse: () => "COMPLETE",
+      }),
+      leadModel: "fake-lead-model",
+      workerProvider: fakeWorkerProvider(),
+      workerModel: "fake-worker-model",
+      workerTools: [fakeWorkerTool()],
+      maxTokens: 512,
+      da,
+    });
+
+    const result = await tool.invoke({
+      toolCallId: "c-fallback",
+      args: { query: "리서치 목표" },
+      ctx: fakeToolContext(), // 사용자 취소 아님 → reject 대신 폴백 완료
+    });
+
+    expect(result.content.kind).toBe("json");
+    if (result.content.kind !== "json")
+      throw new Error("json content 를 기대함");
+    const data = result.content.data as {
+      message: string;
+      report: string;
+      subQuestions: unknown[];
+    };
+    // degraded 메시지 + 하위질문별 출처 유지.
+    expect(data.message).toContain("조사 원문");
+    expect(data.subQuestions.length).toBeGreaterThan(0);
+    // 리포트(본문 렌더)에 종합 대신 findings 원문(### 하위질문 섹션)이 폴백된다(아티팩트 미생성).
+    expect(data.report).toContain("###");
+  });
+
+  it("plan→병렬 researcher→종합 후 인용이 포함된 리포트를 본문에 반환하고, 존재하지 않는 인용 마커[99]는 drop 한다(gapCheck COMPLETE 로 1회 종합에 종료)", async () => {
     const tool = createDeepResearchTool({
       leadProvider: fakeLeadProvider({
         plannerResponse: "- 질문 A\n- 질문 B",
@@ -368,7 +406,6 @@ describe("createDeepResearchTool", () => {
       workerModel: "fake-worker-model",
       workerTools: [fakeWorkerTool()],
       maxTokens: 512,
-      da,
     });
 
     const result = await tool.invoke({
@@ -381,27 +418,27 @@ describe("createDeepResearchTool", () => {
       throw new Error("json content 를 기대함");
     }
     const data = result.content.data as {
-      artifact: {
-        artifactId: string;
-        artifactKind: string;
-        filename: string;
-        sizeBytes: number;
-        downloadUrl: string;
-      };
+      report: string;
+      artifact?: unknown;
       citations: unknown[];
       message: string;
+      subQuestions: { title: string; citations: { index: number }[] }[];
     };
 
-    expect(data.artifact.artifactKind).toBe("markdown");
-    expect(data.artifact.sizeBytes).toBeGreaterThan(0);
+    // 리포트는 본문 렌더용으로 반환하고 아티팩트는 만들지 않는다(정책).
+    expect(data.artifact).toBeUndefined();
+    expect(data.report).toContain("## 종합 리포트");
     // 2개 sub-question 각각 researcher 가 citation 1개씩 반환 → 전역 재번호 2개.
     expect(data.citations).toHaveLength(2);
+    // #3 — 하위질문별 출처(전역 인덱스)를 결과에 포함해 서브에이전트 펼침에서 표시.
+    expect(data.subQuestions).toHaveLength(2);
+    expect(data.subQuestions[0]!.citations.map((c) => c.index)).toEqual([1]);
+    expect(data.subQuestions[1]!.citations.map((c) => c.index)).toEqual([2]);
 
-    const stored = await da.artifacts.byId(data.artifact.artifactId);
-    const storedText = stored?.inlineContent?.toString("utf-8") ?? "";
-    expect(storedText).toContain("[1]");
-    expect(storedText).toContain("[2]");
-    expect(storedText).not.toContain("[99]");
+    // 인용 마커: 존재하는 [1][2]는 유지, 근거 없는 [99]는 drop.
+    expect(data.report).toContain("[1]");
+    expect(data.report).toContain("[2]");
+    expect(data.report).not.toContain("[99]");
   });
 
   it("P15-T2-02: org settings.resolve 의 toolMaxTokens 가 설정되면 sub-turn 이 정적 deps.maxTokens 대신 그 값을 사용한다", async () => {
@@ -454,6 +491,53 @@ describe("createDeepResearchTool", () => {
     for (const mt of capturedMaxTokens) {
       expect(mt).toBe(8000);
     }
+  });
+
+  it("org 설정 deepResearchMaxSubQuestions/MaxGapIterations 로 병렬 조사 폭·반성 횟수를 org-scoped 로 덮는다", async () => {
+    let gapCheckCalls = 0;
+    const tool = createDeepResearchTool({
+      leadProvider: fakeLeadProvider({
+        // planner 가 4개를 제안해도 org 설정(2)로 하위 질문이 2개로 제한돼야 한다.
+        plannerResponse: "- 질문 A\n- 질문 B\n- 질문 C\n- 질문 D",
+        synthesisResponse: () => "리포트 [1]",
+        gapCheckResponse: () => {
+          gapCheckCalls += 1;
+          return "GAP: 더 조사 필요";
+        },
+      }),
+      leadModel: "fake-lead-model",
+      workerProvider: fakeWorkerProvider(),
+      workerModel: "fake-worker-model",
+      workerTools: [fakeWorkerTool()],
+      maxTokens: 512,
+      // 정적 deps 기본은 4/2 지만 org 설정이 2/0 으로 덮는다.
+      settings: {
+        async resolve() {
+          return {
+            toolMaxTokens: 512,
+            deepResearchMaxSubQuestions: 2,
+            deepResearchMaxGapIterations: 0,
+          };
+        },
+      },
+    });
+
+    const result = await tool.invoke({
+      toolCallId: "call-cfg",
+      args: { query: "리서치 목표" },
+      ctx: fakeToolContext(),
+    });
+    if (result.content.kind !== "json")
+      throw new Error("json content 를 기대함");
+    const data = result.content.data as {
+      report: string;
+      subQuestions: unknown[];
+    };
+    // 병렬 조사 폭: planner 4개 제안 → org 설정 2로 2개 제한.
+    expect(data.subQuestions).toHaveLength(2);
+    // 반성 0회: gapCheck 미호출이지만 리포트는 정상 1회 종합된다(빈 리포트 아님).
+    expect(gapCheckCalls).toBe(0);
+    expect(data.report.length).toBeGreaterThan(0);
   });
 
   it("P15-T2-02: org settings 에 toolMaxTokens 가 없으면(미설정) 정적 deps.maxTokens(4096)를 그대로 사용한다(비파괴)", async () => {
@@ -540,8 +624,8 @@ describe("createDeepResearchTool", () => {
     // maxGapIterations=2 → gapCheck 는 최대 1회만 호출되고(마지막 라운드는 gapCheck 생략) 종료.
     expect(gapCheckCalls).toBe(1);
     const data = result.content.data as {
-      artifact: { sizeBytes: number };
+      report: string;
     };
-    expect(data.artifact.sizeBytes).toBeGreaterThan(0);
+    expect(data.report.length).toBeGreaterThan(0);
   });
 });

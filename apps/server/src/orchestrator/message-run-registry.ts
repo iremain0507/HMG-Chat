@@ -1,10 +1,18 @@
 // message-run-registry.ts — 16-API-CONTRACT.md § GET /sessions/:id/messages/:messageId/stream
-// (resume) 단일 출처. run-registry.ts(abort)와 동일하게 프로세스 내 in-memory 상태(LOCAL_ONLY).
+// (resume) 단일 출처.
 // POST /sessions/:id/messages(routes/messages.ts) 가 진행 중인 메시지의 messageId 로
 // startMessageRun/recordMessageRunEvent 를 호출해 누적 content + terminal 여부를 기록하고,
 // GET resume 엔드포인트가 subscribeMessageRun 으로 그 상태를 읽어 message_replace 로 캐치업 후
 // 이어지는 live event 를 broadcast 없이 단일 구독자로만 relay 한다(동시 구독 시 409).
+//
+// P22-T2-03: SubscriberQueue 는 직렬화 불가능한 in-process 객체이므로, 다중 인스턴스에서는
+// (a) RuntimeBus key `wchat:msgrun:{messageId}` 에 {sessionId, contentSoFar, terminalReason, claimed}
+//     스냅샷을 공유해 캐치업·404/410/409 판정을 어느 인스턴스에서든 가능하게 하고
+// (b) channel `wchat:msgrun:ev:{messageId}` 로 live ChatEvent 를 팬아웃해, run 을 소유하지 않은
+//     인스턴스에 붙은 SSE 구독자에게 이어지는 event 를 relay 한다.
+// 소유 인스턴스의 로컬 구독자는 기존 run.subscriber 경로로만 받는다(채널은 원격 전용 → 중복 배달 없음).
 import type { ChatEvent } from "@wchat/interfaces";
+import { getRuntimeBus, type RuntimeBus } from "./runtime-bus.js";
 
 type TerminalReason = "end_turn" | "max_tokens" | "aborted";
 
@@ -47,37 +55,35 @@ class SubscriberQueue implements AsyncIterable<ChatEvent> {
   }
 }
 
+// 진행 중 도구 호출 스냅샷 — 새로고침/세션이동으로 라이브 스트림을 놓친 클라가 재구독 시
+// 서브에이전트/도구 카드를 되살릴 수 있게, tool_use + 최신 tool_progress + tool_result 를
+// toolCallId 별로 보관한다(contentSoFar 는 텍스트 전용이라 도구 카드를 담지 못한다).
+type ToolUseEvent = Extract<ChatEvent, { type: "tool_use" }>;
+type ToolProgressEvent = Extract<ChatEvent, { type: "tool_progress" }>;
+type ToolResultEvent = Extract<ChatEvent, { type: "tool_result" }>;
+interface ToolSnapshot {
+  use: ToolUseEvent;
+  progress?: ToolProgressEvent;
+  result?: ToolResultEvent;
+}
+
+// toolCallId 별 스냅샷을 삽입 순서대로 펼쳐 재생 이벤트 배열로 만든다(use → 최신 progress → result).
+function buildReplayEvents(tools: Map<string, ToolSnapshot>): ChatEvent[] {
+  const out: ChatEvent[] = [];
+  for (const snap of tools.values()) {
+    out.push(snap.use);
+    if (snap.progress) out.push(snap.progress);
+    if (snap.result) out.push(snap.result);
+  }
+  return out;
+}
+
 interface MessageRunState {
   sessionId: string;
   contentSoFar: string;
+  tools: Map<string, ToolSnapshot>;
   terminalReason?: TerminalReason;
   subscriber?: SubscriberQueue;
-}
-
-const runs = new Map<string, MessageRunState>();
-
-// POST 핸들러가 message_start 를 볼 때마다 호출 — 새 messageId 를 non-terminal 상태로 등록.
-export function startMessageRun(messageId: string, sessionId: string): void {
-  runs.set(messageId, { sessionId, contentSoFar: "" });
-}
-
-// POST 핸들러가 진행 중인 turn 의 매 ChatEvent 를 (message_start 로 파악한 현재 messageId 기준)
-// 여기로도 전달 — text_delta 누적, stop(비 tool_use) 이면 terminal 처리 후 구독자 스트림 종료.
-export function recordMessageRunEvent(
-  messageId: string,
-  event: ChatEvent,
-): void {
-  const run = runs.get(messageId);
-  if (!run) return;
-  if (event.type === "text_delta") {
-    run.contentSoFar += event.text;
-  } else if (event.type === "stop" && event.reason !== "tool_use") {
-    run.terminalReason = event.reason;
-  }
-  run.subscriber?.push(event);
-  if (run.terminalReason) {
-    run.subscriber?.close();
-  }
 }
 
 export type ResumeSubscription =
@@ -87,37 +93,321 @@ export type ResumeSubscription =
   | {
       kind: "ok";
       contentSoFar: string;
+      // 구독 시점까지 누적된 도구 카드 상태(tool_use/최신 progress/result)를 원본 ChatEvent
+      // 형태로 재생해, 클라가 기존 tool_use/tool_progress/tool_result 핸들러로 카드를 복원한다.
+      replayEvents: ChatEvent[];
       events: AsyncIterable<ChatEvent>;
       unsubscribe: () => void;
     };
 
-// GET resume 엔드포인트 전용 — 404(부재/타 세션 소유)·410(이미 terminal)·409(이미 다른 구독자)
-// 순으로 판정 후, 통과하면 현재까지의 contentSoFar 스냅샷 + 이후 live event 를 넘겨줄
-// AsyncIterable 을 반환한다(broadcast 미지원 — 동시 구독은 409로 차단).
+export interface MessageRunRegistry {
+  startMessageRun(messageId: string, sessionId: string): Promise<void>;
+  recordMessageRunEvent(messageId: string, event: ChatEvent): Promise<void>;
+  subscribeMessageRun(
+    messageId: string,
+    sessionId: string,
+  ): Promise<ResumeSubscription>;
+  // 세션의 진행 중(비종결) messageId — 새로고침 후 loadHistory 가 resume 대상을 발견하는 데 쓴다.
+  getActiveMessageId(sessionId: string): Promise<string | undefined>;
+  // 턴이 끝났을 때(POST finally) 그 턴이 만든 messageId 들만 terminal 로 닫는다 — resume 중이던
+  // 클라의 열린 스트림을 종료시켜 최종답변 복구 경로로 넘긴다. sessionId 맵은 그 messageId 를
+  // 아직 가리킬 때만 지운다(뒤이어 시작된 다른 턴의 run 을 오지우지 않도록 messageId 로 스코프).
+  finishMessageRuns(messageIds: string[], sessionId: string): Promise<void>;
+  close(): Promise<void>;
+}
+
+// 공유 스냅샷 — 어느 인스턴스에서든 캐치업/판정이 가능하도록 직렬화 가능한 필드만 담는다.
+interface SharedRunSnapshot {
+  sessionId: string;
+  contentSoFar: string;
+  // 원격(다른 인스턴스 소유) run 을 구독할 때도 도구 카드를 재생할 수 있게 재생 이벤트를 미러링.
+  replay?: ChatEvent[];
+  terminalReason?: TerminalReason;
+  claimed?: boolean;
+}
+
+function sessionKey(sessionId: string): string {
+  return `wchat:msgrun:session:${sessionId}`;
+}
+
+// run 이 죽은 인스턴스에 묶여 좀비 key 로 남지 않도록 TTL 을 건다.
+const MESSAGE_RUN_TTL_SECONDS = 3600;
+
+function sharedKey(messageId: string): string {
+  return `wchat:msgrun:${messageId}`;
+}
+
+function eventChannel(messageId: string): string {
+  return `wchat:msgrun:ev:${messageId}`;
+}
+
+function isTerminalStop(event: ChatEvent): event is ChatEvent & {
+  type: "stop";
+  reason: TerminalReason;
+} {
+  return event.type === "stop" && event.reason !== "tool_use";
+}
+
+export function createMessageRunRegistry(bus: RuntimeBus): MessageRunRegistry {
+  const runs = new Map<string, MessageRunState>();
+  // sessionId → 이 인스턴스가 소유한 가장 최근 leg 의 messageId(resume 발견용).
+  const sessionToMessage = new Map<string, string>();
+  // 원격 구독(다른 인스턴스가 소유한 run) 의 채널 해제 함수들 — close() 에서 일괄 정리.
+  const remoteUnsubscribes = new Set<() => Promise<void>>();
+
+  async function readShared(
+    messageId: string,
+  ): Promise<SharedRunSnapshot | null> {
+    const raw = await bus.get(sharedKey(messageId));
+    if (raw === null) return null;
+    try {
+      return JSON.parse(raw) as SharedRunSnapshot;
+    } catch {
+      return null;
+    }
+  }
+
+  async function writeShared(
+    messageId: string,
+    snapshot: SharedRunSnapshot,
+  ): Promise<void> {
+    await bus.set(
+      sharedKey(messageId),
+      JSON.stringify(snapshot),
+      MESSAGE_RUN_TTL_SECONDS,
+    );
+  }
+
+  async function patchShared(
+    messageId: string,
+    patch: Partial<SharedRunSnapshot>,
+  ): Promise<void> {
+    const current = await readShared(messageId);
+    if (!current) return;
+    await writeShared(messageId, { ...current, ...patch });
+  }
+
+  return {
+    async startMessageRun(messageId, sessionId) {
+      runs.set(messageId, { sessionId, contentSoFar: "", tools: new Map() });
+      sessionToMessage.set(sessionId, messageId);
+      await writeShared(messageId, { sessionId, contentSoFar: "" });
+      await bus.set(sessionKey(sessionId), messageId, MESSAGE_RUN_TTL_SECONDS);
+    },
+
+    async recordMessageRunEvent(messageId, event) {
+      const run = runs.get(messageId);
+      if (!run) return;
+      let toolsChanged = false;
+      if (event.type === "text_delta") {
+        run.contentSoFar += event.text;
+      } else if (event.type === "tool_use") {
+        run.tools.set(event.toolCallId, { use: event });
+        toolsChanged = true;
+      } else if (event.type === "tool_progress") {
+        const snap = run.tools.get(event.toolCallId);
+        if (snap) {
+          snap.progress = event;
+          toolsChanged = true;
+        }
+      } else if (event.type === "tool_result") {
+        const snap = run.tools.get(event.toolCallId);
+        if (snap) {
+          snap.result = event;
+          toolsChanged = true;
+        }
+      } else if (isTerminalStop(event)) {
+        run.terminalReason = event.reason;
+      }
+      run.subscriber?.push(event);
+      if (run.terminalReason) {
+        run.subscriber?.close();
+      }
+      // 공유 스냅샷 미러링 — 다른 인스턴스가 캐치업/410 판정을 할 수 있게 한다.
+      // claimed 는 구독자 소유 플래그이므로 여기서 덮어쓰지 않는다.
+      await patchShared(messageId, {
+        contentSoFar: run.contentSoFar,
+        ...(toolsChanged ? { replay: buildReplayEvents(run.tools) } : {}),
+        ...(run.terminalReason ? { terminalReason: run.terminalReason } : {}),
+      });
+      // 원격 구독자에게 live relay.
+      await bus.publish(eventChannel(messageId), JSON.stringify(event));
+    },
+
+    async subscribeMessageRun(messageId, sessionId) {
+      const run = runs.get(messageId);
+      if (run) {
+        // --- 로컬(소유) 경로 — 기존 semantics 그대로.
+        if (run.sessionId !== sessionId) {
+          return { kind: "not_found" };
+        }
+        if (run.terminalReason) {
+          return { kind: "gone" };
+        }
+        if (run.subscriber) {
+          return { kind: "conflict" };
+        }
+        const queue = new SubscriberQueue();
+        run.subscriber = queue;
+        return {
+          kind: "ok",
+          contentSoFar: run.contentSoFar,
+          replayEvents: buildReplayEvents(run.tools),
+          events: queue,
+          unsubscribe: () => {
+            if (run.subscriber === queue) {
+              delete run.subscriber;
+            }
+          },
+        };
+      }
+
+      // --- 원격 경로 — run 을 다른 인스턴스가 소유 중일 수 있다.
+      const snapshot = await readShared(messageId);
+      if (!snapshot || snapshot.sessionId !== sessionId) {
+        return { kind: "not_found" };
+      }
+      if (snapshot.terminalReason) {
+        return { kind: "gone" };
+      }
+      if (snapshot.claimed) {
+        return { kind: "conflict" };
+      }
+
+      // claim — 다른 인스턴스의 동시 구독을 409 로 막는다.
+      await writeShared(messageId, { ...snapshot, claimed: true });
+
+      const queue = new SubscriberQueue();
+      const off = await bus.subscribe(eventChannel(messageId), (payload) => {
+        let event: ChatEvent;
+        try {
+          event = JSON.parse(payload) as ChatEvent;
+        } catch {
+          return;
+        }
+        queue.push(event);
+        if (isTerminalStop(event)) {
+          queue.close();
+        }
+      });
+      remoteUnsubscribes.add(off);
+
+      let released = false;
+      const release = (): void => {
+        if (released) return;
+        released = true;
+        remoteUnsubscribes.delete(off);
+        void off().then(() => patchShared(messageId, { claimed: false }));
+      };
+
+      return {
+        kind: "ok",
+        contentSoFar: snapshot.contentSoFar,
+        replayEvents: snapshot.replay ?? [],
+        events: queue,
+        unsubscribe: release,
+      };
+    },
+
+    async getActiveMessageId(sessionId) {
+      const local = sessionToMessage.get(sessionId);
+      if (local) return local;
+      const shared = await bus.get(sessionKey(sessionId));
+      return shared ?? undefined;
+    },
+
+    async finishMessageRuns(messageIds, sessionId) {
+      // 이 턴이 만든 messageId 들만 terminal 로 닫는다(뒤이어 시작된 다른 턴의 run 은 건드리지 않음).
+      for (const messageId of messageIds) {
+        const run = runs.get(messageId);
+        if (run && !run.terminalReason) run.terminalReason = "end_turn";
+        // 열린 resume 구독자에게 합성 terminal stop 을 흘린 뒤 닫는다 — leg 분할(deep_research
+        // 도구 leg vs 최종답변 leg)로 최종답변이 다른 leg 에 있어도, 이 leg 에 붙은 클라가 스핀을
+        // 멈추고 recoverFinalMessage(영속된 최종답변 복구)로 넘어가게 한다.
+        run?.subscriber?.push({
+          type: "stop",
+          reason: "end_turn",
+          usage: { inputTokens: 0, outputTokens: 0 },
+        });
+        run?.subscriber?.close();
+        // 원격(다른 인스턴스) 구독자에게도 동일하게 전달.
+        await bus.publish(
+          eventChannel(messageId),
+          JSON.stringify({
+            type: "stop",
+            reason: "end_turn",
+            usage: { inputTokens: 0, outputTokens: 0 },
+          }),
+        );
+        await patchShared(messageId, { terminalReason: "end_turn" });
+      }
+      // 세션 맵/공유 key 는 아직 이 턴의 messageId 를 가리킬 때만 지운다(신규 턴 run 보존).
+      if (messageIds.includes(sessionToMessage.get(sessionId) ?? "")) {
+        sessionToMessage.delete(sessionId);
+      }
+      const sharedActive = await bus.get(sessionKey(sessionId));
+      if (sharedActive !== null && messageIds.includes(sharedActive)) {
+        await bus.del(sessionKey(sessionId));
+      }
+    },
+
+    async close() {
+      for (const off of [...remoteUnsubscribes]) {
+        await off();
+      }
+      remoteUnsubscribes.clear();
+      runs.clear();
+      sessionToMessage.clear();
+    },
+  };
+}
+
+// ---------------------------------------------------------------------------
+// 프로세스 기본 인스턴스 — 현재 활성 RuntimeBus 를 따라간다(app.ts 가 부팅 시 선택).
+// ---------------------------------------------------------------------------
+
+let cachedBus: RuntimeBus | undefined;
+let cachedRegistry: MessageRunRegistry | undefined;
+
+function defaultRegistry(): MessageRunRegistry {
+  const bus = getRuntimeBus();
+  if (!cachedRegistry || cachedBus !== bus) {
+    cachedBus = bus;
+    cachedRegistry = createMessageRunRegistry(bus);
+  }
+  return cachedRegistry;
+}
+
+export function startMessageRun(
+  messageId: string,
+  sessionId: string,
+): Promise<void> {
+  return defaultRegistry().startMessageRun(messageId, sessionId);
+}
+
+export function recordMessageRunEvent(
+  messageId: string,
+  event: ChatEvent,
+): Promise<void> {
+  return defaultRegistry().recordMessageRunEvent(messageId, event);
+}
+
 export function subscribeMessageRun(
   messageId: string,
   sessionId: string,
-): ResumeSubscription {
-  const run = runs.get(messageId);
-  if (!run || run.sessionId !== sessionId) {
-    return { kind: "not_found" };
-  }
-  if (run.terminalReason) {
-    return { kind: "gone" };
-  }
-  if (run.subscriber) {
-    return { kind: "conflict" };
-  }
-  const queue = new SubscriberQueue();
-  run.subscriber = queue;
-  return {
-    kind: "ok",
-    contentSoFar: run.contentSoFar,
-    events: queue,
-    unsubscribe: () => {
-      if (run.subscriber === queue) {
-        delete run.subscriber;
-      }
-    },
-  };
+): Promise<ResumeSubscription> {
+  return defaultRegistry().subscribeMessageRun(messageId, sessionId);
+}
+
+export function getActiveMessageId(
+  sessionId: string,
+): Promise<string | undefined> {
+  return defaultRegistry().getActiveMessageId(sessionId);
+}
+
+export function finishMessageRuns(
+  messageIds: string[],
+  sessionId: string,
+): Promise<void> {
+  return defaultRegistry().finishMessageRuns(messageIds, sessionId);
 }

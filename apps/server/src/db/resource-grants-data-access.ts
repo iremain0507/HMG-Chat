@@ -14,7 +14,21 @@ export interface ResourceGrant {
   access: AccessLevel;
 }
 
+export interface ResourceGrantRow extends ResourceGrant {
+  resourceId: string;
+}
+
+/** subject(user/group)이 보유한 grant 한 건 — 그룹 카드의 '이 그룹의 접근 권한' 목록용
+ *  (P22-T1-07). grantsForResource 가 리소스 관점({subject...})인 것과 대칭으로 리소스 관점이 아닌
+ *  subject 관점({resourceType, resourceId, access})이다. */
+export interface SubjectGrantRow {
+  resourceType: ResourceType;
+  resourceId: string;
+  access: AccessLevel;
+}
+
 export interface ResourceGrantsDataAccess {
+  /** subjectId 가 org 에 속하지 않으면 grant 하지 않고 false 를 반환한다(cross-org 거부). */
   grant(
     orgId: string,
     resourceType: ResourceType,
@@ -22,13 +36,35 @@ export interface ResourceGrantsDataAccess {
     subjectType: SubjectType,
     subjectId: string,
     access: AccessLevel,
-  ): Promise<void>;
+  ): Promise<boolean>;
   grantsForResource(
     orgId: string,
     resourceType: ResourceType,
     resourceId: string,
   ): Promise<ResourceGrant[]>;
+  /** 목록 라우트(documents.ts/prompts.ts/mcp-servers.ts)의 N+1 방지 — resourceIds 전체를
+   *  단일 쿼리로 조회한다(P20-T1-11). */
+  grantsForResources(
+    orgId: string,
+    resourceType: ResourceType,
+    resourceIds: string[],
+  ): Promise<ResourceGrantRow[]>;
+  /** 특정 subject(user/group)가 org 안에서 보유한 모든 grant 를 나열한다(그룹 카드의 grant
+   *  목록, P22-T1-07). 명시적 WHERE org_id 로 org 격리(sibling 메서드와 동일한 이중 방어). */
+  grantsForSubject(
+    orgId: string,
+    subjectType: SubjectType,
+    subjectId: string,
+  ): Promise<SubjectGrantRow[]>;
   groupIdsForUser(orgId: string, userId: string): Promise<string[]>;
+  revoke(
+    orgId: string,
+    resourceType: ResourceType,
+    resourceId: string,
+    subjectType: SubjectType,
+    subjectId: string,
+    access: AccessLevel,
+  ): Promise<boolean>;
 }
 
 export function createPgResourceGrantsDataAccess(): ResourceGrantsDataAccess {
@@ -41,12 +77,24 @@ export function createPgResourceGrantsDataAccess(): ResourceGrantsDataAccess {
       subjectId,
       access,
     ) {
+      const subjectExists =
+        subjectType === "user"
+          ? await pgPool.query(
+              `SELECT 1 FROM users WHERE id = $1 AND org_id = $2`,
+              [subjectId, orgId],
+            )
+          : await pgPool.query(
+              `SELECT 1 FROM groups WHERE id = $1 AND org_id = $2`,
+              [subjectId, orgId],
+            );
+      if ((subjectExists.rowCount ?? 0) === 0) return false;
       await pgPool.query(
         `INSERT INTO resource_grants (org_id, resource_type, resource_id, subject_type, subject_id, access)
          VALUES ($1, $2, $3, $4, $5, $6)
          ON CONFLICT (org_id, resource_type, resource_id, subject_type, subject_id, access) DO NOTHING`,
         [orgId, resourceType, resourceId, subjectType, subjectId, access],
       );
+      return true;
     },
     async grantsForResource(orgId, resourceType, resourceId) {
       const res = await pgPool.query(
@@ -61,12 +109,56 @@ export function createPgResourceGrantsDataAccess(): ResourceGrantsDataAccess {
         access: row.access as AccessLevel,
       }));
     },
+    async grantsForResources(orgId, resourceType, resourceIds) {
+      if (resourceIds.length === 0) return [];
+      const res = await pgPool.query(
+        `SELECT resource_id, subject_type, subject_id, access
+         FROM resource_grants
+         WHERE org_id = $1 AND resource_type = $2 AND resource_id = ANY($3)`,
+        [orgId, resourceType, resourceIds],
+      );
+      return res.rows.map((row) => ({
+        resourceId: row.resource_id as string,
+        subjectType: row.subject_type as SubjectType,
+        subjectId: row.subject_id as string,
+        access: row.access as AccessLevel,
+      }));
+    },
+    async grantsForSubject(orgId, subjectType, subjectId) {
+      const res = await pgPool.query(
+        `SELECT resource_type, resource_id, access
+         FROM resource_grants
+         WHERE org_id = $1 AND subject_type = $2 AND subject_id = $3`,
+        [orgId, subjectType, subjectId],
+      );
+      return res.rows.map((row) => ({
+        resourceType: row.resource_type as ResourceType,
+        resourceId: row.resource_id as string,
+        access: row.access as AccessLevel,
+      }));
+    },
     async groupIdsForUser(orgId, userId) {
       const res = await pgPool.query(
         `SELECT group_id FROM group_members WHERE org_id = $1 AND user_id = $2`,
         [orgId, userId],
       );
       return res.rows.map((row) => row.group_id as string);
+    },
+    async revoke(
+      orgId,
+      resourceType,
+      resourceId,
+      subjectType,
+      subjectId,
+      access,
+    ) {
+      const res = await pgPool.query(
+        `DELETE FROM resource_grants
+         WHERE org_id = $1 AND resource_type = $2 AND resource_id = $3
+           AND subject_type = $4 AND subject_id = $5 AND access = $6`,
+        [orgId, resourceType, resourceId, subjectType, subjectId, access],
+      );
+      return (res.rowCount ?? 0) > 0;
     },
   };
 }

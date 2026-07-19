@@ -17,10 +17,18 @@ export interface ArtifactShareActor {
 
 export class ArtifactShareServiceError extends Error {
   code: "NOT_FOUND" | "GONE" | "INVALID_INPUT";
+  // GONE 세분화: 만료(expired) 와 취소(revoked) 를 공개 응답에서 구분(P22-T4-02).
+  reason?: "expired" | "revoked";
 
-  constructor(code: ArtifactShareServiceError["code"], message: string) {
+  constructor(
+    code: ArtifactShareServiceError["code"],
+    message: string,
+    reason?: ArtifactShareServiceError["reason"],
+  ) {
     super(message);
     this.code = code;
+    // exactOptionalPropertyTypes: 미지정(undefined) 이면 속성 자체를 부여하지 않는다.
+    if (reason !== undefined) this.reason = reason;
   }
 }
 
@@ -79,9 +87,11 @@ export function createArtifactShareService(da: ArtifactShareDataAccess) {
       );
     }
     if (found.revokedAt || found.expiresAt.getTime() <= Date.now()) {
+      // revoke 가 만료보다 우선(둘 다 성립 시 revoked 로 안내).
       throw new ArtifactShareServiceError(
         "GONE",
         "share 가 만료되었거나 revoke 되었습니다.",
+        found.revokedAt ? "revoked" : "expired",
       );
     }
     return found;

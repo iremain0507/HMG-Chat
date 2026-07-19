@@ -120,6 +120,85 @@ describe("createUsageRoutes", () => {
     });
   });
 
+  it("GET /me — model 별 비용 breakdown 을 costMicros 내림차순으로 반환한다", async () => {
+    const da = makeDa([
+      {
+        userId,
+        orgId,
+        sessionId: null,
+        provider: "anthropic",
+        model: "claude-haiku-4-6",
+        tokensIn: 10,
+        tokensOut: 5,
+        costMicros: 500,
+        createdAt: new Date("2026-07-10T01:00:00.000Z"),
+      },
+      {
+        userId,
+        orgId,
+        sessionId: null,
+        provider: "anthropic",
+        model: "claude-opus-4-6",
+        tokensIn: 100,
+        tokensOut: 50,
+        costMicros: 4000,
+        createdAt: new Date("2026-07-11T01:00:00.000Z"),
+      },
+      {
+        userId,
+        orgId,
+        sessionId: null,
+        provider: "anthropic",
+        model: "claude-opus-4-6",
+        tokensIn: 20,
+        tokensOut: 10,
+        costMicros: 1000,
+        createdAt: new Date("2026-07-12T01:00:00.000Z"),
+      },
+    ]);
+    const app = appWith(da, { userId, orgId });
+
+    const res = await app.request("/me?from=2026-07-01&to=2026-07-31");
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      data: Array<{ costMicros: number }>;
+      byModel: Array<{
+        model: string;
+        tokensIn: number;
+        tokensOut: number;
+        costMicros: number;
+      }>;
+    };
+
+    expect(body.byModel).toEqual([
+      {
+        model: "claude-opus-4-6",
+        tokensIn: 120,
+        tokensOut: 60,
+        costMicros: 5000,
+      },
+      {
+        model: "claude-haiku-4-6",
+        tokensIn: 10,
+        tokensOut: 5,
+        costMicros: 500,
+      },
+    ]);
+
+    // 수용 기준: 모델별 비용 합 === 기간 총합.
+    const modelTotal = body.byModel.reduce((s, m) => s + m.costMicros, 0);
+    const dailyTotal = body.data.reduce((s, d) => s + d.costMicros, 0);
+    expect(modelTotal).toBe(dailyTotal);
+  });
+
+  it("GET /me — usage 가 없으면 byModel 은 빈 배열이다", async () => {
+    const app = appWith(makeDa([]), { userId, orgId });
+    const res = await app.request("/me?from=2026-07-01&to=2026-07-31");
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { byModel: unknown[] };
+    expect(body.byModel).toEqual([]);
+  });
+
   it("GET / — member 는 403", async () => {
     const da = makeDa([]);
     const app = appWith(da, { userId, orgId, role: "member" });

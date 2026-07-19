@@ -4,20 +4,47 @@
 //   폴백한다(app.ts 의 ANTHROPIC fail-soft 와 동일 원칙 — LOCAL_ONLY 에서도 왕복 동작).
 //   20-MULTI-AGENT-TOOL.md. (이전엔 app.ts 가 artifact_create 하나만 배선해 모델이 웹검색/
 //   리서치 도구를 아예 못 봤다 — 이 헬퍼가 그 last-mile 배선 갭을 닫는다.)
-import type { AgentTool, LLMProvider } from "@wchat/interfaces";
+import type {
+  AgentTool,
+  EmbeddingProvider,
+  LLMProvider,
+} from "@wchat/interfaces";
 import type { ArtifactDataAccess } from "../db/artifact-service.js";
 import type { ObjectStore } from "../lib/object-store.js";
 import type { WebSearchPort } from "./web-search-port.js";
+import type { ImageGenPort } from "./image-gen-port.js";
 import {
   createWebSearchTool,
   type WebSearchSettingsResolverPort,
 } from "./handlers/web-search-handler.js";
+import {
+  createImageGenerateTool,
+  type ImageGenSettingsResolverPort,
+} from "./handlers/image-generate-handler.js";
 import { createArtifactCreateTool } from "./handlers/artifact-create-handler.js";
+import { createWebFetchTool } from "./handlers/web-fetch-handler.js";
+import { createS3ArtifactStore } from "../lib/artifact-store.s3.js";
 import { createCodeInterpreterTool } from "./handlers/code-interpreter-handler.js";
 import {
   createDeepResearchTool,
   type ToolSettingsResolverPort,
 } from "./handlers/deep-research-handler.js";
+import {
+  createKnowledgeSearchTool,
+  type KnowledgeRetrievalPort,
+  type KnowledgeSearchSettingsPort,
+} from "./handlers/knowledge-search-handler.js";
+import {
+  createSearchChatsTool,
+  createViewChatTool,
+  type SessionsSearchPort,
+  type ViewChatMessagesPort,
+} from "./handlers/search-chats-handler.js";
+import {
+  createAddMemoryTool,
+  createSearchMemoriesTool,
+  type MemoryToolsPort,
+} from "./handlers/memory-tool-handler.js";
 import { createTavilyWebSearchProvider } from "./web-search-provider-tavily.js";
 import { createDevStubWebSearchProvider } from "./web-search-provider-dev-stub.js";
 import { createE2BSandboxTransport } from "./sandbox/sandbox-transport-e2b.js";
@@ -36,7 +63,28 @@ export interface AssembleBuiltinToolsDeps {
   // 반영(정적 maxTokens 를 조용히 쓰지 않도록, L1). 미주입 시 비파괴(정적 maxTokens 유지).
   // P19-T1-12 — 동일 settings 객체(SettingsService.resolve 는 전체 ResolvedOrgSettings 를
   // 반환)를 web_search 의 provider 동적 선택에도 재사용(구조적으로 두 Pick 모두 만족).
-  settings?: ToolSettingsResolverPort & WebSearchSettingsResolverPort;
+  // P20-T1-02 — knowledge_search 의 ragTopK/ragRrfK/ragRelevanceThreshold invoke-time resolve 에도 재사용.
+  settings?: ToolSettingsResolverPort &
+    WebSearchSettingsResolverPort &
+    KnowledgeSearchSettingsPort &
+    ImageGenSettingsResolverPort;
+  // P22-T1-08 — image_generate: 전역 feature 게이트(imageGenEnabled)와 실 provider(imageGenPort)가
+  // 둘 다 있어야 조립(knowledge_search optional 게이트와 동일 원칙 — 주입 유무로 도구 목록이 갈린다).
+  // 미주입/false 면 모델이 도구 자체를 보지 못한다. org 별 on/off 는 settings.resolve 로 invoke 시점 재확인.
+  imageGenEnabled?: boolean;
+  imageGenPort?: ImageGenPort;
+  // P20-T1-02 — 둘 다 주입돼야 knowledge_search 를 조립(L1 last-mile: 주입 유무로 도구
+  // 목록이 갈리는 조립 테스트로 진입점 도달을 단언). 미주입 시 이전처럼 도구 자체가 생략된다.
+  embeddingProvider?: EmbeddingProvider;
+  retrieval?: KnowledgeRetrievalPort;
+  // P20-T2-01 — search_chats/view_chat: 항상 조립(app.ts 는 이미 sessionDa/messageDa 를
+  // 다른 라우트에도 주입하는 싱글톤 인스턴스를 갖고 있어 knowledge_search 와 달리 optional
+  // 게이트가 불필요 — 구조적 타이핑으로 SessionsDataAccess/MessageRepo 그대로 만족).
+  sessions: SessionsSearchPort;
+  sessionMessages: ViewChatMessagesPort;
+  // P20-T1-10 — add_memory/search_memories: 항상 조립(search_chats 와 동일하게 optional 게이트
+  // 없음 — app.ts 가 이미 memories 라우트/런타임 회상(P20-T1-09)과 공유하는 싱글톤을 그대로 재주입).
+  memories: MemoryToolsPort;
 }
 
 // P19-T1-12 — org_settings.webSearchProvider 로 invoke 시점에 실 provider 를 구성.
@@ -80,23 +128,73 @@ export function assembleBuiltinTools(
       })
     : createDevStubSandboxTransport({ objectStore: deps.objectStore });
 
+  // P20-T1-02 — retrieval 포트 주입 시에만 조립(app.ts 에서 pg 구현체를 주입하지 않으면
+  // 이전처럼 모델이 지식베이스를 아예 못 보게 생략 — L1 last-mile).
+  const knowledgeSearchTool =
+    deps.retrieval && deps.embeddingProvider
+      ? createKnowledgeSearchTool({
+          embeddingProvider: deps.embeddingProvider,
+          retrieval: deps.retrieval,
+          ...(deps.settings ? { settings: deps.settings } : {}),
+        })
+      : undefined;
+
+  // P22-T1-09 — web_fetch: 외부 키 불필요(전역 fetch + SSRF 검증)라 web_search 처럼 무조건 조립.
+  // nodeEnv 를 넘겨 dev/test 는 http 도 허용(prod 는 https-only, url-validator 기본값).
+  const webFetchTool = createWebFetchTool({
+    ...(process.env.NODE_ENV ? { nodeEnv: process.env.NODE_ENV } : {}),
+  });
+
+  const searchChatsTool = createSearchChatsTool({ sessions: deps.sessions });
+  const viewChatTool = createViewChatTool({
+    sessions: deps.sessions,
+    messages: deps.sessionMessages,
+  });
+  const addMemoryTool = createAddMemoryTool({ memories: deps.memories });
+  const searchMemoriesTool = createSearchMemoriesTool({
+    memories: deps.memories,
+  });
+
+  // P22-T1-08 — 전역 feature 게이트(imageGenEnabled) + provider(imageGenPort) 둘 다 있을 때만 조립.
+  const imageGenerateTool =
+    deps.imageGenEnabled && deps.imageGenPort
+      ? createImageGenerateTool({
+          port: deps.imageGenPort,
+          da: deps.artifactDa,
+          ...(deps.settings ? { settings: deps.settings } : {}),
+        })
+      : undefined;
+
   return [
-    createArtifactCreateTool({ da: deps.artifactDa }),
+    createArtifactCreateTool({
+      da: deps.artifactDa,
+      // 큰 아티팩트(>=256KB)는 S3(로컬은 objectStore 위임)로 라우팅(P22-T4-01).
+      s3Store: createS3ArtifactStore(deps.objectStore),
+    }),
     webSearchTool,
+    webFetchTool,
     createCodeInterpreterTool({
       transport: sandboxTransport,
       da: deps.artifactDa,
     }),
+    searchChatsTool,
+    viewChatTool,
+    addMemoryTool,
+    searchMemoriesTool,
     createDeepResearchTool({
       leadProvider: deps.provider,
       leadModel: deps.model,
       workerProvider: deps.provider,
       workerModel: deps.model,
-      // researcher 스코프 = read-only web_search 만(20-MULTI-AGENT-TOOL.md §20.4-3).
-      workerTools: [webSearchTool],
+      // researcher 스코프 = read-only web_search/web_fetch/knowledge_search 만(20-MULTI-AGENT-TOOL.md §20.4-3).
+      workerTools: knowledgeSearchTool
+        ? [webSearchTool, webFetchTool, knowledgeSearchTool]
+        : [webSearchTool, webFetchTool],
       maxTokens: deps.maxTokens,
       da: deps.artifactDa,
       ...(deps.settings ? { settings: deps.settings } : {}),
     }),
+    ...(knowledgeSearchTool ? [knowledgeSearchTool] : []),
+    ...(imageGenerateTool ? [imageGenerateTool] : []),
   ];
 }

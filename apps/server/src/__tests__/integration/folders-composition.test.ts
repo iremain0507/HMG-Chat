@@ -229,6 +229,46 @@ describe("routes/folders.ts + sessions.ts folderId 할당(app.ts 실 조립) —
     expect(unassignJson.data.folderId).toBeNull();
   });
 
+  it("POST 로 systemPrompt 를 함께 생성하고, PATCH 로 이름변경 없이 systemPrompt 만 갱신할 수 있다(P20-T1-03)", async () => {
+    const createRes = await app.request("/api/v1/folders", {
+      method: "POST",
+      headers: {
+        Cookie: cookieFor(userA, orgA),
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        name: "프롬프트폴더",
+        systemPrompt: "너는 친절한 비서다",
+      }),
+    });
+    expect(createRes.status).toBe(201);
+    const created = (await createRes.json()) as {
+      data: { id: string; systemPrompt: string | null };
+    };
+    expect(created.data.systemPrompt).toBe("너는 친절한 비서다");
+
+    const patchRes = await app.request(`/api/v1/folders/${created.data.id}`, {
+      method: "PATCH",
+      headers: {
+        Cookie: cookieFor(userA, orgA),
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({ systemPrompt: "너는 엄격한 코드리뷰어다" }),
+    });
+    expect(patchRes.status).toBe(200);
+    const patched = (await patchRes.json()) as {
+      data: { name: string; systemPrompt: string | null };
+    };
+    expect(patched.data.name).toBe("프롬프트폴더");
+    expect(patched.data.systemPrompt).toBe("너는 엄격한 코드리뷰어다");
+
+    const row = await pgPool.query(
+      "SELECT system_prompt FROM session_folders WHERE id = $1",
+      [created.data.id],
+    );
+    expect(row.rows[0].system_prompt).toBe("너는 엄격한 코드리뷰어다");
+  });
+
   it("cross-org — B 는 자기 세션에 A 의 폴더를 할당할 수 없다(400)", async () => {
     const folderRes = await app.request("/api/v1/folders", {
       method: "POST",
@@ -258,5 +298,143 @@ describe("routes/folders.ts + sessions.ts folderId 할당(app.ts 실 조립) —
       [sessionId],
     );
     expect(row.rows[0].folder_id).toBeNull();
+  });
+
+  it("POST 로 parentFolderId 를 지정해 하위 폴더를 생성하면 GET 목록에 parentFolderId 가 영속된다(P20-T1-06)", async () => {
+    const parentRes = await app.request("/api/v1/folders", {
+      method: "POST",
+      headers: {
+        Cookie: cookieFor(userA, orgA),
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({ name: "부모폴더" }),
+    });
+    const { data: parent } = (await parentRes.json()) as {
+      data: { id: string };
+    };
+
+    const childRes = await app.request("/api/v1/folders", {
+      method: "POST",
+      headers: {
+        Cookie: cookieFor(userA, orgA),
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({ name: "자식폴더", parentFolderId: parent.id }),
+    });
+    expect(childRes.status).toBe(201);
+    const childJson = (await childRes.json()) as {
+      data: { id: string; parentFolderId: string | null };
+    };
+    expect(childJson.data.parentFolderId).toBe(parent.id);
+
+    const listRes = await app.request("/api/v1/folders", {
+      headers: { Cookie: cookieFor(userA, orgA) },
+    });
+    const listJson = (await listRes.json()) as {
+      data: Array<{ id: string; parentFolderId: string | null }>;
+    };
+    const listedChild = listJson.data.find((f) => f.id === childJson.data.id);
+    expect(listedChild?.parentFolderId).toBe(parent.id);
+
+    const row = await pgPool.query(
+      "SELECT parent_folder_id FROM session_folders WHERE id = $1",
+      [childJson.data.id],
+    );
+    expect(row.rows[0].parent_folder_id).toBe(parent.id);
+  });
+
+  it("PATCH 로 자기 자신을 부모로 지정하면 400, 순환이 생기는 재지정도 400 이다(P20-T1-06)", async () => {
+    const selfRes = await app.request("/api/v1/folders", {
+      method: "POST",
+      headers: {
+        Cookie: cookieFor(userA, orgA),
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({ name: "자기참조테스트" }),
+    });
+    const { data: self } = (await selfRes.json()) as { data: { id: string } };
+
+    const selfPatch = await app.request(`/api/v1/folders/${self.id}`, {
+      method: "PATCH",
+      headers: {
+        Cookie: cookieFor(userA, orgA),
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({ parentFolderId: self.id }),
+    });
+    expect(selfPatch.status).toBe(400);
+
+    const parentRes = await app.request("/api/v1/folders", {
+      method: "POST",
+      headers: {
+        Cookie: cookieFor(userA, orgA),
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({ name: "순환부모" }),
+    });
+    const { data: parent } = (await parentRes.json()) as {
+      data: { id: string };
+    };
+    const childRes = await app.request("/api/v1/folders", {
+      method: "POST",
+      headers: {
+        Cookie: cookieFor(userA, orgA),
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({ name: "순환자식", parentFolderId: parent.id }),
+    });
+    const { data: child } = (await childRes.json()) as {
+      data: { id: string };
+    };
+
+    const cyclePatch = await app.request(`/api/v1/folders/${parent.id}`, {
+      method: "PATCH",
+      headers: {
+        Cookie: cookieFor(userA, orgA),
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({ parentFolderId: child.id }),
+    });
+    expect(cyclePatch.status).toBe(400);
+  });
+
+  it("POST 시 parentFolderId 가 존재하지 않거나 타 org 소유면 400 이다(P20-T1-06)", async () => {
+    const notFoundRes = await app.request("/api/v1/folders", {
+      method: "POST",
+      headers: {
+        Cookie: cookieFor(userA, orgA),
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        name: "고아폴더",
+        parentFolderId: randomUUID(),
+      }),
+    });
+    expect(notFoundRes.status).toBe(400);
+
+    const crossOrgParentRes = await app.request("/api/v1/folders", {
+      method: "POST",
+      headers: {
+        Cookie: cookieFor(userB, orgB),
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({ name: "B의부모" }),
+    });
+    const { data: bParent } = (await crossOrgParentRes.json()) as {
+      data: { id: string };
+    };
+
+    const crossOrgChildRes = await app.request("/api/v1/folders", {
+      method: "POST",
+      headers: {
+        Cookie: cookieFor(userA, orgA),
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        name: "A가B부모탈취",
+        parentFolderId: bParent.id,
+      }),
+    });
+    expect(crossOrgChildRes.status).toBe(400);
   });
 });

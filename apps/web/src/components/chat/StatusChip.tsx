@@ -28,7 +28,7 @@ const STYLES: Record<StatusChipStatus, string> = {
 
 const DOT_STYLES: Record<StatusChipStatus, string> = {
   queued: "bg-fg-subtle",
-  running: "bg-primary motion-safe:animate-[pulse_1.2s_ease-in-out_infinite]",
+  running: "bg-primary",
   done: "bg-success",
   error: "bg-accent",
   "pending-approval": "bg-warning",
@@ -49,11 +49,21 @@ export function StatusChip({
       data-status={status}
       className={`inline-flex h-[22px] items-center gap-1.5 rounded-full border px-2 text-xs font-medium ${STYLES[status]}`}
     >
-      <span
-        data-testid="status-chip-dot"
-        aria-hidden="true"
-        className={`h-1.5 w-1.5 flex-none rounded-full ${DOT_STYLES[status]}`}
-      />
+      {status === "running" ? (
+        // 실행 중은 회전 스피너 — 작은 도트 펄스보다 "작동 중"이 확실히 보인다(생성/멈춤 구분).
+        <span
+          data-testid="status-chip-dot"
+          data-spinner="true"
+          aria-hidden="true"
+          className="h-2.5 w-2.5 flex-none rounded-full border-2 border-primary/25 border-t-primary motion-safe:animate-spin"
+        />
+      ) : (
+        <span
+          data-testid="status-chip-dot"
+          aria-hidden="true"
+          className={`h-1.5 w-1.5 flex-none rounded-full ${DOT_STYLES[status]}`}
+        />
+      )}
       {label ?? LABELS[status]}
     </span>
   );

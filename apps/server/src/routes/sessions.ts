@@ -5,6 +5,7 @@ import { randomUUID } from "node:crypto";
 import { Hono } from "hono";
 import type { Message } from "@wchat/interfaces";
 import { abortRun } from "../orchestrator/run-registry.js";
+import { getActiveMessageId } from "../orchestrator/message-run-registry.js";
 import { resolveHitl, listPendingHitl } from "../tools/hitl-manager.js";
 import { createPgArtifactDataAccess } from "../db/artifact-data-access.js";
 import type { ArtifactDataAccess } from "../db/artifact-service.js";
@@ -26,6 +27,10 @@ import {
   type MessageFeedbackDataAccess,
 } from "../db/message-feedback-data-access.js";
 import type { AuthedVariables } from "../middleware/auth-middleware.js";
+import {
+  ImportConversationsRequestSchema,
+  parseImportPayload,
+} from "../lib/import-conversations.js";
 
 function errorJson(code: string, message: string) {
   return {
@@ -54,6 +59,12 @@ export interface SessionsPort {
     pagination?: { cursor?: string; limit?: number },
   ): Promise<{ items: SessionWithPin[]; nextCursor?: string }>;
   byId(id: string): Promise<SessionWithPin | null>;
+  // P22-T1-04 — 명시적 세션 생성(POST /sessions). userId 는 auth 파생만 신뢰(body 미신뢰).
+  create(data: {
+    userId: string;
+    title?: string | null;
+    projectId?: string | null;
+  }): Promise<SessionWithPin>;
   // P17-T1-03(TS-09) — ownership 이 쿼리 조건에 직접 포함(WHERE id=.. AND user_id=..)돼 있어
   // 별도 조회 없이 원자적으로 cross-org/타 사용자 변경을 차단한다.
   updateForOwner(
@@ -88,6 +99,13 @@ export interface SessionMessagesPort {
   ): Promise<{ items: Message[]; nextCursor?: string }>;
   // P19-T1-07 — 메시지 평가 전 ownership 검증(message.sessionId === 요청 sessionId)에 사용.
   byId(id: string): Promise<Message | null>;
+  // P20-T1-05 — 개별 메시지(및 하위 서브트리) 삭제. createPgMessageDataAccess()(MessageRepo,
+  // 14-INTERFACES Repo<T,F> 상속)가 이미 delete(id) 를 구현하고 있어 포트만 넓힌다.
+  delete(id: string): Promise<void>;
+  // P22-T6-01 — 대화 복제(POST /:id/clone) 시 원본 메시지를 새 세션에 재삽입. MessageRepo.insert
+  // (Partial<Message>)가 이미 존재하므로 포트만 넓힌다(부모→자식 순으로 1건씩 insert 하며
+  // 반환된 new id 로 parentMessageId 를 재매핑하기 위해 bulkInsert 대신 단건 insert 를 쓴다).
+  insert(data: Partial<Message>): Promise<Message>;
 }
 
 export interface SessionRoutesDeps {
@@ -149,6 +167,86 @@ export function createSessionRoutes(
         ...(page.nextCursor ? { nextCursor: page.nextCursor } : {}),
       },
     });
+  });
+
+  // P22-T1-04 — 명시적 세션 생성(16-API-CONTRACT §418). id 는 서버생성(lazy ensureSession 의
+  // client UUID upsert 와 달리 계약대로 서버가 부여). userId 는 auth 에서만 파생(body 미신뢰 →
+  // cross-user 생성 불가, GET / 목록과 동일 정책). title/projectId 는 optional body.
+  app.post("/", async (c) => {
+    const auth = c.get("auth");
+    const body = await c.req
+      .json<{ title?: string; projectId?: string }>()
+      .catch(() => ({}) as { title?: string; projectId?: string });
+    const created = await sessions.create({
+      userId: auth.sub,
+      title: body.title ?? null,
+      projectId: body.projectId ?? null,
+    });
+    return c.json(
+      {
+        data: {
+          id: created.id,
+          title: created.title,
+          projectId: created.projectId,
+          createdAt: created.createdAt.toISOString(),
+        },
+        meta: { requestId: randomUUID() },
+      },
+      201,
+    );
+  });
+
+  // P22-T6-13(계약배치 C9) — 대화 가져오기(POST /sessions/import). Open WebUI 의 chat import 대응.
+  // native(우리 내보내기 JSON) / ChatGPT conversations.json 을 lib/import-conversations.ts 로
+  // 정규화한 뒤, 대화마다 POST / 와 동일 생성 경로로 세션을 만들고 메시지를 순서대로 삽입한다.
+  // 격리: userId 는 auth 에서만 파생 — payload 안의 userId/orgId 는 절대 신뢰하지 않는다(POST /
+  // 와 동일 정책). 정적 단일 세그먼트라 "/:id/..." 계열과 충돌하지 않는다(GET /search 와 동일).
+  app.post("/import", async (c) => {
+    const auth = c.get("auth");
+    const body = await c.req.json().catch(() => null);
+    const req = ImportConversationsRequestSchema.safeParse(body);
+    if (!req.success) {
+      return c.json(
+        errorJson("INVALID_INPUT", "format 은 native|chatgpt 여야 합니다."),
+        400,
+      );
+    }
+    let conversations;
+    try {
+      conversations = parseImportPayload(req.data.format, req.data.payload);
+    } catch {
+      return c.json(
+        errorJson("INVALID_INPUT", "가져올 수 있는 대화가 없습니다."),
+        400,
+      );
+    }
+    const createdSessionIds: string[] = [];
+    for (const conv of conversations) {
+      const created = await sessions.create({
+        userId: auth.sub,
+        title: conv.title,
+        projectId: null,
+      });
+      createdSessionIds.push(created.id);
+      let parentMessageId: string | null = null;
+      for (const m of conv.messages) {
+        // 명시 주석 필수: parentMessageId 가 inserted.id 로 되먹임돼 추론이 순환한다(TS7022).
+        const inserted: Message = await sessionMessages.insert({
+          sessionId: created.id,
+          role: m.role,
+          content: m.content,
+          parentMessageId,
+        });
+        parentMessageId = inserted.id;
+      }
+    }
+    return c.json(
+      {
+        data: { createdSessionIds },
+        meta: { requestId: randomUUID() },
+      },
+      201,
+    );
   });
 
   // P19-T1-06 — 제목+메시지 내용 검색. userId 는 auth 에서만 파생(body/query 미수신 →
@@ -250,6 +348,60 @@ export function createSessionRoutes(
     });
   });
 
+  // P22-T6-01 — 대화 복제(POST /:id/clone). Open WebUI 의 conversation duplicate 대응.
+  // 소유자 검증(byId + auth.sub, 타 사용자/조직 세션은 404 existence-leak 방지) 후 POST /sessions
+  // 와 동일 생성 경로로 title/projectId 를 복사한 새 세션을 만들고, 원본 메시지 트리를
+  // created_at ASC(부모가 자식보다 먼저 오는 순서)로 읽어 1건씩 삽입하며 old→new id 매핑으로
+  // parentMessageId 를 재매핑한다(트리 관계 보존). pin/archive/active-run 상태는 복사하지 않고
+  // 원본 세션은 변경하지 않는다(읽기만). 새 세션 DTO 는 POST / 와 동일 shape 로 201 반환.
+  app.post("/:id/clone", async (c) => {
+    const auth = c.get("auth");
+    const sourceId = c.req.param("id");
+    const source = await sessions.byId(sourceId);
+    if (!source || source.userId !== auth.sub) {
+      return c.json(errorJson("NOT_FOUND", "세션을 찾을 수 없습니다."), 404);
+    }
+    const cloned = await sessions.create({
+      userId: auth.sub,
+      title: source.title,
+      projectId: source.projectId,
+    });
+    const page = await sessionMessages.list(
+      { sessionId: sourceId },
+      { limit: 1000 },
+    );
+    const idMap = new Map<string, string>();
+    for (const m of page.items) {
+      const remappedParent =
+        m.parentMessageId != null
+          ? (idMap.get(m.parentMessageId) ?? null)
+          : null;
+      const inserted = await sessionMessages.insert({
+        sessionId: cloned.id,
+        role: m.role,
+        content: m.content,
+        toolCallIds: m.toolCallIds,
+        parentMessageId: remappedParent,
+        tokensIn: m.tokensIn,
+        tokensOut: m.tokensOut,
+        costMicros: m.costMicros,
+      });
+      idMap.set(m.id, inserted.id);
+    }
+    return c.json(
+      {
+        data: {
+          id: cloned.id,
+          title: cloned.title,
+          projectId: cloned.projectId,
+          createdAt: cloned.createdAt.toISOString(),
+        },
+        meta: { requestId: randomUUID() },
+      },
+      201,
+    );
+  });
+
   // P17-T1-02(TS-08/10) — 세션 히스토리. 타 사용자 세션은 404(existence-leak 방지,
   // 16-API-CONTRACT § GET /sessions/:id 와 동일 정책).
   app.get("/:id/messages", async (c) => {
@@ -265,6 +417,12 @@ export function createSessionRoutes(
       { sessionId },
       { ...(cursor ? { cursor } : {}), limit },
     );
+    // 진행 중(비종결) 턴이 있으면 그 messageId 를 실어, 새로고침/세션이동한 클라가
+    // GET .../messages/:messageId/stream 으로 재연결해 서브에이전트/도구 카드를 되살린다.
+    // 커서 페이지네이션 중(과거 페이지 조회)엔 실지 않는다 — 첫 페이지에서만 resume 트리거.
+    const activeMessageId = cursor
+      ? undefined
+      : await getActiveMessageId(sessionId).catch(() => undefined);
     return c.json({
       data: page.items.map((m) => ({
         id: m.id,
@@ -277,6 +435,7 @@ export function createSessionRoutes(
         tokensOut: m.tokensOut,
         costMicros: m.costMicros,
       })),
+      ...(activeMessageId ? { activeRun: { messageId: activeMessageId } } : {}),
       meta: {
         requestId: randomUUID(),
         ...(page.nextCursor ? { nextCursor: page.nextCursor } : {}),
@@ -348,6 +507,66 @@ export function createSessionRoutes(
     const existing = await feedback.get(auth.org, messageId, auth.sub);
     return c.json({
       data: { messageId, rating: existing?.rating ?? null },
+      meta: { requestId: randomUUID() },
+    });
+  });
+
+  // P20-T1-05 — 개별 메시지 삭제(하위 서브트리 prune). 자식이 있는 노드를 지우면 하위 전부를
+  // 하드 삭제(parent_message_id 는 0002 마이그레이션상 ON DELETE SET NULL 이라 DB 레벨 cascade
+  // 로는 트리가 끊어지지 않고 고아 노드로 남으므로, application 레벨에서 명시적으로 prune 한다).
+  app.delete("/:id/messages/:messageId", async (c) => {
+    const auth = c.get("auth");
+    const sessionId = c.req.param("id");
+    const messageId = c.req.param("messageId");
+    const owned = await verifyOwnedMessage(auth.sub, sessionId, messageId);
+    if (!owned) {
+      return c.json(errorJson("NOT_FOUND", "메시지를 찾을 수 없습니다."), 404);
+    }
+    const page = await sessionMessages.list({ sessionId }, { limit: 1000 });
+    const childrenByParent = new Map<string, string[]>();
+    for (const m of page.items) {
+      if (m.parentMessageId) {
+        const siblings = childrenByParent.get(m.parentMessageId) ?? [];
+        siblings.push(m.id);
+        childrenByParent.set(m.parentMessageId, siblings);
+      }
+    }
+    const toDelete: string[] = [];
+    const stack = [messageId];
+    while (stack.length > 0) {
+      const id = stack.pop();
+      if (id === undefined) break;
+      toDelete.push(id);
+      stack.push(...(childrenByParent.get(id) ?? []));
+    }
+    for (const id of toDelete) {
+      await sessionMessages.delete(id);
+    }
+    return c.body(null, 204);
+  });
+
+  // P22-T1-05 — 단일 세션 조회(16-API-CONTRACT §432). userId 는 auth 에서만 파생(body/query
+  // 미수신) — 타 사용자/조직 세션·부재 세션 모두 동일한 404 로 응답해 존재 누출(existence-leak)을
+  // 막는다(/:id/tags·/:id/messages 와 동일 ownership 패턴). Hono 는 세그먼트 수로 라우트를
+  // 구분하므로 이 단일 세그먼트 /:id 는 /:id/messages·/:id/artifacts 를 가리지 않고, 정적
+  // /search 는 param 보다 우선 매칭돼 충돌하지 않는다.
+  app.get("/:id", async (c) => {
+    const auth = c.get("auth");
+    const sessionId = c.req.param("id");
+    const session = await sessions.byId(sessionId);
+    if (!session || session.userId !== auth.sub) {
+      return c.json(errorJson("NOT_FOUND", "세션을 찾을 수 없습니다."), 404);
+    }
+    return c.json({
+      data: {
+        id: session.id,
+        title: session.title,
+        projectId: session.projectId,
+        createdAt: session.createdAt.toISOString(),
+        archivedAt: session.archivedAt
+          ? session.archivedAt.toISOString()
+          : null,
+      },
       meta: { requestId: randomUUID() },
     });
   });
@@ -432,9 +651,10 @@ export function createSessionRoutes(
     return c.body(null, 204);
   });
 
-  app.delete("/:id/active-run", (c) => {
+  app.delete("/:id/active-run", async (c) => {
     const sessionId = c.req.param("id");
-    const cancelled = abortRun(sessionId);
+    // P22-T2-03 — 다른 인스턴스가 들고 있는 run 도 RuntimeBus 팬아웃으로 취소된다.
+    const cancelled = await abortRun(sessionId);
     return c.json({ data: { cancelled }, meta: { requestId: randomUUID() } });
   });
 
@@ -459,7 +679,7 @@ export function createSessionRoutes(
       );
     }
 
-    const result = resolveHitl(sessionId, body.toolCallId, {
+    const result = await resolveHitl(sessionId, body.toolCallId, {
       decision: body.decision,
       ...(body.modifiedArgs ? { modifiedArgs: body.modifiedArgs } : {}),
       ...(body.reason ? { reason: body.reason } : {}),
@@ -480,10 +700,10 @@ export function createSessionRoutes(
     });
   });
 
-  app.get("/:id/hitl/pending", (c) => {
+  app.get("/:id/hitl/pending", async (c) => {
     const sessionId = c.req.param("id");
     return c.json({
-      data: listPendingHitl(sessionId),
+      data: await listPendingHitl(sessionId),
       meta: { requestId: randomUUID() },
     });
   });

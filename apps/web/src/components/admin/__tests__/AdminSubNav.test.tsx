@@ -19,7 +19,7 @@ describe("AdminSubNav", () => {
     mockPathname = "/admin";
   });
 
-  it("대시보드/사용자/그룹/도구 지표/설정 5개 링크를 렌더한다", () => {
+  it("대시보드/사용자/그룹/접근 권한/사용량 분석/감사 로그/도구 지표/설정 8개 링크를 렌더한다", () => {
     render(<AdminSubNav />);
 
     expect(screen.getByTestId("admin-sub-nav-dashboard")).toHaveAttribute(
@@ -34,6 +34,18 @@ describe("AdminSubNav", () => {
       "href",
       "/admin/groups",
     );
+    expect(screen.getByTestId("admin-sub-nav-grants")).toHaveAttribute(
+      "href",
+      "/admin/grants",
+    );
+    expect(screen.getByTestId("admin-sub-nav-analytics")).toHaveAttribute(
+      "href",
+      "/admin/analytics",
+    );
+    expect(screen.getByTestId("admin-sub-nav-audit-logs")).toHaveAttribute(
+      "href",
+      "/admin/audit-logs",
+    );
     expect(screen.getByTestId("admin-sub-nav-tool-metrics")).toHaveAttribute(
       "href",
       "/admin/tool-metrics",
@@ -41,6 +53,17 @@ describe("AdminSubNav", () => {
     expect(screen.getByTestId("admin-sub-nav-settings")).toHaveAttribute(
       "href",
       "/admin/settings",
+    );
+  });
+
+  // P22-T6-21 — OpenAPI 툴서버 admin 패널(/admin/tool-servers)로 갈 진입점이 없으면
+  //   URL 직접 입력 외에는 도달 불가라 P16-T6-02 갭1 이 재발한다.
+  it("OpenAPI 툴서버 링크를 렌더한다", () => {
+    render(<AdminSubNav />);
+
+    expect(screen.getByTestId("admin-sub-nav-tool-servers")).toHaveAttribute(
+      "href",
+      "/admin/tool-servers",
     );
   });
 

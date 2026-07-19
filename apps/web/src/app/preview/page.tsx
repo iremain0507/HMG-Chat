@@ -7,6 +7,7 @@ import React, { useState } from "react";
 import { ThemeToggle } from "../../components/layout/ThemeToggle";
 import { AppShell } from "../../components/layout/AppShell";
 import { SessionList } from "../../components/sessions/SessionList";
+import { CommandPalette } from "../../components/sessions/CommandPalette";
 import { Markdown } from "../../components/chat/Markdown";
 import { Reasoning } from "../../components/chat/Reasoning";
 import { MessageActions } from "../../components/chat/MessageActions";
@@ -15,29 +16,48 @@ import { StatusChip } from "../../components/chat/StatusChip";
 import { ActivityPanel } from "../../components/chat/ActivityPanel";
 import { HitlPrompt } from "../../components/chat/HitlPrompt";
 import { ChatInput } from "../../components/chat/ChatInput";
-import { MessageItem } from "../../components/chat/ChatView";
+import {
+  ChatView,
+  MessageItem,
+  CompareColumns,
+} from "../../components/chat/ChatView";
+import type { CompareGroup } from "../../hooks/useSessionStream";
 import { ProjectPicker } from "../../components/chat/ProjectPicker";
 import { MemoryPanel } from "../../components/chat/MemoryPanel";
 import { ShareExportMenu } from "../../components/chat/ShareExportMenu";
 import { SharePublicView } from "../../components/share/SharePublicView";
+import { ConversationSharePublicView } from "../../components/share/ConversationSharePublicView";
 import { LoginForm } from "../../components/auth/LoginForm";
 import { SignupForm } from "../../components/auth/SignupForm";
 import { HomeContent } from "../../components/home/HomeContent";
 import { ProjectDetail } from "../../components/projects/ProjectDetail";
 import { McpServersManager } from "../../components/settings/McpServersManager";
 import { SkillsManager } from "../../components/settings/SkillsManager";
+import { AgentGallery } from "../../components/agents/AgentGallery";
+import { ConnectionsManager } from "../../components/settings/ConnectionsManager";
+import { NotesWorkspace } from "../../components/notes/NotesWorkspace";
+import { ChannelsWorkspace } from "../../components/channels/ChannelsWorkspace";
 import { MemoryManager } from "../../components/settings/MemoryManager";
+import { NavRail } from "../../components/layout/NavRail";
+import { ProfileManager } from "../../components/settings/ProfileManager";
+import { LocaleProvider } from "../../components/i18n/LocaleProvider";
 import { QuotaPanel } from "../../components/settings/QuotaPanel";
 import { AdminDashboard } from "../../components/admin/AdminDashboard";
 import { ToolMetricsTable } from "../../components/admin/ToolMetricsTable";
+import { OpenApiToolServersManager } from "../../components/admin/OpenApiToolServersManager";
 import { AdminUsersManager } from "../../components/admin/AdminUsersManager";
 import { GroupsManager } from "../../components/admin/GroupsManager";
+import { GrantsManager } from "../../components/admin/GrantsManager";
+import { AnalyticsDashboard } from "../../components/admin/AnalyticsDashboard";
+import { AuditLogTable } from "../../components/admin/AuditLogTable";
 import { AdminSettingsScreen } from "../../components/admin/settings/AdminSettingsScreen";
 import { ToastContainer } from "../../components/layout/ToastContainer";
+import { InstallPwaButton } from "../../components/InstallPwaButton";
 import {
   ArtifactCanvas,
   type ArtifactCanvasArtifact,
 } from "../../components/artifacts/ArtifactCanvas";
+import { ArtifactPanel } from "../../components/artifacts/ArtifactPanel";
 import { useOnlineStatus } from "../../hooks/useOnlineStatus";
 import type { Citation } from "../../hooks/useSessionStream";
 import type { ProjectDto } from "../../hooks/useProject";
@@ -120,6 +140,25 @@ function HitlPromptPreview() {
   );
 }
 
+// P20-T1-07 — CommandPalette(⌘K 검색)는 lib/sessionSearch.searchSessions 로 실 fetch 하므로
+// HitlPromptPreview 와 동일하게 토글 오픈으로 격리한다(전용 e2e 가 page.route() 로
+// /api/v1/sessions/search 를 목킹해 접두어 힌트칩+쿼리 그대로 전달을 검증한다).
+function CommandPalettePreview() {
+  const [open, setOpen] = useState(false);
+  return open ? (
+    <CommandPalette open={true} onClose={() => setOpen(false)} />
+  ) : (
+    <button
+      type="button"
+      data-testid="command-palette-preview-trigger"
+      onClick={() => setOpen(true)}
+      className="rounded-md border border-border px-3 py-1.5 text-sm text-fg-muted hover:border-primary hover:text-fg"
+    >
+      검색 팔레트 열기
+    </button>
+  );
+}
+
 // P13-T6-10 — ProjectDetail(F09)은 useProject/useDocuments 로 내부 fetch 하며 404 시
 //   next/navigation.notFound() 를 throw 한다. 갤러리에 무조건 마운트하면 dev 서버에
 //   백엔드가 없을 때(다른 e2e 스펙이 이 경로를 목킹하지 않고 /preview 를 여는 경우) 전체
@@ -174,6 +213,130 @@ function SkillsManagerPreview() {
       className="rounded-md border border-border px-3 py-1.5 text-sm text-fg-muted hover:border-primary hover:text-fg"
     >
       스킬 관리 열기
+    </button>
+  );
+}
+
+// P22-T6-10 — AgentGallery 도 useAgents 로 마운트 시 /api/v1/agents 를 fetch 한다.
+//   위 두 프리뷰와 동일한 토글 격리 패턴. 전용 e2e(agent-gallery.pw.ts)만 page.route()
+//   로 API 를 목킹한 뒤 트리거를 클릭한다.
+function AgentGalleryPreview() {
+  const [open, setOpen] = useState(false);
+  return open ? (
+    <AgentGallery />
+  ) : (
+    <button
+      type="button"
+      data-testid="agent-gallery-preview-trigger"
+      onClick={() => setOpen(true)}
+      className="rounded-md border border-border px-3 py-1.5 text-sm text-fg-muted hover:border-primary hover:text-fg"
+    >
+      에이전트 갤러리 열기
+    </button>
+  );
+}
+
+// P22-T6-14 — ConnectionsManager 도 마운트 시 /api/v1/connections 를 fetch 한다. 위와 동일한
+//   토글 격리 패턴. 전용 e2e(connections.pw.ts)만 page.route() 로 API 를 목킹한 뒤 트리거를 클릭.
+function ConnectionsManagerPreview() {
+  const [open, setOpen] = useState(false);
+  return open ? (
+    <ConnectionsManager />
+  ) : (
+    <button
+      type="button"
+      data-testid="connections-manager-preview-trigger"
+      onClick={() => setOpen(true)}
+      className="rounded-md border border-border px-3 py-1.5 text-sm text-fg-muted hover:border-primary hover:text-fg"
+    >
+      연결 관리 열기
+    </button>
+  );
+}
+
+// P22-T6-21 — OpenApiToolServersManager 도 마운트 시 /api/v1/openapi-tool-servers 를 fetch 한다.
+//   위와 동일한 토글 격리 패턴. 전용 e2e(openapi-tool-servers.pw.ts)만 page.route() 로 목킹 후 클릭.
+function OpenApiToolServersManagerPreview() {
+  const [open, setOpen] = useState(false);
+  return open ? (
+    <OpenApiToolServersManager />
+  ) : (
+    <button
+      type="button"
+      data-testid="openapi-tool-servers-preview-trigger"
+      onClick={() => setOpen(true)}
+      className="rounded-md border border-border px-3 py-1.5 text-sm text-fg-muted hover:border-primary hover:text-fg"
+    >
+      OpenAPI 툴서버 관리 열기
+    </button>
+  );
+}
+
+// P22-T6-17(C7) — NotesWorkspace 도 마운트 시 /api/v1/notes 를 fetch 한다. 위와 동일한
+//   토글 격리 패턴. 전용 e2e(notes.pw.ts)만 page.route() 로 API 를 목킹한 뒤 트리거를 클릭.
+function NotesWorkspacePreview() {
+  const [open, setOpen] = useState(false);
+  return open ? (
+    <div className="h-[32rem]">
+      <NotesWorkspace />
+    </div>
+  ) : (
+    <button
+      type="button"
+      data-testid="notes-workspace-preview-trigger"
+      onClick={() => setOpen(true)}
+      className="rounded-md border border-border px-3 py-1.5 text-sm text-fg-muted hover:border-primary hover:text-fg"
+    >
+      노트 워크스페이스 열기
+    </button>
+  );
+}
+
+// P22-T6-12 — 채널(실시간 멀티유저 + @model). 마운트 시 /api/v1/channels 를 fetch 하고
+//   GET /:id/stream 으로 EventSource 를 연다. 위와 동일한 토글 격리 패턴 — 전용
+//   e2e(channels.pw.ts)만 page.route() 로 REST/SSE 를 목킹한 뒤 트리거를 클릭한다.
+function ChannelsWorkspacePreview() {
+  const [open, setOpen] = useState(false);
+  return open ? (
+    <div className="h-[32rem]">
+      <ChannelsWorkspace />
+    </div>
+  ) : (
+    <button
+      type="button"
+      data-testid="channels-workspace-preview-trigger"
+      onClick={() => setOpen(true)}
+      className="rounded-md border border-border px-3 py-1.5 text-sm text-fg-muted hover:border-primary hover:text-fg"
+    >
+      채널 워크스페이스 열기
+    </button>
+  );
+}
+
+// P22-T6-15(C11) — 언어 전환. ProfileManager 의 언어 선택기와 NavRail 을 같은 LocaleProvider
+//   아래 둔다: 선택기를 바꾸면 *다른* 컴포넌트(NavRail)의 라벨까지 페이지 리로드 없이 즉시
+//   다시 그려지는지를 실 브라우저로 확인하기 위함(acceptance #2). initialLocale 을 주지 않아
+//   실제 앱과 동일하게 GET /auth/me 로 초기 언어를 읽고 PATCH /auth/me 로 저장한다 —
+//   e2e(i18n-language-switch.pw.ts)가 두 호출을 page.route() 로 목킹한다.
+function LanguageSwitchPreview() {
+  const [open, setOpen] = useState(false);
+  return open ? (
+    <LocaleProvider>
+      <div className="flex gap-4">
+        <NavRail />
+        <div className="min-w-0 flex-1">
+          <ProfileManager />
+        </div>
+      </div>
+    </LocaleProvider>
+  ) : (
+    <button
+      type="button"
+      data-testid="language-switch-preview-trigger"
+      onClick={() => setOpen(true)}
+      className="rounded-md border border-border px-3 py-1.5 text-sm text-fg-muted hover:border-primary hover:text-fg"
+    >
+      언어 설정 열기
     </button>
   );
 }
@@ -276,6 +439,54 @@ function GroupsManagerPreview() {
       className="rounded-md border border-border px-3 py-1.5 text-sm text-fg-muted hover:border-primary hover:text-fg"
     >
       그룹 관리 열기
+    </button>
+  );
+}
+
+function GrantsManagerPreview() {
+  const [open, setOpen] = useState(false);
+  return open ? (
+    <GrantsManager />
+  ) : (
+    <button
+      type="button"
+      data-testid="grants-manager-preview-trigger"
+      onClick={() => setOpen(true)}
+      className="rounded-md border border-border px-3 py-1.5 text-sm text-fg-muted hover:border-primary hover:text-fg"
+    >
+      접근 권한 관리 열기
+    </button>
+  );
+}
+
+function AnalyticsDashboardPreview() {
+  const [open, setOpen] = useState(false);
+  return open ? (
+    <AnalyticsDashboard />
+  ) : (
+    <button
+      type="button"
+      data-testid="analytics-dashboard-preview-trigger"
+      onClick={() => setOpen(true)}
+      className="rounded-md border border-border px-3 py-1.5 text-sm text-fg-muted hover:border-primary hover:text-fg"
+    >
+      사용량 분석 열기
+    </button>
+  );
+}
+
+function AuditLogTablePreview() {
+  const [open, setOpen] = useState(false);
+  return open ? (
+    <AuditLogTable />
+  ) : (
+    <button
+      type="button"
+      data-testid="audit-log-table-preview-trigger"
+      onClick={() => setOpen(true)}
+      className="rounded-md border border-border px-3 py-1.5 text-sm text-fg-muted hover:border-primary hover:text-fg"
+    >
+      감사 로그 열기
     </button>
   );
 }
@@ -422,6 +633,27 @@ function ArtifactCanvasPreview() {
   );
 }
 
+// P20-T6-03 — sandbox="allow-scripts" iframe(스크립트 실행 허용, allow-same-origin 미병기)이
+//   실제 브라우저에서 인터랙티브 HTML 아티팩트의 스크립트를 실행하는지 검증하는 전용 프리뷰.
+//   e2e/artifact-html-sandbox.pw.ts 가 이 artifactId 의 content 를 page.route() 로 목킹한다.
+function ArtifactHtmlSandboxPreview() {
+  return (
+    <div className="h-[280px] overflow-hidden rounded-lg border border-border">
+      <ArtifactPanel
+        artifact={{
+          id: "preview-artifact-html-1",
+          type: "html",
+          filename: "demo.html",
+          sizeBytes: 256,
+          storageKind: "inline",
+          downloadUrl: null,
+          createdAt: new Date(0).toISOString(),
+        }}
+      />
+    </div>
+  );
+}
+
 const SLASH_COMMANDS = [
   { id: "clear", label: "대화 지우기" },
   { id: "search", label: "웹 검색" },
@@ -448,6 +680,38 @@ const PREVIEW_PROJECTS: ProjectDto[] = [
     createdAt: "2026-04-02T00:00:00Z",
   },
 ];
+
+// P21-T6-04(UX-16) — 세션 전환 시 이전 대화가 그대로 남던 버그의 실앱 재현 하네스.
+//   실제 라우팅(App Router 클라이언트 내비게이션)과 동일하게 ChatView 를 언마운트하지 않고
+//   sessionId prop 만 바꿔 전환한다(버튼 클릭 = 사이드바에서 다른 세션 클릭과 동일 시나리오).
+function SessionSwitchPreview() {
+  const [sessionId, setSessionId] = useState("preview-session-a");
+  return (
+    <div className="flex h-[420px] flex-col gap-2">
+      <div className="flex gap-2">
+        <button
+          type="button"
+          data-testid="session-switch-a"
+          onClick={() => setSessionId("preview-session-a")}
+          className="rounded-md border border-border px-3 py-1 text-sm"
+        >
+          세션 A 열기
+        </button>
+        <button
+          type="button"
+          data-testid="session-switch-b"
+          onClick={() => setSessionId("preview-session-b")}
+          className="rounded-md border border-border px-3 py-1 text-sm"
+        >
+          세션 B 열기
+        </button>
+      </div>
+      <div className="min-h-0 flex-1 overflow-hidden rounded-md border border-border">
+        <ChatView sessionId={sessionId} />
+      </div>
+    </div>
+  );
+}
 
 function ProjectPickerPreview() {
   const [projectId, setProjectId] = useState<string | null>(null);
@@ -502,6 +766,248 @@ function MessageBranchPreview() {
         error={false}
       />
     </ul>
+  );
+}
+
+// P22-T6-05 — 응답 생성 중 메시지 큐잉(Open WebUI 파리티) 실브라우저 검증 하네스.
+//   MessageBranchPreview/SessionSwitchPreview 와 동일하게 useSessionStream 의 큐 로직을
+//   로컬 state 로 흉내내 SSE 백엔드 없이도 실제 ChatInput 의 큐 인터랙션(생성 중 Enter→칩 큐잉,
+//   취소, 종료 시 FIFO 자동 디스패치)을 결정론적으로 재현한다(e2e/message-queue.pw.ts).
+function MessageQueuePreview() {
+  type Turn = {
+    id: string;
+    role: "user" | "assistant";
+    content: string;
+    streaming: boolean;
+  };
+  const [turns, setTurns] = useState<Turn[]>([]);
+  const [isStreaming, setIsStreaming] = useState(false);
+  const [queued, setQueued] = useState<{ id: string; content: string }[]>([]);
+  const idRef = React.useRef(0);
+
+  // 새 턴 디스패치: 낙관적 유저 버블 + 스트리밍 중 assistant 버블(실 useSessionStream 과 동형).
+  function dispatch(content: string) {
+    const uid = `mq-u-${idRef.current++}`;
+    const aid = `mq-a-${idRef.current++}`;
+    setTurns((t) => [
+      ...t,
+      { id: uid, role: "user", content, streaming: false },
+      {
+        id: aid,
+        role: "assistant",
+        content: `“${content}” 응답 생성 중…`,
+        streaming: true,
+      },
+    ]);
+    setIsStreaming(true);
+  }
+
+  // 생성 중이면 abort 하지 않고 큐잉(FIFO), 아니면 즉시 디스패치(send() 계약과 동형).
+  function handleSend(content: string) {
+    if (isStreaming) {
+      setQueued((q) => [...q, { id: `mq-q-${idRef.current++}`, content }]);
+      return;
+    }
+    dispatch(content);
+  }
+
+  // 현재 스트림 종료 → streamTurn.finally 의 drainQueueRef 처럼 큐 헤드를 FIFO 로 자동 디스패치.
+  function finishResponse() {
+    setTurns((t) =>
+      t.map((m) =>
+        m.streaming
+          ? {
+              ...m,
+              streaming: false,
+              content: m.content.replace("응답 생성 중…", "응답 완료"),
+            }
+          : m,
+      ),
+    );
+    setIsStreaming(false);
+    if (queued.length > 0) {
+      const [head, ...rest] = queued;
+      setQueued(rest);
+      if (head) dispatch(head.content);
+    }
+  }
+
+  return (
+    <div className="space-y-3">
+      <ul data-testid="mq-messages" className="space-y-2">
+        {turns.map((m) => (
+          <li
+            key={m.id}
+            data-testid={`mq-turn-${m.role}`}
+            data-streaming={m.streaming}
+            className="rounded-md border border-border px-3 py-2 text-sm text-fg"
+          >
+            <span className="mr-2 text-xs uppercase text-fg-muted">
+              {m.role}
+            </span>
+            {m.content}
+          </li>
+        ))}
+      </ul>
+      {isStreaming && (
+        <button
+          type="button"
+          data-testid="mq-finish-response"
+          onClick={finishResponse}
+          className="rounded-md border border-border px-3 py-1.5 text-sm text-fg-muted hover:border-primary hover:text-fg"
+        >
+          응답 완료(스트림 종료)
+        </button>
+      )}
+      <ChatInput
+        sessionId="preview-queue"
+        isStreaming={isStreaming}
+        onSend={(content) => handleSend(content)}
+        onStop={() => {}}
+        queuedMessages={queued}
+        onRemoveQueued={(id) =>
+          setQueued((q) => q.filter((item) => item.id !== id))
+        }
+      />
+    </div>
+  );
+}
+
+// P22-T6-06 — 멀티모델 병렬 비교(Open WebUI 파리티) 실브라우저 검증 하네스.
+//   MessageQueuePreview 와 동일하게 useSessionStream 의 팬아웃 로직을 로컬 state 로 흉내내
+//   SSE 백엔드 없이도 실제 ChatInput 의 비교 토글(⚖️ 비교 → 모델 체크박스 2+ 선택 → 전송)과
+//   실제 CompareColumns 렌더(병렬 컬럼·컬럼별 재생성 형제 페이저)를 결정론적으로 재현한다
+//   (e2e/compare-columns.pw.ts). 시각/인터랙션은 Open WebUI 참조, 스타일은 시맨틱 토큰.
+const COMPARE_PREVIEW_MODELS = ["model-a", "model-b"];
+
+function CompareColumnsPreview() {
+  const [groups, setGroups] = useState<CompareGroup[]>([]);
+  const [isStreaming, setIsStreaming] = useState(false);
+  const idRef = React.useRef(0);
+
+  // onSendCompare: 선택 모델마다 스트리밍 중 컬럼(빈 답변) 하나로 그룹을 만든다.
+  function handleSendCompare(content: string, models: string[]) {
+    const gid = `cmp-${idRef.current++}`;
+    setGroups((prev) => [
+      ...prev,
+      {
+        id: gid,
+        userContent: content,
+        columns: models.map((m) => ({
+          model: m,
+          activeIndex: 0,
+          answers: [
+            {
+              id: `${gid}-${m}-${idRef.current++}`,
+              content: "",
+              streaming: true,
+            },
+          ],
+        })),
+      },
+    ]);
+    setIsStreaming(true);
+  }
+
+  // 스트림 종료: 모든 컬럼의 활성 답변에 모델명이 박힌 콘텐츠를 채우고 streaming 을 내린다.
+  function finishStreams() {
+    setGroups((prev) =>
+      prev.map((g) => ({
+        ...g,
+        columns: g.columns.map((col) => ({
+          ...col,
+          answers: col.answers.map((a, i) =>
+            i === col.activeIndex && a.streaming
+              ? { ...a, content: `${col.model} 응답`, streaming: false }
+              : a,
+          ),
+        })),
+      })),
+    );
+    setIsStreaming(false);
+  }
+
+  function regenerate(groupId: string, model: string) {
+    const aid = `re-${idRef.current++}`;
+    setGroups((prev) =>
+      prev.map((g) =>
+        g.id !== groupId
+          ? g
+          : {
+              ...g,
+              columns: g.columns.map((col) =>
+                col.model !== model
+                  ? col
+                  : {
+                      ...col,
+                      answers: [
+                        ...col.answers,
+                        {
+                          id: aid,
+                          content: `${model} 재생성`,
+                          streaming: false,
+                        },
+                      ],
+                      activeIndex: col.answers.length,
+                    },
+              ),
+            },
+      ),
+    );
+  }
+
+  function switchBranch(
+    groupId: string,
+    model: string,
+    direction: "prev" | "next",
+  ) {
+    setGroups((prev) =>
+      prev.map((g) =>
+        g.id !== groupId
+          ? g
+          : {
+              ...g,
+              columns: g.columns.map((col) => {
+                if (col.model !== model) return col;
+                const next =
+                  direction === "prev"
+                    ? col.activeIndex - 1
+                    : col.activeIndex + 1;
+                if (next < 0 || next >= col.answers.length) return col;
+                return { ...col, activeIndex: next };
+              }),
+            },
+      ),
+    );
+  }
+
+  return (
+    <div className="space-y-3">
+      <CompareColumns
+        groups={groups}
+        isStreaming={isStreaming}
+        onRegenerate={regenerate}
+        onSwitchBranch={switchBranch}
+      />
+      {isStreaming && (
+        <button
+          type="button"
+          data-testid="compare-finish"
+          onClick={finishStreams}
+          className="rounded-md border border-border px-3 py-1.5 text-sm text-fg-muted hover:border-primary hover:text-fg"
+        >
+          스트림 종료(응답 채움)
+        </button>
+      )}
+      <ChatInput
+        sessionId="preview-compare"
+        isStreaming={isStreaming}
+        onSend={() => {}}
+        onSendCompare={handleSendCompare}
+        onStop={() => {}}
+        availableModels={COMPARE_PREVIEW_MODELS}
+      />
+    </div>
   );
 }
 
@@ -705,7 +1211,7 @@ function HomeContentPreview() {
       </div>
       <HomeContent
         userName="김민수"
-        onNewChat={() => setLastAction("새 채팅 시작")}
+        onSubmitPrompt={(text) => setLastAction(`홈 컴포저 제출: ${text}`)}
         onQuickStart={(prompt) => setLastAction(`빠른 시작: ${prompt}`)}
         onOpenSession={(id) => setLastAction(`세션 열기: ${id}`)}
         connectorsCount={6}
@@ -777,6 +1283,22 @@ function SharePublicViewPreview() {
   );
 }
 
+// P20-T1-08 — 대화 스냅샷 공유 프리뷰. ConversationSharePublicView 는 useConversationShare
+//   훅이 실 fetch 를 수행하므로, Playwright(e2e/conversation-share.pw.ts)가 page.route 로
+//   /api/v1/conversation-shares/:token 응답을 가로채 정상/410 두 상태를 결정론적으로 재현한다.
+function ConversationSharePublicViewPreview() {
+  return (
+    <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+      <div className="flex justify-center rounded-md bg-bg p-4">
+        <ConversationSharePublicView token="preview-conversation-ok" />
+      </div>
+      <div className="flex justify-center rounded-md bg-bg p-4">
+        <ConversationSharePublicView token="preview-conversation-gone" />
+      </div>
+    </div>
+  );
+}
+
 function LoginFormPreview() {
   return (
     <div className="flex justify-center">
@@ -835,6 +1357,14 @@ export default function PreviewGallery() {
         </div>
       </section>
 
+      <Section name="install-pwa">
+        <p className="mb-2 text-xs text-fg-muted">
+          beforeinstallprompt 이벤트가 발화되기 전까지는 숨겨진다(설치 가능
+          시에만 노출).
+        </p>
+        <InstallPwaButton />
+      </Section>
+
       <Section name="home">
         <HomeContentPreview />
       </Section>
@@ -856,7 +1386,17 @@ export default function PreviewGallery() {
       </Section>
 
       <Section name="message-actions">
-        <MessageActions role="assistant" content="복사 대상 텍스트" />
+        <MessageActions
+          role="assistant"
+          content="복사 대상 텍스트"
+          meta={{
+            model: "fake-model",
+            provider: "fake",
+            inputTokens: 128,
+            outputTokens: 256,
+            elapsedMs: 1834,
+          }}
+        />
       </Section>
 
       <Section name="status-chip">
@@ -907,6 +1447,10 @@ export default function PreviewGallery() {
         <HitlPromptPreview />
       </Section>
 
+      <Section name="command-palette">
+        <CommandPalettePreview />
+      </Section>
+
       <Section name="project-documents">
         <ProjectDetailPreview />
       </Section>
@@ -915,12 +1459,40 @@ export default function PreviewGallery() {
         <ArtifactCanvasPreview />
       </Section>
 
+      <Section name="artifact-html-sandbox">
+        <ArtifactHtmlSandboxPreview />
+      </Section>
+
       <Section name="mcp-servers-manager">
         <McpServersManagerPreview />
       </Section>
 
+      <Section name="openapi-tool-servers">
+        <OpenApiToolServersManagerPreview />
+      </Section>
+
       <Section name="skills-manager">
         <SkillsManagerPreview />
+      </Section>
+
+      <Section name="agent-gallery">
+        <AgentGalleryPreview />
+      </Section>
+
+      <Section name="connections-manager">
+        <ConnectionsManagerPreview />
+      </Section>
+
+      <Section name="notes-workspace">
+        <NotesWorkspacePreview />
+      </Section>
+
+      <Section name="channels-workspace">
+        <ChannelsWorkspacePreview />
+      </Section>
+
+      <Section name="language-switch">
+        <LanguageSwitchPreview />
       </Section>
 
       <Section name="memory-manager">
@@ -947,6 +1519,18 @@ export default function PreviewGallery() {
         <GroupsManagerPreview />
       </Section>
 
+      <Section name="grants-manager">
+        <GrantsManagerPreview />
+      </Section>
+
+      <Section name="admin-analytics">
+        <AnalyticsDashboardPreview />
+      </Section>
+
+      <Section name="admin-audit-logs">
+        <AuditLogTablePreview />
+      </Section>
+
       <Section name="admin-settings-screen">
         <AdminSettingsScreenPreview />
       </Section>
@@ -966,8 +1550,64 @@ export default function PreviewGallery() {
         />
       </Section>
 
+      <Section name="composer-autocomplete">
+        {/* P22-T6-16 — 입력 자동완성(ghost text) 실브라우저 검증 하네스.
+            autocompleteEnabled 를 켠 실제 ChatInput 을 그대로 쓰고, e2e 는 page.route() 로
+            POST /api/v1/completions 를 목킹한다. delay 는 짧게 잡아 테스트를 결정론적으로. */}
+        <ChatInput
+          sessionId="preview-autocomplete"
+          isStreaming={false}
+          onSend={() => {}}
+          onStop={() => {}}
+          autocompleteEnabled
+          autocompleteDelayMs={50}
+        />
+      </Section>
+
       <Section name="message-branch">
         <MessageBranchPreview />
+      </Section>
+
+      <Section name="message-queue">
+        <MessageQueuePreview />
+      </Section>
+
+      <Section name="compare-columns">
+        <CompareColumnsPreview />
+      </Section>
+
+      <Section name="message-attachments">
+        {/* P22-T6-04 — 유저 버블의 이미지 첨부는 파일명 대신 썸네일(<img>)로,
+            비이미지는 파일명 칩으로 렌더된다(멀티모달 파리티). */}
+        <ul className="space-y-3">
+          <MessageItem
+            role="user"
+            content="이 사진들 분석해줘"
+            streaming={false}
+            error={false}
+            attachments={[
+              {
+                uploadId: "preview-att-img-1",
+                filename: "photo.png",
+                mimeType: "image/png",
+                previewUrl:
+                  "data:image/svg+xml;utf8," +
+                  encodeURIComponent(
+                    "<svg xmlns='http://www.w3.org/2000/svg' width='80' height='80'><rect width='80' height='80' fill='%2300287A'/></svg>",
+                  ),
+              },
+              {
+                uploadId: "preview-att-doc-1",
+                filename: "spec.pdf",
+                mimeType: "application/pdf",
+              },
+            ]}
+          />
+        </ul>
+      </Section>
+
+      <Section name="session-switch">
+        <SessionSwitchPreview />
       </Section>
 
       <Section name="project-picker">
@@ -1002,12 +1642,17 @@ export default function PreviewGallery() {
               },
             ]}
             artifacts={ARTIFACTS}
+            sessionId="preview-session"
           />
         </div>
       </Section>
 
       <Section name="share-public-view">
         <SharePublicViewPreview />
+      </Section>
+
+      <Section name="conversation-share-public-view">
+        <ConversationSharePublicViewPreview />
       </Section>
 
       <Section name="login-form">

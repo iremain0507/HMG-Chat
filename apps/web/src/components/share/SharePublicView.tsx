@@ -1,11 +1,11 @@
 "use client";
 
 // components/share/SharePublicView.tsx — 18-FRONTEND-WIREFRAMES § 18.5.5 /share/[token].
-// 익명 접근(AppShell 미사용) — 존재하지 않는 토큰은 notFound(), 만료/revoke(410, API가
-// 둘을 구분하지 않음)는 동일한 410 안내 화면으로 표시한다.
+// 익명 접근(AppShell 미사용) — 존재하지 않는 토큰은 notFound(), 만료/revoke(410)는
+// 서버가 내려주는 reason(expired|revoked)으로 만료(시계)·취소(금지) 화면을 구분한다(P22-T4-02).
 import React from "react";
 import { notFound } from "next/navigation";
-import { Clock } from "lucide-react";
+import { Ban, Clock } from "lucide-react";
 import { useShare } from "../../hooks/useShare";
 import { PdfRenderer } from "../artifacts/PdfRenderer";
 import { PptxRenderer } from "../artifacts/PptxRenderer";
@@ -33,33 +33,53 @@ function ShareSignature() {
   );
 }
 
+function ShareGoneScreen({ reason }: { reason: "expired" | "revoked" | null }) {
+  const revoked = reason === "revoked";
+  const copy = revoked
+    ? "이 링크는 취소되었습니다."
+    : reason === "expired"
+      ? "이 링크는 만료되었습니다."
+      : "이 링크는 만료되었거나 취소되었습니다.";
+  return (
+    <section className="w-full max-w-md text-center">
+      <ShareSignature />
+      {revoked ? (
+        <Ban
+          aria-hidden="true"
+          data-testid="share-gone-revoked"
+          size={48}
+          strokeWidth={1.5}
+          className="mx-auto text-accent"
+        />
+      ) : (
+        <Clock
+          aria-hidden="true"
+          data-testid="share-gone-expired"
+          size={48}
+          strokeWidth={1.5}
+          className="mx-auto text-fg-subtle"
+        />
+      )}
+      <h1 className="mt-4 text-2xl font-semibold text-accent">410</h1>
+      <p className="mt-2 text-fg-muted">{copy}</p>
+    </section>
+  );
+}
+
 export function SharePublicView({ token }: { token: string }) {
   const {
     share,
     loading,
     notFound: shareNotFound,
     gone,
+    goneReason,
     error,
   } = useShare(token);
 
   if (loading) return <p className="text-fg-muted">불러오는 중…</p>;
   if (shareNotFound) notFound();
   if (gone) {
-    return (
-      <section className="w-full max-w-md text-center">
-        <ShareSignature />
-        <Clock
-          aria-hidden="true"
-          size={48}
-          strokeWidth={1.5}
-          className="mx-auto text-fg-subtle"
-        />
-        <h1 className="mt-4 text-2xl font-semibold text-accent">410</h1>
-        <p className="mt-2 text-fg-muted">
-          이 링크는 만료되었거나 취소되었습니다.
-        </p>
-      </section>
-    );
+    return <ShareGoneScreen reason={goneReason} />;
   }
   if (error)
     return (

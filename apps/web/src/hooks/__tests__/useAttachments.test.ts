@@ -116,6 +116,74 @@ describe("useAttachments", () => {
     expect(result.current.items).toHaveLength(0);
   });
 
+  it("이미지 파일을 추가하면 미리보기 previewUrl(objectURL)을 갖고, 비이미지는 갖지 않는다", async () => {
+    const createObjectURL = vi.fn(() => "blob:preview-1");
+    const revokeObjectURL = vi.fn();
+    vi.stubGlobal("URL", {
+      createObjectURL,
+      revokeObjectURL,
+    } as unknown as typeof URL);
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({
+        ok: true,
+        status: 201,
+        json: async () => ({
+          data: { id: "upload-1", filename: "pic.png" },
+        }),
+      })),
+    );
+    const { result } = renderHook(() => useAttachments("session-1"));
+
+    const img = new File([new Uint8Array([1, 2, 3])], "pic.png", {
+      type: "image/png",
+    });
+    const doc = new File(["hello"], "notes.md", { type: "text/markdown" });
+    act(() => {
+      result.current.addFiles([img, doc]);
+    });
+
+    expect(createObjectURL).toHaveBeenCalledTimes(1);
+    const imgItem = result.current.items.find(
+      (it) => it.filename === "pic.png",
+    );
+    const docItem = result.current.items.find(
+      (it) => it.filename === "notes.md",
+    );
+    expect(imgItem?.previewUrl).toBe("blob:preview-1");
+    expect(docItem?.previewUrl).toBeUndefined();
+  });
+
+  it("이미지 칩을 remove 하면 previewUrl objectURL 을 revoke 한다", () => {
+    const revokeObjectURL = vi.fn();
+    vi.stubGlobal("URL", {
+      createObjectURL: vi.fn(() => "blob:preview-1"),
+      revokeObjectURL,
+    } as unknown as typeof URL);
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({
+        ok: true,
+        status: 201,
+        json: async () => ({ data: { id: "u1", filename: "pic.png" } }),
+      })),
+    );
+    const { result } = renderHook(() => useAttachments("session-1"));
+
+    const img = new File([new Uint8Array([1])], "pic.png", {
+      type: "image/png",
+    });
+    act(() => {
+      result.current.addFiles([img]);
+    });
+    const localId = result.current.items[0]!.localId;
+    act(() => {
+      result.current.remove(localId);
+    });
+
+    expect(revokeObjectURL).toHaveBeenCalledWith("blob:preview-1");
+  });
+
   it("업로드 실패 응답이면 error 상태로 전이한다", async () => {
     vi.stubGlobal(
       "fetch",

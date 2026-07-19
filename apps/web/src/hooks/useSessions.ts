@@ -10,10 +10,14 @@ import {
   createFolder as createFolderApi,
   deleteFolder as deleteFolderApi,
   listFolders,
+  moveFolder as moveFolderApi,
   renameFolder as renameFolderApi,
+  updateFolderSystemPrompt as updateFolderSystemPromptApi,
   type SessionFolder,
 } from "../lib/sessionFolders";
 import { addSessionTag, removeSessionTag } from "../lib/sessionTags";
+import { SESSIONS_CHANGED_EVENT } from "../lib/importConversations";
+import { showToast } from "../lib/toast";
 
 export type { SessionFolder } from "../lib/sessionFolders";
 
@@ -32,7 +36,10 @@ interface UseSessionsResult {
   sessions: SessionListItemDto[];
   loading: boolean;
   error: string | null;
+  hasMore: boolean;
+  loadMore: () => Promise<void>;
   createSession: () => Promise<SessionListItemDto | null>;
+  cloneSession: (id: string) => Promise<SessionListItemDto | null>;
   renameSession: (id: string, title: string) => Promise<void>;
   deleteSession: (id: string) => Promise<void>;
   togglePin: (id: string) => Promise<void>;
@@ -40,7 +47,12 @@ interface UseSessionsResult {
   folders: SessionFolder[];
   createFolder: (name: string) => Promise<SessionFolder | null>;
   renameFolder: (id: string, name: string) => Promise<void>;
+  updateFolderSystemPrompt: (
+    id: string,
+    systemPrompt: string | null,
+  ) => Promise<void>;
   deleteFolder: (id: string) => Promise<void>;
+  moveFolder: (id: string, parentFolderId: string | null) => Promise<void>;
   assignFolder: (id: string, folderId: string | null) => Promise<void>;
   addTag: (id: string, tag: string) => Promise<void>;
   removeTag: (id: string, tag: string) => Promise<void>;
@@ -48,6 +60,8 @@ interface UseSessionsResult {
   archivedLoading: boolean;
   loadArchived: () => Promise<void>;
   archiveSession: (id: string) => Promise<void>;
+  bulkArchiveSessions: (ids: string[]) => Promise<void>;
+  bulkDeleteSessions: (ids: string[]) => Promise<void>;
 }
 
 export function useSessions(): UseSessionsResult {
@@ -59,6 +73,8 @@ export function useSessions(): UseSessionsResult {
     SessionListItemDto[]
   >([]);
   const [archivedLoading, setArchivedLoading] = useState(false);
+  const [cursor, setCursor] = useState<string | null>(null);
+  const [hasMore, setHasMore] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -75,6 +91,7 @@ export function useSessions(): UseSessionsResult {
         data: Array<
           SessionListItemDto & { folderId?: string | null; tags?: string[] }
         >;
+        meta?: { nextCursor?: string };
       };
       setSessions(
         body.data.map((s) => ({
@@ -83,10 +100,40 @@ export function useSessions(): UseSessionsResult {
           tags: s.tags ?? [],
         })),
       );
+      setCursor(body.meta?.nextCursor ?? null);
+      setHasMore(Boolean(body.meta?.nextCursor));
     } finally {
       setLoading(false);
     }
   }, []);
+
+  const loadMore = useCallback(async () => {
+    if (!cursor) return;
+    const res = await apiFetch(
+      `/api/v1/sessions?cursor=${encodeURIComponent(cursor)}`,
+      { credentials: "include" },
+    );
+    if (!res.ok) {
+      showToast("error", "세션 목록을 더 불러오지 못했습니다.");
+      return;
+    }
+    const body = (await res.json()) as {
+      data: Array<
+        SessionListItemDto & { folderId?: string | null; tags?: string[] }
+      >;
+      meta?: { nextCursor?: string };
+    };
+    setSessions((prev) => [
+      ...prev,
+      ...body.data.map((s) => ({
+        ...s,
+        folderId: s.folderId ?? null,
+        tags: s.tags ?? [],
+      })),
+    ]);
+    setCursor(body.meta?.nextCursor ?? null);
+    setHasMore(Boolean(body.meta?.nextCursor));
+  }, [cursor]);
 
   const loadFolders = useCallback(async () => {
     const list = await listFolders();
@@ -97,6 +144,18 @@ export function useSessions(): UseSessionsResult {
     void load();
     void loadFolders();
   }, [load, loadFolders]);
+
+  // P22-T6-13(계약배치 C9) — 대화 가져오기(ShareExportMenu)가 세션을 생성한 뒤 발행하는
+  // 앱레벨 이벤트를 구독해 목록을 재조회한다. 구독이 없으면 가져온 세션이 수동 새로고침
+  // 전까지 목록에 보이지 않는다. 이벤트명 단일출처는 lib/importConversations.ts.
+  useEffect(() => {
+    const onSessionsChanged = () => {
+      void load();
+    };
+    window.addEventListener(SESSIONS_CHANGED_EVENT, onSessionsChanged);
+    return () =>
+      window.removeEventListener(SESSIONS_CHANGED_EVENT, onSessionsChanged);
+  }, [load]);
 
   const createSession = useCallback(async () => {
     const res = await apiFetch("/api/v1/sessions", {
@@ -128,6 +187,40 @@ export function useSessions(): UseSessionsResult {
     return created;
   }, []);
 
+  // P22-T6-01 — 대화 복제. POST /sessions/:id/clone 은 원본 메시지 트리를 복사한 새 세션
+  // DTO(POST /sessions 와 동일 shape)를 돌려주므로, 반환 세션을 목록 최상단에 prepend 한다
+  // (createSession 과 동일 패턴). SessionCard 의 handleClone 이중 제출 가드가 중복 호출을 막는다.
+  const cloneSession = useCallback(async (id: string) => {
+    const res = await apiFetch(`/api/v1/sessions/${id}/clone`, {
+      method: "POST",
+      credentials: "include",
+    });
+    if (!res.ok) {
+      showToast("error", "대화를 복제하지 못했습니다.");
+      return null;
+    }
+    const body = (await res.json()) as {
+      data: {
+        id: string;
+        title: string | null;
+        projectId: string | null;
+        createdAt: string;
+      };
+    };
+    const cloned: SessionListItemDto = {
+      id: body.data.id,
+      title: body.data.title,
+      projectId: body.data.projectId,
+      lastMessageAt: body.data.createdAt,
+      archived: false,
+      pinned: false,
+      folderId: null,
+      tags: [],
+    };
+    setSessions((prev) => [cloned, ...prev]);
+    return cloned;
+  }, []);
+
   const renameSession = useCallback(async (id: string, title: string) => {
     const res = await apiFetch(`/api/v1/sessions/${id}`, {
       method: "PATCH",
@@ -135,7 +228,10 @@ export function useSessions(): UseSessionsResult {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ title }),
     });
-    if (!res.ok) return;
+    if (!res.ok) {
+      showToast("error", "세션 이름을 변경하지 못했습니다.");
+      return;
+    }
     setSessions((prev) => prev.map((s) => (s.id === id ? { ...s, title } : s)));
   }, []);
 
@@ -144,7 +240,10 @@ export function useSessions(): UseSessionsResult {
       method: "DELETE",
       credentials: "include",
     });
-    if (!res.ok && res.status !== 204) return;
+    if (!res.ok && res.status !== 204) {
+      showToast("error", "세션을 삭제하지 못했습니다.");
+      return;
+    }
     setSessions((prev) => prev.filter((s) => s.id !== id));
     setArchivedSessions((prev) => prev.filter((s) => s.id !== id));
   }, []);
@@ -175,11 +274,45 @@ export function useSessions(): UseSessionsResult {
 
   const archiveSession = useCallback(async (id: string) => {
     const archived = await toggleSessionArchive(id);
-    if (archived === null) return;
+    if (archived === null) {
+      showToast("error", "세션 보관 처리에 실패했습니다.");
+      return;
+    }
     if (archived) {
       setSessions((prev) => prev.filter((s) => s.id !== id));
     } else {
       setArchivedSessions((prev) => prev.filter((s) => s.id !== id));
+    }
+  }, []);
+
+  const bulkArchiveSessions = useCallback(async (ids: string[]) => {
+    const results = await Promise.all(
+      ids.map((id) => toggleSessionArchive(id)),
+    );
+    const archivedIds = new Set(ids.filter((_, i) => results[i] === true));
+    setSessions((prev) => prev.filter((s) => !archivedIds.has(s.id)));
+    const failCount = ids.length - archivedIds.size;
+    if (failCount > 0) {
+      showToast("error", `${failCount}개 세션 보관에 실패했습니다.`);
+    }
+  }, []);
+
+  const bulkDeleteSessions = useCallback(async (ids: string[]) => {
+    const results = await Promise.all(
+      ids.map(async (id) => {
+        const res = await apiFetch(`/api/v1/sessions/${id}`, {
+          method: "DELETE",
+          credentials: "include",
+        });
+        return res.ok || res.status === 204;
+      }),
+    );
+    const deletedIds = new Set(ids.filter((_, i) => results[i]));
+    setSessions((prev) => prev.filter((s) => !deletedIds.has(s.id)));
+    setArchivedSessions((prev) => prev.filter((s) => !deletedIds.has(s.id)));
+    const failCount = ids.length - deletedIds.size;
+    if (failCount > 0) {
+      showToast("error", `${failCount}개 세션 삭제에 실패했습니다.`);
     }
   }, []);
 
@@ -193,6 +326,9 @@ export function useSessions(): UseSessionsResult {
       }),
     );
     const result = await toggleSessionPin(id);
+    if (result === null) {
+      showToast("error", "세션 고정 처리에 실패했습니다.");
+    }
     setSessions((prev) =>
       prev.map((s) =>
         s.id === id ? { ...s, pinned: result === null ? previous : result } : s,
@@ -202,24 +338,67 @@ export function useSessions(): UseSessionsResult {
 
   const createFolder = useCallback(async (name: string) => {
     const created = await createFolderApi(name);
-    if (created) setFolders((prev) => [...prev, created]);
+    if (!created) {
+      showToast("error", "폴더를 생성하지 못했습니다.");
+      return null;
+    }
+    setFolders((prev) => [...prev, created]);
     return created;
   }, []);
 
   const renameFolder = useCallback(async (id: string, name: string) => {
     const updated = await renameFolderApi(id, name);
-    if (!updated) return;
+    if (!updated) {
+      showToast("error", "폴더 이름을 변경하지 못했습니다.");
+      return;
+    }
     setFolders((prev) => prev.map((f) => (f.id === id ? updated : f)));
   }, []);
 
+  const updateFolderSystemPrompt = useCallback(
+    async (id: string, systemPrompt: string | null) => {
+      const updated = await updateFolderSystemPromptApi(id, systemPrompt);
+      if (!updated) {
+        showToast("error", "폴더 프롬프트를 저장하지 못했습니다.");
+        return;
+      }
+      setFolders((prev) => prev.map((f) => (f.id === id ? updated : f)));
+    },
+    [],
+  );
+
   const deleteFolder = useCallback(async (id: string) => {
     const ok = await deleteFolderApi(id);
-    if (!ok) return;
+    if (!ok) {
+      showToast("error", "폴더를 삭제하지 못했습니다.");
+      return;
+    }
     setFolders((prev) => prev.filter((f) => f.id !== id));
     setSessions((prev) =>
       prev.map((s) => (s.folderId === id ? { ...s, folderId: null } : s)),
     );
   }, []);
+
+  const moveFolder = useCallback(
+    async (id: string, parentFolderId: string | null) => {
+      const previous = folders.find((f) => f.id === id)?.parentFolderId ?? null;
+      setFolders((prev) =>
+        prev.map((f) => (f.id === id ? { ...f, parentFolderId } : f)),
+      );
+      const updated = await moveFolderApi(id, parentFolderId);
+      if (!updated) {
+        showToast("error", "폴더 이동에 실패했습니다.");
+        setFolders((prev) =>
+          prev.map((f) =>
+            f.id === id ? { ...f, parentFolderId: previous } : f,
+          ),
+        );
+        return;
+      }
+      setFolders((prev) => prev.map((f) => (f.id === id ? updated : f)));
+    },
+    [folders],
+  );
 
   const assignFolder = useCallback(
     async (id: string, folderId: string | null) => {
@@ -233,6 +412,7 @@ export function useSessions(): UseSessionsResult {
       );
       const result = await assignSessionFolder(id, folderId);
       if (result === undefined) {
+        showToast("error", "세션을 폴더에 배정하지 못했습니다.");
         setSessions((prev) =>
           prev.map((s) => (s.id === id ? { ...s, folderId: previous } : s)),
         );
@@ -251,6 +431,7 @@ export function useSessions(): UseSessionsResult {
     );
     const result = await addSessionTag(id, tag);
     if (result === undefined) {
+      showToast("error", "태그를 추가하지 못했습니다.");
       setSessions((prev) =>
         prev.map((s) =>
           s.id === id ? { ...s, tags: s.tags.filter((t) => t !== tag) } : s,
@@ -270,6 +451,7 @@ export function useSessions(): UseSessionsResult {
     );
     const ok = await removeSessionTag(id, tag);
     if (!ok) {
+      showToast("error", "태그를 삭제하지 못했습니다.");
       setSessions((prev) =>
         prev.map((s) => (s.id === id ? { ...s, tags: previous } : s)),
       );
@@ -280,7 +462,10 @@ export function useSessions(): UseSessionsResult {
     sessions,
     loading,
     error,
+    hasMore,
+    loadMore,
     createSession,
+    cloneSession,
     renameSession,
     deleteSession,
     togglePin,
@@ -288,7 +473,9 @@ export function useSessions(): UseSessionsResult {
     folders,
     createFolder,
     renameFolder,
+    updateFolderSystemPrompt,
     deleteFolder,
+    moveFolder,
     assignFolder,
     addTag,
     removeTag,
@@ -296,5 +483,7 @@ export function useSessions(): UseSessionsResult {
     archivedLoading,
     loadArchived,
     archiveSession,
+    bulkArchiveSessions,
+    bulkDeleteSessions,
   };
 }

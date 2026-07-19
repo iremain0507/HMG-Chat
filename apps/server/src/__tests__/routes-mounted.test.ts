@@ -32,15 +32,23 @@ const pid = randomUUID();
 const EXPECTED_ROUTES: Array<{ method: string; path: string; phase: string }> =
   [
     // auth 라우터 마운트 확인은 확실히 존재하는 /me 로 (auth-protected → 401).
-    // 주의: 계약(16 §273)의 POST /auth/login(password fallback)은 현재 미구현 — 별도 gap(PROGRESS 기록).
+    // 계약(16 §273) POST /auth/login(비밀번호) 은 P22-T1-13 에서 구현·마운트됨.
     { method: "GET", path: "/api/v1/auth/me", phase: "P1" },
+    { method: "POST", path: "/api/v1/auth/login", phase: "P22" },
+    // P22-T1-11(C14) — LDAP/AD 디렉터리 로그인. body 없으면 400(마운트 확인).
+    { method: "POST", path: "/api/v1/auth/login/directory", phase: "P22" },
     { method: "PATCH", path: "/api/v1/auth/me", phase: "P17" },
+    { method: "DELETE", path: "/api/v1/auth/me", phase: "P22" },
     { method: "GET", path: "/api/v1/sessions", phase: "P17" },
+    { method: "POST", path: "/api/v1/sessions", phase: "P22" },
+    { method: "GET", path: `/api/v1/sessions/${sid}`, phase: "P22" },
     { method: "GET", path: `/api/v1/sessions/${sid}/messages`, phase: "P17" },
     { method: "PATCH", path: `/api/v1/sessions/${sid}`, phase: "P17" },
     { method: "DELETE", path: `/api/v1/sessions/${sid}`, phase: "P17" },
     { method: "PATCH", path: `/api/v1/sessions/${sid}/pin`, phase: "P19" },
     { method: "PATCH", path: `/api/v1/sessions/${sid}/archive`, phase: "P19" },
+    { method: "POST", path: `/api/v1/sessions/${sid}/clone`, phase: "P22" },
+    { method: "POST", path: "/api/v1/sessions/import", phase: "P22" },
     { method: "GET", path: "/api/v1/sessions/search?q=x", phase: "P19" },
     { method: "GET", path: "/api/v1/folders", phase: "P19" },
     { method: "POST", path: "/api/v1/folders", phase: "P19" },
@@ -72,6 +80,11 @@ const EXPECTED_ROUTES: Array<{ method: string; path: string; phase: string }> =
       path: `/api/v1/sessions/${sid}/active-run`,
       phase: "P2",
     },
+    {
+      method: "DELETE",
+      path: `/api/v1/sessions/${sid}/messages/${randomUUID()}`,
+      phase: "P20",
+    },
     { method: "GET", path: "/api/v1/projects", phase: "P3" },
     { method: "POST", path: "/api/v1/projects", phase: "P3" },
     { method: "GET", path: `/api/v1/projects/${pid}`, phase: "P3" },
@@ -84,6 +97,32 @@ const EXPECTED_ROUTES: Array<{ method: string; path: string; phase: string }> =
       method: "POST",
       path: `/api/v1/documents/${randomUUID()}/retry`,
       phase: "P17",
+    },
+    // P22-T3-02 — 계약(§666-710) nested 경로. flat 은 back-compat 로 유지.
+    {
+      method: "GET",
+      path: `/api/v1/projects/${pid}/documents`,
+      phase: "P22",
+    },
+    {
+      method: "POST",
+      path: `/api/v1/projects/${pid}/documents`,
+      phase: "P22",
+    },
+    {
+      method: "GET",
+      path: `/api/v1/projects/${pid}/documents/${randomUUID()}`,
+      phase: "P22",
+    },
+    {
+      method: "POST",
+      path: `/api/v1/projects/${pid}/documents/${randomUUID()}/retry`,
+      phase: "P22",
+    },
+    {
+      method: "DELETE",
+      path: `/api/v1/projects/${pid}/documents/${randomUUID()}`,
+      phase: "P22",
     },
     { method: "GET", path: `/api/v1/artifacts/${randomUUID()}`, phase: "P5" },
     {
@@ -100,12 +139,66 @@ const EXPECTED_ROUTES: Array<{ method: string; path: string; phase: string }> =
     { method: "POST", path: "/api/v1/memories", phase: "P7" },
     { method: "GET", path: "/api/v1/mcp-servers", phase: "P8" },
     { method: "POST", path: "/api/v1/mcp-servers", phase: "P8" },
+    { method: "GET", path: "/api/v1/openapi-tool-servers", phase: "P22" },
+    { method: "POST", path: "/api/v1/openapi-tool-servers", phase: "P22" },
+    { method: "GET", path: "/api/v1/agents", phase: "P22" },
+    { method: "POST", path: "/api/v1/agents", phase: "P22" },
+    { method: "GET", path: `/api/v1/agents/${randomUUID()}`, phase: "P22" },
+    { method: "PATCH", path: `/api/v1/agents/${randomUUID()}`, phase: "P22" },
+    { method: "DELETE", path: `/api/v1/agents/${randomUUID()}`, phase: "P22" },
+    // P22-T6-17 노트 워크스페이스(계약배치 C7)
+    { method: "GET", path: "/api/v1/notes", phase: "P22" },
+    { method: "POST", path: "/api/v1/notes", phase: "P22" },
+    { method: "GET", path: `/api/v1/notes/${randomUUID()}`, phase: "P22" },
+    { method: "PATCH", path: `/api/v1/notes/${randomUUID()}`, phase: "P22" },
+    { method: "DELETE", path: `/api/v1/notes/${randomUUID()}`, phase: "P22" },
+    {
+      method: "POST",
+      path: `/api/v1/notes/${randomUUID()}/enhance`,
+      phase: "P22",
+    },
+    // P22-T6-12 — Channels(실시간 다중사용자). createApp 마운트 가드.
+    { method: "GET", path: "/api/v1/channels", phase: "P22" },
+    { method: "POST", path: "/api/v1/channels", phase: "P22" },
+    { method: "GET", path: `/api/v1/channels/${randomUUID()}`, phase: "P22" },
+    {
+      method: "POST",
+      path: `/api/v1/channels/${randomUUID()}/messages`,
+      phase: "P22",
+    },
+    {
+      method: "GET",
+      path: `/api/v1/channels/${randomUUID()}/stream`,
+      phase: "P22",
+    },
+    { method: "GET", path: "/api/v1/connections", phase: "P22" },
+    { method: "POST", path: "/api/v1/connections", phase: "P22" },
+    {
+      method: "PATCH",
+      path: `/api/v1/connections/${randomUUID()}`,
+      phase: "P22",
+    },
+    {
+      method: "DELETE",
+      path: `/api/v1/connections/${randomUUID()}`,
+      phase: "P22",
+    },
+    {
+      method: "POST",
+      path: `/api/v1/connections/${randomUUID()}/verify`,
+      phase: "P22",
+    },
     { method: "GET", path: "/api/v1/skills", phase: "P8" },
+    { method: "POST", path: "/api/v1/skills", phase: "P22" },
+    { method: "PATCH", path: `/api/v1/skills/${randomUUID()}`, phase: "P22" },
+    { method: "DELETE", path: `/api/v1/skills/${randomUUID()}`, phase: "P22" },
     {
       method: "GET",
       path: "/api/v1/skill-assets/some-skill@1.0.0/asset.png",
       phase: "P8",
     },
+    { method: "GET", path: "/api/v1/notifications", phase: "P22" },
+    { method: "POST", path: "/api/v1/completions", phase: "P22" },
     { method: "GET", path: "/api/v1/quota", phase: "P9" },
     { method: "GET", path: "/api/v1/usage/me", phase: "P9" },
     { method: "GET", path: "/api/v1/usage", phase: "P9" },
@@ -118,12 +211,59 @@ const EXPECTED_ROUTES: Array<{ method: string; path: string; phase: string }> =
     { method: "GET", path: "/api/v1/config", phase: "P11" },
     { method: "GET", path: "/api/v1/admin/settings", phase: "P14" },
     { method: "PUT", path: "/api/v1/admin/settings", phase: "P14" },
+    // P22-T1-11(C14) — LDAP 연결 테스트. 미인증이라 401(마운트 확인만).
+    { method: "POST", path: "/api/v1/admin/settings/ldap/test", phase: "P22" },
     { method: "GET", path: "/api/v1/admin/models", phase: "P19" },
     { method: "PUT", path: "/api/v1/admin/models", phase: "P19" },
+    { method: "GET", path: "/api/v1/admin/tools", phase: "P22" },
+    { method: "PUT", path: "/api/v1/admin/tools", phase: "P22" },
     { method: "GET", path: "/api/v1/api-keys", phase: "P19" },
     { method: "POST", path: "/api/v1/api-keys", phase: "P19" },
     { method: "GET", path: "/api/v1/admin/groups", phase: "P19" },
     { method: "POST", path: "/api/v1/admin/groups", phase: "P19" },
+    {
+      method: "DELETE",
+      path: `/api/v1/admin/users/${randomUUID()}`,
+      phase: "P20",
+    },
+    {
+      method: "GET",
+      path: `/api/v1/admin/grants?resourceType=prompt&resourceId=${randomUUID()}`,
+      phase: "P20",
+    },
+    {
+      method: "GET",
+      path: `/api/v1/admin/grants?subjectType=group&subjectId=${randomUUID()}`,
+      phase: "P22",
+    },
+    { method: "POST", path: "/api/v1/admin/grants", phase: "P20" },
+    {
+      method: "DELETE",
+      path: `/api/v1/admin/grants?resourceType=prompt&resourceId=${randomUUID()}&subjectType=user&subjectId=${randomUUID()}&access=read`,
+      phase: "P20",
+    },
+    { method: "GET", path: "/api/v1/admin/analytics", phase: "P20" },
+    { method: "GET", path: "/api/v1/admin/audit-logs", phase: "P20" },
+    {
+      method: "POST",
+      path: `/api/v1/sessions/${sid}/share-snapshot`,
+      phase: "P20",
+    },
+    {
+      method: "DELETE",
+      path: `/api/v1/sessions/${sid}/share-snapshot/${randomUUID()}`,
+      phase: "P20",
+    },
+    // P22-T1-16(C15) — SCIM 2.0. authMiddleware 밖 마운트지만 인증-우회 share 라우트와 달리
+    // 상태코드가 모호하지 않다: 디스커버리는 토큰 없이 200, /Users 는 토큰 없이 401 —
+    // 둘 다 404 와 명확히 구분되므로 이 가드로 마운트를 직접 검증할 수 있다.
+    { method: "GET", path: "/scim/v2/ServiceProviderConfig", phase: "P22" },
+    { method: "POST", path: "/scim/v2/Users", phase: "P22" },
+    { method: "GET", path: "/scim/v2/Groups", phase: "P22" },
+    // GET /api/v1/conversation-shares/:token(P20-T1-08)은 authMiddleware 밖(인증 우회) 이라
+    // "미마운트 404" 와 "유효하지 않은 토큰 → 계약상 404 NOT_FOUND" 를 상태코드로 구분할 수 없어
+    // 이 가드에서 제외 — 실 마운트 검증은
+    // __tests__/integration/conversation-shares-composition.test.ts(유효 토큰 200 흐름)가 대신한다.
     // GET /api/v1/share/:token 은 authMiddleware 밖(인증 우회) 이라 "미마운트 404" 와
     // "유효하지 않은 토큰 → 계약상 404 NOT_FOUND"(16-API-CONTRACT § 8) 를 상태코드로 구분할 수
     // 없어 이 가드에서 제외 — 실 마운트 검증은 routes/__tests__/public-share.test.ts(유효 토큰

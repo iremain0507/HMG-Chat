@@ -3,14 +3,133 @@
 // components/admin/GroupsManager.tsx — P19-T6-18: RBAC 관리 UI(그룹).
 //   /api/v1/admin/groups(P19-T1-13) 를 hooks/useGroups.ts 로 소비 — 그룹 생성·이름변경·삭제
 //   + 멤버 추가/제거. ApiKeysManager 와 동일한 카드형 레이아웃/토큰 컨벤션.
-//   리소스별(resource_grants, P19-T1-14) 접근 부여 토글은 이번 반복에서 범위 축소(PROGRESS.md
-//   참고) — 해당 DB 레이어는 grantsForResource(리소스별 조회)만 지원해 "그룹이 가진 전체 권한
-//   목록"을 나열할 조회 API 가 없고, 관리용 HTTP CRUD 라우트도 아직 없어(P19-T1-14 는 코어
-//   canAccessResource 판정 로직까지만 구현) 이 T6 태스크의 파일 소유권(apps/web/src/) 만으로는
-//   완성할 수 없다. 후속 T1 라우트(목록/부여/철회) 추가 후 이어서 배선.
-import React, { useState } from "react";
+//   P22-T1-07: subject-scoped GET /api/v1/admin/grants?subjectType=group&subjectId=… 가
+//   추가되어, 각 그룹 카드가 그 그룹이 보유한 리소스별 접근 권한을 인카드로 조회/부여/회수한다
+//   (useGroupGrants). Open WebUI 그룹 권한 편집 플로우 참조 · 디자인은 시맨틱 토큰 유지.
+import React, { useEffect, useState } from "react";
 import { useGroups, type GroupDto } from "../../hooks/useGroups";
+import {
+  useGroupGrants,
+  type GrantAccessLevel,
+  type GrantResourceType,
+} from "../../hooks/useGrants";
 import { AdminSubNav } from "./AdminSubNav";
+
+const GRANT_RESOURCE_TYPES: GrantResourceType[] = [
+  "model",
+  "knowledge",
+  "tool",
+  "prompt",
+];
+const GRANT_ACCESS_LEVELS: GrantAccessLevel[] = ["read", "write"];
+
+function GroupGrantsSection({
+  groupId,
+  groupName,
+}: {
+  groupId: string;
+  groupName: string;
+}) {
+  const { grants, error, load, grant, revoke } = useGroupGrants(groupId);
+  const [resourceType, setResourceType] =
+    useState<GrantResourceType>("knowledge");
+  const [resourceId, setResourceId] = useState("");
+  const [access, setAccess] = useState<GrantAccessLevel>("read");
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  async function handleGrant(e: React.FormEvent) {
+    e.preventDefault();
+    const id = resourceId.trim();
+    if (!id) return;
+    await grant(resourceType, id, access);
+    setResourceId("");
+  }
+
+  return (
+    <div className="mt-3 border-t border-border pt-2.5">
+      <div className="text-[11px] font-semibold uppercase tracking-wide text-fg-subtle">
+        접근 권한
+      </div>
+      <div className="mt-1.5 flex flex-wrap gap-1.5">
+        {grants.length === 0 ? (
+          <span className="text-xs text-fg-subtle">부여된 권한 없음</span>
+        ) : (
+          grants.map((gr) => (
+            <span
+              key={`${gr.resourceType}-${gr.resourceId}-${gr.access}`}
+              data-testid={`group-grant-${gr.resourceType}-${gr.resourceId}-${gr.access}`}
+              className="inline-flex items-center gap-1 rounded-full border border-border px-2 py-0.5 text-[11px] text-fg"
+            >
+              <span className="text-fg-muted">{gr.resourceType}</span>
+              <span>{gr.resourceId}</span>
+              <span className="text-fg-muted">· {gr.access}</span>
+              <button
+                type="button"
+                aria-label={`권한 회수 (${gr.resourceType}:${gr.resourceId}, ${gr.access})`}
+                onClick={() =>
+                  void revoke(gr.resourceType, gr.resourceId, gr.access)
+                }
+                className={`text-fg-subtle hover:text-accent ${FOCUS_RING}`}
+              >
+                ×
+              </button>
+            </span>
+          ))
+        )}
+      </div>
+
+      {error && <p className="mt-1.5 text-xs text-accent">{error}</p>}
+
+      <form
+        onSubmit={(e) => void handleGrant(e)}
+        className="mt-2 flex flex-wrap items-center gap-1.5"
+      >
+        <select
+          aria-label={`리소스 종류 (${groupName})`}
+          value={resourceType}
+          onChange={(e) => setResourceType(e.target.value as GrantResourceType)}
+          className={`h-7 rounded-md border border-border bg-bg px-1.5 text-xs text-fg ${FOCUS_RING}`}
+        >
+          {GRANT_RESOURCE_TYPES.map((t) => (
+            <option key={t} value={t}>
+              {t}
+            </option>
+          ))}
+        </select>
+        <input
+          aria-label={`리소스 ID (${groupName})`}
+          value={resourceId}
+          onChange={(e) => setResourceId(e.target.value)}
+          placeholder="resourceId"
+          className={`h-7 flex-1 rounded-md border border-border bg-bg px-2 text-xs text-fg ${FOCUS_RING}`}
+        />
+        <select
+          aria-label={`접근 레벨 (${groupName})`}
+          value={access}
+          onChange={(e) => setAccess(e.target.value as GrantAccessLevel)}
+          className={`h-7 rounded-md border border-border bg-bg px-1.5 text-xs text-fg ${FOCUS_RING}`}
+        >
+          {GRANT_ACCESS_LEVELS.map((a) => (
+            <option key={a} value={a}>
+              {a}
+            </option>
+          ))}
+        </select>
+        <button
+          type="submit"
+          aria-label={`권한 부여 (${groupName})`}
+          disabled={!resourceId.trim()}
+          className={`h-7 shrink-0 rounded-md border border-border px-2.5 text-xs font-semibold text-fg disabled:opacity-60 ${FOCUS_RING}`}
+        >
+          부여
+        </button>
+      </form>
+    </div>
+  );
+}
 
 const FOCUS_RING =
   "outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--focus-ring)] focus-visible:outline-offset-2";
@@ -161,6 +280,8 @@ export function GroupsManager() {
                   추가
                 </button>
               </div>
+
+              <GroupGrantsSection groupId={g.id} groupName={g.name} />
             </div>
           ))}
         </div>

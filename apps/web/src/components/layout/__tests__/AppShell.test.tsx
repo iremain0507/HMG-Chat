@@ -14,6 +14,7 @@ import "@testing-library/jest-dom/vitest";
 
 vi.mock("next/navigation", () => ({
   usePathname: () => "/chat/sess-1",
+  useRouter: () => ({ push: vi.fn(), replace: vi.fn() }),
 }));
 
 import { AppShell } from "../AppShell";
@@ -264,7 +265,7 @@ describe("AppShell", () => {
     expect(screen.getByTestId("shortcut-sheet")).toBeInTheDocument();
     expect(screen.getByTestId("shortcut-sheet")).toHaveTextContent("⌘B");
 
-    fireEvent.keyDown(window, { key: "Escape" });
+    fireEvent.keyDown(document, { key: "Escape" });
     expect(screen.queryByTestId("shortcut-sheet")).not.toBeInTheDocument();
   });
 
@@ -304,6 +305,22 @@ describe("AppShell", () => {
     expect(listener).toHaveBeenCalledTimes(2);
 
     window.removeEventListener("wchat:cmdk", listener);
+  });
+
+  it("⌘K 버튼 클릭 시 command-palette 오버레이가 열린다", () => {
+    stubCurrentUserFetch();
+    render(
+      <AppShell
+        sidebar={<div>세션 목록</div>}
+        rightPanel={<div>패널 콘텐츠</div>}
+      >
+        <div>본문</div>
+      </AppShell>,
+    );
+
+    expect(screen.queryByTestId("command-palette")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByTestId("app-shell-cmdk-button"));
+    expect(screen.getByTestId("command-palette")).toBeInTheDocument();
   });
 
   it("우패널 드래그 핸들로 폭을 조절한다", () => {

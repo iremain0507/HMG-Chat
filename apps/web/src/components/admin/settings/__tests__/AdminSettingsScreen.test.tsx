@@ -36,6 +36,8 @@ const SETTINGS = {
   defaultModel: "claude-sonnet-5",
   systemPrompt: "",
   toolMaxTokens: 4096,
+  deepResearchMaxSubQuestions: 4,
+  deepResearchMaxGapIterations: 2,
   ragTopK: 10,
   ragRrfK: 60,
   ragChunkSizeTokens: 800,
@@ -49,7 +51,7 @@ const SETTINGS = {
   webSearchApiKeyRef: "",
   enableDirectConnections: false,
   instanceName: "WChat",
-  banner: "",
+  banner: [],
   responseWatermark: "",
   defaultUserRole: "member",
   enableSignup: false,
@@ -99,14 +101,19 @@ describe("AdminSettingsScreen", () => {
     __resetToastsForTest();
   });
 
-  it("GET 로 불러온 뒤 7개 탭을 렌더한다", async () => {
+  // P22-T6-22 로 Identity/LDAP 탭이 추가되어 7 → 8. 개수만 세면 어떤 탭이 늘었는지
+  // 알 수 없으므로 신규 탭의 존재도 함께 단언한다.
+  it("GET 로 불러온 뒤 8개 탭을 렌더한다", async () => {
     stubFetchOnce();
     render(<AdminSettingsScreen />);
 
     await waitFor(() => {
       expect(screen.getByRole("tablist")).toBeInTheDocument();
     });
-    expect(screen.getAllByRole("tab")).toHaveLength(7);
+    expect(screen.getAllByRole("tab")).toHaveLength(8);
+    expect(
+      screen.getByRole("tab", { name: "Identity/LDAP" }),
+    ).toBeInTheDocument();
     expect(fetch).toHaveBeenCalledWith(
       "/api/v1/admin/settings",
       expect.objectContaining({ credentials: "include" }),

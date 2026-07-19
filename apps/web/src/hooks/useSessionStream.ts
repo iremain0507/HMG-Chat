@@ -47,11 +47,23 @@ export interface MessageBranch {
   count: number;
 }
 
+// P20-T6-06 — 생성 메타(Info): stop ChatEvent.usage 와 message_start~stop 사이 경과시간을
+// 클라이언트 전용으로 보존(wire format 은 그대로, 서버 필드 재가공 없음).
+export interface StreamMessageMeta {
+  provider?: string;
+  model?: string;
+  inputTokens?: number;
+  outputTokens?: number;
+  elapsedMs?: number;
+}
+
 export interface StreamMessage {
   id: string;
   role: "user" | "assistant";
   content: string;
   parts?: MessagePart[];
+  // P20-T2-03 — 사고(reasoning) 스트림 누적. 최종 답변(content)과 별개, 접이식 표시.
+  reasoning?: string;
   truncated?: boolean;
   error?: boolean;
   // P10-T6-17 — SerializedError(§14-INTERFACES) 의 retryable/category 를 그대로 반영.
@@ -60,6 +72,18 @@ export interface StreamMessage {
   errorCategory?: string;
   citations?: Citation[];
   branch?: MessageBranch;
+  meta?: StreamMessageMeta;
+  // P22-T6-04 — 유저 메시지에 딸린 첨부(이미지는 previewUrl objectURL 로 버블에 썸네일 렌더).
+  // 낙관적 전송 시 ChatInput→send() 가 채운다. 서버 wire format 엔 없는 클라이언트 전용 필드.
+  attachments?: MessageAttachment[];
+}
+
+// P22-T6-04 — 버블 렌더용 첨부 메타(서버 요청 body 엔 uploadId 만 실림).
+export interface MessageAttachment {
+  uploadId: string;
+  filename: string;
+  mimeType: string;
+  previewUrl?: string;
 }
 
 // 14-INTERFACES § ChatEvent.citation 과 1:1 (type 필드 제외).
@@ -111,6 +135,39 @@ export interface SendOptions {
   temporary?: boolean;
 }
 
+// P22-T6-05 — 응답 생성 중 대기열에 쌓인(아직 미전송) 사용자 메시지. 스트림 종료 시
+// FIFO 로 자동 디스패치되며, 그 전까지 컴포저에 취소 가능한 칩으로 표시된다.
+export interface QueuedMessage {
+  id: string;
+  content: string;
+  attachments?: MessageAttachment[];
+}
+
+// P22-T6-06 — 멀티모델 병렬 비교(Open WebUI 파리티). 하나의 프롬프트를 2+ 모델로 팬아웃해
+// 각 모델 답변을 병렬 컬럼으로 스트리밍한다. 컬럼마다 독립적인 재생성(형제 답변)과 prev/next
+// 네비게이션을 갖는다. 클라이언트 사이드 팬아웃(모델별 개별 POST /messages 를 병렬 발사)이라
+// 서버 계약(16-API-CONTRACT)·packages/interfaces 변경 없이 T6 안에서 완결된다. 기존 단일경로
+// 트리(messages)와 완전히 분리된 별도 상태라 단일모델 스트리밍 동작에는 전혀 영향이 없다.
+export interface CompareAnswer {
+  id: string;
+  content: string;
+  reasoning?: string;
+  error?: boolean;
+  streaming: boolean;
+  meta?: StreamMessageMeta;
+}
+export interface CompareColumn {
+  model: string;
+  // 컬럼별 형제 답변(재생성 누적). activeIndex 가 화면에 보이는 답변.
+  answers: CompareAnswer[];
+  activeIndex: number;
+}
+export interface CompareGroup {
+  id: string;
+  userContent: string;
+  columns: CompareColumn[];
+}
+
 type ChatStreamEvent =
   | {
       type: "message_start";
@@ -121,6 +178,8 @@ type ChatStreamEvent =
   // 현재까지 누적된 content 를 동기화(16-API-CONTRACT § resume endpoint).
   | { type: "message_replace"; messageId: string; contentSoFar: string }
   | { type: "text_delta"; text: string }
+  // P20-T2-03 — 사고(extended thinking) 스트림. 최종 답변과 별개 채널, 접이식 표시.
+  | { type: "reasoning_delta"; text: string }
   | { type: "tool_use"; toolCallId: string; name: string; args: unknown }
   | { type: "tool_result"; toolCallId: string; content: string | unknown }
   | ({ type: "tool_progress"; toolCallId: string } & ToolProgressState)
@@ -291,6 +350,125 @@ export function useSessionStream(sessionId: string) {
   const lastActivityRef = useRef(0);
   const staleWatchdogRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // P22-T6-05 — 응답 생성 중 추가 메시지 큐잉(Open WebUI 파리티). send() 가 스트리밍 중
+  // 호출되면 in-flight leg 을 abort 하는 대신 큐(FIFO)에 쌓고, 스트림 종료 시 헤드를 자동
+  // 디스패치한다. edit/regenerate/continue 의 overlap-abort 는 그대로 유지(사용자 큐잉만 예외).
+  const queueRef = useRef<
+    Array<{
+      id: string;
+      content: string;
+      attachments?: MessageAttachment[];
+      options?: SendOptions;
+    }>
+  >([]);
+  const [queuedMessages, setQueuedMessages] = useState<QueuedMessage[]>([]);
+  // streamTurn 은 send/dispatchSend 보다 먼저 정의되므로(순환 참조 회피) ref 로 드레인 함수를
+  // 노출해 finally 에서 호출한다.
+  const drainQueueRef = useRef<() => void>(() => {});
+  // loadHistory(streamTurn 보다 먼저 정의)가 진행 중 run 을 발견하면 이 ref 로 resume 을 킥오프한다.
+  const resumeActiveRunRef = useRef<
+    (parentNodeId: string, messageId: string) => Promise<void>
+  >(async () => {});
+  const syncQueueState = useCallback(() => {
+    setQueuedMessages(
+      queueRef.current.map((q) => ({
+        id: q.id,
+        content: q.content,
+        ...(q.attachments && q.attachments.length > 0
+          ? { attachments: q.attachments }
+          : {}),
+      })),
+    );
+  }, []);
+
+  // P22-T6-06 — 멀티모델 병렬 비교 상태. compareGroupsRef 를 단일 진실원으로 두고 setter 에서
+  // ref+state 를 함께 갱신해(트리 treeRef 와 동일 패턴), 병렬 leg 이 동시에 최신값 위에 함수형
+  // 업데이트를 쌓아도 서로 덮어쓰지 않게 한다. compareControllersRef 는 진행 중 leg 의
+  // AbortController 목록 — stop()/세션전환/언마운트 시 일괄 취소한다.
+  const [compareGroups, setCompareGroups] = useState<CompareGroup[]>([]);
+  const compareGroupsRef = useRef<CompareGroup[]>([]);
+  const compareControllersRef = useRef<AbortController[]>([]);
+  const setCompareGroupsSynced = useCallback(
+    (updater: (prev: CompareGroup[]) => CompareGroup[]) => {
+      compareGroupsRef.current = updater(compareGroupsRef.current);
+      setCompareGroups(compareGroupsRef.current);
+    },
+    [],
+  );
+  const updateCompareAnswer = useCallback(
+    (
+      groupId: string,
+      answerId: string,
+      updater: (a: CompareAnswer) => CompareAnswer,
+    ) => {
+      setCompareGroupsSynced((prev) =>
+        prev.map((g) =>
+          g.id !== groupId
+            ? g
+            : {
+                ...g,
+                columns: g.columns.map((col) => ({
+                  ...col,
+                  answers: col.answers.map((a) =>
+                    a.id !== answerId ? a : updater(a),
+                  ),
+                })),
+              },
+        ),
+      );
+    },
+    [setCompareGroupsSynced],
+  );
+
+  // P21-T6-04(UX-16) — 세션 전환 시 이전 대화가 그대로 남던 버그: 이 컴포넌트 인스턴스가
+  // 재사용된 채(unmount 없이) sessionId prop 만 바뀌는 라우팅(App Router 클라이언트 내비게이션)
+  // 에서는 treeRef/historyLoadedRef/artifactsLoadedRef 가 이전 세션 값을 그대로 들고 있어
+  // loadHistory 가 조용히 early-return 했다. sessionId 가 실제로 바뀐 순간에만 트리/플래그를
+  // 리셋하고, 이전 세션에서 진행 중이던 스트림은 abort 해 전환 후 도착하는 이벤트가 새 세션의
+  // 상태를 오염시키지 않게 한다.
+  const prevSessionIdRef = useRef(sessionId);
+  useEffect(() => {
+    if (prevSessionIdRef.current === sessionId) return;
+    prevSessionIdRef.current = sessionId;
+
+    abortRef.current?.abort();
+    if (readerRef.current) {
+      readerRef.current.cancel().catch(() => {});
+      readerRef.current = null;
+    }
+
+    // P22-T6-06 — 세션 전환 시 진행 중 비교 leg 취소 + 컬럼 상태 초기화.
+    for (const c of compareControllersRef.current) c.abort();
+    compareControllersRef.current = [];
+    compareGroupsRef.current = [];
+    setCompareGroups([]);
+
+    treeRef.current = createTree();
+    historyLoadedRef.current = false;
+    artifactsLoadedRef.current = false;
+    setArtifacts([]);
+    setHitlRequest(null);
+    setIsStreaming(false);
+    isStreamingRef.current = false;
+    setHistoryLoading(false);
+    bump();
+  }, [sessionId, bump]);
+
+  // 컴포넌트가 완전히 언마운트될 때(세션 전환이 아니라 화면을 떠날 때)도 in-flight 스트림을
+  // 정리한다 — 위 sessionId-변경 리셋과 별개로, 페이지 자체가 사라지는 경로를 커버.
+  useEffect(() => {
+    return () => {
+      abortRef.current?.abort();
+      // P22-T6-06 — 화면 이탈 시 진행 중 비교 leg 도 정리.
+      for (const c of compareControllersRef.current) c.abort();
+      compareControllersRef.current = [];
+      if (readerRef.current) {
+        readerRef.current.cancel().catch(() => {});
+        readerRef.current = null;
+      }
+    };
+  }, []);
+
   useEffect(() => {
     // 서버 keep-alive 주기(10s)보다 넉넉히 큰 값 — 이보다 오래 무수신이면 죽은 연결로 판정.
     const STALE_MS = 14_000;
@@ -337,6 +515,9 @@ export function useSessionStream(sessionId: string) {
     if (Object.keys(treeRef.current.nodes).length > 0) return;
     historyLoadedRef.current = true;
     setHistoryLoading(true);
+    // 진행 중(비종결) 턴이 있으면 서버가 activeRun.messageId 를 실어 준다 — 복원 후 resume 으로
+    // 재연결해 서브에이전트/도구 카드를 되살리고 최종답변까지 이어받는다(새로고침 중 실행중).
+    let activeRunMessageId: string | undefined;
     try {
       const res = await apiFetch(`/api/v1/sessions/${sessionId}/messages`, {
         credentials: "include",
@@ -349,16 +530,33 @@ export function useSessionStream(sessionId: string) {
           content: unknown;
           parentMessageId?: string | null;
         }>;
+        activeRun?: { messageId: string };
       };
+      activeRunMessageId = body.activeRun?.messageId;
       let previousId: string | null = null;
       for (const row of body.data) {
         if (row.role !== "user" && row.role !== "assistant") continue;
-        const content =
-          typeof row.content === "string"
-            ? row.content
-            : row.content == null
-              ? ""
-              : JSON.stringify(row.content);
+        // 서버가 도구 호출이 있는 assistant 메시지를 {text,parts} 구조화로 저장한 경우, parts 를
+        // 복원해 새로고침/세션이동 후에도 도구 카드(deep_research 등)를 유지한다. 그 외(문자열/레거시)
+        // 는 기존처럼 텍스트로.
+        const raw = row.content;
+        let content: string;
+        let restoredParts: MessagePart[] | undefined;
+        if (typeof raw === "string") {
+          content = raw;
+        } else if (
+          raw &&
+          typeof raw === "object" &&
+          Array.isArray((raw as { parts?: unknown }).parts)
+        ) {
+          const structured = raw as { text?: unknown; parts?: unknown };
+          content = typeof structured.text === "string" ? structured.text : "";
+          restoredParts = structured.parts as MessagePart[];
+        } else if (raw == null) {
+          content = "";
+        } else {
+          content = JSON.stringify(raw);
+        }
         // parentMessageId 필드 자체가 없는 레거시 응답은 이전 메시지를 부모로 삼아 선형 체인으로
         // 복원한다(하위호환) — 필드가 있으면(null 포함) 서버가 준 실제 부모 포인터를 그대로 쓴다.
         const parentId = Object.prototype.hasOwnProperty.call(
@@ -367,13 +565,26 @@ export function useSessionStream(sessionId: string) {
         )
           ? (row.parentMessageId ?? null)
           : previousId;
-        addNode(row.id, parentId, { id: row.id, role: row.role, content });
+        addNode(row.id, parentId, {
+          id: row.id,
+          role: row.role,
+          content,
+          ...(restoredParts ? { parts: restoredParts } : {}),
+        });
         previousId = row.id;
       }
     } catch {
       // fail-soft — 히스토리 복원 실패 시 빈 대화로 시작(L2/L5, 조용한 실패 아닌 정상 폴백).
     } finally {
       setHistoryLoading(false);
+    }
+    // 복원 후 진행 중 턴이면 resume 킥오프 — placeholder assistant 를 마지막 노드(대개 방금
+    // 복원한 user 메시지) 아래에 만들고 라이브 스트림에 재연결한다. 이미 로컬 진행 중이면 스킵.
+    if (activeRunMessageId && !isStreamingRef.current) {
+      const parentNodeId = getTipId(treeRef.current);
+      if (parentNodeId) {
+        await resumeActiveRunRef.current(parentNodeId, activeRunMessageId);
+      }
     }
   }, [sessionId, addNode]);
 
@@ -440,15 +651,32 @@ export function useSessionStream(sessionId: string) {
     async (
       userNodeId: string,
       content: string,
-      attachments?: Array<{ uploadId: string }>,
+      attachments?: MessageAttachment[],
       options?: SendOptions,
-    ) => {
+      // 지정하면 POST 로 새 턴을 시작하지 않고, 이미 진행 중인 이 messageId 의 resume 스트림에
+      // 곧장 재연결한다(새로고침/세션이동으로 라이브 스트림을 놓친 진행 중 턴 이어받기).
+      resumeMessageId?: string,
+    ): Promise<void> => {
+      // P21-T6-12(UX-20/21) — send/editMessage/regenerate 는 모두 이 함수를 거쳐 새 턴을
+      // 시작한다. 이전 leg 이 아직 스트리밍 중일 때 겹쳐 들어오면 두 leg 이 동시에 같은
+      // 트리에 기록돼 이중기록이 난다 — 새 진입 시 이전 leg 을 먼저 abort 한다.
+      if (isStreamingRef.current) {
+        abortRef.current?.abort();
+        if (readerRef.current) {
+          readerRef.current.cancel().catch(() => {});
+          readerRef.current = null;
+        }
+      }
+
       setIsStreaming(true);
       isStreamingRef.current = true;
 
       const controller = new AbortController();
       abortRef.current = controller;
       let assistantId: string | null = null;
+      // P20-T6-06 — 현재 leg 의 message_start 수신 시각(경과시간=stop 수신 시각과의 차).
+      // 멀티-leg(tool_use 중간 stop) 은 leg 마다 새 assistant 노드가 생기므로 leg 별로 갱신한다.
+      let legStartedAt: number | null = null;
       // P10-T6-17 — SSE 드롭 재연결/resume: message_start 가 발급한 서버 messageId 를
       // 기억해두면, stop/error 없이 스트림이 끊겼을 때 같은 messageId 로
       // GET .../messages/:messageId/stream (resume) 에 재연결할 수 있다.
@@ -483,10 +711,19 @@ export function useSessionStream(sessionId: string) {
           // 재사용될 수 있는 상황(테스트 목·서버 재사용 등)에서 이전 턴의
           // parent→child 포인터와 충돌해 트리에 사이클이 생긴다.
           assistantId = `local-a-${idCounterRef.current++}`;
+          legStartedAt = Date.now();
           addNode(assistantId, userNodeId, {
             id: assistantId,
             role: "assistant",
             content: "",
+            ...(event.meta
+              ? {
+                  meta: {
+                    provider: event.meta.provider,
+                    model: event.meta.model,
+                  },
+                }
+              : {}),
           });
         } else if (event.type === "message_replace" && assistantId) {
           // resume 스트림의 첫 이벤트 — 지금까지 누적된 content 로 동기화하되, 백그라운드
@@ -512,6 +749,12 @@ export function useSessionStream(sessionId: string) {
               parts: [...toolParts, ...textParts],
             };
           });
+        } else if (event.type === "reasoning_delta" && assistantId) {
+          // P20-T2-03 — 사고 스트림을 content 와 분리해 message.reasoning 에 누적(접이식 표시).
+          updateNode(assistantId, (m) => ({
+            ...m,
+            reasoning: (m.reasoning ?? "") + event.text,
+          }));
         } else if (event.type === "text_delta" && assistantId) {
           updateNode(assistantId, (m) => {
             const parts = m.parts ?? [];
@@ -530,19 +773,31 @@ export function useSessionStream(sessionId: string) {
             };
           });
         } else if (event.type === "tool_use" && assistantId) {
-          updateNode(assistantId, (m) => ({
-            ...m,
-            parts: [
-              ...(m.parts ?? []),
-              {
-                type: "tool",
-                toolCallId: event.toolCallId,
-                name: event.name,
-                args: event.args,
-                status: "running",
-              },
-            ],
-          }));
+          updateNode(assistantId, (m) => {
+            const parts = m.parts ?? [];
+            // 멱등 — 같은 toolCallId 카드가 이미 있으면(resume 재생/중복 이벤트) 새로 추가하지
+            // 않고 그대로 둔다. 새로고침 resume 은 누적 도구 카드를 재생하므로 append 면 중복된다.
+            if (
+              parts.some(
+                (p) => p.type === "tool" && p.toolCallId === event.toolCallId,
+              )
+            ) {
+              return m;
+            }
+            return {
+              ...m,
+              parts: [
+                ...parts,
+                {
+                  type: "tool",
+                  toolCallId: event.toolCallId,
+                  name: event.name,
+                  args: event.args,
+                  status: "running",
+                },
+              ],
+            };
+          });
         } else if (event.type === "tool_progress" && assistantId) {
           // 실행 중 진행 스냅샷을 해당 tool part 에 최신으로 교체(라이브 스윔레인).
           updateNode(assistantId, (m) =>
@@ -642,6 +897,24 @@ export function useSessionStream(sessionId: string) {
             receivedTerminal = true;
             setIsStreaming(false);
             notifyTurnComplete();
+            // P20-T6-06 — 생성 메타(Info): message_start~stop 경과시간 + usage 를 보존.
+            if (assistantId && legStartedAt !== null) {
+              const elapsedMs = Date.now() - legStartedAt;
+              const finishedAssistantId = assistantId;
+              updateNode(finishedAssistantId, (m) => ({
+                ...m,
+                meta: {
+                  ...m.meta,
+                  elapsedMs,
+                  ...(event.usage
+                    ? {
+                        inputTokens: event.usage.inputTokens,
+                        outputTokens: event.usage.outputTokens,
+                      }
+                    : {}),
+                },
+              }));
+            }
           }
           // P19-T6-08 — max_tokens 로 끊긴 응답은 truncated 로 표시해 이어쓰기 버튼을 노출한다.
           if (event.reason === "max_tokens" && assistantId) {
@@ -719,20 +992,37 @@ export function useSessionStream(sessionId: string) {
           };
           const rows = body.data ?? [];
           let finalContent: string | null = null;
+          // 구조화({text,parts})로 저장된 응답이면 최종 도구 카드(done)까지 복원해 resume 세션도
+          // 새로고침과 동일한 완성 상태가 되게 한다(leg 분할로 최종답변이 다른 leg 에 있던 경우).
+          let finalParts: MessagePart[] | undefined;
           for (let i = rows.length - 1; i >= 0; i -= 1) {
             if (rows[i]?.role !== "assistant") continue;
             const raw = rows[i]!.content;
-            finalContent =
-              typeof raw === "string"
-                ? raw
-                : raw == null
-                  ? ""
-                  : JSON.stringify(raw);
+            if (typeof raw === "string") {
+              finalContent = raw;
+            } else if (
+              raw &&
+              typeof raw === "object" &&
+              Array.isArray((raw as { parts?: unknown }).parts)
+            ) {
+              const structured = raw as { text?: unknown; parts?: unknown };
+              finalContent =
+                typeof structured.text === "string" ? structured.text : "";
+              finalParts = structured.parts as MessagePart[];
+            } else {
+              finalContent = raw == null ? "" : JSON.stringify(raw);
+            }
             break;
           }
-          if (!finalContent) return false;
+          if (finalContent === null) return false;
+          // 텍스트도 파트도 없으면(빈 응답) 보정할 게 없다.
+          if (!finalContent && !finalParts) return false;
           const target = assistantId;
           updateNode(target, (m) => {
+            // 구조화 파트가 있으면 그걸로 완성 상태를 복원한다(도구 카드 status=done 반영).
+            if (finalParts) {
+              return { ...m, content: finalContent!, parts: finalParts };
+            }
             // 클라이언트가 이미 최종본 이상을 들고 있으면(정상 종단) 덮어쓰지 않는다.
             if (m.content.length >= finalContent!.length) return m;
             const toolParts = (m.parts ?? []).filter((p) => p.type !== "text");
@@ -825,33 +1115,59 @@ export function useSessionStream(sessionId: string) {
       }
 
       try {
-        const res = await apiFetch(`/api/v1/sessions/${sessionId}/messages`, {
-          method: "POST",
-          credentials: "include",
-          signal: controller.signal,
-          headers: {
-            "Content-Type": "application/json",
-            Accept: "text/event-stream",
-          },
-          body: JSON.stringify({
-            content,
-            ...(attachments && attachments.length > 0 ? { attachments } : {}),
-            ...(options?.model ? { model: options.model } : {}),
-            ...(options?.mode ? { mode: options.mode } : {}),
-            ...(options?.reasoningEffort
-              ? { reasoningEffort: options.reasoningEffort }
-              : {}),
-            ...(options?.webSearch !== undefined
-              ? { webSearch: options.webSearch }
-              : {}),
-            ...(options?.temporary ? { temporary: true } : {}),
-          }),
-        });
-
-        await readFrom(res);
-
-        if (!receivedTerminal && !controller.signal.aborted) {
+        if (resumeMessageId) {
+          // resume 모드 — POST 없이 진행 중 turn 에 재연결한다. placeholder assistant 노드를
+          // 만들어 resume 스트림의 message_replace/재생 도구 이벤트/라이브 이벤트를 받도록 한다.
+          lastServerMessageId = resumeMessageId;
+          assistantId = `local-a-${idCounterRef.current++}`;
+          legStartedAt = Date.now();
+          addNode(assistantId, userNodeId, {
+            id: assistantId,
+            role: "assistant",
+            content: "",
+          });
           await driveToTerminal();
+          // leg 분할(deep_research: 도구 leg vs 최종답변 leg)로 최종 텍스트가 resume 대상과
+          // 다른 leg 에 있을 수 있다 — 종료 후 영속된 최종답변({text,parts})으로 한 번 더 보정해
+          // 완성 상태(최종 답변 + done 도구 카드)를 맞춘다. recoverFinalMessage 는 멱등하다.
+          await recoverFinalMessage();
+        } else {
+          const res = await apiFetch(`/api/v1/sessions/${sessionId}/messages`, {
+            method: "POST",
+            credentials: "include",
+            signal: controller.signal,
+            headers: {
+              "Content-Type": "application/json",
+              Accept: "text/event-stream",
+            },
+            body: JSON.stringify({
+              content,
+              // P22-T6-04 — 서버 wire format 은 uploadId 만 받는다. 버블 썸네일용
+              // filename/mimeType/previewUrl(blob:) 는 여기서 떼고 uploadId 만 보낸다.
+              ...(attachments && attachments.length > 0
+                ? {
+                    attachments: attachments.map((a) => ({
+                      uploadId: a.uploadId,
+                    })),
+                  }
+                : {}),
+              ...(options?.model ? { model: options.model } : {}),
+              ...(options?.mode ? { mode: options.mode } : {}),
+              ...(options?.reasoningEffort
+                ? { reasoningEffort: options.reasoningEffort }
+                : {}),
+              ...(options?.webSearch !== undefined
+                ? { webSearch: options.webSearch }
+                : {}),
+              ...(options?.temporary ? { temporary: true } : {}),
+            }),
+          });
+
+          await readFrom(res);
+
+          if (!receivedTerminal && !controller.signal.aborted) {
+            await driveToTerminal();
+          }
         }
       } catch (err) {
         if ((err as Error).name !== "AbortError") {
@@ -869,23 +1185,327 @@ export function useSessionStream(sessionId: string) {
           readerRef.current.cancel().catch(() => {});
           readerRef.current = null;
         }
+        // P22-T6-05 — 이 leg 이 끝났으니 대기열 헤드를 FIFO 로 자동 디스패치한다.
+        drainQueueRef.current();
       }
     },
     [sessionId, addNode, updateNode],
   );
 
-  const send = useCallback(
+  // P22-T6-05 — 실제 턴 디스패치(낙관적 유저 버블 추가 + streamTurn). send() 와 큐 드레인이
+  // 공유한다. send() 는 스트리밍 중이면 큐잉만 하고, 이 함수는 실제 전송을 담당한다.
+  const dispatchSend = useCallback(
     async (
       content: string,
-      attachments?: Array<{ uploadId: string }>,
+      attachments?: MessageAttachment[],
       options?: SendOptions,
     ) => {
       const tipId = getTipId(treeRef.current);
       const userId = `local-u-${idCounterRef.current++}`;
-      addNode(userId, tipId, { id: userId, role: "user", content });
+      // P22-T6-04 — 낙관적 유저 버블에 첨부(이미지는 previewUrl 썸네일)를 함께 실어 렌더한다.
+      addNode(userId, tipId, {
+        id: userId,
+        role: "user",
+        content,
+        ...(attachments && attachments.length > 0 ? { attachments } : {}),
+      });
       await streamTurn(userId, content, attachments, options);
     },
     [addNode, streamTurn],
+  );
+
+  const send = useCallback(
+    async (
+      content: string,
+      attachments?: MessageAttachment[],
+      options?: SendOptions,
+    ) => {
+      // P22-T6-05 — 응답 생성 중이면 in-flight leg 을 abort 하지 않고 큐(FIFO)에 쌓는다.
+      // 스트림 종료 시 streamTurn.finally 의 drainQueueRef 가 헤드를 자동 디스패치한다.
+      if (isStreamingRef.current) {
+        queueRef.current.push({
+          id: `local-q-${idCounterRef.current++}`,
+          content,
+          ...(attachments && attachments.length > 0 ? { attachments } : {}),
+          ...(options ? { options } : {}),
+        });
+        syncQueueState();
+        return;
+      }
+      await dispatchSend(content, attachments, options);
+    },
+    [dispatchSend, syncQueueState],
+  );
+
+  // P22-T6-05 — 큐에 쌓인(아직 미전송) 메시지를 취소하면 드롭되어 영구히 전송되지 않는다.
+  const removeQueued = useCallback(
+    (id: string) => {
+      queueRef.current = queueRef.current.filter((q) => q.id !== id);
+      syncQueueState();
+    },
+    [syncQueueState],
+  );
+
+  // P22-T6-05 — 스트림 종료 시(streamTurn.finally) 호출되는 드레인. 큐 헤드를 FIFO 로 하나
+  // 꺼내 디스패치하고, 그 턴이 끝나면 다시 finally 가 이 함수를 불러 큐가 빌 때까지 이어간다.
+  useEffect(() => {
+    drainQueueRef.current = () => {
+      if (isStreamingRef.current) return;
+      const next = queueRef.current.shift();
+      if (!next) return;
+      syncQueueState();
+      void dispatchSend(next.content, next.attachments, next.options);
+    };
+  }, [dispatchSend, syncQueueState]);
+
+  // loadHistory 가 진행 중 run 을 발견하면 이 ref 로 streamTurn 을 resume 모드로 호출한다
+  // (POST 없이 진행 중 messageId 의 스트림에 재연결). streamTurn 정의 이후에 배선한다.
+  useEffect(() => {
+    resumeActiveRunRef.current = (parentNodeId, messageId) =>
+      streamTurn(parentNodeId, "", undefined, undefined, messageId);
+  }, [streamTurn]);
+
+  // P22-T6-06 — 단일 모델 비교 leg 하나를 스트리밍한다. 기존 단일경로 POST /messages 엔드포인트를
+  // 그대로 재사용하되(모델을 body.model 로 지정), 이벤트를 트리가 아니라 지정된 컬럼 답변에 기록한다.
+  // message_start.meta.model 이 이미 모델을 실어오므로 컬럼 구분에 그대로 활용한다.
+  const streamCompareLeg = useCallback(
+    async (
+      groupId: string,
+      answerId: string,
+      content: string,
+      model: string,
+      options?: SendOptions,
+    ): Promise<void> => {
+      const controller = new AbortController();
+      compareControllersRef.current.push(controller);
+      let legStartedAt: number | null = null;
+      let sawTerminal = false;
+      try {
+        const res = await apiFetch(`/api/v1/sessions/${sessionId}/messages`, {
+          method: "POST",
+          credentials: "include",
+          signal: controller.signal,
+          headers: {
+            "Content-Type": "application/json",
+            Accept: "text/event-stream",
+          },
+          body: JSON.stringify({
+            content,
+            model,
+            ...(options?.mode ? { mode: options.mode } : {}),
+            ...(options?.reasoningEffort
+              ? { reasoningEffort: options.reasoningEffort }
+              : {}),
+            ...(options?.webSearch !== undefined
+              ? { webSearch: options.webSearch }
+              : {}),
+          }),
+        });
+        const reader = res.body?.getReader();
+        if (!reader) return;
+        const decoder = new TextDecoder();
+        let buffer = "";
+        for (;;) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+          let sep = buffer.indexOf("\n\n");
+          while (sep !== -1) {
+            const frame = buffer.slice(0, sep);
+            buffer = buffer.slice(sep + 2);
+            const event = parseSseFrame(frame);
+            sep = buffer.indexOf("\n\n");
+            if (!event) continue;
+            if (event.type === "message_start") {
+              legStartedAt = Date.now();
+              updateCompareAnswer(groupId, answerId, (a) => ({
+                ...a,
+                ...(event.meta
+                  ? {
+                      meta: {
+                        provider: event.meta.provider,
+                        model: event.meta.model,
+                      },
+                    }
+                  : {}),
+              }));
+            } else if (event.type === "text_delta") {
+              updateCompareAnswer(groupId, answerId, (a) => ({
+                ...a,
+                content: a.content + event.text,
+              }));
+            } else if (event.type === "reasoning_delta") {
+              updateCompareAnswer(groupId, answerId, (a) => ({
+                ...a,
+                reasoning: (a.reasoning ?? "") + event.text,
+              }));
+            } else if (event.type === "stop") {
+              if (event.reason !== "tool_use") {
+                sawTerminal = true;
+                const elapsedMs =
+                  legStartedAt !== null ? Date.now() - legStartedAt : undefined;
+                updateCompareAnswer(groupId, answerId, (a) => ({
+                  ...a,
+                  streaming: false,
+                  meta: {
+                    ...a.meta,
+                    ...(elapsedMs !== undefined ? { elapsedMs } : {}),
+                    ...(event.usage
+                      ? {
+                          inputTokens: event.usage.inputTokens,
+                          outputTokens: event.usage.outputTokens,
+                        }
+                      : {}),
+                  },
+                }));
+              }
+            } else if (event.type === "error") {
+              sawTerminal = true;
+              updateCompareAnswer(groupId, answerId, (a) => ({
+                ...a,
+                streaming: false,
+                error: true,
+                content:
+                  a.content || (event.error?.message ?? "알 수 없는 오류"),
+              }));
+            }
+          }
+        }
+        // 종단 이벤트 없이 reader 가 끝났으면(드롭) 스트리밍 표시만 정리한다.
+        if (!sawTerminal) {
+          updateCompareAnswer(groupId, answerId, (a) =>
+            a.streaming ? { ...a, streaming: false } : a,
+          );
+        }
+      } catch (err) {
+        if ((err as Error).name === "AbortError") {
+          updateCompareAnswer(groupId, answerId, (a) => ({
+            ...a,
+            streaming: false,
+          }));
+        } else {
+          updateCompareAnswer(groupId, answerId, (a) => ({
+            ...a,
+            streaming: false,
+            error: true,
+            content: a.content || "연결이 끊어졌습니다. 다시 시도해주세요.",
+          }));
+        }
+      } finally {
+        compareControllersRef.current = compareControllersRef.current.filter(
+          (c) => c !== controller,
+        );
+      }
+    },
+    [sessionId, updateCompareAnswer],
+  );
+
+  // P22-T6-06 — 하나의 프롬프트를 N개 모델로 병렬 팬아웃. 각 모델마다 컬럼(초기 답변 1개)을
+  // 만들고 Promise.all 로 동시에 스트리밍한다. 모든 leg 이 끝나면 isStreaming 을 내린다.
+  const sendCompare = useCallback(
+    async (content: string, models: string[], options?: SendOptions) => {
+      if (models.length === 0) return;
+      const groupId = `cmp-${idCounterRef.current++}`;
+      const columns: CompareColumn[] = models.map((m) => ({
+        model: m,
+        answers: [
+          {
+            id: `${groupId}-a-${idCounterRef.current++}`,
+            content: "",
+            streaming: true,
+          },
+        ],
+        activeIndex: 0,
+      }));
+      setCompareGroupsSynced((prev) => [
+        ...prev,
+        { id: groupId, userContent: content, columns },
+      ]);
+      setIsStreaming(true);
+      isStreamingRef.current = true;
+      try {
+        await Promise.all(
+          columns.map((col) =>
+            streamCompareLeg(
+              groupId,
+              col.answers[0]!.id,
+              content,
+              col.model,
+              options,
+            ),
+          ),
+        );
+      } finally {
+        setIsStreaming(false);
+        isStreamingRef.current = false;
+      }
+    },
+    [setCompareGroupsSynced, streamCompareLeg],
+  );
+
+  // P22-T6-06 — 특정 컬럼(모델)만 재생성: 그 컬럼에 새 형제 답변을 추가하고 활성 인덱스를 그리로
+  // 옮긴 뒤 스트리밍한다. 다른 컬럼은 건드리지 않는다(독립 재생성).
+  const regenerateCompare = useCallback(
+    async (groupId: string, model: string) => {
+      const group = compareGroupsRef.current.find((g) => g.id === groupId);
+      if (!group) return;
+      const answerId = `${groupId}-a-${idCounterRef.current++}`;
+      setCompareGroupsSynced((prev) =>
+        prev.map((g) =>
+          g.id !== groupId
+            ? g
+            : {
+                ...g,
+                columns: g.columns.map((col) =>
+                  col.model !== model
+                    ? col
+                    : {
+                        ...col,
+                        answers: [
+                          ...col.answers,
+                          { id: answerId, content: "", streaming: true },
+                        ],
+                        activeIndex: col.answers.length,
+                      },
+                ),
+              },
+        ),
+      );
+      setIsStreaming(true);
+      isStreamingRef.current = true;
+      try {
+        await streamCompareLeg(groupId, answerId, group.userContent, model);
+      } finally {
+        setIsStreaming(false);
+        isStreamingRef.current = false;
+      }
+    },
+    [setCompareGroupsSynced, streamCompareLeg],
+  );
+
+  // P22-T6-06 — 컬럼별 형제 답변 prev/next 네비게이션(다른 컬럼에 영향 없음).
+  const switchCompareBranch = useCallback(
+    (groupId: string, model: string, direction: "prev" | "next") => {
+      setCompareGroupsSynced((prev) =>
+        prev.map((g) =>
+          g.id !== groupId
+            ? g
+            : {
+                ...g,
+                columns: g.columns.map((col) => {
+                  if (col.model !== model) return col;
+                  const next =
+                    direction === "prev"
+                      ? col.activeIndex - 1
+                      : col.activeIndex + 1;
+                  if (next < 0 || next >= col.answers.length) return col;
+                  return { ...col, activeIndex: next };
+                }),
+              },
+        ),
+      );
+    },
+    [setCompareGroupsSynced],
   );
 
   const editMessage = useCallback(
@@ -934,6 +1554,16 @@ export function useSessionStream(sessionId: string) {
     async (assistantMessageId: string) => {
       const target = treeRef.current.nodes[assistantMessageId];
       if (!target || target.role !== "assistant") return;
+
+      // P21-T6-12(UX-20/21) — 겹침 가드: 이어쓰기 재호출이 이전 leg 위로 겹치지 않게
+      // 먼저 이전 leg 을 abort 한다(streamTurn 과 동일 원칙).
+      if (isStreamingRef.current) {
+        abortRef.current?.abort();
+        if (readerRef.current) {
+          readerRef.current.cancel().catch(() => {});
+          readerRef.current = null;
+        }
+      }
 
       setIsStreaming(true);
       isStreamingRef.current = true;
@@ -1005,6 +1635,143 @@ export function useSessionStream(sessionId: string) {
     [sessionId, updateNode],
   );
 
+  // P20-T6-05 — 개별 메시지 삭제: 대상 노드+하위 서브트리를 낙관적으로 제거하고
+  // DELETE /:id/messages/:messageId(P20-T1-05, 서버가 동일하게 서브트리를 prune)를
+  // 호출한다. 삭제된 노드가 활성 자식이었으면 형제(이전 우선)로, 없으면 부모로 재지정한다.
+  // 실패 시 삭제 전 스냅샷으로 트리를 통째로 되돌린다(낙관적 롤백).
+  //
+  // 트리 노드 키는 서버 messageId 와 별개(위 message_start 참고, 항상 local-* 로 새로
+  // 발급)이므로, 새로고침 전(라이브 턴) 메시지는 로컬 id 뿐 실제 DB id 를 모른다. 삭제는
+  // 실제 DB id 로 요청해야 하므로, local-* 대상은 GET /:id/messages 로 영속된 행을 가져와
+  // ROOT 부터의 조상 경로를 형제 순서(인덱스)로 매칭해 실제 id 를 역산한다(추가 SSE
+  // 이벤트·interfaces 변경 없이 in-scope 파일만으로 해결).
+  const resolveServerMessageId = useCallback(
+    async (
+      ancestorChain: string[],
+      localParentKeyOf: Map<string, string>,
+      localSiblingsAt: Map<string, string[]>,
+    ): Promise<string | null> => {
+      const res = await apiFetch(`/api/v1/sessions/${sessionId}/messages`, {
+        credentials: "include",
+      });
+      if (!res.ok) return null;
+      const body = (await res.json()) as {
+        data: Array<{ id: string; parentMessageId?: string | null }>;
+      };
+      const realChildrenOf = new Map<string, string[]>();
+      for (const row of body.data) {
+        const key = row.parentMessageId ?? ROOT;
+        realChildrenOf.set(key, [...(realChildrenOf.get(key) ?? []), row.id]);
+      }
+      let realParentKey = ROOT;
+      let resolved: string | null = null;
+      for (const localId of ancestorChain) {
+        const parentKey = localParentKeyOf.get(localId) ?? ROOT;
+        const localSiblings = localSiblingsAt.get(parentKey) ?? [];
+        const idx = localSiblings.indexOf(localId);
+        const realSiblings = realChildrenOf.get(realParentKey) ?? [];
+        const realId = idx >= 0 ? realSiblings[idx] : undefined;
+        if (!realId) return null;
+        resolved = realId;
+        realParentKey = realId;
+      }
+      return resolved;
+    },
+    [sessionId],
+  );
+
+  const deleteMessage = useCallback(
+    async (messageId: string) => {
+      const t = treeRef.current;
+      if (!t.nodes[messageId]) return;
+
+      const snapshot: TreeData = {
+        nodes: { ...t.nodes },
+        parentOf: { ...t.parentOf },
+        childrenOf: Object.fromEntries(
+          Object.entries(t.childrenOf).map(([k, v]) => [k, [...v]]),
+        ),
+        activeChildOf: { ...t.activeChildOf },
+      };
+
+      const ancestorChain: string[] = [];
+      {
+        let cursor: string | null = messageId;
+        while (cursor) {
+          ancestorChain.unshift(cursor);
+          cursor = t.parentOf[cursor] ?? null;
+        }
+      }
+      const localParentKeyOf = new Map<string, string>();
+      const localSiblingsAt = new Map<string, string[]>();
+      for (const id of ancestorChain) {
+        const parentKey = t.parentOf[id] ?? ROOT;
+        localParentKeyOf.set(id, parentKey);
+        if (!localSiblingsAt.has(parentKey)) {
+          localSiblingsAt.set(parentKey, [...(t.childrenOf[parentKey] ?? [])]);
+        }
+      }
+
+      const toRemove: string[] = [];
+      const stack = [messageId];
+      while (stack.length > 0) {
+        const id = stack.pop();
+        if (id === undefined) continue;
+        toRemove.push(id);
+        stack.push(...(t.childrenOf[id] ?? []));
+      }
+
+      const parentId = t.parentOf[messageId] ?? null;
+      const key = parentId ?? ROOT;
+      const siblings = t.childrenOf[key] ?? [];
+      const idx = siblings.indexOf(messageId);
+      const remainingSiblings = siblings.filter((id) => id !== messageId);
+
+      for (const id of toRemove) {
+        delete t.nodes[id];
+        delete t.parentOf[id];
+        delete t.childrenOf[id];
+        delete t.activeChildOf[id];
+      }
+      if (remainingSiblings.length > 0) {
+        t.childrenOf[key] = remainingSiblings;
+      } else {
+        delete t.childrenOf[key];
+      }
+      if (t.activeChildOf[key] === messageId) {
+        const fallback =
+          remainingSiblings[Math.max(0, idx - 1)] ?? remainingSiblings[0];
+        if (fallback) {
+          t.activeChildOf[key] = fallback;
+        } else {
+          delete t.activeChildOf[key];
+        }
+      }
+      bump();
+
+      try {
+        const serverId = messageId.startsWith("local-")
+          ? await resolveServerMessageId(
+              ancestorChain,
+              localParentKeyOf,
+              localSiblingsAt,
+            )
+          : messageId;
+        if (!serverId) throw new Error("unresolved message id");
+        const res = await apiFetch(
+          `/api/v1/sessions/${sessionId}/messages/${serverId}`,
+          { method: "DELETE", credentials: "include" },
+        );
+        if (!res.ok) throw new Error("delete failed");
+      } catch {
+        treeRef.current = snapshot;
+        bump();
+        showToast("error", "메시지 삭제에 실패했습니다.");
+      }
+    },
+    [sessionId, bump, resolveServerMessageId],
+  );
+
   const switchBranch = useCallback(
     (messageId: string, direction: "prev" | "next") => {
       const t = treeRef.current;
@@ -1026,6 +1793,9 @@ export function useSessionStream(sessionId: string) {
 
   const stop = useCallback(async () => {
     abortRef.current?.abort();
+    // P22-T6-06 — 비교 모드 진행 중이면 모든 컬럼 leg 도 함께 취소한다.
+    for (const c of compareControllersRef.current) c.abort();
+    compareControllersRef.current = [];
     setIsStreaming(false);
     isStreamingRef.current = false;
     const t = treeRef.current;
@@ -1072,6 +1842,14 @@ export function useSessionStream(sessionId: string) {
     messages,
     isStreaming,
     send,
+    // P22-T6-05 — 응답 생성 중 대기열(FIFO)과 취소 핸들.
+    queuedMessages,
+    removeQueued,
+    // P22-T6-06 — 멀티모델 병렬 비교.
+    compareGroups,
+    sendCompare,
+    regenerateCompare,
+    switchCompareBranch,
     stop,
     hitlRequest,
     respondHitl,
@@ -1079,6 +1857,7 @@ export function useSessionStream(sessionId: string) {
     editMessage,
     regenerate,
     continueMessage,
+    deleteMessage,
     switchBranch,
     historyLoading,
     loadHistory,

@@ -87,6 +87,21 @@ describe("ArtifactPanel", () => {
     expect(screen.queryByTestId("pptx-renderer")).not.toBeInTheDocument();
   });
 
+  it("html artifact 는 sandbox=allow-scripts iframe 으로 렌더하고 allow-same-origin 은 절대 병기하지 않는다", async () => {
+    vi.mocked(apiFetch).mockResolvedValue({
+      text: () => Promise.resolve("<div>hello</div>"),
+    } as unknown as Response);
+    render(
+      <ArtifactPanel
+        artifact={makeArtifact({ type: "html", filename: "demo.html" })}
+      />,
+    );
+    const iframe = await screen.findByTestId("artifact-html");
+    expect(iframe).toHaveAttribute("sandbox", "allow-scripts");
+    const sandboxValue = iframe.getAttribute("sandbox") ?? "";
+    expect(sandboxValue.split(/\s+/)).not.toContain("allow-same-origin");
+  });
+
   it("markdown artifact 는 콘텐츠를 fetch 해 Markdown 으로 미리보기한다", async () => {
     vi.mocked(apiFetch).mockResolvedValue({
       text: () => Promise.resolve("# 데이터레이크 구축 가이드\n\n본문"),

@@ -11,6 +11,10 @@ import { Hono } from "hono";
 import { createAdminRoutes } from "../admin.js";
 import type { HealthHistoryDataAccess } from "../../db/health-history-data-access.js";
 import type { AdminDataAccess } from "../../db/admin-data-access.js";
+import {
+  buildToolMetricsTrend,
+  pickPredominantSource,
+} from "../../db/admin-data-access.js";
 
 function makeDa(seed: HealthCheckResult[] = []): HealthHistoryDataAccess {
   const rows = [...seed];
@@ -19,8 +23,16 @@ function makeDa(seed: HealthCheckResult[] = []): HealthHistoryDataAccess {
       async append(entry) {
         rows.push(entry);
       },
-      async recent(target, limit) {
-        return rows.filter((r) => r.target === target).slice(0, limit);
+      async recent(target, limit, range) {
+        return rows
+          .filter((r) => r.target === target)
+          .filter((r) => {
+            if (!range || !r.ts) return true;
+            if (range.from && r.ts < range.from) return false;
+            if (range.to && r.ts > range.to) return false;
+            return true;
+          })
+          .slice(0, limit);
       },
     },
   };
@@ -91,6 +103,17 @@ function makeAdminDa(seedUsers: User[] = []): AdminDataAccess {
           p95DurationMs: 200,
           p99DurationMs: 300,
           last24h: { count: 5, errorRate: 0 },
+          // P22-T6-19(C17B) — 계약 확장 필드.
+          source: "mcp" as const,
+          trend: [
+            { date: "2026-07-12", count: 0, errorCount: 0 },
+            { date: "2026-07-13", count: 1, errorCount: 0 },
+            { date: "2026-07-14", count: 2, errorCount: 0 },
+            { date: "2026-07-15", count: 0, errorCount: 0 },
+            { date: "2026-07-16", count: 3, errorCount: 1 },
+            { date: "2026-07-17", count: 4, errorCount: 0 },
+            { date: "2026-07-18", count: 0, errorCount: 0 },
+          ],
         },
       ];
     },
@@ -142,6 +165,93 @@ describe("createAdminRoutes", () => {
     const body = (await res.json()) as { data: HealthCheckResult[] };
     expect(body.data).toHaveLength(2);
     expect(body.data.every((r) => r.target === "db")).toBe(true);
+  });
+
+  // P22-T1-10 RED: 계약(16-API-CONTRACT.md § GET /admin/health/history?target&from&to)의
+  // from/to 범위 필터와 응답 ts 필드가 미구현 — 라우트가 range 를 repo 에 전달하지 않는다.
+  it("GET /health/history — from/to 범위 안의 행만 반환한다", async () => {
+    const da = makeDa([
+      {
+        target: "db",
+        status: "healthy",
+        latencyMs: 12,
+        ts: new Date("2026-07-10T00:00:00Z"),
+      },
+      {
+        target: "db",
+        status: "degraded",
+        latencyMs: 340,
+        ts: new Date("2026-07-15T00:00:00Z"),
+      },
+      {
+        target: "db",
+        status: "down",
+        latencyMs: null,
+        ts: new Date("2026-07-20T00:00:00Z"),
+      },
+    ]);
+    const app = appWith(
+      { da, adminDa: makeAdminDa() },
+      { userId, orgId, role: "admin" },
+    );
+
+    const res = await app.request(
+      "/health/history?target=db&from=2026-07-14T00:00:00Z&to=2026-07-16T00:00:00Z",
+    );
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { data: HealthCheckResult[] };
+    expect(body.data).toHaveLength(1);
+    expect(body.data[0]?.status).toBe("degraded");
+  });
+
+  it("GET /health/history — from/to 없으면 기존 동작(최신 limit 개) 유지", async () => {
+    const da = makeDa([
+      {
+        target: "db",
+        status: "healthy",
+        latencyMs: 12,
+        ts: new Date("2026-07-10T00:00:00Z"),
+      },
+      {
+        target: "db",
+        status: "degraded",
+        latencyMs: 340,
+        ts: new Date("2026-07-20T00:00:00Z"),
+      },
+    ]);
+    const app = appWith(
+      { da, adminDa: makeAdminDa() },
+      { userId, orgId, role: "admin" },
+    );
+
+    const res = await app.request("/health/history?target=db");
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { data: HealthCheckResult[] };
+    expect(body.data).toHaveLength(2);
+  });
+
+  it("GET /health/history — 항목은 계약대로 ts 를 포함한다", async () => {
+    const ts = new Date("2026-07-15T00:00:00Z");
+    const da = makeDa([{ target: "db", status: "healthy", latencyMs: 12, ts }]);
+    const app = appWith(
+      { da, adminDa: makeAdminDa() },
+      { userId, orgId, role: "admin" },
+    );
+
+    const res = await app.request("/health/history?target=db");
+    const body = (await res.json()) as { data: { ts?: string }[] };
+    expect(body.data[0]?.ts).toBe(ts.toISOString());
+  });
+
+  it("GET /health/history — from 이 잘못된 날짜면 400", async () => {
+    const da = makeDa();
+    const app = appWith(
+      { da, adminDa: makeAdminDa() },
+      { userId, orgId, role: "admin" },
+    );
+
+    const res = await app.request("/health/history?target=db&from=not-a-date");
+    expect(res.status).toBe(400);
   });
 
   it("GET /health/history — member 는 403", async () => {
@@ -352,5 +462,81 @@ describe("createAdminRoutes", () => {
     );
     const res = await app.request("/tool-metrics");
     expect(res.status).toBe(403);
+  });
+
+  // P22-T6-19(C17B) RED: 계약 확장(source·trend)이 AdminToolMetricSummary 에 없어
+  //   makeAdminDa 의 fake 가 타입 에러 → 응답에도 두 필드가 실릴 수 없다.
+  it("GET /tool-metrics — 응답 각 행에 source 와 7일 trend 가 실린다", async () => {
+    const app = appWith(
+      { da: makeDa(), adminDa: makeAdminDa() },
+      { userId, orgId, role: "admin" },
+    );
+    const res = await app.request("/tool-metrics");
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      data: Array<{
+        toolName: string;
+        source?: string;
+        trend?: Array<{ date: string; count: number; errorCount: number }>;
+      }>;
+    };
+    const row = body.data[0];
+    expect(row?.source).toBe("mcp");
+    expect(row?.trend).toHaveLength(7);
+    expect(row?.trend?.[0]).toEqual({
+      date: "2026-07-12",
+      count: 0,
+      errorCount: 0,
+    });
+    expect(row?.trend?.[6]?.date).toBe("2026-07-18");
+  });
+});
+
+// P22-T6-19(C17B) RED: admin-data-access.ts 의 toolMetricsSummary 는 pgPool 직접 의존이라
+//   순수 헬퍼(buildToolMetricsTrend / pickPredominantSource)를 분리해 DB 없이 단언한다.
+//   (health-history-query.test.ts 의 buildRecentQuery 검증과 같은 패턴.)
+describe("admin-data-access — tool-metrics source/trend 헬퍼 (P22-T6-19)", () => {
+  it("pickPredominantSource — 최빈 source 를 고른다", () => {
+    expect(
+      pickPredominantSource([
+        { source: "mcp", count: 3 },
+        { source: "builtin", count: 10 },
+      ]),
+    ).toBe("builtin");
+  });
+
+  it("pickPredominantSource — NULL(기존 행)은 builtin 으로 본다", () => {
+    expect(pickPredominantSource([{ source: null, count: 5 }])).toBe("builtin");
+  });
+
+  it("pickPredominantSource — 행이 없으면 builtin", () => {
+    expect(pickPredominantSource([])).toBe("builtin");
+  });
+
+  it("buildToolMetricsTrend — 7개 포인트를 과거→현재 순으로 zero-fill 한다", () => {
+    const to = new Date("2026-07-18T09:00:00Z");
+    const trend = buildToolMetricsTrend(
+      [{ day: "2026-07-16", count: 3, errorCount: 1 }],
+      to,
+    );
+    expect(trend).toHaveLength(7);
+    expect(trend[0]?.date).toBe("2026-07-12");
+    expect(trend[6]?.date).toBe("2026-07-18");
+    expect(trend[4]).toEqual({ date: "2026-07-16", count: 3, errorCount: 1 });
+    expect(trend[5]).toEqual({ date: "2026-07-17", count: 0, errorCount: 0 });
+  });
+
+  it("buildToolMetricsTrend — 행이 전혀 없으면 전부 0 인 7 포인트", () => {
+    const trend = buildToolMetricsTrend([], new Date("2026-07-18T00:00:00Z"));
+    expect(trend).toHaveLength(7);
+    expect(trend.every((p) => p.count === 0 && p.errorCount === 0)).toBe(true);
+  });
+
+  it("buildToolMetricsTrend — 윈도우 밖 날짜는 무시한다", () => {
+    const trend = buildToolMetricsTrend(
+      [{ day: "2026-07-01", count: 99, errorCount: 9 }],
+      new Date("2026-07-18T00:00:00Z"),
+    );
+    expect(trend.every((p) => p.count === 0)).toBe(true);
   });
 });

@@ -48,6 +48,21 @@ export const OrgSettingsSchema = z.object({
   webSearchEndpoint: z.string().max(500).optional(),
   webSearchApiKeyRef: z.string().max(200).optional(),
 
+  // Deep Research (멀티에이전트) — deep_research 툴이 invoke 시점에 org-scoped 로 읽는다
+  // (toolMaxTokens 와 동일 패턴, deep-research-handler.ts). 미설정 org 는 기본값(4/2)으로 동작.
+  //   deepResearchMaxSubQuestions: planner 가 분해하는 하위 질문(= 병렬 조사 에이전트) 최대 개수.
+  //   deepResearchMaxGapIterations: 1차 종합 후 "부족한 부분 추가 조사→재종합" 반성 루프 최대 횟수(0=끔).
+  deepResearchMaxSubQuestions: z.number().int().min(1).max(10).optional(),
+  deepResearchMaxGapIterations: z.number().int().min(0).max(5).optional(),
+
+  // Media — P22-T1-08: image_generate 도구 org 게이트. false 면 핸들러가 invoke 시점에
+  // IMAGE_GEN_DISABLED 로 거절한다(admin 설정에서 토글, webSearchEnabled 와 동일 패턴).
+  imageGenEnabled: z.boolean().optional(),
+
+  // Chat — P22-T6-16: 입력 자동완성(ghost text). off 면 POST /completions 가 invoke 시점에
+  // FEATURE_DISABLED 로 거절한다(webSearchEnabled/imageGenEnabled 와 동일한 org 게이트 패턴).
+  autocompleteEnabled: z.boolean().optional(),
+
   // Connectors/MCP
   enableDirectConnections: z.boolean().optional(),
 
@@ -71,10 +86,82 @@ export const OrgSettingsSchema = z.object({
   // Quota/Limits
   maxUploadSizeMb: z.number().int().min(1).max(1000).optional(),
   maxUploadCount: z.number().int().min(1).max(100).optional(),
+  // P20-T1-17: 업로드 허용 확장자 화이트리스트(소문자, 점 없이). routes/uploads.ts 가
+  // 업로드 시점에 filename 확장자를 이 목록과 대조해 강제한다.
+  allowedUploadExtensions: z
+    .array(z.string().min(1).max(20))
+    .max(50)
+    .optional(),
+
+  // Identity/LDAP — P22-T1-11(계약배치 C14): LDAP/AD 디렉터리 로그인.
+  // ldapEnabled=false 가 기본이라 미설정 org 는 기존 매직링크/비밀번호 경로 그대로(비파괴).
+  ldapEnabled: z.boolean().optional(),
+  ldapUrl: z.string().max(500).optional(), // ldap:// | ldaps://host:port
+  ldapBindDn: z.string().max(500).optional(), // 검색용 서비스 계정 DN(빈 값=익명 bind)
+  // 비밀번호 자체가 아니라 서버가 읽을 env 변수 **이름**만 저장한다(LDAP_ 접두만 허용).
+  // webSearchApiKeyRef 와 동일한 "비밀은 DB 밖" 원칙 — lib/ldap-client.ts resolveLdapConfig 참조.
+  ldapBindPasswordRef: z.string().max(200).optional(),
+  ldapBaseDn: z.string().max(500).optional(), // 이 서브트리 밖 사용자는 로그인 불가
+  ldapUserFilter: z.string().max(500).optional(), // {{username}} 자리표시자(RFC 4515 이스케이프됨)
+  ldapEmailAttribute: z.string().max(100).optional(),
+  ldapNameAttribute: z.string().max(100).optional(),
+  ldapGroupAttribute: z.string().max(100).optional(),
+  // 그룹 DN → org 롤. 비어 있으면 그룹 게이트 미적용(디렉터리 인증만으로 허용).
+  ldapGroupRoleMap: z
+    .record(z.string().max(500), z.enum(["member", "admin", "owner"]))
+    .optional(),
+  ldapTlsRejectUnauthorized: z.boolean().optional(),
+
+  // Identity/SSO — P22-T1-17(계약배치 C16): OAuth2/OIDC SSO + 역프록시 trusted-header.
+  // 둘 다 기본 false 라 미설정 org 는 기존 매직링크/비밀번호/LDAP 경로 그대로(비파괴).
+  oidcEnabled: z.boolean().optional(),
+  oidcIssuer: z.string().max(500).optional(),
+  oidcAuthorizationEndpoint: z.string().max(500).optional(),
+  oidcTokenEndpoint: z.string().max(500).optional(),
+  // 선택 — id_token 에 email/groups 를 싣지 않는 IdP 보강용.
+  oidcUserinfoEndpoint: z.string().max(500).optional(),
+  oidcClientId: z.string().max(200).optional(),
+  // client_secret 자체가 아니라 서버가 읽을 env 변수 **이름**만 저장한다(OIDC_ 접두만 허용).
+  oidcClientSecretRef: z.string().max(200).optional(),
+  oidcRedirectUri: z.string().max(500).optional(),
+  oidcScopes: z.string().max(300).optional(), // 공백 구분("openid email profile")
+  oidcEmailClaim: z.string().max(100).optional(),
+  oidcNameClaim: z.string().max(100).optional(),
+  oidcGroupsClaim: z.string().max(100).optional(),
+  // 그룹/롤 클레임 값 → org 롤. 비어 있으면 그룹 게이트 미적용(IdP 인증만으로 허용).
+  oidcGroupRoleMap: z
+    .record(z.string().max(500), z.enum(["member", "admin", "owner"]))
+    .optional(),
+
+  // 앞단 프록시(oauth2-proxy·Cloudflare Access 등)가 인증을 끝내고 신원을 헤더로 넘기는 배포.
+  trustedHeaderEnabled: z.boolean().optional(),
+  trustedHeaderEmail: z.string().max(100).optional(),
+  trustedHeaderName: z.string().max(100).optional(),
+  trustedHeaderGroups: z.string().max(100).optional(),
+  // 프록시 공유비밀의 env 변수 **이름**(TRUSTED_HEADER_ 접두만 허용). 설정 시 헤더 위조 차단.
+  trustedHeaderSecretRef: z.string().max(200).optional(),
+  trustedHeaderGroupRoleMap: z
+    .record(z.string().max(500), z.enum(["member", "admin", "owner"]))
+    .optional(),
+
+  // API Keys — P20-T1-12: 전역 마스터 토글(off 면 신규 발급 거부, 기존 키는 영향 없음).
+  enableApiKeys: z.boolean().optional(),
+
+  // Admin Notifications — P20-T1-14: 설정 시 신규가입 완료마다 new_user 페이로드를 이
+  // URL 로 POST(dev-stub, 실 네트워크 미발송). 미설정(빈 문자열)이면 미발송.
+  adminWebhookUrl: z.string().max(500).optional(),
 });
 
 export type OrgSettingsPatch = z.infer<typeof OrgSettingsSchema>;
-export type ResolvedOrgSettings = Required<OrgSettingsPatch>;
+// Required<> 만으로는 zod .optional() 필드의 값 타입(`X | undefined`)이 그대로 남아
+// DEFAULT_ORG_SETTINGS 병합으로 실제론 항상 채워지는 필드도 TS18048 을 유발한다 — 값 타입에서도
+// undefined 를 제거해 "resolve() 는 모든 필드가 채워짐을 보장" 이라는 실제 계약과 타입을 일치시킨다.
+export type ResolvedOrgSettings = {
+  [K in keyof Required<OrgSettingsPatch>]: Exclude<
+    Required<OrgSettingsPatch>[K],
+    undefined
+  >;
+};
 
 export const DEFAULT_ORG_SETTINGS: ResolvedOrgSettings = {
   maxTokens: 4096,
@@ -97,6 +184,15 @@ export const DEFAULT_ORG_SETTINGS: ResolvedOrgSettings = {
   webSearchEndpoint: "",
   webSearchApiKeyRef: "",
 
+  // deep_research 기본: 하위 질문(병렬 에이전트) 최대 4, 반성(gap 재조사) 최대 2회 — 현행 하드코딩 값 보존.
+  deepResearchMaxSubQuestions: 4,
+  deepResearchMaxGapIterations: 2,
+
+  imageGenEnabled: false,
+
+  // 현행(자동완성 기능 자체가 없었음) 동작 보존 — org 관리자가 명시적으로 켜야 활성(비파괴).
+  autocompleteEnabled: false,
+
   enableDirectConnections: false,
 
   instanceName: "WChat",
@@ -110,4 +206,66 @@ export const DEFAULT_ORG_SETTINGS: ResolvedOrgSettings = {
 
   maxUploadSizeMb: 25,
   maxUploadCount: 10,
+  // 일반 문서/이미지 셋(현행 parser-pipeline 지원 문서 포맷 + 텍스트/이미지) — 비파괴 기본값.
+  allowedUploadExtensions: [
+    "pdf",
+    "doc",
+    "docx",
+    "ppt",
+    "pptx",
+    "xls",
+    "xlsx",
+    "txt",
+    "md",
+    "csv",
+    "json",
+    "png",
+    "jpg",
+    "jpeg",
+    "gif",
+    "webp",
+  ],
+
+  // P22-T1-11(C14) — 디렉터리 로그인은 명시적으로 켜야 활성(기존 인증 경로 무변경).
+  // 속성 기본값은 Active Directory 관례를 따른다.
+  ldapEnabled: false,
+  ldapUrl: "",
+  ldapBindDn: "",
+  ldapBindPasswordRef: "",
+  ldapBaseDn: "",
+  ldapUserFilter: "(|(sAMAccountName={{username}})(mail={{username}}))",
+  ldapEmailAttribute: "mail",
+  ldapNameAttribute: "displayName",
+  ldapGroupAttribute: "memberOf",
+  ldapGroupRoleMap: {},
+  ldapTlsRejectUnauthorized: true,
+
+  // P22-T1-17(C16) — SSO 는 명시적으로 켜야 활성(기존 인증 경로 무변경).
+  // 클레임 이름 기본값은 OIDC Core 표준 클레임을 따른다.
+  oidcEnabled: false,
+  oidcIssuer: "",
+  oidcAuthorizationEndpoint: "",
+  oidcTokenEndpoint: "",
+  oidcUserinfoEndpoint: "",
+  oidcClientId: "",
+  oidcClientSecretRef: "",
+  oidcRedirectUri: "",
+  oidcScopes: "openid email profile",
+  oidcEmailClaim: "email",
+  oidcNameClaim: "name",
+  oidcGroupsClaim: "groups",
+  oidcGroupRoleMap: {},
+
+  // 헤더 인증은 위조가 쉬워 기본 비활성. 헤더 이름 기본값은 oauth2-proxy 관례를 따른다.
+  trustedHeaderEnabled: false,
+  trustedHeaderEmail: "X-Forwarded-Email",
+  trustedHeaderName: "X-Forwarded-User",
+  trustedHeaderGroups: "X-Forwarded-Groups",
+  trustedHeaderSecretRef: "",
+  trustedHeaderGroupRoleMap: {},
+
+  // 현행(마스터 토글 없음=누구나 발급 가능) 동작을 미조정 org 에서 보존(비파괴).
+  enableApiKeys: true,
+
+  adminWebhookUrl: "",
 };

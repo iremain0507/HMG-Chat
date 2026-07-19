@@ -26,7 +26,8 @@ const SKILLS = [
 ];
 
 async function mockBackend(page: import("@playwright/test").Page) {
-  await page.route("**/api/v1/skills", (route) =>
+  // 관리 화면은 ?includeDisabled=true 로 조회한다(P22-T6-18) — 쿼리까지 매칭.
+  await page.route("**/api/v1/skills**", (route) =>
     route.fulfill({
       status: 200,
       contentType: "application/json",

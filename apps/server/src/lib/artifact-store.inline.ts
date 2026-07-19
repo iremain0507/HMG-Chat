@@ -46,8 +46,11 @@ export function createInlineArtifactStore(
       // DB row(및 inline_content) 삭제는 db/artifact-service.ts deleteArtifact() 소관 — no-op.
     },
 
-    async cleanupExpired() {
-      return { deletedCount: 0 };
+    // inline artifact 의 바이트는 artifacts.inline_content 컬럼 자체다 — 별도 오브젝트가 없어
+    // 이 store 가 지울 외부 바이트도 없다. 실제 삭제는 호출자(data-retention.ts)의 DB row
+    // 삭제로 완료되므로, 처리 대상 건수를 그대로 돌려준다(remove() 가 no-op 인 것과 같은 이유).
+    async cleanupExpired(input) {
+      return { deletedCount: input?.artifactIds.length ?? 0 };
     },
   };
 }

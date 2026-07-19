@@ -85,6 +85,14 @@ export function createDevStubLLMProvider(): LLMProvider {
         messageId: randomUUID(),
         meta: { provider: "dev-stub", model: input.model },
       };
+      // reasoningEffort 설정 시 사고 스트림 시연(P20-T2-03) — 실 provider 는 extended thinking
+      //   delta 를 방출, dev-stub 은 결정적 텍스트로 대체(LOCAL_ONLY).
+      if (input.reasoningEffort) {
+        yield {
+          type: "reasoning_delta",
+          text: `[dev-stub ${input.reasoningEffort} 추론] 질문 "${text}" 을(를) 분석합니다.`,
+        };
+      }
       yield { type: "text_delta", text };
 
       await new Promise((resolve) => setTimeout(resolve, ECHO_DELAY_MS));

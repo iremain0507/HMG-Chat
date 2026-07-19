@@ -94,6 +94,55 @@ describe("routes/sessions.ts 검색(GET /search?q=, app.ts 실 조립) — P19-T
     );
   }
 
+  async function createTag(
+    sessionId: string,
+    orgId: string,
+    tag: string,
+  ): Promise<void> {
+    await pgPool.query(
+      "INSERT INTO session_tags (session_id, org_id, tag) VALUES ($1, $2, $3)",
+      [sessionId, orgId, tag],
+    );
+  }
+
+  // P20-T1-07 — 접두어 필터 테스트 헬퍼(폴더 생성, 핀/아카이브 직접 세팅).
+  async function createFolder(
+    orgId: string,
+    userId: string,
+    name: string,
+  ): Promise<string> {
+    const id = randomUUID();
+    await pgPool.query(
+      "INSERT INTO session_folders (id, org_id, name, created_by) VALUES ($1, $2, $3, $4)",
+      [id, orgId, name, userId],
+    );
+    return id;
+  }
+
+  async function setFolder(sessionId: string, folderId: string): Promise<void> {
+    await pgPool.query("UPDATE sessions SET folder_id = $1 WHERE id = $2", [
+      folderId,
+      sessionId,
+    ]);
+  }
+
+  async function setPinned(sessionId: string, pinned: boolean): Promise<void> {
+    await pgPool.query("UPDATE sessions SET pinned_at = $1 WHERE id = $2", [
+      pinned ? new Date() : null,
+      sessionId,
+    ]);
+  }
+
+  async function setArchived(
+    sessionId: string,
+    archived: boolean,
+  ): Promise<void> {
+    await pgPool.query("UPDATE sessions SET archived_at = $1 WHERE id = $2", [
+      archived ? new Date() : null,
+      sessionId,
+    ]);
+  }
+
   it("제목이 매칭되는 세션을 반환한다", async () => {
     const matching = await createSession(userA.id, "분기별 예산 계획");
     const other = await createSession(userA.id, "무관한 세션");
@@ -119,6 +168,19 @@ describe("routes/sessions.ts 검색(GET /search?q=, app.ts 실 조립) — P19-T
     expect(json.data.some((s) => s.id === sessionId)).toBe(true);
   });
 
+  it("태그로만 매칭되는 세션(제목/본문 불일치)을 검색 결과에 포함한다", async () => {
+    const sessionId = await createSession(userA.id, "제목도내용도무관함");
+    const uniqueTag = `tag-${randomUUID()}`;
+    await createTag(sessionId, orgA.id, uniqueTag);
+
+    const res = await app.request(`/api/v1/sessions/search?q=${uniqueTag}`, {
+      headers: { Cookie: cookieFor(userA, orgA) },
+    });
+    expect(res.status).toBe(200);
+    const json = (await res.json()) as { data: Array<{ id: string }> };
+    expect(json.data.some((s) => s.id === sessionId)).toBe(true);
+  });
+
   it("q 가 없으면 400 을 반환한다", async () => {
     const res = await app.request("/api/v1/sessions/search", {
       headers: { Cookie: cookieFor(userA, orgA) },
@@ -126,9 +188,11 @@ describe("routes/sessions.ts 검색(GET /search?q=, app.ts 실 조립) — P19-T
     expect(res.status).toBe(400);
   });
 
-  it("cross-org — B 는 A 의 세션 제목/내용을 검색 결과에서 볼 수 없다", async () => {
+  it("cross-org — B 는 A 의 세션 제목/내용/태그를 검색 결과에서 볼 수 없다", async () => {
     const sessionId = await createSession(userA.id, "A전용예산문서");
     await createMessage(sessionId, "A조직만의비밀키워드");
+    const orgATag = `a-only-tag-${randomUUID()}`;
+    await createTag(sessionId, orgA.id, orgATag);
 
     const titleRes = await app.request(
       "/api/v1/sessions/search?q=A전용예산문서",
@@ -147,5 +211,122 @@ describe("routes/sessions.ts 검색(GET /search?q=, app.ts 실 조립) — P19-T
       data: Array<{ id: string }>;
     };
     expect(contentJson.data.some((s) => s.id === sessionId)).toBe(false);
+
+    const tagRes = await app.request(`/api/v1/sessions/search?q=${orgATag}`, {
+      headers: { Cookie: cookieFor(userB, orgB) },
+    });
+    const tagJson = (await tagRes.json()) as {
+      data: Array<{ id: string }>;
+    };
+    expect(tagJson.data.some((s) => s.id === sessionId)).toBe(false);
+  });
+
+  // P20-T1-07 — 검색 접두어 필터(tag:/folder:/pinned:/archived:).
+  it("tag: 접두어 + 잔여 자유텍스트를 결합해 태그와 본문 둘 다 만족하는 세션만 반환한다", async () => {
+    const uniqueTag = `report-${randomUUID()}`;
+    const matching = await createSession(userA.id, "report 태그+예산 세션");
+    await createTag(matching, orgA.id, uniqueTag);
+    await createMessage(matching, "이번 분기 예산 검토");
+
+    const tagOnlyNoText = await createSession(userA.id, "report 태그만");
+    await createTag(tagOnlyNoText, orgA.id, uniqueTag);
+
+    const textOnlyNoTag = await createSession(userA.id, "예산 이야기만");
+
+    const res = await app.request(
+      `/api/v1/sessions/search?q=${encodeURIComponent(`tag:${uniqueTag} 예산`)}`,
+      { headers: { Cookie: cookieFor(userA, orgA) } },
+    );
+    expect(res.status).toBe(200);
+    const json = (await res.json()) as { data: Array<{ id: string }> };
+    expect(json.data.some((s) => s.id === matching)).toBe(true);
+    expect(json.data.some((s) => s.id === tagOnlyNoText)).toBe(false);
+    expect(json.data.some((s) => s.id === textOnlyNoTag)).toBe(false);
+  });
+
+  it("folder: 접두어로 해당 이름의 폴더에 속한 세션만 반환한다", async () => {
+    const folderId = await createFolder(orgA.id, userA.id, "업무");
+    const otherFolderId = await createFolder(orgA.id, userA.id, "개인");
+    const inFolder = await createSession(userA.id, "업무 폴더 세션");
+    await setFolder(inFolder, folderId);
+    const inOtherFolder = await createSession(userA.id, "개인 폴더 세션");
+    await setFolder(inOtherFolder, otherFolderId);
+    const noFolder = await createSession(userA.id, "폴더 없는 세션");
+
+    const res = await app.request(
+      `/api/v1/sessions/search?q=${encodeURIComponent("folder:업무")}`,
+      { headers: { Cookie: cookieFor(userA, orgA) } },
+    );
+    expect(res.status).toBe(200);
+    const json = (await res.json()) as { data: Array<{ id: string }> };
+    expect(json.data.some((s) => s.id === inFolder)).toBe(true);
+    expect(json.data.some((s) => s.id === inOtherFolder)).toBe(false);
+    expect(json.data.some((s) => s.id === noFolder)).toBe(false);
+  });
+
+  it("pinned:true 접두어로 핀된 세션만, pinned:false 로 핀 안 된 세션만 반환한다", async () => {
+    const marker = `pin-marker-${randomUUID()}`;
+    const pinned = await createSession(userA.id, `${marker} 핀됨`);
+    await setPinned(pinned, true);
+    const unpinned = await createSession(userA.id, `${marker} 안핀됨`);
+
+    const pinnedRes = await app.request(
+      `/api/v1/sessions/search?q=${encodeURIComponent(`pinned:true ${marker}`)}`,
+      { headers: { Cookie: cookieFor(userA, orgA) } },
+    );
+    const pinnedJson = (await pinnedRes.json()) as {
+      data: Array<{ id: string }>;
+    };
+    expect(pinnedJson.data.some((s) => s.id === pinned)).toBe(true);
+    expect(pinnedJson.data.some((s) => s.id === unpinned)).toBe(false);
+
+    const unpinnedRes = await app.request(
+      `/api/v1/sessions/search?q=${encodeURIComponent(`pinned:false ${marker}`)}`,
+      { headers: { Cookie: cookieFor(userA, orgA) } },
+    );
+    const unpinnedJson = (await unpinnedRes.json()) as {
+      data: Array<{ id: string }>;
+    };
+    expect(unpinnedJson.data.some((s) => s.id === unpinned)).toBe(true);
+    expect(unpinnedJson.data.some((s) => s.id === pinned)).toBe(false);
+  });
+
+  it("archived:true 접두어로 아카이브된 세션만 반환한다(기본 검색은 아카이브 포함)", async () => {
+    const marker = `archive-marker-${randomUUID()}`;
+    const archived = await createSession(userA.id, `${marker} 보관됨`);
+    await setArchived(archived, true);
+    const active = await createSession(userA.id, `${marker} 활성`);
+
+    const bothRes = await app.request(
+      `/api/v1/sessions/search?q=${encodeURIComponent(marker)}`,
+      { headers: { Cookie: cookieFor(userA, orgA) } },
+    );
+    const bothJson = (await bothRes.json()) as { data: Array<{ id: string }> };
+    expect(bothJson.data.some((s) => s.id === archived)).toBe(true);
+    expect(bothJson.data.some((s) => s.id === active)).toBe(true);
+
+    const archivedOnlyRes = await app.request(
+      `/api/v1/sessions/search?q=${encodeURIComponent(`archived:true ${marker}`)}`,
+      { headers: { Cookie: cookieFor(userA, orgA) } },
+    );
+    const archivedOnlyJson = (await archivedOnlyRes.json()) as {
+      data: Array<{ id: string }>;
+    };
+    expect(archivedOnlyJson.data.some((s) => s.id === archived)).toBe(true);
+    expect(archivedOnlyJson.data.some((s) => s.id === active)).toBe(false);
+  });
+
+  it("cross-org — folder: 접두어도 타 org 폴더/세션을 노출하지 않는다", async () => {
+    const folderId = await createFolder(orgA.id, userA.id, "cross-org-폴더");
+    const sessionId = await createSession(userA.id, "cross-org 폴더 세션");
+    await setFolder(sessionId, folderId);
+
+    const res = await app.request(
+      `/api/v1/sessions/search?q=${encodeURIComponent("folder:cross-org-폴더")}`,
+      { headers: { Cookie: cookieFor(userB, orgB) } },
+    );
+    expect(res.status).toBe(200);
+    const json = (await res.json()) as { data: Array<{ id: string }> };
+    expect(json.data.some((s) => s.id === sessionId)).toBe(false);
   });
 });

@@ -13,7 +13,7 @@ import type {
   ToolMetricRepo,
 } from "@wchat/interfaces";
 import { validateArgs } from "../tools/arg-validator.js";
-import { recordToolMetric } from "../lib/tool-metrics.js";
+import { recordToolMetric, toolSourceFromName } from "../lib/tool-metrics.js";
 import {
   DEFAULT_MAX_STEPS,
   DEFAULT_STEP_REPETITION_THRESHOLD,
@@ -39,6 +39,8 @@ export interface RunTurnInput {
   // 시 provider SDK 기본값을 그대로 유지한다(비파괴, P15-T2-01).
   temperature?: number;
   topP?: number;
+  // provider.chat 에 그대로 forward (ChatInput.reasoningEffort, P20-T2-02). 미설정 시 thinking 비활성.
+  reasoningEffort?: "low" | "medium" | "high";
   tools?: AgentTool[];
   // tools 사용 시 필수 — AgentTool.invoke 에 넘길 ToolContext. signal 은
   // RunTurnInput.signal 을 그대로 쓰므로 여기 별도 필드 없음(중복 방지).
@@ -127,6 +129,8 @@ async function instrumentedInvoke(
       durationMs,
       userId: ctx.userId,
       orgId: ctx.orgId,
+      // 출처는 기록 시점에 확정한다(툴이 사라진 뒤에도 집계 유지). P22-T6-19 / C17B.
+      source: toolSourceFromName(tool.spec.name),
     });
   }
 
@@ -275,6 +279,9 @@ export async function* runTurn(input: RunTurnInput): AsyncIterable<ChatEvent> {
           ? { temperature: input.temperature }
           : {}),
         ...(input.topP !== undefined ? { topP: input.topP } : {}),
+        ...(input.reasoningEffort !== undefined
+          ? { reasoningEffort: input.reasoningEffort }
+          : {}),
         ...(input.parallelToolCalls !== undefined
           ? { parallelToolCalls: input.parallelToolCalls }
           : {}),

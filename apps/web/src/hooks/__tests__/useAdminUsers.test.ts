@@ -12,6 +12,7 @@ const USER_1 = {
   role: "member" as const,
   status: "active" as const,
   lastLoginAt: "2026-07-01T00:00:00Z",
+  createdAt: "2026-01-01T00:00:00Z",
 };
 
 describe("useAdminUsers", () => {
@@ -125,5 +126,75 @@ describe("useAdminUsers", () => {
       expect.objectContaining({ method: "POST" }),
     );
     expect(result.current.users[0]?.status).toBe("active");
+  });
+
+  it("deleteUser 는 DELETE 후 목록을 재조회한다", async () => {
+    let deleteCalled = false;
+    const fetchMock = vi.fn(
+      async (input: RequestInfo | URL, init?: RequestInit) => {
+        if (init?.method === "DELETE") {
+          deleteCalled = true;
+          return { ok: true, json: async () => ({ data: { ok: true } }) };
+        }
+        void input;
+        return {
+          ok: true,
+          json: async () => ({ data: deleteCalled ? [] : [USER_1] }),
+        };
+      },
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { result } = renderHook(() => useAdminUsers());
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.users).toHaveLength(1);
+
+    let outcome: { ok: boolean } | undefined;
+    await act(async () => {
+      outcome = await result.current.deleteUser("user-1");
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/v1/admin/users/user-1",
+      expect.objectContaining({ method: "DELETE" }),
+    );
+    expect(outcome?.ok).toBe(true);
+    expect(result.current.users).toHaveLength(0);
+  });
+
+  it("deleteUser 실패 시 서버 에러 메시지를 표시하고 목록을 유지한다", async () => {
+    const fetchMock = vi.fn(
+      async (_input: RequestInfo | URL, init?: RequestInit) => {
+        if (init?.method === "DELETE") {
+          return {
+            ok: false,
+            json: async () => ({
+              error: {
+                message: "최고 관리자(primary admin)는 삭제할 수 없습니다.",
+              },
+            }),
+          };
+        }
+        return { ok: true, json: async () => ({ data: [USER_1] }) };
+      },
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { result } = renderHook(() => useAdminUsers());
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    let outcome: { ok: boolean; message?: string } | undefined;
+    await act(async () => {
+      outcome = await result.current.deleteUser("user-1");
+    });
+
+    expect(outcome?.ok).toBe(false);
+    expect(outcome?.message).toBe(
+      "최고 관리자(primary admin)는 삭제할 수 없습니다.",
+    );
+    expect(result.current.error).toBe(
+      "최고 관리자(primary admin)는 삭제할 수 없습니다.",
+    );
+    expect(result.current.users).toHaveLength(1);
   });
 });

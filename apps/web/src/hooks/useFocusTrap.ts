@@ -10,16 +10,25 @@ const FOCUSABLE_SELECTOR =
 
 export function useFocusTrap(
   containerRef: RefObject<HTMLElement | null>,
-  options: { active: boolean; onClose: () => void },
+  options: {
+    active: boolean;
+    onClose: () => void;
+    // P21-T6-10 — 트리거 클릭과 모달 마운트 사이에 다른 동기 side-effect(예: 다른 요소로의
+    // 포커스 이동)가 끼어들면 암시적 document.activeElement 캡처가 엉뚱한 요소를 잡는다.
+    // 그런 경우 호출부가 실제 트리거 요소를 명시적으로 넘겨 복귀 대상을 고정한다.
+    restoreFocusRef?: RefObject<HTMLElement | null> | undefined;
+  },
 ): void {
-  const { active, onClose } = options;
+  const { active, onClose, restoreFocusRef } = options;
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
 
   useEffect(() => {
     if (!active) return;
     const container = containerRef.current;
-    const trigger = document.activeElement as HTMLElement | null;
+    const trigger =
+      restoreFocusRef?.current ??
+      (document.activeElement as HTMLElement | null);
 
     function getFocusable(): HTMLElement[] {
       if (!container) return [];

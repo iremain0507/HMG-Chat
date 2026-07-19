@@ -2,7 +2,8 @@
 
 // components/layout/ShortcutSheet.tsx — TS-22#5(docs/UAT-TEST-PLAN.md) 키보드 단축키
 // 발견성을 위한 도움말 오버레이. ⌘/ 로 열림, Esc·배경 클릭·닫기 버튼으로 닫힘.
-import React, { useEffect } from "react";
+import React, { useRef } from "react";
+import { useFocusTrap } from "../../hooks/useFocusTrap";
 
 const SHORTCUTS: Array<{ keys: string; label: string }> = [
   { keys: "⌘K", label: "검색 / 세션 커맨드 팔레트" },
@@ -21,14 +22,8 @@ export function ShortcutSheet({
   open: boolean;
   onClose: () => void;
 }) {
-  useEffect(() => {
-    if (!open) return;
-    function onKeyDown(e: KeyboardEvent) {
-      if (e.key === "Escape") onClose();
-    }
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [open, onClose]);
+  const dialogRef = useRef<HTMLDivElement>(null);
+  useFocusTrap(dialogRef, { active: open, onClose });
 
   if (!open) return null;
 
@@ -39,6 +34,7 @@ export function ShortcutSheet({
       onClick={onClose}
     >
       <div
+        ref={dialogRef}
         role="dialog"
         aria-label="키보드 단축키"
         aria-modal="true"

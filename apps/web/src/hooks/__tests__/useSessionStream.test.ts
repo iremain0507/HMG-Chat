@@ -66,6 +66,40 @@ describe("useSessionStream", () => {
     );
   });
 
+  it("stop.usage 와 message_start~stop 사이 경과시간을 assistant 메시지 meta 에 보존한다 (P20-T6-06)", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({
+        body: sseBody([
+          sseFrame("message_start", {
+            messageId: "msg-1",
+            meta: { provider: "fake", model: "fake-model" },
+          }),
+          sseFrame("text_delta", { text: "hello" }),
+          sseFrame("stop", {
+            reason: "end_turn",
+            usage: { inputTokens: 12, outputTokens: 34 },
+          }),
+        ]),
+      })),
+    );
+
+    const { result } = renderHook(() => useSessionStream("session-1"));
+
+    await act(async () => {
+      await result.current.send("hello");
+    });
+
+    const assistantMessage = result.current.messages.find(
+      (m) => m.role === "assistant",
+    );
+    expect(assistantMessage?.meta?.model).toBe("fake-model");
+    expect(assistantMessage?.meta?.provider).toBe("fake");
+    expect(assistantMessage?.meta?.inputTokens).toBe(12);
+    expect(assistantMessage?.meta?.outputTokens).toBe(34);
+    expect(assistantMessage?.meta?.elapsedMs).toBeGreaterThanOrEqual(0);
+  });
+
   it("send 에 attachments 를 전달하면 POST body 에 그대로 포함된다 (P10-T6-11)", async () => {
     vi.stubGlobal(
       "fetch",
@@ -81,7 +115,15 @@ describe("useSessionStream", () => {
     const { result } = renderHook(() => useSessionStream("session-1"));
 
     await act(async () => {
-      await result.current.send("이 문서 요약해줘", [{ uploadId: "upload-1" }]);
+      // P22-T6-04 — send() 는 이제 filename/mimeType(이미지는 previewUrl)까지 받는다.
+      // 서버 body 로는 uploadId 만 실려야 한다(아래 body 단언이 stripping 을 검증).
+      await result.current.send("이 문서 요약해줘", [
+        {
+          uploadId: "upload-1",
+          filename: "spec.pdf",
+          mimeType: "application/pdf",
+        },
+      ]);
     });
 
     expect(fetch).toHaveBeenCalledWith(
@@ -791,6 +833,258 @@ describe("useSessionStream", () => {
     );
   });
 
+  // P20-T6-05 — 개별 메시지 삭제: DELETE /:id/messages/:mid(P20-T1-05)를 소비해
+  // 대상 노드+하위 서브트리를 트리에서 낙관적 제거하고, 실패 시 롤백한다.
+  // 트리 노드 키는 서버 messageId 와 무관한 local-* 라(message_start 참고) deleteMessage 는
+  // 삭제 전 GET /:id/messages 로 영속된 실제 id 를 역산해 그 id 로 DELETE 를 보낸다.
+  function deleteFlowFetchMock(deleteOk: boolean) {
+    return vi.fn(async (url: unknown, init?: RequestInit) => {
+      const u = String(url);
+      if (init?.method === "DELETE") {
+        return { ok: deleteOk, status: deleteOk ? 204 : 404 };
+      }
+      if (u.endsWith("/messages") && (!init || init.method === undefined)) {
+        return {
+          ok: true,
+          json: async () => ({
+            data: [
+              { id: "real-u-1", role: "user", parentMessageId: null },
+              {
+                id: "real-a-1",
+                role: "assistant",
+                parentMessageId: "real-u-1",
+              },
+            ],
+          }),
+        };
+      }
+      return {
+        body: sseBody([
+          sseFrame("message_start", { messageId: "msg-1" }),
+          sseFrame("text_delta", { text: "첫 응답" }),
+          sseFrame("stop", { reason: "end_turn" }),
+        ]),
+      };
+    });
+  }
+
+  it("deleteMessage 는 대상 assistant 메시지의 실제 id 를 역산해 DELETE 로 요청하고 트리에서 제거한다 (P20-T6-05)", async () => {
+    const fetchMock = deleteFlowFetchMock(true);
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { result } = renderHook(() => useSessionStream("session-1"));
+
+    await act(async () => {
+      await result.current.send("원본 질문");
+    });
+    const assistantId = result.current.messages.find(
+      (m) => m.role === "assistant",
+    )!.id;
+
+    await act(async () => {
+      await result.current.deleteMessage(assistantId);
+    });
+
+    expect(result.current.messages.some((m) => m.id === assistantId)).toBe(
+      false,
+    );
+    expect(fetchMock).toHaveBeenLastCalledWith(
+      "/api/v1/sessions/session-1/messages/real-a-1",
+      expect.objectContaining({ method: "DELETE" }),
+    );
+  });
+
+  it("구조화 content({text,parts})로 저장된 assistant 메시지를 loadHistory 가 복원해 도구 카드(parts)를 살린다 — 새로고침 후 도구 호출 유지", async () => {
+    const fetchMock = vi.fn(async (url: unknown, init?: RequestInit) => {
+      const u = String(url);
+      if (u.endsWith("/messages") && (!init || init.method === undefined)) {
+        return {
+          ok: true,
+          json: async () => ({
+            data: [
+              {
+                id: "h-u-1",
+                role: "user",
+                content: "위스키 조사해줘",
+                parentMessageId: null,
+              },
+              {
+                id: "h-a-1",
+                role: "assistant",
+                parentMessageId: "h-u-1",
+                content: {
+                  text: "조사해드리겠습니다.",
+                  parts: [
+                    { type: "text", text: "조사해드리겠습니다." },
+                    {
+                      type: "tool",
+                      toolCallId: "tc-1",
+                      name: "deep_research",
+                      args: { query: "위스키" },
+                      status: "done",
+                      result: {
+                        message: "완료",
+                        citations: [],
+                        subQuestions: [],
+                      },
+                    },
+                  ],
+                },
+              },
+            ],
+          }),
+        };
+      }
+      return { ok: false, status: 404 };
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { result } = renderHook(() => useSessionStream("session-1"));
+    await act(async () => {
+      await result.current.loadHistory();
+    });
+
+    const assistant = result.current.messages.find(
+      (m) => m.role === "assistant",
+    );
+    expect(assistant?.content).toBe("조사해드리겠습니다."); // 텍스트는 유지
+    // parts 가 복원되어 도구 파트(deep_research)가 살아난다 → ChatView 가 ToolCallRenderer 로 렌더.
+    const toolPart = assistant?.parts?.find((p) => p.type === "tool");
+    expect(toolPart).toMatchObject({
+      toolCallId: "tc-1",
+      name: "deep_research",
+      status: "done",
+    });
+  });
+
+  it("loadHistory 가 activeRun(진행 중 turn)을 발견하면 resume 스트림으로 재연결해 서브에이전트 카드를 되살리고 최종답변까지 이어받는다 — 새로고침 중 실행중", async () => {
+    const fetchMock = vi.fn(async (url: unknown, init?: RequestInit) => {
+      const u = String(url);
+      if (u.endsWith("/messages/msg-live/stream")) {
+        // 서버 resume: message_replace(텍스트 캐치업) → 누적 도구 카드 재생 → 라이브 완료.
+        return {
+          ok: true,
+          body: sseBody([
+            sseFrame("message_replace", {
+              messageId: "msg-live",
+              contentSoFar: "",
+            }),
+            sseFrame("tool_use", {
+              toolCallId: "tc-1",
+              name: "deep_research",
+              args: { query: "위스키" },
+            }),
+            sseFrame("tool_progress", {
+              toolCallId: "tc-1",
+              stage: "researching",
+              label: "2/3",
+            }),
+            sseFrame("tool_result", {
+              toolCallId: "tc-1",
+              content: { message: "완료", citations: [], subQuestions: [] },
+            }),
+            sseFrame("text_delta", { text: "조사 결과입니다." }),
+            sseFrame("stop", { reason: "end_turn" }),
+          ]),
+        };
+      }
+      if (u.endsWith("/messages") && (!init || init.method === undefined)) {
+        // 진행 중 turn 이라 assistant 행은 아직 없고 user 메시지만 있으며, activeRun 이 실린다.
+        return {
+          ok: true,
+          json: async () => ({
+            data: [
+              {
+                id: "h-u-1",
+                role: "user",
+                content: "위스키 조사해줘",
+                parentMessageId: null,
+              },
+            ],
+            activeRun: { messageId: "msg-live" },
+          }),
+        };
+      }
+      return { ok: false, status: 404 };
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { result } = renderHook(() => useSessionStream("session-1"));
+    await act(async () => {
+      await result.current.loadHistory();
+    });
+
+    // resume 재연결이 실제로 일어났다.
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/v1/sessions/session-1/messages/msg-live/stream",
+      expect.objectContaining({ credentials: "include" }),
+    );
+    const assistant = result.current.messages.find(
+      (m) => m.role === "assistant",
+    );
+    expect(assistant).toBeDefined();
+    // 재생된 도구 카드가 살아나고(중복 없이) 라이브 완료로 done 이 된다.
+    const toolParts = assistant?.parts?.filter((p) => p.type === "tool") ?? [];
+    expect(toolParts).toHaveLength(1);
+    expect(toolParts[0]).toMatchObject({
+      toolCallId: "tc-1",
+      name: "deep_research",
+      status: "done",
+    });
+    expect(assistant?.content).toBe("조사 결과입니다.");
+    expect(result.current.isStreaming).toBe(false);
+  });
+
+  it("deleteMessage 는 대상 user 메시지를 지우면 하위 assistant 응답도 함께 트리에서 제거한다 (P20-T6-05)", async () => {
+    const fetchMock = deleteFlowFetchMock(true);
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { result } = renderHook(() => useSessionStream("session-1"));
+
+    await act(async () => {
+      await result.current.send("원본 질문");
+    });
+    const userId = result.current.messages.find((m) => m.role === "user")!.id;
+    const assistantId = result.current.messages.find(
+      (m) => m.role === "assistant",
+    )!.id;
+
+    await act(async () => {
+      await result.current.deleteMessage(userId);
+    });
+
+    expect(result.current.messages).toHaveLength(0);
+    expect(result.current.messages.some((m) => m.id === assistantId)).toBe(
+      false,
+    );
+    expect(fetchMock).toHaveBeenLastCalledWith(
+      "/api/v1/sessions/session-1/messages/real-u-1",
+      expect.objectContaining({ method: "DELETE" }),
+    );
+  });
+
+  it("deleteMessage 는 서버 요청이 실패하면 낙관적 제거를 롤백한다 (P20-T6-05)", async () => {
+    const fetchMock = deleteFlowFetchMock(false);
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { result } = renderHook(() => useSessionStream("session-1"));
+
+    await act(async () => {
+      await result.current.send("원본 질문");
+    });
+    const assistantId = result.current.messages.find(
+      (m) => m.role === "assistant",
+    )!.id;
+
+    await act(async () => {
+      await result.current.deleteMessage(assistantId);
+    });
+
+    expect(result.current.messages.some((m) => m.id === assistantId)).toBe(
+      true,
+    );
+  });
+
   // P10-T6-17 — 에러/신뢰: turn 내 원인별 에러배너 + 재시도(재시도 가능 코드만) +
   // SSE 드롭 재연결/resume.
   it("error 이벤트의 SerializedError.retryable/category 를 메시지 노드에 반영한다", async () => {
@@ -1018,6 +1312,36 @@ describe("useSessionStream", () => {
     expect(assistant?.content).toBe("부분 답변 그리고 끝까지 완성된 최종 답변");
   });
 
+  it("reasoning_delta 이벤트를 message.reasoning 에 누적하고 최종 답변(content)과 분리한다 (P20-T2-03)", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({
+        body: sseBody([
+          sseFrame("message_start", { messageId: "msg-1" }),
+          sseFrame("reasoning_delta", { text: "먼저 " }),
+          sseFrame("reasoning_delta", { text: "생각해본다." }),
+          sseFrame("text_delta", { text: "최종답변" }),
+          sseFrame("stop", { reason: "end_turn" }),
+        ]),
+      })),
+    );
+
+    const { result } = renderHook(() => useSessionStream("session-1"));
+    await act(async () => {
+      await result.current.send("추론해줘", undefined, {
+        reasoningEffort: "high",
+      });
+    });
+
+    const assistant = result.current.messages.find(
+      (m) => m.role === "assistant",
+    );
+    // 사고 스트림은 reasoning 에 누적(과거엔 reasoning 이벤트 자체가 없어 미표시).
+    expect(assistant?.reasoning).toBe("먼저 생각해본다.");
+    // 최종 답변은 content 로 분리 유지(사고가 답변에 섞이지 않음).
+    expect(assistant?.content).toBe("최종답변");
+  });
+
   describe("loadHistory (P17-T6-01, TS-08)", () => {
     it("GET /:id/messages 응답을 시간순 선형 체인으로 복원한다", async () => {
       const fetchMock = vi.fn(async () => ({
@@ -1220,6 +1544,453 @@ describe("useSessionStream", () => {
       });
 
       expect(result.current.artifacts).toEqual([]);
+    });
+  });
+
+  describe("세션 전환 시 상태 리셋 + 스트림 abort (P21-T6-04, UX-16)", () => {
+    it("sessionId 변경 시 이전 세션 메시지를 즉시 비우고, 새 세션 히스토리를 다시 불러온다", async () => {
+      const fetchMock = vi.fn(async (url: string) => {
+        if (url === "/api/v1/sessions/session-1/messages") {
+          return {
+            ok: true,
+            json: async () => ({
+              data: [{ id: "m-1", role: "user", content: "세션1 메시지" }],
+            }),
+          };
+        }
+        if (url === "/api/v1/sessions/session-2/messages") {
+          return {
+            ok: true,
+            json: async () => ({
+              data: [{ id: "m-2", role: "user", content: "세션2 메시지" }],
+            }),
+          };
+        }
+        throw new Error(`unexpected url ${url}`);
+      });
+      vi.stubGlobal("fetch", fetchMock);
+
+      const { result, rerender } = renderHook(
+        ({ sessionId }) => useSessionStream(sessionId),
+        { initialProps: { sessionId: "session-1" } },
+      );
+
+      await act(async () => {
+        await result.current.loadHistory();
+      });
+      expect(result.current.messages.map((m) => m.content)).toEqual([
+        "세션1 메시지",
+      ]);
+
+      rerender({ sessionId: "session-2" });
+
+      // 세션 전환 즉시 이전 세션(A) 메시지는 화면에서 사라져야 한다 — 현재는
+      // historyLoadedRef/treeRef 가 리셋되지 않아 A 메시지가 그대로 남는다(RED).
+      expect(result.current.messages).toEqual([]);
+
+      await act(async () => {
+        await result.current.loadHistory();
+      });
+      // historyLoadedRef 가 리셋되지 않으면 이 두번째 loadHistory 는 조용히 early-return
+      // 하고 새 세션의 히스토리를 fetch 하지 않는다(RED).
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/v1/sessions/session-2/messages",
+        expect.objectContaining({ credentials: "include" }),
+      );
+      expect(result.current.messages.map((m) => m.content)).toEqual([
+        "세션2 메시지",
+      ]);
+    });
+
+    it("세션 전환 시 진행 중이던 이전 세션의 스트림을 abort 한다", () => {
+      let capturedSignal: AbortSignal | undefined;
+      const fetchMock = vi.fn(async (_url: string, init?: RequestInit) => {
+        capturedSignal = init?.signal ?? undefined;
+        return { body: new ReadableStream<Uint8Array>({ start() {} }) };
+      });
+      vi.stubGlobal("fetch", fetchMock);
+
+      const { result, rerender } = renderHook(
+        ({ sessionId }) => useSessionStream(sessionId),
+        { initialProps: { sessionId: "session-1" } },
+      );
+
+      act(() => {
+        void result.current.send("hello");
+      });
+      expect(capturedSignal?.aborted).toBe(false);
+
+      rerender({ sessionId: "session-2" });
+
+      expect(capturedSignal?.aborted).toBe(true);
+    });
+
+    it("컴포넌트 언마운트 시 진행 중이던 스트림을 abort 한다", () => {
+      let capturedSignal: AbortSignal | undefined;
+      const fetchMock = vi.fn(async (_url: string, init?: RequestInit) => {
+        capturedSignal = init?.signal ?? undefined;
+        return { body: new ReadableStream<Uint8Array>({ start() {} }) };
+      });
+      vi.stubGlobal("fetch", fetchMock);
+
+      const { result, unmount } = renderHook(() =>
+        useSessionStream("session-1"),
+      );
+
+      act(() => {
+        void result.current.send("hello");
+      });
+      expect(capturedSignal?.aborted).toBe(false);
+
+      unmount();
+
+      expect(capturedSignal?.aborted).toBe(true);
+    });
+  });
+
+  describe("스트리밍 중 겹침 가드 (P21-T6-12, UX-20/21)", () => {
+    it("스트리밍 도중 send 를 재호출하면 이전 leg 을 abort 하지 않고 큐잉한다(P22-T6-05)", () => {
+      // P22-T6-05 로 사용자 send 의 겹침 정책이 abort → 큐잉으로 바뀌었다: in-flight 는
+      // 유지되고 두 번째 전송은 FIFO 큐로 들어가 스트림 종료 후 자동 디스패치된다(FIFO 상세는
+      // "메시지 큐" describe 참조). abort-on-overlap 은 아래 continueMessage(=edit/regenerate)
+      // 경로에만 남는다.
+      const signals: AbortSignal[] = [];
+      const fetchMock = vi.fn(async (_url: string, init?: RequestInit) => {
+        if (init?.signal) signals.push(init.signal);
+        return { body: new ReadableStream<Uint8Array>({ start() {} }) };
+      });
+      vi.stubGlobal("fetch", fetchMock);
+
+      const { result } = renderHook(() => useSessionStream("session-1"));
+
+      act(() => {
+        void result.current.send("첫번째");
+      });
+      expect(signals[0]?.aborted).toBe(false);
+
+      act(() => {
+        void result.current.send("두번째");
+      });
+
+      // in-flight leg 은 abort 되지 않고 살아있으며, 두 번째는 디스패치 대신 큐로 들어간다.
+      expect(signals[0]?.aborted).toBe(false);
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(result.current.queuedMessages.map((q) => q.content)).toEqual([
+        "두번째",
+      ]);
+    });
+
+    it("스트리밍 도중 continueMessage 를 재호출하면 이전 leg 을 abort 한다", async () => {
+      const signals: AbortSignal[] = [];
+      let firstCall = true;
+      const fetchMock = vi.fn(async (_url: string, init?: RequestInit) => {
+        if (firstCall) {
+          firstCall = false;
+          return {
+            body: sseBody([
+              sseFrame("message_start", { messageId: "msg-1" }),
+              sseFrame("stop", { reason: "max_tokens" }),
+            ]),
+          };
+        }
+        if (init?.signal) signals.push(init.signal);
+        return { body: new ReadableStream<Uint8Array>({ start() {} }) };
+      });
+      vi.stubGlobal("fetch", fetchMock);
+
+      const { result } = renderHook(() => useSessionStream("session-1"));
+
+      await act(async () => {
+        await result.current.send("hello");
+      });
+      const assistantMessage = result.current.messages.find(
+        (m) => m.role === "assistant",
+      );
+      expect(assistantMessage?.truncated).toBe(true);
+
+      act(() => {
+        void result.current.continueMessage(assistantMessage!.id);
+      });
+      expect(signals[0]?.aborted).toBe(false);
+
+      act(() => {
+        void result.current.continueMessage(assistantMessage!.id);
+      });
+
+      expect(signals[0]?.aborted).toBe(true);
+    });
+  });
+
+  // P22-T6-05 — 응답 생성 중 추가 메시지를 큐잉(Open WebUI 파리티). in-flight 를 abort 하지
+  // 않고 FIFO 로 스트림 종료 후 자동 디스패치. edit/regenerate/continue 의 overlap-abort 는 유지.
+  describe("메시지 큐(응답 생성 중 전송)", () => {
+    // 컨트롤러를 잡아 열린 채로 두는 SSE 스트림 — 임의 시점에 프레임을 밀어넣고 닫을 수 있다.
+    function gatedStream() {
+      const encoder = new TextEncoder();
+      let controller: ReadableStreamDefaultController<Uint8Array>;
+      const stream = new ReadableStream<Uint8Array>({
+        start(c) {
+          controller = c;
+        },
+      });
+      return {
+        stream,
+        push(event: string, data: unknown) {
+          controller.enqueue(encoder.encode(sseFrame(event, data)));
+        },
+        close() {
+          controller.close();
+        },
+      };
+    }
+    const flush = () => new Promise((r) => setTimeout(r, 0));
+
+    it("스트리밍 중 send() 는 in-flight 를 abort 하지 않고 큐에 쌓고, 종료 시 FIFO 로 자동 디스패치한다", async () => {
+      const gate = gatedStream();
+      const fetchMock = vi
+        .fn()
+        .mockResolvedValueOnce({ body: gate.stream })
+        .mockResolvedValue({
+          body: sseBody([
+            sseFrame("message_start", {
+              messageId: "msg-2",
+              meta: { provider: "fake", model: "fake-model" },
+            }),
+            sseFrame("text_delta", { text: "second-answer" }),
+            sseFrame("stop", {
+              reason: "end_turn",
+              usage: { inputTokens: 1, outputTokens: 1 },
+            }),
+          ]),
+        });
+      vi.stubGlobal("fetch", fetchMock);
+
+      const { result } = renderHook(() => useSessionStream("session-1"));
+
+      // 첫 턴 시작 — 스트림을 열어둔 채 유지(닫지 않음)
+      await act(async () => {
+        void result.current.send("first");
+        await flush();
+      });
+      await act(async () => {
+        gate.push("message_start", {
+          messageId: "msg-1",
+          meta: { provider: "fake", model: "fake-model" },
+        });
+        gate.push("text_delta", { text: "streaming…" });
+        await flush();
+      });
+      expect(result.current.isStreaming).toBe(true);
+
+      // 생성 중 두 번째 전송 → 큐잉(디스패치 아님, in-flight abort 아님)
+      await act(async () => {
+        void result.current.send("second");
+        await flush();
+      });
+      expect(result.current.queuedMessages.map((q) => q.content)).toEqual([
+        "second",
+      ]);
+      expect(result.current.isStreaming).toBe(true);
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+
+      // 첫 스트림 종료 → 큐 헤드 자동 디스패치
+      await act(async () => {
+        gate.push("stop", {
+          reason: "end_turn",
+          usage: { inputTokens: 1, outputTokens: 1 },
+        });
+        gate.close();
+        await flush();
+        await flush();
+      });
+
+      expect(result.current.queuedMessages).toEqual([]);
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+      expect(fetchMock.mock.calls[1]?.[1]?.body).toContain("second");
+      // 두 유저 메시지 + 두 assistant 답변이 모두 렌더된다
+      const userContents = result.current.messages
+        .filter((m) => m.role === "user")
+        .map((m) => m.content);
+      expect(userContents).toEqual(["first", "second"]);
+    });
+
+    it("큐에 쌓인(아직 미전송) 메시지를 removeQueued 로 취소하면 드롭되어 전송되지 않는다", async () => {
+      const gate = gatedStream();
+      const fetchMock = vi
+        .fn()
+        .mockResolvedValueOnce({ body: gate.stream })
+        .mockResolvedValue({
+          body: sseBody([
+            sseFrame("message_start", {
+              messageId: "msg-x",
+              meta: { provider: "fake", model: "fake-model" },
+            }),
+            sseFrame("text_delta", { text: "kept" }),
+            sseFrame("stop", {
+              reason: "end_turn",
+              usage: { inputTokens: 1, outputTokens: 1 },
+            }),
+          ]),
+        });
+      vi.stubGlobal("fetch", fetchMock);
+
+      const { result } = renderHook(() => useSessionStream("session-1"));
+
+      await act(async () => {
+        void result.current.send("first");
+        await flush();
+      });
+      await act(async () => {
+        gate.push("message_start", {
+          messageId: "msg-1",
+          meta: { provider: "fake", model: "fake-model" },
+        });
+        await flush();
+      });
+
+      await act(async () => {
+        void result.current.send("drop-me");
+        void result.current.send("keep-me");
+        await flush();
+      });
+      expect(result.current.queuedMessages.map((q) => q.content)).toEqual([
+        "drop-me",
+        "keep-me",
+      ]);
+
+      const dropId = result.current.queuedMessages[0]!.id;
+      await act(async () => {
+        result.current.removeQueued(dropId);
+      });
+      expect(result.current.queuedMessages.map((q) => q.content)).toEqual([
+        "keep-me",
+      ]);
+
+      // 스트림 종료 → keep-me 만 디스패치, drop-me 는 전송되지 않음
+      await act(async () => {
+        gate.push("stop", {
+          reason: "end_turn",
+          usage: { inputTokens: 1, outputTokens: 1 },
+        });
+        gate.close();
+        await flush();
+        await flush();
+      });
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+      expect(fetchMock.mock.calls[1]?.[1]?.body).toContain("keep-me");
+      const allBodies = fetchMock.mock.calls
+        .map((c) => c[1]?.body ?? "")
+        .join("|");
+      expect(allBodies).not.toContain("drop-me");
+    });
+  });
+
+  // P22-T6-06 — 멀티모델 병렬 비교(Open WebUI 파리티).
+  describe("멀티모델 비교(sendCompare)", () => {
+    it("선택한 2개 모델로 병렬 팬아웃해 각 컬럼에 message_start.meta.model 로 구분된 스트림을 누적한다", async () => {
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async (_url: string, init?: RequestInit) => {
+          const body = JSON.parse((init?.body as string) ?? "{}") as {
+            model?: string;
+            content?: string;
+          };
+          const model = body.model ?? "unknown";
+          return {
+            body: sseBody([
+              sseFrame("message_start", {
+                messageId: `msg-${model}`,
+                meta: { provider: "fake", model },
+              }),
+              sseFrame("text_delta", { text: `answer-from-${model}` }),
+              sseFrame("stop", {
+                reason: "end_turn",
+                usage: { inputTokens: 1, outputTokens: 2 },
+              }),
+            ]),
+          };
+        }),
+      );
+
+      const { result } = renderHook(() => useSessionStream("session-1"));
+
+      await act(async () => {
+        await result.current.sendCompare("compare this", [
+          "model-a",
+          "model-b",
+        ]);
+      });
+
+      expect(result.current.isStreaming).toBe(false);
+      const group = result.current.compareGroups[0]!;
+      expect(group.userContent).toBe("compare this");
+      expect(group.columns).toHaveLength(2);
+      const colA = group.columns.find((c) => c.model === "model-a")!;
+      const colB = group.columns.find((c) => c.model === "model-b")!;
+      expect(colA.answers[colA.activeIndex]!.content).toBe(
+        "answer-from-model-a",
+      );
+      expect(colB.answers[colB.activeIndex]!.content).toBe(
+        "answer-from-model-b",
+      );
+      expect(colA.answers[colA.activeIndex]!.streaming).toBe(false);
+      // 각 모델이 자기 컬럼에만 기록되고 서로 섞이지 않는다.
+      expect(colA.answers[colA.activeIndex]!.content).not.toContain("model-b");
+    });
+
+    it("regenerateCompare 는 해당 컬럼에만 형제 답변을 추가하고, switchCompareBranch 는 컬럼별로 독립 네비게이션한다", async () => {
+      let call = 0;
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async (_url: string, init?: RequestInit) => {
+          const body = JSON.parse((init?.body as string) ?? "{}") as {
+            model?: string;
+          };
+          const model = body.model ?? "unknown";
+          call += 1;
+          const text = `${model}-r${call}`;
+          return {
+            body: sseBody([
+              sseFrame("message_start", {
+                messageId: `m${call}`,
+                meta: { provider: "fake", model },
+              }),
+              sseFrame("text_delta", { text }),
+              sseFrame("stop", { reason: "end_turn" }),
+            ]),
+          };
+        }),
+      );
+
+      const { result } = renderHook(() => useSessionStream("session-1"));
+      await act(async () => {
+        await result.current.sendCompare("q", ["model-a", "model-b"]);
+      });
+      const groupId = result.current.compareGroups[0]!.id;
+      await act(async () => {
+        await result.current.regenerateCompare(groupId, "model-a");
+      });
+
+      const g = result.current.compareGroups[0]!;
+      const colA = g.columns.find((c) => c.model === "model-a")!;
+      const colB = g.columns.find((c) => c.model === "model-b")!;
+      expect(colA.answers).toHaveLength(2);
+      expect(colB.answers).toHaveLength(1);
+      expect(colA.activeIndex).toBe(1);
+
+      act(() => {
+        result.current.switchCompareBranch(groupId, "model-a", "prev");
+      });
+      const after = result.current.compareGroups[0]!.columns.find(
+        (c) => c.model === "model-a",
+      )!;
+      expect(after.activeIndex).toBe(0);
+      // model-b 컬럼은 영향받지 않는다.
+      expect(
+        result.current.compareGroups[0]!.columns.find(
+          (c) => c.model === "model-b",
+        )!.activeIndex,
+      ).toBe(0);
     });
   });
 });

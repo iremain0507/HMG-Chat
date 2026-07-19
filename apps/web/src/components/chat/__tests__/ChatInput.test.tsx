@@ -150,7 +150,13 @@ describe("ChatInput", () => {
 
     await waitFor(() => {
       expect(onSend).toHaveBeenCalledWith("이 파일 요약해줘", [
-        { uploadId: "upload-3" },
+        // P22-T6-04 — onSend 는 uploadId 외 filename/mimeType(이미지는 previewUrl)도 함께
+        // 넘긴다(낙관적 유저 버블 썸네일용). 서버 body 로는 useSessionStream 이 uploadId 만 추린다.
+        {
+          uploadId: "upload-3",
+          filename: "spec.pdf",
+          mimeType: "application/pdf",
+        },
       ]);
     });
   });
@@ -269,6 +275,68 @@ describe("ChatInput 슬래시/멘션", () => {
     expect(textarea.value).toBe("@knowledge_search ");
   });
 
+  it("# 입력 시 업로드 문서 피커가 뜨고 선택하면 참조 텍스트가 삽입되며 전송 시 attachments 에 uploadId 가 포함된다", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({
+        ok: true,
+        status: 201,
+        json: async () => ({
+          data: {
+            id: "upload-9",
+            filename: "report.pdf",
+            mimeType: "application/pdf",
+          },
+        }),
+      })),
+    );
+    const onSend = vi.fn();
+    render(
+      <ChatInput
+        sessionId="session-1"
+        isStreaming={false}
+        onSend={onSend}
+        onStop={vi.fn()}
+      />,
+    );
+
+    const dropzone = screen.getByTestId("composer-dropzone");
+    const file = new File(["hello"], "report.pdf", {
+      type: "application/pdf",
+    });
+    fireEvent.drop(dropzone, { dataTransfer: { files: [file] } });
+
+    await waitFor(() => {
+      expect(screen.getByText("report.pdf")).toBeInTheDocument();
+    });
+
+    const textarea = screen.getByLabelText(
+      "메시지 입력",
+    ) as HTMLTextAreaElement;
+    fireEvent.change(textarea, { target: { value: "#rep" } });
+
+    const popoverItem = screen.getByTestId("composer-popover-item-upload-9");
+    expect(popoverItem).toHaveTextContent("report.pdf");
+
+    fireEvent.click(popoverItem);
+    expect(textarea.value).toBe("#report.pdf ");
+
+    fireEvent.change(textarea, {
+      target: { value: "#report.pdf 이 문서 요약해줘" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "전송" }));
+
+    await waitFor(() => {
+      expect(onSend).toHaveBeenCalledWith("#report.pdf 이 문서 요약해줘", [
+        {
+          uploadId: "upload-9",
+          filename: "report.pdf",
+          mimeType: "application/pdf",
+        },
+      ]);
+    });
+  });
+
   it("Escape 키로 팝오버를 닫고 입력 텍스트는 유지한다", () => {
     render(
       <ChatInput
@@ -289,6 +357,58 @@ describe("ChatInput 슬래시/멘션", () => {
     fireEvent.keyDown(textarea, { key: "Escape" });
     expect(screen.queryByText("대화 지우기")).not.toBeInTheDocument();
     expect(textarea.value).toBe("/대");
+  });
+
+  // P21-T6-07 — 데스크톱(≥md)에서 backdrop 이 md:hidden 이라 바깥클릭 해제가 없던 갭.
+  it("UX-01: 팝오버 밖 pointerdown 시 팝오버가 unmount 되고 입력 텍스트는 유지된다", () => {
+    render(
+      <>
+        <button data-testid="outside">밖</button>
+        <ChatInput
+          sessionId="session-ux01-outside-dismiss"
+          isStreaming={false}
+          onSend={vi.fn()}
+          onStop={vi.fn()}
+          slashCommands={COMMANDS}
+        />
+      </>,
+    );
+    const textarea = screen.getByLabelText(
+      "메시지 입력",
+    ) as HTMLTextAreaElement;
+
+    fireEvent.change(textarea, { target: { value: "/대" } });
+    expect(screen.getByTestId("composer-popover")).toBeInTheDocument();
+
+    fireEvent.pointerDown(screen.getByTestId("outside"));
+    expect(screen.queryByTestId("composer-popover")).not.toBeInTheDocument();
+    expect(textarea.value).toBe("/대");
+  });
+
+  // R69 combobox 패턴 — 팝오버 항목에 실 DOM 포커스를 옮기지 않으므로 textarea 가
+  // aria-activedescendant 로 현재 active 옵션을 announce 해야 한다.
+  it("textarea 가 활성 팝오버 옵션을 aria-activedescendant 로 가리키고 ArrowDown 시 갱신된다", () => {
+    render(
+      <ChatInput
+        sessionId="session-activedescendant"
+        isStreaming={false}
+        onSend={vi.fn()}
+        onStop={vi.fn()}
+        slashCommands={COMMANDS}
+      />,
+    );
+    const textarea = screen.getByLabelText(
+      "메시지 입력",
+    ) as HTMLTextAreaElement;
+
+    fireEvent.change(textarea, { target: { value: "/" } });
+    const firstOption = screen.getByText("대화 지우기").closest("li");
+    expect(firstOption).toHaveAttribute("id");
+    expect(textarea).toHaveAttribute("aria-activedescendant", firstOption?.id);
+
+    fireEvent.keyDown(textarea, { key: "ArrowDown" });
+    const secondOption = screen.getByText("웹 검색").closest("li");
+    expect(textarea).toHaveAttribute("aria-activedescendant", secondOption?.id);
   });
 });
 
@@ -647,5 +767,55 @@ describe("ChatInput 액션바 F05 핸드오프 (P13-T6-04)", () => {
     expect(
       screen.queryByTestId("composer-context-gauge"),
     ).not.toBeInTheDocument();
+  });
+
+  // P22-T6-05 — 응답 생성 중(Stop 표시 중)에도 Enter 로 메시지를 큐잉하고, 큐 칩을 렌더/취소한다.
+  it("스트리밍 중 Enter 로 메시지를 전송하면 onSend 로 큐잉 요청이 전달된다(early-return 하지 않음)", async () => {
+    const onSend = vi.fn();
+    render(
+      <ChatInput
+        sessionId="session-1"
+        isStreaming={true}
+        onSend={onSend}
+        onStop={vi.fn()}
+      />,
+    );
+
+    // 생성 중에도 Stop 버튼은 유지된다
+    expect(screen.getByRole("button", { name: "Stop" })).toBeInTheDocument();
+
+    const textarea = screen.getByLabelText("메시지 입력");
+    fireEvent.change(textarea, { target: { value: "대기 메시지" } });
+    fireEvent.keyDown(textarea, { key: "Enter" });
+
+    await waitFor(() => {
+      // availableModels 미지정 경로는 onSend(content, attachments) 2-인자 계약(위 :152 참조).
+      // 핵심은 스트리밍 중 Enter 가 early-return 하지 않고 큐잉 대상 content 로 onSend 를 부른다는 것.
+      expect(onSend).toHaveBeenCalledWith("대기 메시지", expect.any(Array));
+    });
+  });
+
+  it("queuedMessages 를 칩 행으로 렌더하고 취소 버튼이 onRemoveQueued 를 호출한다", () => {
+    const onRemoveQueued = vi.fn();
+    render(
+      <ChatInput
+        sessionId="session-1"
+        isStreaming={true}
+        onSend={vi.fn()}
+        onStop={vi.fn()}
+        queuedMessages={[
+          { id: "q-1", content: "첫 대기" },
+          { id: "q-2", content: "둘째 대기" },
+        ]}
+        onRemoveQueued={onRemoveQueued}
+      />,
+    );
+
+    expect(screen.getByTestId("queued-messages")).toBeInTheDocument();
+    expect(screen.getByText("첫 대기")).toBeInTheDocument();
+    expect(screen.getByText("둘째 대기")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByLabelText("첫 대기 대기열에서 제거"));
+    expect(onRemoveQueued).toHaveBeenCalledWith("q-1");
   });
 });

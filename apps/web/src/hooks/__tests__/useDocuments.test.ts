@@ -193,6 +193,125 @@ describe("useDocuments", () => {
     expect(result.current.retryingId).toBeNull();
   });
 
+  it("deleteDocument 는 DELETE API 호출 후 목록을 재조회한다", async () => {
+    let deleted = false;
+    const fetchMock = vi.fn(
+      async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        if (init?.method === "DELETE") {
+          deleted = true;
+          return { ok: true, status: 204, json: async () => ({}) };
+        }
+        if (url.includes("/api/v1/documents?projectId=")) {
+          return {
+            ok: true,
+            status: 200,
+            json: async () => ({
+              data: deleted
+                ? []
+                : [
+                    {
+                      id: "doc-7",
+                      projectId: "proj-1",
+                      filename: "삭제대상.pdf",
+                      contentHash: "hash7",
+                      mimeType: "application/pdf",
+                      sizeBytes: 4096,
+                      indexStatus: "indexed",
+                      chunkCount: 5,
+                      indexedAt: "2026-04-01T00:00:00Z",
+                      failureReason: null,
+                      createdBy: "user-1",
+                      createdAt: "2026-04-01T00:00:00Z",
+                      updatedAt: "2026-04-01T00:00:00Z",
+                    },
+                  ],
+            }),
+          };
+        }
+        throw new Error(`unexpected fetch: ${url}`);
+      },
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { result } = renderHook(() => useDocuments("proj-1"));
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false);
+    });
+    expect(result.current.documents).toHaveLength(1);
+
+    await act(async () => {
+      await result.current.deleteDocument("doc-7");
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/v1/documents/doc-7",
+      expect.objectContaining({ method: "DELETE", credentials: "include" }),
+    );
+    expect(result.current.documents).toHaveLength(0);
+    expect(result.current.deletingId).toBeNull();
+  });
+
+  it("deleteDocument 실패 시 error 를 설정하고 행을 유지한다", async () => {
+    const fetchMock = vi.fn(
+      async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        if (init?.method === "DELETE") {
+          return {
+            ok: false,
+            status: 500,
+            json: async () => ({
+              error: {
+                code: "INTERNAL",
+                message: "삭제 중 오류가 발생했습니다.",
+              },
+            }),
+          };
+        }
+        if (url.includes("/api/v1/documents?projectId=")) {
+          return {
+            ok: true,
+            status: 200,
+            json: async () => ({
+              data: [
+                {
+                  id: "doc-8",
+                  projectId: "proj-1",
+                  filename: "잔존.pdf",
+                  contentHash: "hash8",
+                  mimeType: "application/pdf",
+                  sizeBytes: 4096,
+                  indexStatus: "indexed",
+                  chunkCount: 5,
+                  indexedAt: "2026-04-01T00:00:00Z",
+                  failureReason: null,
+                  createdBy: "user-1",
+                  createdAt: "2026-04-01T00:00:00Z",
+                  updatedAt: "2026-04-01T00:00:00Z",
+                },
+              ],
+            }),
+          };
+        }
+        throw new Error(`unexpected fetch: ${url}`);
+      },
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { result } = renderHook(() => useDocuments("proj-1"));
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false);
+    });
+
+    await act(async () => {
+      await result.current.deleteDocument("doc-8");
+    });
+
+    expect(result.current.error).toBe("삭제 중 오류가 발생했습니다.");
+    expect(result.current.documents).toHaveLength(1);
+    expect(result.current.deletingId).toBeNull();
+  });
+
   it("업로드 실패 시 error 를 설정한다", async () => {
     const fetchMock = vi.fn(
       async (_input: RequestInfo | URL, init?: RequestInit) => {

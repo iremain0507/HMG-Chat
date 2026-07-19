@@ -24,6 +24,15 @@ const Env = z.object({
   //   TAVILY_API_KEY → web_search/deep_research 실 웹검색. E2B_API_KEY → code_interpreter 실 샌드박스.
   TAVILY_API_KEY: z.string().optional(),
   E2B_API_KEY: z.string().optional(),
+  // P22-T1-08 — image_generate 전역 feature 게이트(배포시 끌 수 있음). LOCAL_ONLY 는 dev-stub
+  // provider 로 왕복 동작하도록 기본 활성. org 별 on/off 는 org_settings.imageGenEnabled(invoke-time).
+  IMAGE_GEN_ENABLED: z
+    .enum(["true", "false"])
+    .default("true")
+    .transform((v) => v === "true"),
+  // P22-T2-03 — abort/resume/HITL 런타임 상태 백엔드를 배포 시점에 고른다.
+  //   memory(기본, LOCAL_ONLY 단일 프로세스) / redis(다중 ECS task — REDIS_URL 을 실제로 소비).
+  RUNTIME_STATE_BACKEND: z.enum(["memory", "redis"]).default("memory"),
 });
 export type Env = z.infer<typeof Env>;
 

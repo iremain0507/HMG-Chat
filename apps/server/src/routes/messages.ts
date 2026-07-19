@@ -19,6 +19,10 @@ import {
   type ToolMetricRepo,
 } from "@wchat/interfaces";
 import { runTurn } from "../orchestrator/orchestrator.js";
+import {
+  retrieveUserMemoryBlock,
+  type UserMemoryReader,
+} from "../orchestrator/memory-retriever.js";
 import { generateFollowups } from "../orchestrator/followups.js";
 import { generateSessionTitleAndTags } from "../orchestrator/session-title-tags.js";
 import { registerRun, unregisterRun } from "../orchestrator/run-registry.js";
@@ -26,6 +30,7 @@ import {
   startMessageRun,
   recordMessageRunEvent,
   subscribeMessageRun,
+  finishMessageRuns,
 } from "../orchestrator/message-run-registry.js";
 import type { AuthedVariables } from "../middleware/auth-middleware.js";
 import { hitlBridge } from "../tools/hitl-manager.js";
@@ -35,6 +40,21 @@ import {
   type ResolvedOrgSettings,
 } from "../lib/org-settings-schema.js";
 import type { Citation } from "../knowledge/citation-helper.js";
+
+// 구조화 content({text,parts})/문자열 content 모두에서 사람이 읽는 텍스트를 뽑는다.
+//   도구 호출 영속화 이후 assistant content 가 구조화될 수 있어, LLM 히스토리/이어쓰기 등
+//   기존 문자열 소비처가 빈 문자열로 떨어지지 않도록 단일 출처로 추출한다.
+function messageText(content: unknown): string {
+  if (typeof content === "string") return content;
+  if (
+    content &&
+    typeof content === "object" &&
+    typeof (content as { text?: unknown }).text === "string"
+  ) {
+    return (content as { text: string }).text;
+  }
+  return "";
+}
 
 // abort flow (L06) — Stop 클릭(routes/sessions.ts DELETE /:id/active-run) 이 run-registry 를 통해
 // 이 run 의 signal 을 abort() 시킨 뒤, 여기서 sessions_active_runs.status 를 갱신한다.
@@ -113,7 +133,11 @@ export interface MessagesPort {
 // ownership 검증(session.userId !== auth.sub → 404)이 반드시 필요하다 — 없으면 sessionId 를
 // 아는 타 사용자/조직이 이 엔드포인트로 남의 대화 내용을 읽어낼 수 있다(cross-org 정보 노출).
 export interface FollowupsSessionsPort {
-  byId(id: string): Promise<{ userId: string } | null>;
+  // P20-T1-03 — folderId 는 폴더 스코프 시스템 프롬프트 상속에도 재사용(optional 이라
+  // 구조적 타이핑상 SessionWithPin(folderId: string | null, 필수)도 그대로 만족).
+  byId(
+    id: string,
+  ): Promise<{ userId: string; folderId?: string | null } | null>;
   // P19-T2-06 — 첫 턴 완료 후 LLM 제목 반영에 재사용(구조적 타이핑 — app.ts 가 이미 주입 중인
   // createPgSessionDataAccess() 의 full SessionsDataAccess 가 updateForOwner 를 구현하므로
   // app.ts 변경 없이 충족). 옵셔널 — 미주입/미구현 시 제목 반영을 건너뛴다(L2 fail-soft).
@@ -128,6 +152,24 @@ export interface FollowupsSessionsPort {
 // db/session-tag-data-access.ts SessionTagDataAccess 의 add 만 필요(구조적 타이핑).
 export interface SessionTagsPort {
   add(orgId: string, sessionId: string, tag: string): Promise<unknown>;
+}
+
+// P20-T2-04 — per-turn 관련 도구 선택(tools/tool-router.ts selectRelevantTools 실배선).
+// 매 턴 조립된 전체 tools 대신 query 와 관련도 높은 subset 만 runTurn 에 노출해 도구
+// 노이즈/오호출을 줄인다. 미주입 시 필터링을 건너뛴다(기존 동작 보존, L2 fail-soft).
+export interface ToolRouterPort {
+  select(input: { tools: AgentTool[]; query: string }): Promise<AgentTool[]>;
+}
+
+// P20-T1-03 — 폴더 스코프 시스템 프롬프트 조회 포트(db/session-folder-data-access.ts
+// SessionFolderDataAccess.byIdForOwner 와 구조적으로 호환 — SessionFolder 가 systemPrompt
+// 를 포함하므로 app.ts 변경 없이 그대로 주입 가능).
+export interface FolderSystemPromptPort {
+  byIdForOwner(
+    orgId: string,
+    userId: string,
+    id: string,
+  ): Promise<{ systemPrompt: string | null } | null>;
 }
 
 // P14-T2-01 — org 별 maxTokens/temperature(ISOLATE, runtime 미배선)/systemPrompt/defaultModel
@@ -201,6 +243,14 @@ function createBudgetClaim(limitMicros: number | null): BudgetClaim {
 export interface MessageRouteDeps {
   provider: LLMProvider;
   model: string;
+  // P22-T6-14 — org 에 등록된 ProviderConnection 중 이 모델을 제공하는 연결이 있으면 그
+  // 연결의 baseURL+키로 만든 provider 를 돌려준다(없으면 null → deps.provider 폴백).
+  // app.ts 조립 시점 싱글톤인 registry 로는 org 별 연결을 담을 수 없어 invoke-time 해석을
+  // 쓴다(P14-T2-02 가 같은 이유로 격리된 전례, T3-01 패턴 미러).
+  resolveConnectionProvider?: (
+    orgId: string,
+    model: string,
+  ) => Promise<LLMProvider | null>;
   systemBlocks?: PromptBlock[];
   maxTokens?: number;
   activeRuns?: ActiveRunsPort;
@@ -212,6 +262,9 @@ export interface MessageRouteDeps {
   // org 소유 MCP 서버 발견 결과를 AgentTool[] 로 조립(org 경계 밖 서버 유출 방지 위해
   // per-request 로 호출 — bridge.listRegisteredTools() 는 org 필터가 없는 전역 registry).
   mcpTools?: (orgId: string) => Promise<AgentTool[]>;
+  // P22-T1-12 — org 소유 OpenAPI 툴서버의 operation 을 AgentTool[] 로 조립(mcpTools 와 동일한
+  // per-request/org-scoped 계약. tools/openapi-tool-assembler.ts).
+  openApiTools?: (orgId: string) => Promise<AgentTool[]>;
   organizations?: { byId(id: string): Promise<Organization | null> };
   // 클라이언트 생성 세션 UUID(/chat/<uuid>)로 바로 메시지를 보내는 흐름에서, 아티팩트
   //   /업로드/active-run 이 참조하는 sessions 행이 없으면 FK 위반이 난다(deep_research 리포트
@@ -232,6 +285,15 @@ export interface MessageRouteDeps {
   messages?: MessagesPort;
   // P19-T2-06 — 첫 턴 완료 후 session_tags 에 생성된 태그를 반영. 미주입 시 태그 반영 생략.
   tags?: SessionTagsPort;
+  // P20-T1-03 — 폴더 스코프 시스템 프롬프트 상속(Open WebUI Folder System Prompt 참고).
+  // 미주입 시 상속 생략(기존 동작 보존, L2).
+  folders?: FolderSystemPromptPort;
+  // P20-T1-09 — 영구 사용자 메모리 회상(저장→프롬프트 주입). db/user-memory-data-access.ts
+  // (createPgUserMemoryDataAccess)의 UserMemoryReader 를 그대로 주입(구조적 타이핑). 미주입
+  // 시 회상 생략(기존 동작 보존, L2).
+  memories?: UserMemoryReader;
+  // P20-T2-04 — per-turn 관련 도구만 노출(ToolRouterPort 참고). 미주입 시 필터링 생략.
+  toolRouter?: ToolRouterPort;
 }
 
 function errorJson(code: string, message: string) {
@@ -254,6 +316,7 @@ export function createMessageRoutes(
         webSearch?: boolean;
         mode?: "agent" | "chat";
         temporary?: boolean;
+        reasoningEffort?: "low" | "medium" | "high";
       }>()
       .catch(
         () =>
@@ -264,6 +327,7 @@ export function createMessageRoutes(
             webSearch?: boolean;
             mode?: "agent" | "chat";
             temporary?: boolean;
+            reasoningEffort?: "low" | "medium" | "high";
           },
       );
     // P19-T2-05 — 임시 채팅: body.temporary=true 면 세션 upsert(ensureSession)와
@@ -312,7 +376,57 @@ export function createMessageRoutes(
     const orgSystemBlock: PromptBlock[] = resolvedSettings.systemPrompt
       ? [{ tier: "system", content: resolvedSettings.systemPrompt }]
       : [];
-    const systemBlocks = [...orgSystemBlock, ...(deps.systemBlocks ?? [])];
+
+    // P20-T1-03 — 폴더 스코프 시스템 프롬프트 상속(Open WebUI Folder System Prompt 참고):
+    // 세션이 속한 폴더에 system_prompt 가 설정돼 있으면 project-tier PromptBlock 로 반영한다
+    // (tier 우선순위 system>project>user 유지 — buildSystemPrompt 가 최종 정렬).
+    // 미인증/deps.sessions·deps.folders 미주입/폴더 미배정/미설정 시 조회를 건너뛴다
+    // (L2 fail-soft, 기존 동작 보존).
+    let folderSystemPrompt: string | null = null;
+    if (auth && deps.sessions && deps.folders) {
+      const session = await deps.sessions
+        .byId(c.req.param("id"))
+        .catch(() => null);
+      const folderId = session?.folderId ?? null;
+      if (folderId) {
+        const folder = await deps.folders
+          .byIdForOwner(auth.org, auth.sub, folderId)
+          .catch(() => null);
+        folderSystemPrompt = folder?.systemPrompt ?? null;
+      }
+    }
+    const folderSystemBlock: PromptBlock[] = folderSystemPrompt
+      ? [{ tier: "project", content: folderSystemPrompt }]
+      : [];
+
+    // P20-T1-09 — 영구 사용자 메모리 회상: routes/memories.ts 로 저장된 메모리(user_memories)를
+    // 매 턴 system 프롬프트에 자동 주입한다(저장·조회 UI 는 이미 있었으나 런타임 소비가 0).
+    // retrieveUserMemoryBlock(T2 소유, orchestrator/memory-retriever.ts)이 핀 우선+최근순 정렬 후
+    // tier="user" PromptBlock 으로 변환 — auth.sub 로만 조회해 타 사용자 메모리가 섞이지 않는다
+    // (user_memories 는 user_id 단위 격리라 org 컬럼 자체가 없음). 미인증/deps.memories 미주입 시
+    // 조회를 건너뛴다(L2 fail-soft, 기존 동작 보존).
+    let memoryBlock: PromptBlock[] = [];
+    if (auth && deps.memories) {
+      const block = await retrieveUserMemoryBlock(
+        deps.memories,
+        auth.sub,
+      ).catch((error) => {
+        deps.logger?.warn({
+          category: "system",
+          msg: "사용자 메모리 회상 실패",
+          context: { error: String(error) },
+        });
+        return null;
+      });
+      memoryBlock = block ? [block] : [];
+    }
+
+    const systemBlocks = [
+      ...orgSystemBlock,
+      ...folderSystemBlock,
+      ...memoryBlock,
+      ...(deps.systemBlocks ?? []),
+    ];
     const ephemeralBlock: PromptBlock[] =
       attachmentFilenames.length > 0
         ? [
@@ -351,7 +465,9 @@ export function createMessageRoutes(
     const requestedModel = body.model;
     const staticTools = deps.tools ?? [];
     const needsToolContext =
-      staticTools.length > 0 || deps.mcpTools !== undefined;
+      staticTools.length > 0 ||
+      deps.mcpTools !== undefined ||
+      deps.openApiTools !== undefined;
     // P14-T2-01 — org defaultModel 은 body.model 이 없을 때만, 실제 org 설정이 조회됐을 때만
     // (settingsResolved) deps.model(서버 기본 모델)을 대체한다 — settings 미주입 환경(기존
     // 테스트/배선)은 deps.model 그대로 유지.
@@ -384,8 +500,12 @@ export function createMessageRoutes(
       }
 
       if (needsToolContext) {
-        if (deps.mcpTools) {
-          tools = [...staticTools, ...(await deps.mcpTools(auth.org))];
+        if (deps.mcpTools || deps.openApiTools) {
+          tools = [
+            ...staticTools,
+            ...(deps.mcpTools ? await deps.mcpTools(auth.org) : []),
+            ...(deps.openApiTools ? await deps.openApiTools(auth.org) : []),
+          ];
         }
         const requestId = randomUUID();
         toolContext = {
@@ -420,6 +540,28 @@ export function createMessageRoutes(
       tools = [];
     }
 
+    // P20-T2-04 — per-turn 관련 도구만 노출: 전체 tools 대신 query 와 관련도 높은 subset
+    // 만 runTurn 에 전달한다(도구 노이즈/오호출 감소). 선택 결과가 비면(카탈로그 소진/임베딩
+    // 실패 등) 전체 tools 로 폴백하고, 라우팅 자체가 실패해도(reject) 전체 tools 를 그대로
+    // 유지한다(L2 fail-soft) — deps.toolRouter 미주입 시 기존 동작과 100% 동일.
+    if (deps.toolRouter && tools.length > 0) {
+      try {
+        const routedTools = await deps.toolRouter.select({
+          tools,
+          query: content,
+        });
+        if (routedTools.length > 0) {
+          tools = routedTools;
+        }
+      } catch (error) {
+        deps.logger?.warn({
+          category: "system",
+          msg: "tool 라우팅 실패 — 전체 tool set 유지",
+          context: { error: String(error) },
+        });
+      }
+    }
+
     // P17-T1-01 — user 메시지를 messages 테이블에 영속(best-effort — 실패해도 turn 은 계속).
     // P19-T2-05 — temporary 턴은 영속 자체를 스킵한다.
     const userMessage = isTemporary
@@ -449,15 +591,18 @@ export function createMessageRoutes(
 
     const jobId = randomUUID();
     const activeRuns = deps.activeRuns ?? noopActiveRuns;
-    const handle = registerRun(sessionId, jobId);
-    const requestSignal = c.req.raw.signal;
-    if (requestSignal.aborted) {
-      handle.controller.abort();
-    } else {
-      requestSignal.addEventListener("abort", () => handle.controller.abort(), {
-        once: true,
-      });
-    }
+    // registerRun 은 이 세션의 이전 run(있으면)을 abort 하고 이 run 을 등록한다 — send/편집/재생성
+    // 으로 새 턴이 시작되면 이전 턴을 대체한다. **클라 연결 끊김(새로고침/탭닫기)에는 턴을 abort 하지
+    // 않는다** — 턴은 서버에서 끝까지 돌고, 재진입한 클라가 resume 스트림으로 이어받는다(실행중 resume).
+    // 명시적 Stop(DELETE /active-run → abortRun) 또는 같은 세션의 새 턴만 진행 중 턴을 취소한다.
+    const handle = await registerRun(sessionId, jobId);
+
+    // P22-T6-14 — model 이 확정된 뒤 org 연결을 조회한다. 연결이 이 모델을 제공하면 그
+    // 연결(baseURL+키)로, 아니면 기존 env provider 로 — 연결 미등록 org 는 종전과 동일(비파괴).
+    const turnProvider =
+      (auth && deps.resolveConnectionProvider
+        ? await deps.resolveConnectionProvider(auth.org, model)
+        : null) ?? deps.provider;
 
     // nginx 등 리버스 프록시가 SSE 를 버퍼링하지 않게(토큰 순차 전달 보장). Next origin
     //   압축은 next.config compress:false 로 이미 끔.
@@ -474,12 +619,39 @@ export function createMessageRoutes(
       // 재호출로 leg 가 여러 개 생기면 그때마다 message_start 가 새 messageId 를 발급하므로
       // currentMessageId 도 그에 맞춰 갱신된다.
       let currentMessageId: string | undefined;
+      // 이 턴이 발급한 모든 leg messageId — 턴 종료 시 이것들만 registry 에서 닫는다(뒤이어
+      // 시작된 다른 턴의 run 을 오지우지 않도록 sessionId 대신 messageId 로 스코프).
+      const turnMessageIds: string[] = [];
       let assistantText = "";
       let assistantUsage:
         { inputTokens: number; outputTokens: number } | undefined;
+      // 도구 호출 카드가 새로고침/세션이동 후에도 복원되도록, 텍스트뿐 아니라 도구 호출
+      // (tool_use/result/progress)을 순서대로 parts 로 누적해 구조화 content 로 영속한다.
+      type PersistedTurnPart =
+        | { type: "text"; text: string }
+        | {
+            type: "tool";
+            toolCallId: string;
+            name: string;
+            args: unknown;
+            status: "running" | "done" | "error";
+            result?: unknown;
+            progress?: unknown;
+          };
+      const turnParts: PersistedTurnPart[] = [];
+      const appendTurnText = (t: string) => {
+        const last = turnParts[turnParts.length - 1];
+        if (last && last.type === "text") last.text += t;
+        else turnParts.push({ type: "text", text: t });
+      };
+      const turnToolPart = (id: string) =>
+        turnParts.find(
+          (p): p is Extract<PersistedTurnPart, { type: "tool" }> =>
+            p.type === "tool" && p.toolCallId === id,
+        );
       try {
         const events = runTurn({
-          provider: deps.provider,
+          provider: turnProvider,
           model,
           systemBlocks: [...systemBlocks, ...ephemeralBlock],
           messages,
@@ -498,6 +670,10 @@ export function createMessageRoutes(
           resolvedSettings.topP !== DEFAULT_ORG_SETTINGS.topP
             ? { topP: resolvedSettings.topP }
             : {}),
+          // P20-T2-02 — reasoningEffort: 클라 body → runTurn → provider.chat 실전달(no-op 해소).
+          ...(body.reasoningEffort
+            ? { reasoningEffort: body.reasoningEffort }
+            : {}),
           ...(tools.length > 0 ? { tools, parallelToolCalls: true } : {}),
           ...(toolContext ? { toolContext } : {}),
           ...(deps.toolMetrics ? { toolMetrics: deps.toolMetrics } : {}),
@@ -505,22 +681,52 @@ export function createMessageRoutes(
         for await (const event of events) {
           if (event.type === "message_start") {
             currentMessageId = event.messageId;
-            startMessageRun(event.messageId, sessionId);
+            turnMessageIds.push(event.messageId);
+            await startMessageRun(event.messageId, sessionId);
             // P17-T1-05(TS-14) — 첨부 ephemeral 청크 검색 결과를 이 turn 의 citation 이벤트로
             // 방출(모델의 tool_use 여부와 무관하게 결정적으로 반영).
             for (const citation of attachmentCitations) {
               const citationEvent = { type: "citation" as const, ...citation };
-              recordMessageRunEvent(currentMessageId, citationEvent);
+              await recordMessageRunEvent(currentMessageId, citationEvent);
               await stream.writeSSE({
                 event: "citation",
                 data: JSON.stringify(citation),
               });
             }
           } else if (currentMessageId) {
-            recordMessageRunEvent(currentMessageId, event);
+            await recordMessageRunEvent(currentMessageId, event);
           }
           if (event.type === "text_delta") {
             assistantText += event.text;
+            appendTurnText(event.text);
+          } else if (event.type === "tool_use") {
+            turnParts.push({
+              type: "tool",
+              toolCallId: event.toolCallId,
+              name: event.name,
+              args: event.args,
+              status: "running",
+            });
+          } else if (event.type === "tool_result") {
+            const p = turnToolPart(event.toolCallId);
+            if (p) {
+              p.result = event.content;
+              p.status =
+                event.content &&
+                typeof event.content === "object" &&
+                (event.content as { kind?: string }).kind === "error"
+                  ? "error"
+                  : "done";
+            }
+          } else if (event.type === "tool_progress") {
+            const p = turnToolPart(event.toolCallId);
+            if (p) {
+              p.progress = {
+                stage: event.stage,
+                ...(event.label !== undefined ? { label: event.label } : {}),
+                ...(event.tasks !== undefined ? { tasks: event.tasks } : {}),
+              };
+            }
           } else if (event.type === "stop") {
             assistantUsage = event.usage;
           }
@@ -559,7 +765,7 @@ export function createMessageRoutes(
         }
       } finally {
         clearInterval(heartbeat);
-        unregisterRun(sessionId, jobId);
+        await unregisterRun(sessionId, jobId);
         // P17-T1-01 — assistant 메시지 영속(정상 종료·취소·에러 경로 모두 finally 에서 1회).
         // message_start 가 한 번도 없었으면(예: 초기 검증 실패) 빈 행을 남기지 않는다.
         // P19-T2-05 — temporary 턴은 영속 자체를 스킵한다.
@@ -568,7 +774,11 @@ export function createMessageRoutes(
             ?.insert({
               sessionId,
               role: "assistant",
-              content: assistantText,
+              // 도구 호출이 있으면 구조화(content={text,parts})로 저장해 새로고침 후 도구 카드
+              // 복원. 없으면 기존처럼 순수 텍스트(하위호환 — 소비처는 문자열/구조화 모두 처리).
+              content: turnParts.some((p) => p.type === "tool")
+                ? { text: assistantText, parts: turnParts }
+                : assistantText,
               parentMessageId: userMessage?.id ?? null,
               tokensIn: assistantUsage?.inputTokens ?? null,
               tokensOut: assistantUsage?.outputTokens ?? null,
@@ -581,6 +791,13 @@ export function createMessageRoutes(
               });
             });
         }
+        // 턴 종료 — 이 턴이 발급한 message-run 들만 terminal 로 닫는다. resume 중이던 클라의
+        // 열린 스트림이 종료되고(410 gone), 진행 중이면 라이브 stop 이 이미 전달됐다. 방금 영속한
+        // 최종답변 복구로 이어진다. (assistant insert 이후에 호출해야 recoverFinalMessage 가 찾는다.
+        // messageId 스코프라 뒤이어 시작된 다른 턴의 run 을 오지우지 않는다.)
+        if (turnMessageIds.length > 0) {
+          await finishMessageRuns(turnMessageIds, sessionId).catch(() => {});
+        }
         // P19-T2-06 — 첫 턴 완료 후 세션 제목·태그를 LLM 으로 생성(provider 부재/파싱 실패 시
         // deriveSessionTitle 파생 폴백 — L5). 취소된 턴(사용자 Stop)은 건너뛴다.
         if (
@@ -590,7 +807,9 @@ export function createMessageRoutes(
           !handle.controller.signal.aborted
         ) {
           await generateSessionTitleAndTags({
-            provider: deps.provider,
+            // 제목 생성도 같은 model 을 쓰므로 provider 도 같아야 한다 — env provider 로
+            // 보내면 연결 전용 모델을 모르는 provider 에 요청하게 된다(P22-T6-14).
+            provider: turnProvider,
             model,
             userText: content,
             assistantText,
@@ -646,7 +865,7 @@ export function createMessageRoutes(
         400,
       );
     }
-    const priorText = typeof prior.content === "string" ? prior.content : "";
+    const priorText = messageText(prior.content);
 
     const resolvedSettings = await resolveSettingsSafely(
       deps.settings,
@@ -664,7 +883,7 @@ export function createMessageRoutes(
 
     const jobId = randomUUID();
     const activeRuns = deps.activeRuns ?? noopActiveRuns;
-    const handle = registerRun(sessionId, jobId);
+    const handle = await registerRun(sessionId, jobId);
     const requestSignal = c.req.raw.signal;
     if (requestSignal.aborted) {
       handle.controller.abort();
@@ -698,9 +917,9 @@ export function createMessageRoutes(
         for await (const event of events) {
           if (event.type === "message_start") {
             currentMessageId = event.messageId;
-            startMessageRun(event.messageId, sessionId);
+            await startMessageRun(event.messageId, sessionId);
           } else if (currentMessageId) {
-            recordMessageRunEvent(currentMessageId, event);
+            await recordMessageRunEvent(currentMessageId, event);
           }
           if (event.type === "text_delta") {
             continuedText += event.text;
@@ -740,7 +959,7 @@ export function createMessageRoutes(
         }
       } finally {
         clearInterval(heartbeat);
-        unregisterRun(sessionId, jobId);
+        await unregisterRun(sessionId, jobId);
         if (continuedText.length > 0) {
           await deps.messages
             ?.update?.(messageId, {
@@ -791,7 +1010,7 @@ export function createMessageRoutes(
           return { items: [] as Message[] };
         });
       for (const m of page.items) {
-        const text = typeof m.content === "string" ? m.content : "";
+        const text = messageText(m.content);
         if (m.role === "user") lastUserText = text;
         else if (m.role === "assistant") lastAssistantText = text;
       }
@@ -814,10 +1033,11 @@ export function createMessageRoutes(
   // resume 후 재연결 — stop reason='tool_use' 뒤 또는 네트워크 재연결. 첫 event 는 항상
   // message_replace(contentSoFar 로 캐치업) 후 이어지는 live event 를 relay(단일 구독,
   // 동시 구독은 409).
-  app.get("/:id/messages/:messageId/stream", (c) => {
+  app.get("/:id/messages/:messageId/stream", async (c) => {
     const sessionId = c.req.param("id");
     const messageId = c.req.param("messageId");
-    const subscription = subscribeMessageRun(messageId, sessionId);
+    // P22-T2-03 — 로컬에 없으면 RuntimeBus 공유 스냅샷으로 다른 인스턴스의 run 을 이어받는다.
+    const subscription = await subscribeMessageRun(messageId, sessionId);
 
     if (subscription.kind === "not_found") {
       return c.json(errorJson("NOT_FOUND", "메시지를 찾을 수 없습니다."), 404);
@@ -837,6 +1057,12 @@ export function createMessageRoutes(
       const requestSignal = c.req.raw.signal;
       const onAbort = () => subscription.unsubscribe();
       requestSignal.addEventListener("abort", onAbort, { once: true });
+      // deep_research 의 조용한 구간(계획 수립·결과 종합)엔 event 가 한동안 없으므로, POST 스트림과
+      // 동일하게 keep-alive comment 를 주기 방출한다. 없으면 클라의 stale-connection 워치독이
+      // 연결을 끊고 재-resume 을 반복해(churn) 라이브 progress·최종 stop 을 놓친다.
+      const heartbeat = setInterval(() => {
+        void stream.write(": ping\n\n").catch(() => {});
+      }, 10_000);
       try {
         await stream.writeSSE({
           event: "message_replace",
@@ -845,11 +1071,19 @@ export function createMessageRoutes(
             contentSoFar: subscription.contentSoFar,
           }),
         });
+        // 새로고침/세션이동으로 라이브 스트림을 놓친 클라를 위해, 구독 시점까지 누적된 도구
+        // 카드(tool_use/최신 progress/result)를 원본 이벤트로 먼저 재생한다. 클라의 tool_use
+        // 핸들러는 toolCallId 로 멱등 병합하므로 이미 카드를 든 in-memory resume 경로는 중복되지 않는다.
+        for (const replay of subscription.replayEvents) {
+          const { type, ...payload } = replay;
+          await stream.writeSSE({ event: type, data: JSON.stringify(payload) });
+        }
         for await (const event of subscription.events) {
           const { type, ...payload } = event;
           await stream.writeSSE({ event: type, data: JSON.stringify(payload) });
         }
       } finally {
+        clearInterval(heartbeat);
         requestSignal.removeEventListener("abort", onAbort);
         subscription.unsubscribe();
       }

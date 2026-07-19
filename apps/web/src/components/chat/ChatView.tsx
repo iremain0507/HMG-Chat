@@ -10,11 +10,18 @@ import {
   type MessagePart,
   type Citation,
   type MessageBranch,
+  type StreamMessageMeta,
   type ArtifactSummary,
+  type MessageAttachment,
+  type CompareGroup,
 } from "../../hooks/useSessionStream";
 import { useCurrentUser } from "../../hooks/useCurrentUser";
 import { usePrompts } from "../../hooks/usePrompts";
 import { randomUUID } from "../../lib/uuid";
+import {
+  peekPendingMessage,
+  takePendingMessage,
+} from "../../lib/pending-message";
 import { showToast } from "../../lib/toast";
 import { apiFetch } from "../../lib/fetch-with-refresh";
 import { substitutePromptVariables } from "../../lib/promptVariables";
@@ -35,9 +42,10 @@ import { MemoryPanel } from "./MemoryPanel";
 import { MessageActions } from "./MessageActions";
 import { ProjectPicker } from "./ProjectPicker";
 import { RunRail, type RunRailStep } from "./RunRail";
+import { Reasoning } from "./Reasoning";
 import { ShareExportMenu } from "./ShareExportMenu";
 import { ToolCallRenderer } from "./ToolCallRenderer";
-import { ArrowDown } from "lucide-react";
+import { ArrowDown, ChevronDown } from "lucide-react";
 
 const SLASH_COMMANDS: SlashCommand[] = [
   { id: "memories", label: "memories", description: "저장된 메모리 보기" },
@@ -58,6 +66,8 @@ const TOOL_MENTION_META: Record<
 
 const BOTTOM_THRESHOLD_PX = 80;
 const ANNOUNCE_DEBOUNCE_MS = 500;
+// 출처(Reference) 기본 노출 개수 — 그 이상은 접고 토글로 펼친다(deep_research 는 수십 개라 길다).
+const CITATION_COLLAPSE_COUNT = 5;
 
 const SUGGESTIONS = [
   "프로젝트 요약해줘",
@@ -89,6 +99,12 @@ export function ChatView({ sessionId }: { sessionId: string }) {
     messages,
     isStreaming,
     send,
+    queuedMessages,
+    removeQueued,
+    compareGroups,
+    sendCompare,
+    regenerateCompare,
+    switchCompareBranch,
     stop,
     hitlRequest,
     respondHitl,
@@ -96,6 +112,7 @@ export function ChatView({ sessionId }: { sessionId: string }) {
     editMessage,
     regenerate,
     continueMessage,
+    deleteMessage,
     switchBranch,
     historyLoading,
     loadHistory,
@@ -106,6 +123,30 @@ export function ChatView({ sessionId }: { sessionId: string }) {
   const online = useOnlineStatus();
   const { projects } = useProjects();
   const { projectId, setProject } = useSessionProject(sessionId);
+
+  // 홈 컴포저에서 질문을 입력하고 Enter 하면 새 세션 id 로 이동하며 첫 메시지를 pending 으로
+  // 예약해둔다. 여기서 마운트 시 1회 소비해 자동전송 → 홈에서 바로 대화가 시작된다.
+  // React strict-mode(dev) 는 effect 를 mount→cleanup→mount 로 2번 실행하는데, 그 사이 언마운트
+  // 정리(useSessionStream 의 abortRef.abort)가 in-flight POST 를 취소한다. 첫 pass 에서 곧바로
+  // 소비+전송하면 그 POST 가 취소되고 pending 은 이미 소비돼(재-mount 때 null) 재전송되지 않아
+  // 세션이 생성되지 않는다(홈 컴포저 자동전송이 "먹통"이 되던 버그). → peek 로 존재만 확인하고
+  // 실제 소비+전송은 한 macrotask 뒤(strict-mode 정리가 끝난 시점)로 미룬다. cleanup 이 타이머를
+  // 취소하므로 첫 pass 타이머는 취소되고 살아남은 타이머 하나만 정확히 1회 소비+전송한다.
+  const autoSentRef = useRef(false);
+  useEffect(() => {
+    if (autoSentRef.current) return;
+    const pending = peekPendingMessage(sessionId);
+    if (!pending || !pending.trim()) return;
+    const timer = window.setTimeout(() => {
+      const msg = takePendingMessage(sessionId);
+      if (msg && msg.trim()) {
+        autoSentRef.current = true;
+        void send(msg);
+      }
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [sessionId, send]);
+
   const [autoFollow, setAutoFollow] = useState(true);
   const [announceText, setAnnounceText] = useState("");
   const [followups, setFollowups] = useState<string[]>([]);
@@ -314,10 +355,16 @@ export function ChatView({ sessionId }: { sessionId: string }) {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, []);
 
+  // P21-T6-18(UX-25) — 토큰 델타마다(messages 참조 변경) 강제 스크롤을 재실행하면
+  // 유저의 미세 스크롤(위 스크롤이 80px 임계값 안이라 autoFollow 는 아직 true)을
+  // 매 델타마다 하단으로 되감아버린다. 메시지 "개수"가 실제로 바뀐 순간에만 스크롤한다.
+  const prevMessageCountRef = useRef(messages.length);
   useEffect(() => {
     const el = scrollRef.current;
-    if (el && autoFollow) el.scrollTop = el.scrollHeight;
-  }, [messages, isStreaming, autoFollow]);
+    const countChanged = messages.length !== prevMessageCountRef.current;
+    prevMessageCountRef.current = messages.length;
+    if (el && autoFollow && countChanged) el.scrollTop = el.scrollHeight;
+  }, [messages.length, autoFollow]);
 
   // P17-T6-01(TS-08) — 세션을 열 때(마운트/세션 전환) 과거 대화를 서버에서 복원.
   useEffect(() => {
@@ -423,7 +470,9 @@ export function ChatView({ sessionId }: { sessionId: string }) {
     setAutoFollow(true);
   }
 
-  const empty = messages.length === 0;
+  // P22-T6-06 — 비교 그룹은 messages 트리와 분리된 별도 흐름이라, 메시지가 비어도 비교
+  // 컬럼이 있으면 빈 상태(추천 칩)를 띄우지 않는다.
+  const empty = messages.length === 0 && compareGroups.length === 0;
 
   return (
     <div className="flex h-full">
@@ -452,6 +501,7 @@ export function ChatView({ sessionId }: { sessionId: string }) {
                 content: m.content,
               }))}
               artifacts={artifacts}
+              sessionId={sessionId}
             />
             <button
               type="button"
@@ -526,10 +576,13 @@ export function ChatView({ sessionId }: { sessionId: string }) {
                       content={m.content}
                       sessionId={sessionId}
                       messageId={m.id}
+                      {...(m.attachments ? { attachments: m.attachments } : {})}
                       {...(m.parts ? { parts: m.parts } : {})}
+                      {...(m.reasoning ? { reasoning: m.reasoning } : {})}
                       {...(m.citations ? { citations: m.citations } : {})}
                       {...(m.branch ? { branch: m.branch } : {})}
                       {...(m.truncated ? { truncated: m.truncated } : {})}
+                      {...(m.meta ? { meta: m.meta } : {})}
                       error={m.error ?? false}
                       {...(m.retryable !== undefined
                         ? { retryable: m.retryable }
@@ -548,6 +601,7 @@ export function ChatView({ sessionId }: { sessionId: string }) {
                       onOpenArtifact={handleOpenArtifact}
                       onCitationFocus={handleCitationFocus}
                       onActivityFocus={handleActivityFocus}
+                      onDelete={() => void deleteMessage(m.id)}
                       {...(canRegenerate
                         ? {
                             // P17-T6-03(TS-06) — 재생성은 같은 user 턴 아래 새 assistant
@@ -588,6 +642,15 @@ export function ChatView({ sessionId }: { sessionId: string }) {
                 })}
               </ul>
             )}
+            {/* P22-T6-06 — 멀티모델 병렬 비교 컬럼(트리 메시지와 별도 흐름). */}
+            <CompareColumns
+              groups={compareGroups}
+              isStreaming={isStreaming}
+              onRegenerate={(groupId, model) =>
+                void regenerateCompare(groupId, model)
+              }
+              onSwitchBranch={switchCompareBranch}
+            />
           </div>
           {!autoFollow && (
             <button
@@ -632,6 +695,11 @@ export function ChatView({ sessionId }: { sessionId: string }) {
             onSend={(content, attachments, options) =>
               send(content, attachments, options)
             }
+            onSendCompare={(content, models, options) =>
+              sendCompare(content, models, options)
+            }
+            queuedMessages={queuedMessages}
+            onRemoveQueued={removeQueued}
             slashCommands={slashCommands}
             onSlashCommand={(command) => {
               if (command.id === "memories") {
@@ -710,9 +778,11 @@ export function MessageItem({
   sessionId,
   messageId,
   parts,
+  reasoning,
   citations,
   branch,
   truncated,
+  meta,
   streaming,
   error,
   retryable,
@@ -727,15 +797,21 @@ export function MessageItem({
   onCitationFocus,
   onActivityFocus,
   onOpenArtifact,
+  onDelete,
+  attachments,
 }: {
   role: "user" | "assistant";
   content: string;
   sessionId?: string;
   messageId?: string;
+  // P22-T6-04 — 유저 버블에 딸린 첨부(이미지는 previewUrl 썸네일로 렌더).
+  attachments?: MessageAttachment[];
   parts?: MessagePart[];
+  reasoning?: string;
   citations?: Citation[];
   branch?: MessageBranch;
   truncated?: boolean;
+  meta?: StreamMessageMeta;
   streaming: boolean;
   error?: boolean;
   retryable?: boolean;
@@ -750,10 +826,20 @@ export function MessageItem({
   onCitationFocus?: (index: number) => void;
   onActivityFocus?: () => void;
   onOpenArtifact?: (artifactId: string) => void;
+  onDelete?: () => void;
 }) {
   const [focusedCitation, setFocusedCitation] = useState<number | null>(null);
+  const [citationsExpanded, setCitationsExpanded] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [draft, setDraft] = useState(content);
+  const editTextareaRef = useRef<HTMLTextAreaElement>(null);
+  useEffect(() => {
+    if (!isEditing) return;
+    const el = editTextareaRef.current;
+    if (!el) return;
+    el.focus();
+    el.setSelectionRange(el.value.length, el.value.length);
+  }, [isEditing]);
   const onCitationClick = (index: number) => {
     setFocusedCitation(index);
     const el = document.getElementById(`citation-ref-${index}`);
@@ -810,9 +896,13 @@ export function MessageItem({
           <div className="w-full max-w-[80%]">
             <div className="flex flex-col gap-2 rounded-2xl border border-primary bg-surface p-2">
               <textarea
+                ref={editTextareaRef}
                 aria-label="메시지 편집"
                 value={draft}
                 onChange={(e) => setDraft(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Escape") setIsEditing(false);
+                }}
                 className="min-h-[60px] w-full resize-none bg-transparent px-1 py-1 text-sm text-fg outline-none"
               />
               <div className="flex justify-end gap-2 text-xs">
@@ -844,6 +934,32 @@ export function MessageItem({
     return (
       <li data-role="user" className="group flex justify-end">
         <div className="max-w-[80%]">
+          {attachments && attachments.length > 0 && (
+            // P22-T6-04 — 멀티모달 파리티(Open WebUI 참조): 이미지 첨부는 파일명 대신
+            // 실제 썸네일(<img>)로, 비이미지는 파일명 칩으로 버블 위에 표시한다.
+            <ul
+              aria-label="첨부"
+              className="mb-1.5 flex flex-wrap justify-end gap-1.5"
+            >
+              {attachments.map((a) => (
+                <li key={a.uploadId}>
+                  {a.previewUrl ? (
+                    // 동적 blob: URL 이라 next/image 부적합, 순수 img 사용(ToolCallRenderer 패턴).
+                    <img
+                      src={a.previewUrl}
+                      alt={a.filename}
+                      data-testid={`bubble-thumb-${a.uploadId}`}
+                      className="h-20 w-20 rounded-lg border border-border object-cover"
+                    />
+                  ) : (
+                    <span className="inline-flex items-center gap-1.5 rounded-full border border-border bg-bg px-2.5 py-1 text-xs text-fg-muted">
+                      {a.filename}
+                    </span>
+                  )}
+                </li>
+              ))}
+            </ul>
+          )}
           <div className="whitespace-pre-wrap rounded-[10px] bg-primary-50 px-4 py-2.5 text-fg">
             {content}
           </div>
@@ -873,7 +989,7 @@ export function MessageItem({
                 </button>
               </div>
             )}
-            <div className="opacity-0 transition-opacity group-hover:opacity-100">
+            <div className="msg-actions">
               <MessageActions
                 role="user"
                 content={content}
@@ -881,6 +997,7 @@ export function MessageItem({
                   setDraft(content);
                   setIsEditing(true);
                 }}
+                {...(onDelete ? { onDelete } : {})}
               />
             </div>
           </div>
@@ -898,6 +1015,13 @@ export function MessageItem({
         <RunRail steps={runRailSteps} onStepClick={() => onActivityFocus?.()} />
       )}
       <div className="min-w-0 flex-1">
+        {reasoning && (
+          <Reasoning
+            content={reasoning}
+            streaming={streaming}
+            durationSec={0}
+          />
+        )}
         {hasToolParts ? (
           <div className="space-y-3">
             {(parts ?? []).map((part, idx) =>
@@ -955,7 +1079,10 @@ export function MessageItem({
           >
             <div className="font-semibold text-fg">Reference</div>
             <ul className="mt-1 space-y-1">
-              {citations.map((c, i) => (
+              {(citationsExpanded
+                ? citations
+                : citations.slice(0, CITATION_COLLAPSE_COUNT)
+              ).map((c, i) => (
                 <li
                   // deep_research 는 하위 질문별 인용을 합쳐 index 가 중복될 수 있어(예: 1,1)
                   //   React key 는 위치 기반으로 유니크하게 준다. (전역 재번호는 서버 후속.)
@@ -970,6 +1097,25 @@ export function MessageItem({
                 </li>
               ))}
             </ul>
+            {citations.length > CITATION_COLLAPSE_COUNT && (
+              <button
+                type="button"
+                data-testid="citation-toggle"
+                aria-expanded={citationsExpanded}
+                onClick={() => setCitationsExpanded((v) => !v)}
+                className="mt-1.5 inline-flex items-center gap-1 rounded px-1 py-0.5 font-medium text-primary hover:bg-primary/10"
+              >
+                {citationsExpanded
+                  ? "출처 접기"
+                  : `출처 ${citations.length - CITATION_COLLAPSE_COUNT}개 더 보기`}
+                <ChevronDown
+                  size={13}
+                  strokeWidth={2}
+                  aria-hidden="true"
+                  className={citationsExpanded ? "rotate-180" : ""}
+                />
+              </button>
+            )}
           </div>
         )}
         {streaming && !content && !hasToolParts && (
@@ -984,7 +1130,8 @@ export function MessageItem({
         )}
         {streaming && content && (
           <span
-            className="ml-0.5 inline-block h-4 w-[3px] animate-pulse bg-fg align-middle"
+            data-testid="stream-caret"
+            className="wchat-caret ml-0.5 inline-block h-[1.1em] w-[3px] rounded-[1px] bg-primary align-[-0.15em]"
             aria-label="응답 생성 중"
           />
         )}
@@ -1025,12 +1172,14 @@ export function MessageItem({
               </button>
             )}
             {!streaming && (
-              <div className="opacity-0 transition-opacity group-hover:opacity-100">
+              <div className="msg-actions">
                 <MessageActions
                   role="assistant"
                   content={content}
                   {...(sessionId && messageId ? { sessionId, messageId } : {})}
+                  {...(meta ? { meta } : {})}
                   {...(onRegenerate ? { onRegenerate } : {})}
+                  {...(onDelete ? { onDelete } : {})}
                 />
               </div>
             )}
@@ -1052,5 +1201,138 @@ export function MessageItem({
         )}
       </div>
     </li>
+  );
+}
+
+// P22-T6-06 — 멀티모델 병렬 비교(Open WebUI 파리티). 하나의 프롬프트를 2+ 모델로 팬아웃한
+// 결과를 나란한 컬럼으로 렌더한다. 컬럼마다 model_start.meta.model 로 구분된 답변을 그리고,
+// 형제 답변(재생성)이 2개 이상이면 그 컬럼 전용 prev/next 페이저를, 항상 컬럼별 재생성 버튼을
+// 노출한다(다른 컬럼과 독립). 시각 스타일은 시맨틱 토큰만(현대위아 CI), 라이트/다크 공용.
+export function CompareColumns({
+  groups,
+  isStreaming,
+  onRegenerate,
+  onSwitchBranch,
+}: {
+  groups: CompareGroup[];
+  isStreaming: boolean;
+  onRegenerate: (groupId: string, model: string) => void;
+  onSwitchBranch: (
+    groupId: string,
+    model: string,
+    direction: "prev" | "next",
+  ) => void;
+}) {
+  if (groups.length === 0) return null;
+  return (
+    <div
+      data-testid="compare-groups"
+      className="mx-auto max-w-5xl space-y-8 px-4 py-6"
+    >
+      {groups.map((g) => (
+        <div
+          key={g.id}
+          data-testid={`compare-group-${g.id}`}
+          className="space-y-3"
+        >
+          <div className="flex justify-end">
+            <div className="max-w-[80%] whitespace-pre-wrap rounded-[10px] bg-primary-50 px-4 py-2.5 text-fg">
+              {g.userContent}
+            </div>
+          </div>
+          <div
+            role="group"
+            aria-label="모델 비교 응답"
+            className="grid gap-3"
+            style={{
+              gridTemplateColumns: `repeat(${g.columns.length}, minmax(0, 1fr))`,
+            }}
+          >
+            {g.columns.map((col) => {
+              const active = col.answers[col.activeIndex];
+              const busy = isStreaming || !!active?.streaming;
+              return (
+                <div
+                  key={col.model}
+                  data-testid={`compare-column-${col.model}`}
+                  className="flex min-w-0 flex-col rounded-xl border border-border bg-surface p-3"
+                >
+                  <div className="mb-2 flex items-center justify-between gap-2">
+                    <span
+                      data-testid={`compare-column-label-${col.model}`}
+                      className="truncate text-xs font-semibold text-primary"
+                    >
+                      {col.model}
+                    </span>
+                    {col.answers.length > 1 && (
+                      <div className="flex flex-none items-center gap-1 text-fg-muted">
+                        <button
+                          type="button"
+                          aria-label={`${col.model} 이전 응답`}
+                          disabled={col.activeIndex === 0}
+                          onClick={() =>
+                            onSwitchBranch(g.id, col.model, "prev")
+                          }
+                          className="rounded-md px-1 py-0.5 text-xs hover:text-fg disabled:opacity-30"
+                        >
+                          ‹
+                        </button>
+                        <span
+                          data-testid={`compare-pager-${col.model}`}
+                          className="text-xs"
+                        >
+                          {col.activeIndex + 1} / {col.answers.length}
+                        </span>
+                        <button
+                          type="button"
+                          aria-label={`${col.model} 다음 응답`}
+                          disabled={col.activeIndex === col.answers.length - 1}
+                          onClick={() =>
+                            onSwitchBranch(g.id, col.model, "next")
+                          }
+                          className="rounded-md px-1 py-0.5 text-xs hover:text-fg disabled:opacity-30"
+                        >
+                          ›
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                  <div className="min-w-0 flex-1 text-sm">
+                    {active?.error ? (
+                      <p className="text-accent">{active.content}</p>
+                    ) : active?.content ? (
+                      <Markdown streaming={!!active.streaming}>
+                        {active.content}
+                      </Markdown>
+                    ) : active?.streaming ? (
+                      <div
+                        data-testid={`compare-shimmer-${col.model}`}
+                        aria-label="응답 생성 중"
+                        className="space-y-2"
+                      >
+                        <div className="h-3.5 w-3/4 animate-pulse rounded bg-bg" />
+                        <div className="h-3.5 w-1/2 animate-pulse rounded bg-bg" />
+                      </div>
+                    ) : null}
+                  </div>
+                  <div className="mt-2 flex justify-end">
+                    <button
+                      type="button"
+                      aria-label={`${col.model} 재생성`}
+                      data-testid={`compare-regenerate-${col.model}`}
+                      disabled={busy}
+                      onClick={() => onRegenerate(g.id, col.model)}
+                      className="rounded-full border border-border px-2.5 py-0.5 text-xs text-fg-muted transition hover:border-primary hover:text-fg disabled:opacity-40"
+                    >
+                      ↻ 재생성
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      ))}
+    </div>
   );
 }

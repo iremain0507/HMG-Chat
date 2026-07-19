@@ -3,10 +3,12 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { renderHook, waitFor, act } from "@testing-library/react";
 import { useSessions } from "../useSessions";
+import { subscribeToasts, __resetToastsForTest } from "../../lib/toast";
 
 describe("useSessions", () => {
   afterEach(() => {
     vi.unstubAllGlobals();
+    __resetToastsForTest();
   });
 
   it("세션 목록을 GET /sessions 로 로드한다", async () => {
@@ -93,6 +95,62 @@ describe("useSessions", () => {
       "/api/v1/sessions",
       expect.objectContaining({ method: "POST" }),
     );
+  });
+
+  it("cloneSession 이 POST /sessions/:id/clone 을 호출하고 복제 세션을 목록 최상단에 추가한다", async () => {
+    const fetchMock = vi.fn(
+      async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        if (
+          init?.method === "POST" &&
+          url === "/api/v1/sessions/sess-1/clone"
+        ) {
+          return {
+            ok: true,
+            status: 201,
+            json: async () => ({
+              data: {
+                id: "sess-clone",
+                title: "영업 RFP 초안",
+                projectId: null,
+                createdAt: "2026-07-14T03:00:00Z",
+              },
+            }),
+          };
+        }
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            data: [
+              {
+                id: "sess-1",
+                title: "영업 RFP 초안",
+                lastMessageAt: "2026-07-14T01:00:00Z",
+                projectId: null,
+                archived: false,
+              },
+            ],
+          }),
+        };
+      },
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { result } = renderHook(() => useSessions());
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    await act(async () => {
+      const cloned = await result.current.cloneSession("sess-1");
+      expect(cloned?.id).toBe("sess-clone");
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/v1/sessions/sess-1/clone",
+      expect.objectContaining({ method: "POST" }),
+    );
+    expect(result.current.sessions[0]?.id).toBe("sess-clone");
+    expect(result.current.sessions).toHaveLength(2);
   });
 
   it("renameSession 이 PATCH /sessions/:id 를 title 과 함께 호출한다", async () => {
@@ -352,6 +410,68 @@ describe("useSessions", () => {
     expect(result.current.folders[0]?.name).toBe("new");
   });
 
+  it("updateFolderSystemPrompt 가 PATCH /api/v1/folders/:id 를 systemPrompt 와 함께 호출한다(P20-T1-03)", async () => {
+    const fetchMock = vi.fn(
+      async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        if (
+          url === "/api/v1/folders" &&
+          (!init?.method || init.method === "GET")
+        ) {
+          return {
+            ok: true,
+            status: 200,
+            json: async () => ({
+              data: [
+                {
+                  id: "folder-1",
+                  name: "업무",
+                  systemPrompt: null,
+                  createdAt: "2026-07-14T00:00:00Z",
+                },
+              ],
+            }),
+          };
+        }
+        if (url === "/api/v1/folders/folder-1" && init?.method === "PATCH") {
+          return {
+            ok: true,
+            status: 200,
+            json: async () => ({
+              data: {
+                id: "folder-1",
+                name: "업무",
+                systemPrompt: "너는 코드리뷰어다",
+                createdAt: "2026-07-14T00:00:00Z",
+              },
+            }),
+          };
+        }
+        return { ok: true, status: 200, json: async () => ({ data: [] }) };
+      },
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { result } = renderHook(() => useSessions());
+    await waitFor(() => expect(result.current.folders).toHaveLength(1));
+
+    await act(async () => {
+      await result.current.updateFolderSystemPrompt(
+        "folder-1",
+        "너는 코드리뷰어다",
+      );
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/v1/folders/folder-1",
+      expect.objectContaining({
+        method: "PATCH",
+        body: JSON.stringify({ systemPrompt: "너는 코드리뷰어다" }),
+      }),
+    );
+    expect(result.current.folders[0]?.systemPrompt).toBe("너는 코드리뷰어다");
+  });
+
   it("deleteFolder 가 DELETE /api/v1/folders/:id 를 호출하고 목록·세션 folderId 를 정리한다", async () => {
     const fetchMock = vi.fn(
       async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -521,5 +641,654 @@ describe("useSessions", () => {
     });
 
     expect(result.current.sessions[0]?.folderId).toBeNull();
+  });
+
+  it("moveFolder 가 PATCH /api/v1/folders/:id 를 parentFolderId 와 함께 호출하고 반영한다(P20-T1-06)", async () => {
+    const fetchMock = vi.fn(
+      async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        if (
+          url === "/api/v1/folders" &&
+          (!init?.method || init.method === "GET")
+        ) {
+          return {
+            ok: true,
+            status: 200,
+            json: async () => ({
+              data: [
+                {
+                  id: "folder-1",
+                  name: "부모",
+                  parentFolderId: null,
+                  createdAt: "2026-07-14T00:00:00Z",
+                },
+                {
+                  id: "folder-2",
+                  name: "자식",
+                  parentFolderId: null,
+                  createdAt: "2026-07-14T00:00:00Z",
+                },
+              ],
+            }),
+          };
+        }
+        if (url === "/api/v1/folders/folder-2" && init?.method === "PATCH") {
+          return {
+            ok: true,
+            status: 200,
+            json: async () => ({
+              data: {
+                id: "folder-2",
+                name: "자식",
+                parentFolderId: "folder-1",
+                createdAt: "2026-07-14T00:00:00Z",
+              },
+            }),
+          };
+        }
+        return { ok: true, status: 200, json: async () => ({ data: [] }) };
+      },
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { result } = renderHook(() => useSessions());
+    await waitFor(() => expect(result.current.folders).toHaveLength(2));
+
+    await act(async () => {
+      await result.current.moveFolder("folder-2", "folder-1");
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/v1/folders/folder-2",
+      expect.objectContaining({
+        method: "PATCH",
+        body: JSON.stringify({ parentFolderId: "folder-1" }),
+      }),
+    );
+    expect(
+      result.current.folders.find((f) => f.id === "folder-2")?.parentFolderId,
+    ).toBe("folder-1");
+  });
+
+  it("moveFolder 요청 실패 시 낙관적 업데이트를 롤백한다(P20-T1-06)", async () => {
+    const fetchMock = vi.fn(
+      async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        if (
+          url === "/api/v1/folders" &&
+          (!init?.method || init.method === "GET")
+        ) {
+          return {
+            ok: true,
+            status: 200,
+            json: async () => ({
+              data: [
+                {
+                  id: "folder-1",
+                  name: "부모",
+                  parentFolderId: null,
+                  createdAt: "2026-07-14T00:00:00Z",
+                },
+                {
+                  id: "folder-2",
+                  name: "자식",
+                  parentFolderId: null,
+                  createdAt: "2026-07-14T00:00:00Z",
+                },
+              ],
+            }),
+          };
+        }
+        if (url === "/api/v1/folders/folder-2" && init?.method === "PATCH") {
+          return { ok: false, status: 400, json: async () => ({}) };
+        }
+        return { ok: true, status: 200, json: async () => ({ data: [] }) };
+      },
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { result } = renderHook(() => useSessions());
+    await waitFor(() => expect(result.current.folders).toHaveLength(2));
+
+    await act(async () => {
+      await result.current.moveFolder("folder-2", "folder-1");
+    });
+
+    expect(
+      result.current.folders.find((f) => f.id === "folder-2")?.parentFolderId,
+    ).toBeNull();
+  });
+
+  it("loadMore 가 meta.nextCursor 를 cursor= 쿼리로 붙여 다음 페이지를 append 한다", async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === "/api/v1/sessions") {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            data: [
+              {
+                id: "sess-1",
+                title: "첫 페이지",
+                lastMessageAt: "2026-07-14T01:00:00Z",
+                projectId: null,
+                archived: false,
+              },
+            ],
+            meta: { requestId: "r1", nextCursor: "cursor-1" },
+          }),
+        };
+      }
+      if (url === "/api/v1/sessions?cursor=cursor-1") {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            data: [
+              {
+                id: "sess-2",
+                title: "두번째 페이지",
+                lastMessageAt: "2026-07-13T01:00:00Z",
+                projectId: null,
+                archived: false,
+              },
+            ],
+            meta: { requestId: "r2" },
+          }),
+        };
+      }
+      return { ok: true, status: 200, json: async () => ({ data: [] }) };
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { result } = renderHook(() => useSessions());
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    expect(result.current.hasMore).toBe(true);
+    expect(result.current.sessions).toHaveLength(1);
+
+    await act(async () => {
+      await result.current.loadMore();
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/v1/sessions?cursor=cursor-1",
+      expect.objectContaining({ credentials: "include" }),
+    );
+    expect(result.current.sessions.map((s) => s.id)).toEqual([
+      "sess-1",
+      "sess-2",
+    ]);
+    expect(result.current.hasMore).toBe(false);
+  });
+
+  it("loadMore 실패 시 무음으로 삼키지 않고 오류 토스트를 띄운다(P21-T6-18, UX-25)", async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === "/api/v1/sessions") {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            data: [
+              {
+                id: "sess-1",
+                title: "첫 페이지",
+                lastMessageAt: "2026-07-14T01:00:00Z",
+                projectId: null,
+                archived: false,
+              },
+            ],
+            meta: { requestId: "r1", nextCursor: "cursor-1" },
+          }),
+        };
+      }
+      return { ok: false, status: 500, json: async () => ({}) };
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const received: Array<{ kind: string }[]> = [];
+    subscribeToasts((toasts) => received.push(toasts as { kind: string }[]));
+
+    const { result } = renderHook(() => useSessions());
+    await waitFor(() => expect(result.current.hasMore).toBe(true));
+
+    await act(async () => {
+      await result.current.loadMore();
+    });
+
+    await waitFor(() => {
+      expect(
+        received.some((snapshot) => snapshot.some((t) => t.kind === "error")),
+      ).toBe(true);
+    });
+    // 실패한 페이지는 append 되지 않고 목록도 그대로 유지된다.
+    expect(result.current.sessions.map((s) => s.id)).toEqual(["sess-1"]);
+  });
+
+  it("bulkArchiveSessions 가 선택된 id 각각에 PATCH /:id/archive 를 호출하고 목록에서 제거한다(P20-T6-08)", async () => {
+    const archiveCalls: string[] = [];
+    const fetchMock = vi.fn(
+      async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        if (url === "/api/v1/sessions") {
+          return {
+            ok: true,
+            status: 200,
+            json: async () => ({
+              data: [
+                {
+                  id: "sess-1",
+                  title: "세션1",
+                  lastMessageAt: "2026-07-14T01:00:00Z",
+                  projectId: null,
+                  archived: false,
+                },
+                {
+                  id: "sess-2",
+                  title: "세션2",
+                  lastMessageAt: "2026-07-14T01:00:00Z",
+                  projectId: null,
+                  archived: false,
+                },
+                {
+                  id: "sess-3",
+                  title: "세션3",
+                  lastMessageAt: "2026-07-14T01:00:00Z",
+                  projectId: null,
+                  archived: false,
+                },
+              ],
+            }),
+          };
+        }
+        const archiveMatch = url.match(
+          /^\/api\/v1\/sessions\/(sess-\d)\/archive$/,
+        );
+        if (archiveMatch && init?.method === "PATCH") {
+          const id = archiveMatch[1] as string;
+          archiveCalls.push(id);
+          return {
+            ok: true,
+            status: 200,
+            json: async () => ({ data: { id, archived: true } }),
+          };
+        }
+        return { ok: true, status: 200, json: async () => ({ data: [] }) };
+      },
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { result } = renderHook(() => useSessions());
+    await waitFor(() => expect(result.current.sessions).toHaveLength(3));
+
+    await act(async () => {
+      await result.current.bulkArchiveSessions(["sess-1", "sess-2", "sess-3"]);
+    });
+
+    expect(archiveCalls.sort()).toEqual(["sess-1", "sess-2", "sess-3"]);
+    expect(result.current.sessions).toHaveLength(0);
+  });
+
+  it("bulkDeleteSessions 가 선택된 id 각각에 DELETE /:id 를 호출하고 목록에서 제거한다(P20-T6-08)", async () => {
+    const deleteCalls: string[] = [];
+    const fetchMock = vi.fn(
+      async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        if (url === "/api/v1/sessions") {
+          return {
+            ok: true,
+            status: 200,
+            json: async () => ({
+              data: [
+                {
+                  id: "sess-1",
+                  title: "세션1",
+                  lastMessageAt: "2026-07-14T01:00:00Z",
+                  projectId: null,
+                  archived: false,
+                },
+                {
+                  id: "sess-2",
+                  title: "세션2",
+                  lastMessageAt: "2026-07-14T01:00:00Z",
+                  projectId: null,
+                  archived: false,
+                },
+              ],
+            }),
+          };
+        }
+        const deleteMatch = url.match(/^\/api\/v1\/sessions\/(sess-\d)$/);
+        if (deleteMatch && init?.method === "DELETE") {
+          deleteCalls.push(deleteMatch[1] as string);
+          return { ok: true, status: 204, json: async () => ({}) };
+        }
+        return { ok: true, status: 200, json: async () => ({ data: [] }) };
+      },
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { result } = renderHook(() => useSessions());
+    await waitFor(() => expect(result.current.sessions).toHaveLength(2));
+
+    await act(async () => {
+      await result.current.bulkDeleteSessions(["sess-1", "sess-2"]);
+    });
+
+    expect(deleteCalls.sort()).toEqual(["sess-1", "sess-2"]);
+    expect(result.current.sessions).toHaveLength(0);
+  });
+
+  it("renameSession 실패 시 오류 토스트를 띄운다(P21-T6-13)", async () => {
+    const fetchMock = vi.fn(
+      async (_input: RequestInfo | URL, init?: RequestInit) => {
+        if (init?.method === "PATCH") {
+          return { ok: false, status: 500, json: async () => ({}) };
+        }
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            data: [
+              {
+                id: "sess-1",
+                title: "old",
+                lastMessageAt: "2026-07-14T01:00:00Z",
+                projectId: null,
+                archived: false,
+              },
+            ],
+          }),
+        };
+      },
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const received: Array<{ kind: string }[]> = [];
+    subscribeToasts((toasts) => received.push(toasts as { kind: string }[]));
+
+    const { result } = renderHook(() => useSessions());
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    await act(async () => {
+      await result.current.renameSession("sess-1", "new title");
+    });
+
+    await waitFor(() => {
+      expect(
+        received.some((snapshot) => snapshot.some((t) => t.kind === "error")),
+      ).toBe(true);
+    });
+    expect(result.current.sessions[0]?.title).toBe("old");
+  });
+
+  it("deleteSession 실패 시 오류 토스트를 띄운다(P21-T6-13)", async () => {
+    const fetchMock = vi.fn(
+      async (_input: RequestInfo | URL, init?: RequestInit) => {
+        if (init?.method === "DELETE") {
+          return { ok: false, status: 500, json: async () => ({}) };
+        }
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            data: [
+              {
+                id: "sess-1",
+                title: "세션 A",
+                lastMessageAt: "2026-07-14T01:00:00Z",
+                projectId: null,
+                archived: false,
+              },
+            ],
+          }),
+        };
+      },
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const received: Array<{ kind: string }[]> = [];
+    subscribeToasts((toasts) => received.push(toasts as { kind: string }[]));
+
+    const { result } = renderHook(() => useSessions());
+    await waitFor(() => expect(result.current.sessions).toHaveLength(1));
+
+    await act(async () => {
+      await result.current.deleteSession("sess-1");
+    });
+
+    await waitFor(() => {
+      expect(
+        received.some((snapshot) => snapshot.some((t) => t.kind === "error")),
+      ).toBe(true);
+    });
+    expect(result.current.sessions).toHaveLength(1);
+  });
+
+  it("archiveSession 실패 시 오류 토스트를 띄운다(P21-T6-13)", async () => {
+    const fetchMock = vi.fn(
+      async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        if (
+          url === "/api/v1/sessions/sess-1/archive" &&
+          init?.method === "PATCH"
+        ) {
+          return { ok: false, status: 500, json: async () => ({}) };
+        }
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            data: [
+              {
+                id: "sess-1",
+                title: "세션 A",
+                lastMessageAt: "2026-07-14T01:00:00Z",
+                projectId: null,
+                archived: false,
+              },
+            ],
+          }),
+        };
+      },
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const received: Array<{ kind: string }[]> = [];
+    subscribeToasts((toasts) => received.push(toasts as { kind: string }[]));
+
+    const { result } = renderHook(() => useSessions());
+    await waitFor(() => expect(result.current.sessions).toHaveLength(1));
+
+    await act(async () => {
+      await result.current.archiveSession("sess-1");
+    });
+
+    await waitFor(() => {
+      expect(
+        received.some((snapshot) => snapshot.some((t) => t.kind === "error")),
+      ).toBe(true);
+    });
+    expect(result.current.sessions).toHaveLength(1);
+  });
+
+  it("bulkArchiveSessions 부분 실패 시 실패 건수를 토스트로 보고한다(P21-T6-13)", async () => {
+    const fetchMock = vi.fn(
+      async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        if (url === "/api/v1/sessions") {
+          return {
+            ok: true,
+            status: 200,
+            json: async () => ({
+              data: [
+                {
+                  id: "sess-1",
+                  title: "세션1",
+                  lastMessageAt: "2026-07-14T01:00:00Z",
+                  projectId: null,
+                  archived: false,
+                },
+                {
+                  id: "sess-2",
+                  title: "세션2",
+                  lastMessageAt: "2026-07-14T01:00:00Z",
+                  projectId: null,
+                  archived: false,
+                },
+              ],
+            }),
+          };
+        }
+        if (
+          url === "/api/v1/sessions/sess-1/archive" &&
+          init?.method === "PATCH"
+        ) {
+          return {
+            ok: true,
+            status: 200,
+            json: async () => ({ data: { id: "sess-1", archived: true } }),
+          };
+        }
+        if (
+          url === "/api/v1/sessions/sess-2/archive" &&
+          init?.method === "PATCH"
+        ) {
+          return { ok: false, status: 500, json: async () => ({}) };
+        }
+        return { ok: true, status: 200, json: async () => ({ data: [] }) };
+      },
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const received: Array<{ kind: string; message: string }[]> = [];
+    subscribeToasts((toasts) =>
+      received.push(toasts as { kind: string; message: string }[]),
+    );
+
+    const { result } = renderHook(() => useSessions());
+    await waitFor(() => expect(result.current.sessions).toHaveLength(2));
+
+    await act(async () => {
+      await result.current.bulkArchiveSessions(["sess-1", "sess-2"]);
+    });
+
+    await waitFor(() => {
+      expect(
+        received.some((snapshot) =>
+          snapshot.some((t) => t.kind === "error" && t.message.includes("1")),
+        ),
+      ).toBe(true);
+    });
+    expect(result.current.sessions.map((s) => s.id)).toEqual(["sess-2"]);
+  });
+
+  it("bulkDeleteSessions 부분 실패 시 실패 건수를 토스트로 보고한다(P21-T6-13)", async () => {
+    const fetchMock = vi.fn(
+      async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        if (url === "/api/v1/sessions") {
+          return {
+            ok: true,
+            status: 200,
+            json: async () => ({
+              data: [
+                {
+                  id: "sess-1",
+                  title: "세션1",
+                  lastMessageAt: "2026-07-14T01:00:00Z",
+                  projectId: null,
+                  archived: false,
+                },
+                {
+                  id: "sess-2",
+                  title: "세션2",
+                  lastMessageAt: "2026-07-14T01:00:00Z",
+                  projectId: null,
+                  archived: false,
+                },
+              ],
+            }),
+          };
+        }
+        if (url === "/api/v1/sessions/sess-1" && init?.method === "DELETE") {
+          return { ok: true, status: 204, json: async () => ({}) };
+        }
+        if (url === "/api/v1/sessions/sess-2" && init?.method === "DELETE") {
+          return { ok: false, status: 500, json: async () => ({}) };
+        }
+        return { ok: true, status: 200, json: async () => ({ data: [] }) };
+      },
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const received: Array<{ kind: string; message: string }[]> = [];
+    subscribeToasts((toasts) =>
+      received.push(toasts as { kind: string; message: string }[]),
+    );
+
+    const { result } = renderHook(() => useSessions());
+    await waitFor(() => expect(result.current.sessions).toHaveLength(2));
+
+    await act(async () => {
+      await result.current.bulkDeleteSessions(["sess-1", "sess-2"]);
+    });
+
+    await waitFor(() => {
+      expect(
+        received.some((snapshot) =>
+          snapshot.some((t) => t.kind === "error" && t.message.includes("1")),
+        ),
+      ).toBe(true);
+    });
+    expect(result.current.sessions.map((s) => s.id)).toEqual(["sess-2"]);
+  });
+
+  // P22-T6-13(계약배치 C9) — 가져오기가 끝나면 ShareExportMenu 가 wchat:sessions-changed 를
+  // 발행한다. 그 이벤트를 목록이 구독하지 않으면 "가져온 세션이 목록에 나타난다" acceptance 가
+  // 실제로는 성립하지 않으므로(수동 새로고침 필요), 여기서 재조회를 단언한다.
+  it("wchat:sessions-changed 이벤트를 받으면 목록을 다시 불러온다", async () => {
+    let call = 0;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        call += 1;
+        // 첫 로드는 1건, 가져오기 후 재조회는 2건(가져온 세션 포함).
+        const data =
+          call === 1
+            ? [
+                {
+                  id: "sess-1",
+                  title: "기존 대화",
+                  lastMessageAt: "2026-07-14T01:00:00Z",
+                  projectId: null,
+                  archived: false,
+                },
+              ]
+            : [
+                {
+                  id: "sess-1",
+                  title: "기존 대화",
+                  lastMessageAt: "2026-07-14T01:00:00Z",
+                  projectId: null,
+                  archived: false,
+                },
+                {
+                  id: "sess-imported",
+                  title: "가져온 대화",
+                  lastMessageAt: "2026-07-14T02:00:00Z",
+                  projectId: null,
+                  archived: false,
+                },
+              ];
+        return { ok: true, status: 200, json: async () => ({ data }) };
+      }),
+    );
+
+    const { result } = renderHook(() => useSessions());
+    await waitFor(() => expect(result.current.sessions).toHaveLength(1));
+
+    await act(async () => {
+      window.dispatchEvent(new CustomEvent("wchat:sessions-changed"));
+    });
+
+    await waitFor(() => expect(result.current.sessions).toHaveLength(2));
+    expect(result.current.sessions.map((s) => s.id)).toContain("sess-imported");
   });
 });

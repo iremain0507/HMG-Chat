@@ -235,4 +235,109 @@ describe("MemoryManager", () => {
       );
     });
   });
+
+  it("추가 버튼 연속 클릭 시 POST 요청이 한 번만 발생한다(더블서밋 가드)", async () => {
+    let resolveCreate: (() => void) | undefined;
+    const fetchMock = vi.fn(
+      async (_input: RequestInfo | URL, init?: RequestInit) => {
+        if (init?.method === "POST") {
+          await new Promise<void>((res) => {
+            resolveCreate = res;
+          });
+          return {
+            ok: true,
+            json: async () => ({
+              data: { ...MEMORY_1, id: "mem-2", content: "새 메모리" },
+            }),
+          };
+        }
+        return { ok: true, json: async () => ({ data: [] }) };
+      },
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<MemoryManager />);
+    await waitFor(() => {
+      expect(screen.getByText("저장된 메모리가 없습니다.")).toBeInTheDocument();
+    });
+
+    fireEvent.change(screen.getByLabelText("새 메모리 내용"), {
+      target: { value: "새 메모리" },
+    });
+
+    const addButton = screen.getByRole("button", { name: "+ 추가" });
+    fireEvent.click(addButton);
+
+    await waitFor(() => {
+      expect(addButton).toBeDisabled();
+    });
+
+    // 첫 요청이 아직 pending 인 상태에서 재클릭 → no-op 이어야 한다.
+    fireEvent.click(addButton);
+
+    const postCalls = () =>
+      fetchMock.mock.calls.filter(
+        ([, i]) => (i as RequestInit | undefined)?.method === "POST",
+      );
+    expect(postCalls()).toHaveLength(1);
+
+    resolveCreate!();
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "+ 추가" })).not.toBeDisabled();
+    });
+    expect(postCalls()).toHaveLength(1);
+  });
+
+  it("삭제 버튼 연속 클릭 시 DELETE 요청이 한 번만 발생한다(더블서밋 가드)", async () => {
+    let resolveDelete: (() => void) | undefined;
+    const fetchMock = vi.fn(
+      async (_input: RequestInfo | URL, init?: RequestInit) => {
+        if (init?.method === "DELETE") {
+          await new Promise<void>((res) => {
+            resolveDelete = res;
+          });
+          return { ok: true, status: 204, json: async () => ({}) };
+        }
+        const deleted = fetchMock.mock.calls.some(
+          ([, i]) => (i as RequestInit | undefined)?.method === "DELETE",
+        );
+        return {
+          ok: true,
+          json: async () => ({ data: deleted ? [] : [MEMORY_1] }),
+        };
+      },
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<MemoryManager />);
+    await waitFor(() => {
+      expect(
+        screen.getByText("나는 영업본부 소속, 직무는 RFP 분석."),
+      ).toBeInTheDocument();
+    });
+
+    const deleteButton = screen.getByRole("button", { name: "삭제" });
+    fireEvent.click(deleteButton);
+
+    await waitFor(() => {
+      expect(deleteButton).toBeDisabled();
+    });
+
+    // 첫 삭제 요청이 아직 pending 인 상태에서 재클릭 → no-op 이어야 한다.
+    fireEvent.click(deleteButton);
+
+    const deleteCalls = () =>
+      fetchMock.mock.calls.filter(
+        ([, i]) => (i as RequestInit | undefined)?.method === "DELETE",
+      );
+    expect(deleteCalls()).toHaveLength(1);
+
+    resolveDelete!();
+
+    await waitFor(() => {
+      expect(screen.getByText("저장된 메모리가 없습니다.")).toBeInTheDocument();
+    });
+    expect(deleteCalls()).toHaveLength(1);
+  });
 });

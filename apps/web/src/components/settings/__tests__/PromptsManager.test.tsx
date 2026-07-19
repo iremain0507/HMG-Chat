@@ -109,3 +109,187 @@ describe("PromptsManager", () => {
     expect(screen.queryByText("/greet")).not.toBeInTheDocument();
   });
 });
+
+describe("명령(/command) 검증 (P21-T6-17, UX-24)", () => {
+  afterEach(() => {
+    cleanup();
+    vi.unstubAllGlobals();
+  });
+
+  it("'/' 로 시작하지 않는 명령은 제출을 거부하고 인라인 에러를 보여준다", async () => {
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({ data: [] }),
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<PromptsManager />);
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("저장된 프롬프트가 없습니다."),
+      ).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "＋ 프롬프트 추가" }));
+    fireEvent.change(screen.getByLabelText("명령"), {
+      target: { value: "greet" },
+    });
+    fireEvent.change(screen.getByLabelText("제목"), {
+      target: { value: "인사" },
+    });
+    fireEvent.change(screen.getByLabelText("내용"), {
+      target: { value: "안녕하세요" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "추가" }));
+
+    expect(
+      screen.getByText("명령은 '/'로 시작해야 합니다."),
+    ).toBeInTheDocument();
+    expect(fetchMock).not.toHaveBeenCalledWith(
+      "/api/v1/prompts",
+      expect.objectContaining({ method: "POST" }),
+    );
+  });
+});
+
+describe("포커스 트랩(useFocusTrap)", () => {
+  afterEach(() => {
+    cleanup();
+    vi.unstubAllGlobals();
+  });
+
+  function stubEmptyList() {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({
+        ok: true,
+        json: async () => ({ data: [] }),
+      })),
+    );
+  }
+
+  it("모달을 열면 첫 포커스 가능 요소(명령 입력)로 포커스가 이동한다", async () => {
+    stubEmptyList();
+    render(<PromptsManager />);
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("저장된 프롬프트가 없습니다."),
+      ).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "＋ 프롬프트 추가" }));
+
+    await waitFor(() => {
+      expect(document.activeElement).toBe(screen.getByLabelText("명령"));
+    });
+  });
+
+  it("Escape 를 누르면 모달이 닫힌다", async () => {
+    stubEmptyList();
+    render(<PromptsManager />);
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("저장된 프롬프트가 없습니다."),
+      ).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "＋ 프롬프트 추가" }));
+    await waitFor(() => {
+      expect(screen.getByRole("dialog")).toBeInTheDocument();
+    });
+
+    fireEvent.keyDown(document, { key: "Escape" });
+
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    });
+  });
+
+  it("Shift+Tab 은 다이얼로그 밖으로 벗어나지 않고 마지막 요소로 순환한다", async () => {
+    stubEmptyList();
+    render(<PromptsManager />);
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("저장된 프롬프트가 없습니다."),
+      ).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "＋ 프롬프트 추가" }));
+
+    await waitFor(() => {
+      expect(document.activeElement).toBe(screen.getByLabelText("명령"));
+    });
+
+    fireEvent.keyDown(document, { key: "Tab", shiftKey: true });
+
+    await waitFor(() => {
+      expect(document.activeElement).toBe(
+        screen.getByRole("button", { name: "취소" }),
+      );
+    });
+  });
+
+  it("모달을 닫으면(Escape) 트리거 버튼(＋ 프롬프트 추가)으로 포커스가 복귀한다", async () => {
+    stubEmptyList();
+    render(<PromptsManager />);
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("저장된 프롬프트가 없습니다."),
+      ).toBeInTheDocument();
+    });
+
+    const triggerButton = screen.getByRole("button", {
+      name: "＋ 프롬프트 추가",
+    });
+    // fireEvent.click alone does not simulate the browser's implicit
+    // focus-on-click for buttons in jsdom, so focus explicitly first
+    // (mirrors real mouse-click behavior) for the hook to capture the
+    // trigger as document.activeElement.
+    triggerButton.focus();
+    fireEvent.click(triggerButton);
+
+    await waitFor(() => {
+      expect(screen.getByRole("dialog")).toBeInTheDocument();
+    });
+
+    fireEvent.keyDown(document, { key: "Escape" });
+
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    });
+    expect(document.activeElement).toBe(triggerButton);
+  });
+
+  it("모달을 닫으면(취소 버튼) 트리거 버튼(＋ 프롬프트 추가)으로 포커스가 복귀한다", async () => {
+    stubEmptyList();
+    render(<PromptsManager />);
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("저장된 프롬프트가 없습니다."),
+      ).toBeInTheDocument();
+    });
+
+    const triggerButton = screen.getByRole("button", {
+      name: "＋ 프롬프트 추가",
+    });
+    triggerButton.focus();
+    fireEvent.click(triggerButton);
+
+    await waitFor(() => {
+      expect(screen.getByRole("dialog")).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "취소" }));
+
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    });
+    expect(document.activeElement).toBe(triggerButton);
+  });
+});

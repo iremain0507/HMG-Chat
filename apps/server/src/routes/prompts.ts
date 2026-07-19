@@ -10,6 +10,8 @@ import {
   type Prompt,
   type PromptDataAccess,
 } from "../db/prompt-data-access.js";
+import type { ResourceGrantsDataAccess } from "../db/resource-grants-data-access.js";
+import { filterAccessibleResourceIds } from "../lib/access-control.js";
 
 function errorJson(code: string, message: string) {
   return {
@@ -48,12 +50,14 @@ interface PromptBody {
 
 export interface PromptRoutesDeps {
   prompts?: PromptDataAccess;
+  grants?: ResourceGrantsDataAccess;
 }
 
 export function createPromptRoutes(
   deps: PromptRoutesDeps = {},
 ): Hono<{ Variables: AuthedVariables }> {
   const prompts = deps.prompts ?? createPgPromptDataAccess();
+  const grants = deps.grants;
   const app = new Hono<{ Variables: AuthedVariables }>();
 
   app.post("/", async (c) => {
@@ -101,8 +105,19 @@ export function createPromptRoutes(
   app.get("/", async (c) => {
     const auth = c.get("auth");
     const list = await prompts.listVisible(auth.org, auth.sub);
+    let visible = list;
+    if (grants) {
+      const accessible = await filterAccessibleResourceIds(grants, {
+        orgId: auth.org,
+        userId: auth.sub,
+        resourceType: "prompt",
+        resourceIds: list.map((p) => p.id),
+        access: "read",
+      });
+      visible = list.filter((p) => accessible.has(p.id));
+    }
     return c.json({
-      data: list.map(toWire),
+      data: visible.map(toWire),
       meta: { requestId: randomUUID() },
     });
   });
@@ -116,6 +131,21 @@ export function createPromptRoutes(
         errorJson("NOT_FOUND", "프롬프트를 찾을 수 없습니다."),
         404,
       );
+    }
+    if (grants) {
+      const accessible = await filterAccessibleResourceIds(grants, {
+        orgId: auth.org,
+        userId: auth.sub,
+        resourceType: "prompt",
+        resourceIds: [prompt.id],
+        access: "read",
+      });
+      if (!accessible.has(prompt.id)) {
+        return c.json(
+          errorJson("NOT_FOUND", "프롬프트를 찾을 수 없습니다."),
+          404,
+        );
+      }
     }
     return c.json({ data: toWire(prompt), meta: { requestId: randomUUID() } });
   });

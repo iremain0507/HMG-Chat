@@ -99,6 +99,11 @@ export interface Organization {
   allowedModels: string[];
   allowedTools: string[];
   defaultTokenBudgetMicros: number | null;
+  /**
+   * 메시지 보존일수(12-OPS-SECURITY.md 부록 H 3번). null = 무기한 보존(기존 동작).
+   * (P22-C-01 / C2)
+   */
+  retentionDays: number | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -119,6 +124,11 @@ export interface User {
   name: string | null;
   role: "member" | "admin" | "owner";
   customInstructions: string | null;
+  /**
+   * P22-T6-15(계약배치 C11) — 사용자별 UI 언어(BCP-47 태그, 예: "ko"·"en").
+   * null = 서버 기본(ko). 기존 사용자는 전부 null 이라 현행 동작 유지(additive).
+   */
+  language: string | null;
   status: "active" | "suspended" | "deleted";
   lastLoginAt: Date | null;
   createdAt: Date;
@@ -272,6 +282,107 @@ export interface McpServerRecord {
   status: "active" | "degraded" | "suspended";
 }
 
+// Agent — 커스텀 워크스페이스 에이전트(프리셋: 기본 모델 + 시스템 프롬프트 + 도구/스킬/지식 스코프).
+// 계약 승인: .ralph/CONTRACT_APPROVED C5 (docs/rfc/P22-contract-batch.md § C5, P22-T6-10).
+// 도구 호출 계약인 AgentTool*(AgentTool.ts) 과는 별개 개념 — 이쪽은 영속 레코드다.
+export interface Agent {
+  id: string;
+  orgId: string;
+  name: string;
+  description: string | null;
+  baseModel: string; // organizations.allowedModels 중 하나
+  systemPrompt: string | null;
+  toolIds: string[]; // AgentToolSpec.name 참조
+  skillIds: string[]; // SkillSpec.id 참조
+  projectIds: string[]; // 지식 스코프
+  visibility: "private" | "org";
+  createdBy: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+// Note — 독립 노트 워크스페이스 문서(마크다운 본문 + AI 개선 + 채팅 컨텍스트 주입).
+// 계약 승인: .ralph/CONTRACT_APPROVED C7 (docs/rfc/P22-contract-batch.md § C7, P22-T6-17).
+// ProjectDocument(RAG 업로드 파일)와는 별개 개념 — 이쪽은 사용자가 앱 안에서 직접 쓰는 문서다.
+// 소유권: org 스코프 + userId 소유자. 공유 개념은 이번 범위 밖(전부 작성자 전용).
+export interface Note {
+  id: string;
+  orgId: string;
+  userId: string;
+  title: string;
+  content: string; // markdown
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+// Channel — 조직 공용 실시간 대화방(Open WebUI Channels 파리티, Discord 스타일).
+// 계약 승인: .ralph/CONTRACT_APPROVED C8 (docs/rfc/P22-contract-batch.md § C8, P22-T6-12).
+// Session(1:1 단일 사용자 대화)과는 별개 개념 — 이쪽은 같은 org 의 여러 사람 + @model 이
+// 하나의 방에서 함께 쓰는 다중 사용자 공간이다. 방 자체는 org 전체에 보이고(디렉터리),
+// 글쓰기는 멤버만 가능하다.
+export interface Channel {
+  id: string;
+  orgId: string;
+  name: string;
+  description: string;
+  createdBy: string; // User.id
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+// ChannelMember — 방 참여자. role=owner 는 생성자(방 수정·삭제 권한), 나머지는 member.
+export interface ChannelMember {
+  id: string;
+  orgId: string;
+  channelId: string;
+  userId: string;
+  role: "owner" | "member";
+  createdAt: Date;
+}
+
+// ChannelMessage — 방에 게시된 글. parentId 가 있으면 그 글에 달린 스레드 답글이다.
+// role="assistant" 는 @model 멘션에 대한 LLM 응답이며 userId 는 null(사람이 아니다).
+export interface ChannelMessage {
+  id: string;
+  orgId: string;
+  channelId: string;
+  userId: string | null; // assistant 메시지는 null
+  role: "user" | "assistant";
+  content: string;
+  parentId: string | null; // 최상위 글이면 null
+  createdAt: Date;
+}
+
+// ChannelReaction — 글에 붙은 이모지 반응. (messageId, userId, emoji) 조합이 유일하다.
+export interface ChannelReaction {
+  id: string;
+  orgId: string;
+  messageId: string;
+  userId: string;
+  emoji: string;
+  createdAt: Date;
+}
+
+// ProviderConnection — 외부 OpenAI 호환 provider 연결(base URL + API 키).
+// 계약 승인: .ralph/CONTRACT_APPROVED C6 (docs/rfc/P22-contract-batch.md § C6, P22-T6-14).
+// 중요: API 키 본문은 이 DTO 에 절대 담지 않는다 — 키는 provider_connections.api_key_encrypted
+//   컬럼에만 존재하고 repo 의 별도 메서드 secretById() 로만 읽는다("비밀은 DTO 밖", C4 와 동일 원칙).
+//   응답에는 keyPrefix(마스킹 표시용 앞자리)만 노출한다(api_keys 마스킹 미러).
+export interface ProviderConnection {
+  id: string;
+  orgId: string;
+  name: string;
+  kind: "openai-compatible"; // 향후 확장 여지
+  baseUrl: string;
+  keyPrefix: string; // 예: "sk-abcd…" — 응답에는 이것만 노출
+  enabled: boolean;
+  verifiedAt: Date | null;
+  models: string[];
+  createdBy: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
 export interface SkillAssetRecord {
   skillId: string;
   filename: string;
@@ -317,12 +428,17 @@ export interface ToolMetricEntry {
   durationMs: number;
   userId?: string;
   orgId?: string;
+  /** 툴 출처. 기존 행은 null → UI 는 '내장'으로 표시(하위호환). (P22-T6-19 / C17B) */
+  source?: "builtin" | "mcp" | "skill" | "openapi";
 }
 
 export interface HealthCheckResult {
   target: string;
   status: "healthy" | "degraded" | "down";
   latencyMs: number | null;
+  /** 계약 16-API-CONTRACT.md § GET /admin/health/history. 기존 append 호출부 호환을 위해
+   *  optional — 저장소가 채워 넣고, 조회 응답에서는 항상 존재한다. (P22-C-01 / C1) */
+  ts?: Date;
   context?: Record<string, unknown>;
 }
 
@@ -375,6 +491,21 @@ export interface UserFilter {
   statusIn?: User["status"][];
 }
 
+// P22-T1-13(계약배치 C4) — 비밀번호 로그인 전용 자격증명. `User` 에 passwordHash 를
+// 넣지 않는 이유: /me·/login 등 모든 AuthMeResponse 직렬화에서 해시를 다시 지워야 해
+// 유출 위험이 상시 존재한다. 대신 이 전용 반환 타입으로만 해시를 노출한다.
+export interface UserCredentials {
+  userId: string;
+  orgId: string;
+  /** NULL = magic-link 전용 계정(비밀번호 미설정). migration 0012 password_hash 컬럼. */
+  passwordHash: string | null;
+}
+
+export interface UserRepo extends Repo<User, UserFilter> {
+  /** 이 반환값은 절대 응답 직렬화에 넣지 않는다(해시는 DTO 밖). */
+  credentialsByEmail(email: string): Promise<UserCredentials | null>;
+}
+
 export interface OrgUnitFilter {
   orgId?: string;
   parentId?: string | null;
@@ -419,6 +550,11 @@ export interface MessageRepo extends Repo<
     role: Message["role"],
     chunks: AsyncIterable<unknown>,
   ): Promise<Message>;
+  /**
+   * org 보존정책 cron 전용 벌크 삭제(부록 H 3번). orgId 생략 시 전 org(시스템 스코프).
+   * 삭제된 행 수를 반환. 구현체는 1틱당 배치 상한을 둔다. (P22-C-01 / C2)
+   */
+  deleteOlderThan(cutoff: Date, orgId?: string): Promise<number>;
 }
 
 export interface ProjectRepo extends Repo<
@@ -461,13 +597,17 @@ export interface ProjectDocumentRepo extends Repo<
   ): Promise<void>;
 }
 
-// spec adaptation: § 0 writes `interface ArtifactRepo extends Repo<...> {}` (empty
-// body). An empty extending interface trips ESLint `no-empty-object-type`; a type
-// alias is semantically identical and is the recommended resolution.
-export type ArtifactRepo = Repo<
+export interface ArtifactRepo extends Repo<
   ArtifactRecord,
   { sessionId?: string; createdBy?: string }
->;
+> {
+  /**
+   * 보존정책 cron 전용. createdAt < cutoff 인 artifact 를 **시스템 스코프**로 열거한다
+   * (list() 는 RLS/사용자 스코프라 org 전체를 볼 수 없다).
+   * UploadRepo.expiredOlderThan 와 동일 계열. (P22-C-01 / C3)
+   */
+  expiredOlderThan(cutoff: Date): Promise<ArtifactRecord[]>;
+}
 
 export interface ArtifactRevisionRepo {
   insert(input: {
@@ -524,6 +664,48 @@ export interface McpServerRepo extends Repo<
   ): Promise<void>;
 }
 
+export type AgentRepo = Repo<
+  Agent,
+  { orgId?: string; createdBy?: string; visibility?: Agent["visibility"] }
+>;
+
+// NoteRepo — C7 · P22-T6-17. org + 소유자(userId) 스코프 필터만 필요하다.
+export type NoteRepo = Repo<Note, { orgId?: string; userId?: string }>;
+
+// Channel* Repo — C8 · P22-T6-12. 전부 org 스코프 + 소속 스코프 필터.
+export type ChannelRepo = Repo<Channel, { orgId?: string }>;
+export type ChannelMemberRepo = Repo<
+  ChannelMember,
+  { orgId?: string; channelId?: string; userId?: string }
+>;
+export type ChannelMessageRepo = Repo<
+  ChannelMessage,
+  { orgId?: string; channelId?: string; parentId?: string }
+>;
+export type ChannelReactionRepo = Repo<
+  ChannelReaction,
+  { orgId?: string; messageId?: string; userId?: string }
+>;
+
+// ProviderConnectionRepo — C6 · P22-T6-14.
+// insert/update 의 apiKey(평문)는 DTO 밖 전용 인자로 받는다(구현체가 KEK 로 암호화해 저장).
+// secretById() 만이 복호화된 키를 돌려준다 — 라우트 응답에는 절대 싣지 않는다.
+export interface ProviderConnectionRepo extends Repo<
+  ProviderConnection,
+  { orgId?: string; enabled?: boolean }
+> {
+  insertWithSecret(
+    data: Omit<
+      ProviderConnection,
+      "id" | "keyPrefix" | "verifiedAt" | "createdAt" | "updatedAt"
+    >,
+    apiKey: string,
+  ): Promise<ProviderConnection>;
+  updateSecret(id: string, apiKey: string): Promise<void>;
+  secretById(id: string): Promise<string | null>;
+  markVerified(id: string, verifiedAt: Date | null): Promise<void>;
+}
+
 // SkillAsset 는 composite PK (skillId, filename). byId/delete(id) 사용 불가.
 export interface SkillAssetRepo {
   insert(data: SkillAssetRecord): Promise<SkillAssetRecord>;
@@ -574,6 +756,11 @@ export interface ErrorLogRepo {
     },
     p: Pagination,
   ): Promise<Page<ErrorLogEntry>>;
+  /**
+   * 보존정책 cron 전용(부록 H 4번). 삭제된 행 수를 반환.
+   * UploadRepo.expiredOlderThan 와 동일 계열. (P22-C-01 / C2)
+   */
+  deleteOlderThan(cutoff: Date): Promise<number>;
 }
 
 export interface ToolMetricRepo {
@@ -587,7 +774,14 @@ export interface ToolMetricRepo {
 
 export interface HealthHistoryRepo {
   append(entry: HealthCheckResult): Promise<void>;
-  recent(target: string, limit: number): Promise<HealthCheckResult[]>;
+  /** range 는 optional — 생략 시 기존 동작(최신 limit 개)과 동일. (P22-C-01 / C1) */
+  recent(
+    target: string,
+    limit: number,
+    range?: { from?: Date; to?: Date },
+  ): Promise<HealthCheckResult[]>;
+  /** 보존정책 cron 전용(부록 H 5번). 삭제된 행 수를 반환. (P22-C-01 / C2) */
+  deleteOlderThan(cutoff: Date): Promise<number>;
 }
 
 export interface AlertEventRepo extends Repo<
@@ -694,6 +888,9 @@ export type ChatEvent =
     }
   | { type: "message_replace"; messageId: string; contentSoFar: string }
   | { type: "text_delta"; text: string }
+  // 모델의 사고(extended thinking) 스트림(P20-T2-03, human-gate 로 frozen 해제). 최종 답변
+  //   text_delta 와 별개 채널 — 소비측(웹)은 접이식 추론 블록으로 표시. reasoningEffort 설정 시 방출.
+  | { type: "reasoning_delta"; text: string }
   | { type: "tool_use"; toolCallId: string; name: string; args: unknown }
   | { type: "tool_result"; toolCallId: string; content: string | unknown }
   // 특정 toolCallId 의 실행 중 진행 상태(비종단, 여러 번). ToolContext.emitProgress →

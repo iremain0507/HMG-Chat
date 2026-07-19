@@ -30,6 +30,36 @@ function unauthorized(message: string) {
   };
 }
 
+function forbidden(message: string) {
+  return {
+    error: {
+      code: "FORBIDDEN",
+      category: "auth" as const,
+      message,
+      retryable: false,
+    },
+  };
+}
+
+// P20-T1-12 — scope 형식은 "<resource>:<read|write>". 빈 scopes(기존 키)는 하위호환 전권.
+// sessions/messages 는 "chat" 리소스로 통합(같은 앱 마운트, 채팅 도메인 개념).
+const RESOURCE_ALIASES: Record<string, string> = {
+  sessions: "chat",
+  messages: "chat",
+};
+
+function requiredScopeFor(
+  method: string,
+  pathname: string,
+): string | undefined {
+  const match = /^\/api\/v1\/([^/]+)/.exec(pathname);
+  const segment = match?.[1];
+  if (!segment) return undefined;
+  const resource = RESOURCE_ALIASES[segment] ?? segment;
+  const action = method === "GET" || method === "HEAD" ? "read" : "write";
+  return `${resource}:${action}`;
+}
+
 function bearerToken(headerValue: string | undefined): string | undefined {
   if (!headerValue?.startsWith("Bearer ")) return undefined;
   const token = headerValue.slice("Bearer ".length).trim();
@@ -65,6 +95,15 @@ export const authMiddleware: MiddlewareHandler<{
   const found = await apiKeyDataAccess().findActiveByRawKey(rawKey);
   if (!found) {
     return c.json(unauthorized("API 키가 유효하지 않습니다."), 401);
+  }
+  if (found.scopes.length > 0) {
+    const required = requiredScopeFor(c.req.method, c.req.path);
+    if (!required || !found.scopes.includes(required)) {
+      return c.json(
+        forbidden("이 API 키의 권한 범위(scope)를 벗어난 요청입니다."),
+        403,
+      );
+    }
   }
   const now = Math.floor(Date.now() / 1000);
   c.set("auth", {

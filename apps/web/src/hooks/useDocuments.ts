@@ -32,6 +32,9 @@ interface UseDocumentsResult {
   // indexStatus='failed' 문서의 재인덱싱 — 16-API-CONTRACT § 5 POST /documents/:id/retry.
   retryDocument(id: string): Promise<void>;
   retryingId: string | null;
+  // 인덱싱된 문서 삭제 — 16-API-CONTRACT § 5 DELETE /documents/:docId (cascade chunk + S3, 204).
+  deleteDocument(id: string): Promise<void>;
+  deletingId: string | null;
 }
 
 export function useDocuments(projectId: string): UseDocumentsResult {
@@ -40,6 +43,7 @@ export function useDocuments(projectId: string): UseDocumentsResult {
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [retryingId, setRetryingId] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -114,6 +118,30 @@ export function useDocuments(projectId: string): UseDocumentsResult {
     [load],
   );
 
+  const deleteDocument = useCallback(
+    async (id: string) => {
+      setDeletingId(id);
+      setError(null);
+      try {
+        const res = await apiFetch(`/api/v1/documents/${id}`, {
+          method: "DELETE",
+          credentials: "include",
+        });
+        if (!res.ok) {
+          const body = (await res.json()) as {
+            error?: { message?: string };
+          };
+          setError(body.error?.message ?? "삭제에 실패했습니다.");
+          return;
+        }
+        await load();
+      } finally {
+        setDeletingId(null);
+      }
+    },
+    [load],
+  );
+
   return {
     documents,
     loading,
@@ -122,5 +150,7 @@ export function useDocuments(projectId: string): UseDocumentsResult {
     upload,
     retryDocument,
     retryingId,
+    deleteDocument,
+    deletingId,
   };
 }

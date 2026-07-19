@@ -136,6 +136,8 @@ export interface Organization {
   allowedModels: string[];
   allowedTools: string[];
   defaultTokenBudgetMicros: number | null;
+  /** 메시지 보존일수(12-OPS-SECURITY.md 부록 H 3번). null = 무기한 보존. (P22-C-01 / C2) */
+  retentionDays: number | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -231,6 +233,13 @@ export interface UserMemory {
 
 export interface OrgFilter   { domainEq?: string }
 export interface UserFilter  { orgId?: string; emailEq?: string; statusIn?: User["status"][] }
+
+// P22-T1-13(계약배치 C4) — 비밀번호 로그인 전용. 해시를 User DTO 에 싣지 않기 위한 분리 경로.
+// 반환값은 절대 응답 직렬화에 넣지 않는다. passwordHash=null 이면 magic-link 전용 계정.
+export interface UserCredentials { userId: string; orgId: string; passwordHash: string | null }
+export interface UserRepo extends Repo<User, UserFilter> {
+  credentialsByEmail(email: string): Promise<UserCredentials | null>;
+}
 export interface OrgUnitFilter { orgId?: string; parentId?: string | null; pathPrefix?: string }
 export interface ChunkFilter { documentId?: string; projectId?: string }
 
@@ -253,6 +262,8 @@ export interface SessionRepo extends Repo<Session, { userId?: string; projectId?
 
 export interface MessageRepo extends Repo<Message, { sessionId: string; role?: Message["role"] }> {
   appendStream(sessionId: string, role: Message["role"], chunks: AsyncIterable<unknown>): Promise<Message>;
+  /** org 보존정책 cron 전용 벌크 삭제(부록 H 3번). orgId 생략 시 전 org. 배치 상한 존재. (P22-C-01 / C2) */
+  deleteOlderThan(cutoff: Date, orgId?: string): Promise<number>;
 }
 
 export interface ProjectRepo extends Repo<Project, { orgId?: string; visibility?: Project["visibility"] }> {
@@ -293,7 +304,11 @@ export interface ProjectDocumentRepo extends Repo<ProjectDocumentRecord, { proje
   updateIndexStatus(id: string, status: ProjectDocumentRecord["indexStatus"], chunkCount?: number): Promise<void>;
 }
 
-export interface ArtifactRepo extends Repo<ArtifactRecord, { sessionId?: string; createdBy?: string }> {}
+export interface ArtifactRepo extends Repo<ArtifactRecord, { sessionId?: string; createdBy?: string }> {
+  /** 보존정책 cron 전용. createdAt < cutoff 인 artifact 를 시스템 스코프로 열거한다
+   *  (list() 는 RLS/사용자 스코프라 org 전체를 볼 수 없다). UploadRepo.expiredOlderThan 동일 계열. (P22-C-01 / C3) */
+  expiredOlderThan(cutoff: Date): Promise<ArtifactRecord[]>;
+}
 export interface ArtifactRevisionRepo {
   insert(input: { artifactId: string; version: number; s3Key: string; diffSummary?: string }): Promise<void>;
   list(artifactId: string): Promise<Array<{ version: number; s3Key: string; diffSummary: string | null; createdAt: Date }>>;
@@ -341,6 +356,23 @@ export interface McpServerRecord {
   status: "active"|"degraded"|"suspended";
 }
 
+// Agent — 커스텀 워크스페이스 에이전트(P22-T6-10, 계약 승인 C5). 도구 호출 계약 AgentTool* 과 별개.
+export interface Agent {
+  id: string;
+  orgId: string;
+  name: string;
+  description: string | null;
+  baseModel: string;
+  systemPrompt: string | null;
+  toolIds: string[];
+  skillIds: string[];
+  projectIds: string[];
+  visibility: "private"|"org";
+  createdBy: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
 export interface SkillAssetRecord {
   skillId: string;
   filename: string;
@@ -386,12 +418,14 @@ export interface ToolMetricEntry {
   durationMs: number;
   userId?: string;
   orgId?: string;
+  source?: "builtin"|"mcp"|"skill"|"openapi";   // 기존 행은 null → UI 는 '내장' 표시(P22-T6-19 / C17B).
 }
 
 export interface HealthCheckResult {
   target: string;
   status: "healthy"|"degraded"|"down";
   latencyMs: number | null;
+  ts?: Date;                       // 조회 응답에는 항상 존재(P22-C-01 / C1). append 호환 위해 optional.
   context?: Record<string, unknown>;
 }
 
@@ -434,6 +468,7 @@ export interface UserMemoryRepo extends Repo<UserMemory, { userId?: string; cate
 export interface McpServerRepo extends Repo<McpServerRecord, { orgId?: string; projectId?: string | null; userId?: string | null }> {
   updateDiscovery(id: string, supportedTools: McpServerRecord["supportedTools"]): Promise<void>;
 }
+export type AgentRepo = Repo<Agent, { orgId?: string; createdBy?: string; visibility?: Agent["visibility"] }>;
 // SkillAsset 는 composite PK (skillId, filename). byId/delete(id) 사용 불가.
 export interface SkillAssetRepo {
   insert(data: SkillAssetRecord): Promise<SkillAssetRecord>;
@@ -463,6 +498,8 @@ export interface UsageLogRepo {
 export interface ErrorLogRepo {
   append(entry: ErrorLogEntry): Promise<void>;
   list(filter: { category?: ErrorCategory; level?: ErrorLogEntry["level"]; from?: Date }, p: Pagination): Promise<Page<ErrorLogEntry>>;
+  /** 보존정책 cron 전용(부록 H 4번). 삭제된 행 수 반환. (P22-C-01 / C2) */
+  deleteOlderThan(cutoff: Date): Promise<number>;
 }
 
 export interface ToolMetricRepo {
@@ -472,7 +509,10 @@ export interface ToolMetricRepo {
 
 export interface HealthHistoryRepo {
   append(entry: HealthCheckResult): Promise<void>;
-  recent(target: string, limit: number): Promise<HealthCheckResult[]>;
+  /** range 는 optional — 생략 시 기존 동작(최신 limit 개)과 동일. (P22-C-01 / C1) */
+  recent(target: string, limit: number, range?: { from?: Date; to?: Date }): Promise<HealthCheckResult[]>;
+  /** 보존정책 cron 전용(부록 H 5번). 삭제된 행 수 반환. (P22-C-01 / C2) */
+  deleteOlderThan(cutoff: Date): Promise<number>;
 }
 
 export interface AlertEventRepo extends Repo<AlertEvent, { severity?: AlertEvent["severity"]; unresolved?: boolean }> {
@@ -767,7 +807,7 @@ DB 호출의 단일 진입점. production 은 Drizzle, 테스트는 InMemory.
 // packages/interfaces/src/DataAccess.ts
 export interface DataAccess {
   organizations: Repo<Organization, OrgFilter>;
-  users: Repo<User, UserFilter>;
+  users: UserRepo; // P22-T1-13(C4): Repo<User,UserFilter> + credentialsByEmail
   orgUnits: Repo<OrgUnit, OrgUnitFilter>;
   sessions: SessionRepo;
   messages: MessageRepo;
@@ -782,6 +822,7 @@ export interface DataAccess {
   uploads: UploadRepo;
   userMemories: UserMemoryRepo;
   mcpServers: McpServerRepo;
+  agents: AgentRepo;
   skillAssets: SkillAssetRepo;
   userQuotas: UserQuotaRepo;
   usageLogs: UsageLogRepo;
@@ -922,7 +963,12 @@ export interface ArtifactStore {
   }>;
 
   remove(artifactId: string): Promise<void>;
-  cleanupExpired(): Promise<{ deletedCount: number }>;
+  /** 보존정책 cron 이 열거한 만료 artifact 의 **바이트**를 지운다. 어떤 artifact 가 만료인지는
+   *  DataAccess 를 가진 호출자(lib/data-retention.ts)가 판단하고 id 목록만 넘긴다 —
+   *  이 포트는 Repo 의존 없는 바이트 저장소로 남는다. 인자 없이 호출하면 대상이 없다는 뜻. (P22-C-01 / C3) */
+  cleanupExpired(input?: {
+    artifactIds: string[];
+  }): Promise<{ deletedCount: number }>;
 }
 ```
 

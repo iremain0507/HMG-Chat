@@ -10,9 +10,19 @@ import {
   type ArtifactShareDataAccess,
 } from "../db/artifact-share-service.js";
 
-function errorJson(code: string, message: string) {
+function errorJson(
+  code: string,
+  message: string,
+  reason?: "expired" | "revoked",
+) {
   return {
-    error: { code, category: "http" as const, message, retryable: false },
+    error: {
+      code,
+      category: "http" as const,
+      message,
+      retryable: false,
+      ...(reason ? { reason } : {}),
+    },
   };
 }
 
@@ -60,7 +70,7 @@ export function createPublicShareRoutes(deps: {
     } catch (err) {
       if (err instanceof ArtifactShareServiceError) {
         return c.json(
-          errorJson(err.code, err.message),
+          errorJson(err.code, err.message, err.reason),
           err.code === "GONE" ? 410 : 404,
         );
       }
@@ -79,7 +89,7 @@ export function createPublicShareRoutes(deps: {
     } catch (err) {
       if (err instanceof ArtifactShareServiceError) {
         return c.json(
-          errorJson(err.code, err.message),
+          errorJson(err.code, err.message, err.reason),
           err.code === "GONE" ? 410 : 404,
         );
       }

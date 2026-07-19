@@ -25,6 +25,20 @@ describe("ToolCallRenderer", () => {
     );
   });
 
+  it("실행 중이면 경과 시간(tool-elapsed)을 m:ss 로 보여준다 — 멀티에이전트 아니어도", () => {
+    render(
+      <ToolCallRenderer
+        toolCallId="call-1"
+        name="knowledge_search"
+        args={{ query: "wchat" }}
+        status="running"
+      />,
+    );
+    const el = screen.getByTestId("tool-elapsed");
+    expect(el).toBeInTheDocument();
+    expect(el.textContent).toMatch(/^\d+:\d{2}$/);
+  });
+
   it("P12 orchestrator-worker 계열({task} 단일 인자)은 '멀티에이전트' 배지를 보여준다", () => {
     render(
       <ToolCallRenderer
@@ -64,7 +78,7 @@ describe("ToolCallRenderer", () => {
     expect(screen.getByText(/병렬/)).toBeInTheDocument();
   });
 
-  it("deep_research 완료 결과는 raw JSON 대신 References·리포트 카드로 구조화한다", () => {
+  it("deep_research 완료 결과는 raw JSON 대신 References + 리포트를 본문에 마크다운으로 렌더한다(아티팩트 아님)", () => {
     const result = {
       message: "4개 하위 질문을 조사해 리포트로 종합했습니다.",
       citations: [
@@ -85,13 +99,8 @@ describe("ToolCallRenderer", () => {
           sourceUri: "https://reuters.com/y",
         },
       ],
-      artifact: {
-        artifactId: "a1",
-        artifactKind: "markdown",
-        filename: "deep-research-call-1.md",
-        sizeBytes: 4096,
-        downloadUrl: "/api/v1/artifacts/a1/content",
-      },
+      // 종합 리포트는 아티팩트가 아니라 본문에 마크다운으로 렌더된다.
+      report: "## 다크팩토리 종합\n완전 무인 공장이다 [1][2].",
     };
     render(
       <ToolCallRenderer
@@ -104,12 +113,39 @@ describe("ToolCallRenderer", () => {
     );
     fireEvent.click(screen.getByRole("button", { name: /deep_research/ }));
     expect(screen.getByText("HMGMA 자동화 라인")).toBeInTheDocument();
-    expect(screen.getByText("deep-research-call-1.md")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /열기/ })).toHaveAttribute(
-      "href",
-      "/api/v1/artifacts/a1/content",
+    // 리포트가 본문에 마크다운(제목/본문)으로 렌더된다.
+    const report = screen.getByTestId("research-report");
+    expect(report).toHaveTextContent("다크팩토리 종합");
+    expect(report).toHaveTextContent("완전 무인 공장이다");
+    // raw JSON 노출 없음.
+    expect(screen.queryByText(/"citations"/)).not.toBeInTheDocument();
+  });
+
+  it("image_generate 결과(artifactKind=image)는 생성 이미지를 인라인 <img> 로 표시한다(P22-T1-08)", () => {
+    const result = {
+      artifact: {
+        artifactId: "img1",
+        artifactKind: "image",
+        filename: "a-red-sports-car.png",
+        mimeType: "image/png",
+        sizeBytes: 512,
+        downloadUrl: "/api/v1/artifacts/img1/content",
+      },
+    };
+    render(
+      <ToolCallRenderer
+        toolCallId="call-img"
+        name="image_generate"
+        args={{ prompt: "a red sports car" }}
+        status="done"
+        result={result}
+      />,
     );
-    expect(screen.queryByText(/"artifactId"/)).not.toBeInTheDocument();
+    // 펼치지 않아도(done) 생성 이미지가 인라인으로 즉시 보인다.
+    const img = screen.getByTestId("tool-image-artifact");
+    expect(img.tagName).toBe("IMG");
+    expect(img).toHaveAttribute("src", "/api/v1/artifacts/img1/content");
+    expect(img.getAttribute("alt") ?? "").toContain("a-red-sports-car");
   });
 
   it("deep_research 실행 중 progress 가 있으면 라벨(접힘)과 서브에이전트 작업목록(펼침 스윔레인)을 보여준다", () => {

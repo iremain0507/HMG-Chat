@@ -13,6 +13,11 @@ export interface ToolMetricDto {
   p95DurationMs: number;
   p99DurationMs: number;
   last24h: { count: number; errorRate: number };
+  /** 툴 출처(0039 tool_metrics.source). 계약상 확장 필드라 optional —
+   *  없거나 null 이면 '내장'으로 표시한다(하위호환). (P22-T6-19 / C17B) */
+  source?: string;
+  /** 최근 7일 일별 추이(과거→현재, 7 포인트). 스파크라인 입력. (P22-T6-19) */
+  trend?: Array<{ date: string; count: number; errorCount: number }>;
 }
 
 interface UseToolMetricsResult {

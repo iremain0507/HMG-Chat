@@ -7,6 +7,7 @@
 // generic 자체는 types.ts 단일 출처 → 본 파일은 types.ts 만 import.
 
 import type {
+  AgentRepo,
   AlertEventRepo,
   ArtifactRepo,
   ArtifactRevisionRepo,
@@ -22,10 +23,16 @@ import type {
   Organization,
   OrgFilter,
   OrgUnit,
+  NoteRepo,
+  ChannelRepo,
+  ChannelMemberRepo,
+  ChannelMessageRepo,
+  ChannelReactionRepo,
   OrgUnitFilter,
   ProjectDocumentRepo,
   ProjectMemberRepo,
   ProjectRepo,
+  ProviderConnectionRepo,
   RefreshTokenFamilyRepo,
   Repo,
   SessionRepo,
@@ -33,15 +40,14 @@ import type {
   ToolMetricRepo,
   UploadRepo,
   UsageLogRepo,
-  User,
-  UserFilter,
   UserMemoryRepo,
+  UserRepo,
   UserQuotaRepo,
 } from "./types.js";
 
 export interface DataAccess {
   organizations: Repo<Organization, OrgFilter>;
-  users: Repo<User, UserFilter>;
+  users: UserRepo;
   orgUnits: Repo<OrgUnit, OrgUnitFilter>;
   sessions: SessionRepo;
   messages: MessageRepo;
@@ -56,6 +62,13 @@ export interface DataAccess {
   uploads: UploadRepo;
   userMemories: UserMemoryRepo;
   mcpServers: McpServerRepo;
+  agents: AgentRepo; // C5 · P22-T6-10 커스텀 워크스페이스 에이전트
+  providerConnections: ProviderConnectionRepo; // C6 · P22-T6-14 외부 provider 연결
+  notes: NoteRepo; // C7 · P22-T6-17 노트 워크스페이스
+  channels: ChannelRepo; // C8 · P22-T6-12 실시간 다중사용자 채널
+  channelMembers: ChannelMemberRepo;
+  channelMessages: ChannelMessageRepo;
+  channelReactions: ChannelReactionRepo;
   skillAssets: SkillAssetRepo;
   userQuotas: UserQuotaRepo;
   usageLogs: UsageLogRepo;
@@ -109,11 +122,10 @@ export interface EphemeralChunk {
 // types.ts 의 `Repo<T>.bulkInsert(rows: Partial<T>[]): Promise<T[]>` 와 반환형이
 // 충돌한다 (void vs T[]). spec 의 의도 (입력은 id/createdAt 없는 새 chunk, 반환은
 // void) 를 보존하기 위해 base 의 bulkInsert 만 Omit 하고 narrowed 시그니처를 단다.
-export interface EphemeralChunkRepo
-  extends Omit<
-    Repo<EphemeralChunk, { sessionId?: string; uploadId?: string }>,
-    "bulkInsert"
-  > {
+export interface EphemeralChunkRepo extends Omit<
+  Repo<EphemeralChunk, { sessionId?: string; uploadId?: string }>,
+  "bulkInsert"
+> {
   // session+project 동시 검색: server 의 knowledge_search 도구가 호출.
   hybridSearchUnified(
     input: {
