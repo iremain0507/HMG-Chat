@@ -137,6 +137,44 @@ describe("ArtifactCanvas", () => {
     );
   });
 
+  it("아주 멀리 끌면 폭이 화면 가로의 2/3 상한에서 멈춘다(메인 채팅 최소 1/3 보장)", () => {
+    // jsdom 은 getBoundingClientRect 가 0 이라 컨테이너 대신 window.innerWidth 로 폴백한다.
+    Object.defineProperty(window, "innerWidth", {
+      configurable: true,
+      value: 1500,
+    });
+    render(
+      <ArtifactCanvas
+        artifacts={makeArtifacts()}
+        activeIndex={0}
+        onActiveIndexChange={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+    const panel = screen.getByTestId("artifact-panel");
+    const resizer = screen.getByTestId("artifact-panel-resizer");
+    act(() => {
+      resizer.dispatchEvent(
+        new MouseEvent("pointerdown", {
+          clientX: 600,
+          bubbles: true,
+          cancelable: true,
+        }),
+      );
+    });
+    // 왼쪽으로 아주 많이(1200px) 끌어 상한을 넘겨본다.
+    act(() => {
+      resizer.dispatchEvent(
+        new MouseEvent("pointermove", { clientX: -600, bubbles: true }),
+      );
+      resizer.dispatchEvent(new MouseEvent("pointerup", { bubbles: true }));
+    });
+    // 2/3 of 1500 = 1000px 에서 클램프.
+    expect(panel.style.getPropertyValue("--artifact-panel-width")).toBe(
+      "1000px",
+    );
+  });
+
   it("코드 탭을 클릭하면 원본 콘텐츠를 fetch 해 보여준다", async () => {
     vi.stubGlobal(
       "fetch",

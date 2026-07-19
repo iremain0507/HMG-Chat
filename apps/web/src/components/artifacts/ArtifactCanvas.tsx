@@ -15,8 +15,23 @@ import { ArtifactPanel, type ArtifactDto } from "./ArtifactPanel";
 import { ShareDialog } from "./ShareDialog";
 
 const MIN_WIDTH = 320;
-const MAX_WIDTH = 800;
 const DEFAULT_WIDTH = 420;
+
+// 패널 최대 폭 = **화면 가로(window.innerWidth)의 2/3** 까지(사용자 요청). 고정 800px 상한 제거.
+// 단, 메인 채팅이 지나치게 좁아지거나 오버플로하지 않도록, 채팅+패널 컨테이너에서 메인 채팅
+// 최소치(MIN_MAIN_CHAT)를 남기는 값으로도 캡한다. 컨테이너 측정 불가(jsdom 레이아웃 미계산)면
+// 그 캡을 무시하고 화면 2/3 만 적용한다.
+const MIN_MAIN_CHAT = 260;
+function computeMaxPanelWidth(handle: HTMLElement): number {
+  const screenW =
+    typeof window !== "undefined" ? window.innerWidth : DEFAULT_WIDTH * 3;
+  const byRatio = Math.round(screenW * (2 / 3));
+  const container = handle.parentElement?.parentElement ?? null;
+  const containerW = container ? container.getBoundingClientRect().width : 0;
+  const byContainer =
+    containerW > 0 ? Math.round(containerW - MIN_MAIN_CHAT) : Infinity;
+  return Math.max(MIN_WIDTH + 80, Math.min(byRatio, byContainer));
+}
 
 type OuterTab = "artifacts" | "sources" | "activity";
 
@@ -238,9 +253,10 @@ export function ArtifactCanvas({
     }
     const startX = e.clientX;
     const startWidth = width;
+    const maxWidth = computeMaxPanelWidth(handle);
     function onMove(moveEvent: PointerEvent) {
       const next = startWidth - (moveEvent.clientX - startX);
-      setWidth(Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, next)));
+      setWidth(Math.min(maxWidth, Math.max(MIN_WIDTH, next)));
     }
     function onUp(upEvent: PointerEvent) {
       try {
