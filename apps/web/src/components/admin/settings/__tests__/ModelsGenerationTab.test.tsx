@@ -235,6 +235,22 @@ describe("ModelsGenerationTab", () => {
     expect(onChange).toHaveBeenCalledWith({ toolMaxTokens: NaN });
   });
 
+  it("숫자 필드 값이 NaN 이면(비운 상태) input 에 빈 값으로 표시한다 — React 'Received NaN' 경고 방지", () => {
+    render(
+      <ModelsGenerationTab
+        value={{ ...VALUE, deepResearchMaxSubQuestions: NaN, maxTokens: NaN }}
+        errors={{}}
+        orgAllowedModels={[]}
+        onChange={vi.fn()}
+      />,
+    );
+    // number input 의 value 가 "" 이면 toHaveValue 는 null 을 돌려준다(NaN 이 그대로 새면 경고).
+    expect(
+      screen.getByTestId("admin-settings-deepResearchMaxSubQuestions"),
+    ).toHaveValue(null);
+    expect(screen.getByTestId("admin-settings-maxTokens")).toHaveValue(null);
+  });
+
   it("errors 에 있는 필드는 에러 메시지를 보여준다", () => {
     render(
       <ModelsGenerationTab

@@ -278,6 +278,17 @@ export function ToolCallRenderer({
           </p>
         )}
 
+      {/* 완료 리포트(deep_research): 카드 접힘 여부와 무관하게 본문에 항상 마크다운으로 렌더한다
+          — 사용자가 카드를 펼치거나 아티팩트를 열지 않아도 리포트 전문을 본문에서 바로 읽는다. */}
+      {status === "done" && research?.report && (
+        <div
+          data-testid="research-report"
+          className="border-t border-border px-3 py-3 text-sm"
+        >
+          <Markdown>{research.report}</Markdown>
+        </div>
+      )}
+
       {/* 완료 + 이미지 아티팩트: 생성 이미지를 인라인으로 즉시 표시(펼침 여부 무관, P22-T1-08). */}
       {status === "done" &&
         research?.artifact &&
@@ -330,14 +341,7 @@ export function ToolCallRenderer({
               {research.message && (
                 <div className="text-xs text-fg-muted">{research.message}</div>
               )}
-              {research.report && (
-                <div
-                  data-testid="research-report"
-                  className="rounded-lg border border-border bg-bg p-3 text-sm"
-                >
-                  <Markdown>{research.report}</Markdown>
-                </div>
-              )}
+              {/* 리포트(research.report)는 위에서 접힘 여부와 무관하게 항상 렌더하므로 여기선 생략. */}
               {research.citations && research.citations.length > 0 && (
                 <div>
                   <div className="mb-1 text-xs font-medium text-fg-muted">

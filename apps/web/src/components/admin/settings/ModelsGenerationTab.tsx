@@ -36,6 +36,13 @@ function parseNumberField(raw: string): number {
   return raw.trim() === "" ? NaN : Number(raw);
 }
 
+// 빈 입력은 상태에 NaN 으로 담아 검증이 잡게 하되(위), controlled input 의 value 로 NaN 을
+// 그대로 주면 React 가 "Received NaN for the `value` attribute" 를 경고한다 — NaN 은 빈 문자열로
+// 표시한다(검증 에러 메시지는 별도로 이미 노출됨).
+function numberFieldValue(n: number): number | string {
+  return Number.isNaN(n) ? "" : n;
+}
+
 const LABEL_CLASS = "block text-xs font-medium text-fg-muted";
 const INPUT_CLASS =
   "mt-1 w-full rounded-md border border-border bg-bg px-2.5 py-1.5 text-sm text-fg outline-none focus-visible:border-primary-400";
@@ -111,7 +118,7 @@ export function ModelsGenerationTab({
           type="number"
           data-testid="admin-settings-maxTokens"
           className={INPUT_CLASS}
-          value={value.maxTokens}
+          value={numberFieldValue(value.maxTokens)}
           onChange={(e) =>
             onChange({ maxTokens: parseNumberField(e.target.value) })
           }
@@ -133,7 +140,7 @@ export function ModelsGenerationTab({
           step="0.1"
           data-testid="admin-settings-temperature"
           className={INPUT_CLASS}
-          value={value.temperature}
+          value={numberFieldValue(value.temperature)}
           onChange={(e) =>
             onChange({ temperature: parseNumberField(e.target.value) })
           }
@@ -155,7 +162,7 @@ export function ModelsGenerationTab({
           step="0.1"
           data-testid="admin-settings-topP"
           className={INPUT_CLASS}
-          value={value.topP}
+          value={numberFieldValue(value.topP)}
           onChange={(e) => onChange({ topP: parseNumberField(e.target.value) })}
         />
         {errors.topP && (
@@ -187,7 +194,7 @@ export function ModelsGenerationTab({
           type="number"
           data-testid="admin-settings-toolMaxTokens"
           className={INPUT_CLASS}
-          value={value.toolMaxTokens}
+          value={numberFieldValue(value.toolMaxTokens)}
           onChange={(e) =>
             onChange({ toolMaxTokens: parseNumberField(e.target.value) })
           }
@@ -210,7 +217,7 @@ export function ModelsGenerationTab({
           type="number"
           data-testid="admin-settings-deepResearchMaxSubQuestions"
           className={INPUT_CLASS}
-          value={value.deepResearchMaxSubQuestions}
+          value={numberFieldValue(value.deepResearchMaxSubQuestions)}
           onChange={(e) =>
             onChange({
               deepResearchMaxSubQuestions: parseNumberField(e.target.value),
@@ -238,7 +245,7 @@ export function ModelsGenerationTab({
           type="number"
           data-testid="admin-settings-deepResearchMaxGapIterations"
           className={INPUT_CLASS}
-          value={value.deepResearchMaxGapIterations}
+          value={numberFieldValue(value.deepResearchMaxGapIterations)}
           onChange={(e) =>
             onChange({
               deepResearchMaxGapIterations: parseNumberField(e.target.value),
