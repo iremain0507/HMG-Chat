@@ -40,3 +40,21 @@ export const ARTIFACTS_POLICY = `# 아티팩트 사용 지침 (우측 패널)
 export function buildArtifactsPolicyBlock(): PromptBlock {
   return { tier: "system", content: ARTIFACTS_POLICY };
 }
+
+// claude.ai 의 "significant and self-contained, typically over 15 lines" 휴리스틱.
+export const ARTIFACT_MIN_LINES = 15;
+// 길지만 줄바꿈이 적은(문단형) 콘텐츠도 승격되도록 문자 길이 하한을 함께 둔다.
+const ARTIFACT_MIN_CHARS = 1200;
+
+// 콘텐츠가 아티팩트로 분리할 만큼 "유의미·자립적"인지를 위 휴리스틱으로 판정한다.
+//   모델이 artifact_create 를 스스로 부를 때뿐 아니라 deep_research 처럼 서버가 프로그램적으로
+//   아티팩트 승격을 결정할 때도 같은 기준을 써서 "동일 조건"을 보장한다. 짧거나(≤15줄이고 짧은)
+//   일회성 콘텐츠는 false → 호출부가 본문 인라인으로 폴백한다.
+export function isSubstantialContent(text: string): boolean {
+  const trimmed = text.trim();
+  if (!trimmed) return false;
+  const lineCount = trimmed
+    .split(/\r?\n/)
+    .filter((line) => line.trim().length > 0).length;
+  return lineCount > ARTIFACT_MIN_LINES || trimmed.length >= ARTIFACT_MIN_CHARS;
+}

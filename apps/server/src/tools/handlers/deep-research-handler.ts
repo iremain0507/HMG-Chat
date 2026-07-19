@@ -27,7 +27,12 @@ import {
   matchCitations,
   type Citation,
 } from "../../knowledge/citation-helper.js";
-import type { ArtifactDataAccess } from "../../db/artifact-service.js";
+import {
+  createArtifactService,
+  decideStorageKind,
+  type ArtifactDataAccess,
+} from "../../db/artifact-service.js";
+import { isSubstantialContent } from "../../lib/artifacts-policy.js";
 import type { ResolvedOrgSettings } from "../../lib/org-settings-schema.js";
 
 export const DEFAULT_MAX_SUB_QUESTIONS = 4;
@@ -68,9 +73,10 @@ export interface DeepResearchToolDeps {
   // settings 미주입/조회 실패/org 미설정 시 fail-soft 폴백(항상 DEFAULT_ORG_SETTINGS.toolMaxTokens
   // 와 동일값 유지 — 21-LOOP-LESSONS.md L2).
   maxTokens: number;
-  // (구) 종합 리포트를 markdown 아티팩트로 저장할 때 쓰던 포트. 이제 리포트는 본문에 렌더하고
-  // 아티팩트는 만들지 않으므로(정책: 아티팩트는 HTML 등 렌더링 필요/명시 요구 시만) 미사용.
-  // 조립부(assemble-builtin-tools) 하위호환을 위해 선택적으로만 남긴다.
+  // 종합 리포트를 markdown 아티팩트로 저장하는 포트. 리포트가 claude.ai 기준(유의미·자립>15줄)을
+  // 충족하면 우측 아티팩트 패널에 markdown 으로 승격한다(artifact_create 와 동일 조건). 짧은 리포트나
+  // da 미주입 시엔 본문 report 로 폴백(비파괴). 큰 리포트(인라인 저장 한도 초과)는 s3Store 가 없으므로
+  // 승격하지 않고 본문 report 로 폴백한다.
   da?: ArtifactDataAccess;
   // 하위 질문 개수 상한(effort cap) — 무제한 fan-out 방지. 기본 4.
   maxSubQuestions?: number;
@@ -125,7 +131,7 @@ async function resolveDeepResearchSettings(
 export const deepResearchToolSpec: AgentToolSpec = {
   name: "deep_research",
   description:
-    "복잡한 리서치 질문을 하위 질문으로 분해해 병렬로 조사하고, 인용이 포함된 markdown 리포트로 종합한다. **중요: 리포트 전문(result.report)은 이 도구 카드에 이미 그대로 렌더되어 사용자에게 보인다. 따라서 리포트 내용을 답변에 다시 옮겨 적지 말 것(중복 방지). '아티팩트'·'우측 패널'도 언급하지 말 것. 답변은 '조사를 마쳤고 아래 리포트를 참고하라'는 취지의 한두 문장으로 짧게 끝내라.**",
+    "복잡한 리서치 질문을 하위 질문으로 분해해 병렬로 조사하고, 인용이 포함된 markdown 리포트로 종합한다. **중요: 리포트는 우측 아티팩트 패널에 markdown 으로 렌더되어 사용자에게 보인다(짧은 결과는 도구 카드 본문에 표시). 따라서 리포트 전문을 답변에 다시 옮겨 적지 말 것(중복 방지). 답변은 '조사를 마쳤으니 리포트를 참고하라'는 취지의 한두 문장으로 짧게 끝내라.**",
   inputSchema: {
     type: "object",
     properties: { query: { type: "string" } },
@@ -527,14 +533,23 @@ export function createDeepResearchTool(deps: DeepResearchToolDeps): AgentTool {
         label: "완료",
         tasks: tasks.map((t) => ({ ...t })),
       });
+
+      // claude.ai 와 동일 조건: 리포트가 유의미·자립적(>15줄 등)이면 markdown 아티팩트로 승격해
+      // 우측 패널에 렌더하고(artifact_create 와 같은 duck-typed { artifact } 관례로 orchestrator 가
+      // artifact_created 로 펼친다), 본문 report 는 비운다(중복 방지). 짧은/degraded 리포트, da 미주입,
+      // 인라인 저장 한도 초과(s3 필요) 시엔 본문 report 로 폴백한다(비파괴, L2 — 실패해도 결과는 준다).
+      const artifact = await maybeCreateReportArtifact(
+        finalText,
+        query,
+        deps,
+        ctx,
+      );
       return {
         toolCallId,
         content: {
           kind: "json",
           data: {
-            // 종합 리포트(markdown) 를 본문에 그대로 렌더한다 — 아티팩트로 밀어넣지 않는다(정책:
-            // 아티팩트는 HTML 등 렌더링 필요/명시 요구 시만). 클라 ToolCallRenderer 가 <Markdown> 렌더.
-            report: finalText,
+            ...(artifact ? { artifact } : { report: finalText }),
             citations,
             // 하위질문별 출처(전역 인덱스) — 클라 WorkerCard 펼침에서 사용(duck-typed json 추가 필드).
             subQuestions: subQuestionBreakdown,
@@ -546,4 +561,64 @@ export function createDeepResearchTool(deps: DeepResearchToolDeps): AgentTool {
       };
     },
   };
+}
+
+interface ReportArtifactPayload {
+  artifactId: string;
+  artifactKind: string;
+  filename: string;
+  sizeBytes: number;
+  downloadUrl: string;
+}
+
+// query 로부터 사람이 읽을 만한 markdown 파일명을 만든다(파일시스템/URL 안전 문자만, 40자 상한).
+function deepResearchFilename(query: string): string {
+  const base = query
+    .trim()
+    .replace(/\s+/g, " ")
+    .replace(/[/\\?%*:|"<>]/g, "")
+    .slice(0, 40)
+    .trim();
+  return `${base || "deep-research"}.md`;
+}
+
+// 리포트를 markdown 아티팩트로 승격할지 결정하고, 그렇다면 생성해 payload 를 돌려준다.
+//   승격 조건(전부 충족): da 주입 + isSubstantialContent(claude.ai 기준) + 인라인 저장 가능 크기.
+//   생성 실패는 throw 하지 않고 undefined 로 폴백해 호출부가 본문 report 로 렌더한다(L2 fail-soft).
+async function maybeCreateReportArtifact(
+  finalText: string,
+  query: string,
+  deps: DeepResearchToolDeps,
+  ctx: ToolContext,
+): Promise<ReportArtifactPayload | undefined> {
+  if (!deps.da || !isSubstantialContent(finalText)) return undefined;
+  const data = Buffer.from(finalText, "utf-8");
+  // s3Store 를 주입받지 않으므로 인라인 저장 한도를 넘는 대형 리포트는 승격하지 않는다(본문 폴백).
+  if (decideStorageKind(data.byteLength) !== "inline") return undefined;
+  try {
+    const service = createArtifactService(deps.da);
+    const record = await service.createArtifact(
+      { userId: ctx.userId },
+      {
+        sessionId: ctx.sessionId,
+        type: "markdown",
+        filename: deepResearchFilename(query),
+        data,
+      },
+    );
+    return {
+      artifactId: record.id,
+      artifactKind: record.type,
+      filename: record.filename,
+      sizeBytes: record.sizeBytes,
+      downloadUrl: `/api/v1/artifacts/${record.id}/content`,
+    };
+  } catch (error) {
+    ctx.logger?.warn({
+      category: "system",
+      msg: "deep_research 리포트 아티팩트 생성 실패 — 본문 report 로 폴백",
+      context: { error: String(error) },
+    });
+    return undefined;
+  }
 }

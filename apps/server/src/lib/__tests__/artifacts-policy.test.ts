@@ -1,7 +1,9 @@
 import { describe, it, expect } from "vitest";
 import {
   ARTIFACTS_POLICY,
+  ARTIFACT_MIN_LINES,
   buildArtifactsPolicyBlock,
+  isSubstantialContent,
 } from "../artifacts-policy.js";
 
 describe("artifacts-policy (claude.ai <artifacts_info> 이식)", () => {
@@ -39,5 +41,28 @@ describe("artifacts-policy (claude.ai <artifacts_info> 이식)", () => {
 
   it("사용자가 스캔할 헤더 마커('아티팩트 사용 지침')를 포함한다", () => {
     expect(ARTIFACTS_POLICY).toContain("아티팩트 사용 지침");
+  });
+});
+
+describe("isSubstantialContent (프로그램적 아티팩트 승격에 쓰는 동일 기준 — deep_research 등)", () => {
+  it("ARTIFACT_MIN_LINES 는 claude.ai '보통 15줄' 휴리스틱과 동일하다", () => {
+    expect(ARTIFACT_MIN_LINES).toBe(15);
+  });
+
+  it("15줄을 넘으면 substantial(=아티팩트 승격)", () => {
+    const long = Array.from({ length: 20 }, (_, i) => `- 항목 ${i}`).join("\n");
+    expect(isSubstantialContent(long)).toBe(true);
+  });
+
+  it("줄 수가 적어도 길이가 충분히 길면 substantial", () => {
+    expect(isSubstantialContent("가".repeat(1300))).toBe(true);
+  });
+
+  it("짧고 몇 줄뿐이면 not substantial(본문 인라인 유지)", () => {
+    expect(isSubstantialContent("## 제목\n한 줄 요약.")).toBe(false);
+  });
+
+  it("빈/공백 문자열은 not substantial", () => {
+    expect(isSubstantialContent("   \n  ")).toBe(false);
   });
 });
