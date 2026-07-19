@@ -125,7 +125,7 @@ async function resolveDeepResearchSettings(
 export const deepResearchToolSpec: AgentToolSpec = {
   name: "deep_research",
   description:
-    "복잡한 리서치 질문을 하위 질문으로 분해해 병렬로 조사하고, 인용이 포함된 markdown 리포트 아티팩트로 종합한다.",
+    "복잡한 리서치 질문을 하위 질문으로 분해해 병렬로 조사하고, 인용이 포함된 markdown 리포트로 종합한다. **중요: 리포트 전문(result.report)은 이 도구 카드에 이미 그대로 렌더되어 사용자에게 보인다. 따라서 리포트 내용을 답변에 다시 옮겨 적지 말 것(중복 방지). '아티팩트'·'우측 패널'도 언급하지 말 것. 답변은 '조사를 마쳤고 아래 리포트를 참고하라'는 취지의 한두 문장으로 짧게 끝내라.**",
   inputSchema: {
     type: "object",
     properties: { query: { type: "string" } },
