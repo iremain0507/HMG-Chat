@@ -114,6 +114,8 @@ describe("ArtifactCanvas", () => {
     const resizer = screen.getByTestId("artifact-panel-resizer");
     // 좌측 핸들을 왼쪽으로 100px 끌면 폭이 +100 된다(pointer=마우스/터치 공통).
     // jsdom 은 PointerEvent 의 clientX 를 흘리므로 clientX 를 담는 MouseEvent 로 pointer 타입을 발화.
+    // setPointerCapture 로 이후 이벤트가 핸들 자신으로 오므로(터치 암시적 캡처와 동일 경로),
+    // pointermove/up 은 window 가 아니라 resizer 에 디스패치한다.
     act(() => {
       resizer.dispatchEvent(
         new MouseEvent("pointerdown", {
@@ -124,8 +126,10 @@ describe("ArtifactCanvas", () => {
       );
     });
     act(() => {
-      window.dispatchEvent(new MouseEvent("pointermove", { clientX: 500 }));
-      window.dispatchEvent(new MouseEvent("pointerup", {}));
+      resizer.dispatchEvent(
+        new MouseEvent("pointermove", { clientX: 500, bubbles: true }),
+      );
+      resizer.dispatchEvent(new MouseEvent("pointerup", { bubbles: true }));
     });
 
     expect(panel.style.getPropertyValue("--artifact-panel-width")).toBe(
