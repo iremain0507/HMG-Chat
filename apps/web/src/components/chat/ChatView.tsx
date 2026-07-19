@@ -45,7 +45,7 @@ import { RunRail, type RunRailStep } from "./RunRail";
 import { Reasoning } from "./Reasoning";
 import { ShareExportMenu } from "./ShareExportMenu";
 import { ToolCallRenderer } from "./ToolCallRenderer";
-import { ArrowDown } from "lucide-react";
+import { ArrowDown, ChevronDown } from "lucide-react";
 
 const SLASH_COMMANDS: SlashCommand[] = [
   { id: "memories", label: "memories", description: "저장된 메모리 보기" },
@@ -66,6 +66,8 @@ const TOOL_MENTION_META: Record<
 
 const BOTTOM_THRESHOLD_PX = 80;
 const ANNOUNCE_DEBOUNCE_MS = 500;
+// 출처(Reference) 기본 노출 개수 — 그 이상은 접고 토글로 펼친다(deep_research 는 수십 개라 길다).
+const CITATION_COLLAPSE_COUNT = 5;
 
 const SUGGESTIONS = [
   "프로젝트 요약해줘",
@@ -827,6 +829,7 @@ export function MessageItem({
   onDelete?: () => void;
 }) {
   const [focusedCitation, setFocusedCitation] = useState<number | null>(null);
+  const [citationsExpanded, setCitationsExpanded] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [draft, setDraft] = useState(content);
   const editTextareaRef = useRef<HTMLTextAreaElement>(null);
@@ -1076,7 +1079,10 @@ export function MessageItem({
           >
             <div className="font-semibold text-fg">Reference</div>
             <ul className="mt-1 space-y-1">
-              {citations.map((c, i) => (
+              {(citationsExpanded
+                ? citations
+                : citations.slice(0, CITATION_COLLAPSE_COUNT)
+              ).map((c, i) => (
                 <li
                   // deep_research 는 하위 질문별 인용을 합쳐 index 가 중복될 수 있어(예: 1,1)
                   //   React key 는 위치 기반으로 유니크하게 준다. (전역 재번호는 서버 후속.)
@@ -1091,6 +1097,25 @@ export function MessageItem({
                 </li>
               ))}
             </ul>
+            {citations.length > CITATION_COLLAPSE_COUNT && (
+              <button
+                type="button"
+                data-testid="citation-toggle"
+                aria-expanded={citationsExpanded}
+                onClick={() => setCitationsExpanded((v) => !v)}
+                className="mt-1.5 inline-flex items-center gap-1 rounded px-1 py-0.5 font-medium text-primary hover:bg-primary/10"
+              >
+                {citationsExpanded
+                  ? "출처 접기"
+                  : `출처 ${citations.length - CITATION_COLLAPSE_COUNT}개 더 보기`}
+                <ChevronDown
+                  size={13}
+                  strokeWidth={2}
+                  aria-hidden="true"
+                  className={citationsExpanded ? "rotate-180" : ""}
+                />
+              </button>
+            )}
           </div>
         )}
         {streaming && !content && !hasToolParts && (

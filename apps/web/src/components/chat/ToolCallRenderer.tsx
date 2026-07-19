@@ -12,6 +12,7 @@ import type {
 } from "../../hooks/useSessionStream";
 import { StatusChip } from "./StatusChip";
 import { WorkerCard } from "./ActivityPanel";
+import { Markdown } from "./Markdown";
 
 const LARGE_PAYLOAD_CHARS = 400;
 
@@ -72,6 +73,8 @@ interface ResearchResult {
   message?: string;
   citations?: Citation[];
   artifact?: ResearchArtifact;
+  // deep_research 종합 리포트(markdown) — 아티팩트가 아니라 본문에 그대로 렌더한다.
+  report?: string;
   // 하위질문별 출처(서버 duck-typed json 추가 필드) — 서브에이전트 펼침에서 출처 목록 표시.
   subQuestions?: ResearchSubQuestion[];
 }
@@ -88,10 +91,14 @@ function parseResearchResult(result: unknown): ResearchResult | null {
     typeof r.artifact === "object" &&
     !Array.isArray(r.artifact);
   const hasShape =
-    Array.isArray(r.citations) || hasArtifact || typeof r.message === "string";
+    Array.isArray(r.citations) ||
+    hasArtifact ||
+    typeof r.message === "string" ||
+    typeof r.report === "string";
   if (!hasShape) return null;
   return {
     ...(typeof r.message === "string" ? { message: r.message } : {}),
+    ...(typeof r.report === "string" ? { report: r.report } : {}),
     ...(Array.isArray(r.citations)
       ? { citations: r.citations as Citation[] }
       : {}),
@@ -322,6 +329,14 @@ export function ToolCallRenderer({
             <div className="space-y-2">
               {research.message && (
                 <div className="text-xs text-fg-muted">{research.message}</div>
+              )}
+              {research.report && (
+                <div
+                  data-testid="research-report"
+                  className="rounded-lg border border-border bg-bg p-3 text-sm"
+                >
+                  <Markdown>{research.report}</Markdown>
+                </div>
               )}
               {research.citations && research.citations.length > 0 && (
                 <div>

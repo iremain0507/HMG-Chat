@@ -1682,6 +1682,76 @@ describe("ChatView", () => {
     expect(sourceItem).toHaveTextContent("manual.pdf");
   });
 
+  it("Reference 는 기본 5개만 보이고 나머지는 토글로 접고 펼친다(deep_research 긴 출처)", async () => {
+    const encoder = new TextEncoder();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({
+        body: new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.enqueue(
+              encoder.encode(sseFrame("message_start", { messageId: "msg-1" })),
+            );
+            controller.enqueue(
+              encoder.encode(
+                sseFrame("text_delta", { text: "조사 결과입니다." }),
+              ),
+            );
+            for (let n = 1; n <= 7; n += 1) {
+              controller.enqueue(
+                encoder.encode(
+                  sseFrame("citation", {
+                    index: n,
+                    source: "web",
+                    filename: `src-${n}.com`,
+                    snippet: `내용 ${n}`,
+                  }),
+                ),
+              );
+            }
+            controller.enqueue(
+              encoder.encode(sseFrame("stop", { reason: "end_turn" })),
+            );
+            controller.close();
+          },
+        }),
+      })),
+    );
+
+    render(<ChatView sessionId="session-1" />);
+    fireEvent.change(screen.getByLabelText("메시지 입력"), {
+      target: { value: "조사해줘" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "전송" }));
+
+    // 기본: 처음 5개만 노출, 6·7번은 숨김.
+    await waitFor(() => {
+      expect(screen.getByTestId("citation-ref-5")).toBeInTheDocument();
+    });
+    expect(screen.queryByTestId("citation-ref-6")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("citation-ref-7")).not.toBeInTheDocument();
+
+    // 토글: "출처 2개 더 보기" → 전체 노출.
+    const toggle = screen.getByTestId("citation-toggle");
+    expect(toggle).toHaveTextContent("출처 2개 더 보기");
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
+    fireEvent.click(toggle);
+
+    expect(screen.getByTestId("citation-ref-6")).toBeInTheDocument();
+    expect(screen.getByTestId("citation-ref-7")).toBeInTheDocument();
+    expect(screen.getByTestId("citation-toggle")).toHaveTextContent(
+      "출처 접기",
+    );
+    expect(screen.getByTestId("citation-toggle")).toHaveAttribute(
+      "aria-expanded",
+      "true",
+    );
+
+    // 다시 접으면 5개로.
+    fireEvent.click(screen.getByTestId("citation-toggle"));
+    expect(screen.queryByTestId("citation-ref-6")).not.toBeInTheDocument();
+  });
+
   it("우패널 출처 하이라이트는 클릭 2초 후 자동으로 사라진다(primary-100 페이드)", async () => {
     const encoder = new TextEncoder();
     vi.stubGlobal(

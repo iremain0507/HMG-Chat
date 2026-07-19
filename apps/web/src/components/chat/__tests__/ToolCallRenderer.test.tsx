@@ -78,7 +78,7 @@ describe("ToolCallRenderer", () => {
     expect(screen.getByText(/병렬/)).toBeInTheDocument();
   });
 
-  it("deep_research 완료 결과는 raw JSON 대신 References·리포트 카드로 구조화한다", () => {
+  it("deep_research 완료 결과는 raw JSON 대신 References + 리포트를 본문에 마크다운으로 렌더한다(아티팩트 아님)", () => {
     const result = {
       message: "4개 하위 질문을 조사해 리포트로 종합했습니다.",
       citations: [
@@ -99,13 +99,8 @@ describe("ToolCallRenderer", () => {
           sourceUri: "https://reuters.com/y",
         },
       ],
-      artifact: {
-        artifactId: "a1",
-        artifactKind: "markdown",
-        filename: "deep-research-call-1.md",
-        sizeBytes: 4096,
-        downloadUrl: "/api/v1/artifacts/a1/content",
-      },
+      // 종합 리포트는 아티팩트가 아니라 본문에 마크다운으로 렌더된다.
+      report: "## 다크팩토리 종합\n완전 무인 공장이다 [1][2].",
     };
     render(
       <ToolCallRenderer
@@ -118,12 +113,12 @@ describe("ToolCallRenderer", () => {
     );
     fireEvent.click(screen.getByRole("button", { name: /deep_research/ }));
     expect(screen.getByText("HMGMA 자동화 라인")).toBeInTheDocument();
-    expect(screen.getByText("deep-research-call-1.md")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /열기/ })).toHaveAttribute(
-      "href",
-      "/api/v1/artifacts/a1/content",
-    );
-    expect(screen.queryByText(/"artifactId"/)).not.toBeInTheDocument();
+    // 리포트가 본문에 마크다운(제목/본문)으로 렌더된다.
+    const report = screen.getByTestId("research-report");
+    expect(report).toHaveTextContent("다크팩토리 종합");
+    expect(report).toHaveTextContent("완전 무인 공장이다");
+    // raw JSON 노출 없음.
+    expect(screen.queryByText(/"citations"/)).not.toBeInTheDocument();
   });
 
   it("image_generate 결과(artifactKind=image)는 생성 이미지를 인라인 <img> 로 표시한다(P22-T1-08)", () => {

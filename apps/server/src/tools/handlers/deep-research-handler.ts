@@ -27,10 +27,7 @@ import {
   matchCitations,
   type Citation,
 } from "../../knowledge/citation-helper.js";
-import {
-  createArtifactService,
-  type ArtifactDataAccess,
-} from "../../db/artifact-service.js";
+import type { ArtifactDataAccess } from "../../db/artifact-service.js";
 import type { ResolvedOrgSettings } from "../../lib/org-settings-schema.js";
 
 export const DEFAULT_MAX_SUB_QUESTIONS = 4;
@@ -59,7 +56,10 @@ export interface DeepResearchToolDeps {
   // settings 미주입/조회 실패/org 미설정 시 fail-soft 폴백(항상 DEFAULT_ORG_SETTINGS.toolMaxTokens
   // 와 동일값 유지 — 21-LOOP-LESSONS.md L2).
   maxTokens: number;
-  da: ArtifactDataAccess;
+  // (구) 종합 리포트를 markdown 아티팩트로 저장할 때 쓰던 포트. 이제 리포트는 본문에 렌더하고
+  // 아티팩트는 만들지 않으므로(정책: 아티팩트는 HTML 등 렌더링 필요/명시 요구 시만) 미사용.
+  // 조립부(assemble-builtin-tools) 하위호환을 위해 선택적으로만 남긴다.
+  da?: ArtifactDataAccess;
   // 하위 질문 개수 상한(effort cap) — 무제한 fan-out 방지. 기본 4.
   maxSubQuestions?: number;
   // gap 반성/재검색 라운드 hard cap(MAST 종료조건 가드) — 기본 2.
@@ -325,7 +325,6 @@ function remapFindingCitations(findings: ResearchFinding[]): {
 export function createDeepResearchTool(deps: DeepResearchToolDeps): AgentTool {
   const maxSubQuestions = deps.maxSubQuestions ?? DEFAULT_MAX_SUB_QUESTIONS;
   const maxGapIterations = deps.maxGapIterations ?? DEFAULT_MAX_GAP_ITERATIONS;
-  const service = createArtifactService(deps.da);
 
   return {
     spec: deepResearchToolSpec,
@@ -493,16 +492,6 @@ export function createDeepResearchTool(deps: DeepResearchToolDeps): AgentTool {
         unmatchedIndexes,
       );
 
-      const record = await service.createArtifact(
-        { userId: ctx.userId },
-        {
-          sessionId: ctx.sessionId,
-          type: "markdown",
-          filename: `deep-research-${toolCallId}.md`,
-          data: Buffer.from(finalText, "utf-8"),
-        },
-      );
-
       ctx.emitProgress?.({
         stage: "done",
         label: "완료",
@@ -513,13 +502,9 @@ export function createDeepResearchTool(deps: DeepResearchToolDeps): AgentTool {
         content: {
           kind: "json",
           data: {
-            artifact: {
-              artifactId: record.id,
-              artifactKind: record.type,
-              filename: record.filename,
-              sizeBytes: record.sizeBytes,
-              downloadUrl: `/api/v1/artifacts/${record.id}/content`,
-            },
+            // 종합 리포트(markdown) 를 본문에 그대로 렌더한다 — 아티팩트로 밀어넣지 않는다(정책:
+            // 아티팩트는 HTML 등 렌더링 필요/명시 요구 시만). 클라 ToolCallRenderer 가 <Markdown> 렌더.
+            report: finalText,
             citations,
             // 하위질문별 출처(전역 인덱스) — 클라 WorkerCard 펼침에서 사용(duck-typed json 추가 필드).
             subQuestions: subQuestionBreakdown,

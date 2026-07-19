@@ -383,19 +383,17 @@ describe("createDeepResearchTool", () => {
       throw new Error("json content 를 기대함");
     const data = result.content.data as {
       message: string;
-      artifact: { artifactId: string };
+      report: string;
       subQuestions: unknown[];
     };
     // degraded 메시지 + 하위질문별 출처 유지.
     expect(data.message).toContain("조사 원문");
     expect(data.subQuestions.length).toBeGreaterThan(0);
-    // 아티팩트에 종합 대신 findings 원문(### 하위질문 섹션)이 폴백되어 저장된다.
-    const stored = await da.artifacts.byId(data.artifact.artifactId);
-    expect(stored?.inlineContent?.toString("utf-8")).toContain("###");
+    // 리포트(본문 렌더)에 종합 대신 findings 원문(### 하위질문 섹션)이 폴백된다(아티팩트 미생성).
+    expect(data.report).toContain("###");
   });
 
-  it("plan→병렬 researcher→종합 후 인용이 포함된 markdown 아티팩트를 생성하고, 존재하지 않는 인용 마커[99]는 drop 한다(gapCheck COMPLETE 로 1회 종합에 종료)", async () => {
-    const da = fakeArtifactDa();
+  it("plan→병렬 researcher→종합 후 인용이 포함된 리포트를 본문에 반환하고, 존재하지 않는 인용 마커[99]는 drop 한다(gapCheck COMPLETE 로 1회 종합에 종료)", async () => {
     const tool = createDeepResearchTool({
       leadProvider: fakeLeadProvider({
         plannerResponse: "- 질문 A\n- 질문 B",
@@ -408,7 +406,6 @@ describe("createDeepResearchTool", () => {
       workerModel: "fake-worker-model",
       workerTools: [fakeWorkerTool()],
       maxTokens: 512,
-      da,
     });
 
     const result = await tool.invoke({
@@ -421,20 +418,16 @@ describe("createDeepResearchTool", () => {
       throw new Error("json content 를 기대함");
     }
     const data = result.content.data as {
-      artifact: {
-        artifactId: string;
-        artifactKind: string;
-        filename: string;
-        sizeBytes: number;
-        downloadUrl: string;
-      };
+      report: string;
+      artifact?: unknown;
       citations: unknown[];
       message: string;
       subQuestions: { title: string; citations: { index: number }[] }[];
     };
 
-    expect(data.artifact.artifactKind).toBe("markdown");
-    expect(data.artifact.sizeBytes).toBeGreaterThan(0);
+    // 리포트는 본문 렌더용으로 반환하고 아티팩트는 만들지 않는다(정책).
+    expect(data.artifact).toBeUndefined();
+    expect(data.report).toContain("## 종합 리포트");
     // 2개 sub-question 각각 researcher 가 citation 1개씩 반환 → 전역 재번호 2개.
     expect(data.citations).toHaveLength(2);
     // #3 — 하위질문별 출처(전역 인덱스)를 결과에 포함해 서브에이전트 펼침에서 표시.
@@ -442,11 +435,10 @@ describe("createDeepResearchTool", () => {
     expect(data.subQuestions[0]!.citations.map((c) => c.index)).toEqual([1]);
     expect(data.subQuestions[1]!.citations.map((c) => c.index)).toEqual([2]);
 
-    const stored = await da.artifacts.byId(data.artifact.artifactId);
-    const storedText = stored?.inlineContent?.toString("utf-8") ?? "";
-    expect(storedText).toContain("[1]");
-    expect(storedText).toContain("[2]");
-    expect(storedText).not.toContain("[99]");
+    // 인용 마커: 존재하는 [1][2]는 유지, 근거 없는 [99]는 drop.
+    expect(data.report).toContain("[1]");
+    expect(data.report).toContain("[2]");
+    expect(data.report).not.toContain("[99]");
   });
 
   it("P15-T2-02: org settings.resolve 의 toolMaxTokens 가 설정되면 sub-turn 이 정적 deps.maxTokens 대신 그 값을 사용한다", async () => {
@@ -585,8 +577,8 @@ describe("createDeepResearchTool", () => {
     // maxGapIterations=2 → gapCheck 는 최대 1회만 호출되고(마지막 라운드는 gapCheck 생략) 종료.
     expect(gapCheckCalls).toBe(1);
     const data = result.content.data as {
-      artifact: { sizeBytes: number };
+      report: string;
     };
-    expect(data.artifact.sizeBytes).toBeGreaterThan(0);
+    expect(data.report.length).toBeGreaterThan(0);
   });
 });

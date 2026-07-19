@@ -222,20 +222,25 @@ export function ArtifactCanvas({
     };
   }, [tab, active, codeContent]);
 
-  function onResizeHandleMouseDown(e: React.MouseEvent) {
+  // pointer 이벤트로 마우스+터치(iPad 등)를 함께 지원한다. 핸들에 touch-action:none 을 줘
+  // 드래그 중 페이지 스크롤이 개입하지 않게 하고, window 리스너로 포인터가 핸들을 벗어나도
+  // 부드럽게 따라오게 한다. 좌측 핸들을 왼쪽으로 끌면 패널이 넓어진다.
+  function onResizeHandlePointerDown(e: React.PointerEvent) {
     e.preventDefault();
     const startX = e.clientX;
     const startWidth = width;
-    function onMove(moveEvent: MouseEvent) {
+    function onMove(moveEvent: PointerEvent) {
       const next = startWidth - (moveEvent.clientX - startX);
       setWidth(Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, next)));
     }
     function onUp() {
-      window.removeEventListener("mousemove", onMove);
-      window.removeEventListener("mouseup", onUp);
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+      window.removeEventListener("pointercancel", onUp);
     }
-    window.addEventListener("mousemove", onMove);
-    window.addEventListener("mouseup", onUp);
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+    window.addEventListener("pointercancel", onUp);
   }
 
   if (!hasContent) return null;
@@ -253,9 +258,17 @@ export function ArtifactCanvas({
       <button
         type="button"
         aria-label="패널 크기 조절"
-        onMouseDown={onResizeHandleMouseDown}
-        className="absolute inset-y-0 left-0 hidden w-1 cursor-col-resize border-0 bg-transparent p-0 hover:bg-primary/30 md:block"
-      />
+        data-testid="artifact-panel-resizer"
+        onPointerDown={onResizeHandlePointerDown}
+        style={{ touchAction: "none" }}
+        className="group absolute inset-y-0 left-0 z-10 hidden w-4 -translate-x-1/2 cursor-col-resize items-center justify-center border-0 bg-transparent p-0 md:flex"
+      >
+        {/* 항상 보이는 옅은 그립(hover/드래그 시 primary) — 터치기기엔 hover 가 없으므로 기본 노출. */}
+        <span
+          aria-hidden="true"
+          className="h-12 w-1 rounded-full bg-border transition-colors group-hover:bg-primary group-active:bg-primary"
+        />
+      </button>
 
       <span
         aria-hidden="true"
