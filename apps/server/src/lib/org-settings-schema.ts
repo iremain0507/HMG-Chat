@@ -48,6 +48,13 @@ export const OrgSettingsSchema = z.object({
   webSearchEndpoint: z.string().max(500).optional(),
   webSearchApiKeyRef: z.string().max(200).optional(),
 
+  // Deep Research (멀티에이전트) — deep_research 툴이 invoke 시점에 org-scoped 로 읽는다
+  // (toolMaxTokens 와 동일 패턴, deep-research-handler.ts). 미설정 org 는 기본값(4/2)으로 동작.
+  //   deepResearchMaxSubQuestions: planner 가 분해하는 하위 질문(= 병렬 조사 에이전트) 최대 개수.
+  //   deepResearchMaxGapIterations: 1차 종합 후 "부족한 부분 추가 조사→재종합" 반성 루프 최대 횟수(0=끔).
+  deepResearchMaxSubQuestions: z.number().int().min(1).max(10).optional(),
+  deepResearchMaxGapIterations: z.number().int().min(0).max(5).optional(),
+
   // Media — P22-T1-08: image_generate 도구 org 게이트. false 면 핸들러가 invoke 시점에
   // IMAGE_GEN_DISABLED 로 거절한다(admin 설정에서 토글, webSearchEnabled 와 동일 패턴).
   imageGenEnabled: z.boolean().optional(),
@@ -176,6 +183,10 @@ export const DEFAULT_ORG_SETTINGS: ResolvedOrgSettings = {
   webSearchProvider: "dev-stub",
   webSearchEndpoint: "",
   webSearchApiKeyRef: "",
+
+  // deep_research 기본: 하위 질문(병렬 에이전트) 최대 4, 반성(gap 재조사) 최대 2회 — 현행 하드코딩 값 보존.
+  deepResearchMaxSubQuestions: 4,
+  deepResearchMaxGapIterations: 2,
 
   imageGenEnabled: false,
 

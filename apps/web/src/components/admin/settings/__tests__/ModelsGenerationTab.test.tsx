@@ -21,6 +21,8 @@ const VALUE = {
   defaultModel: "claude-sonnet-5",
   systemPrompt: "",
   toolMaxTokens: 4096,
+  deepResearchMaxSubQuestions: 4,
+  deepResearchMaxGapIterations: 2,
   ragTopK: 10,
   ragRrfK: 60,
   ragChunkSizeTokens: 800,
@@ -245,6 +247,38 @@ describe("ModelsGenerationTab", () => {
     expect(
       screen.getByTestId("admin-settings-maxTokens-error"),
     ).toHaveTextContent("1~128,000");
+  });
+
+  it("딥리서치 설정(하위 질문 수·반성 횟수)을 설명과 함께 렌더하고 onChange 로 전달한다", () => {
+    const onChange = vi.fn();
+    render(
+      <ModelsGenerationTab
+        value={VALUE}
+        errors={{}}
+        orgAllowedModels={[]}
+        onChange={onChange}
+      />,
+    );
+
+    const subQ = screen.getByTestId(
+      "admin-settings-deepResearchMaxSubQuestions",
+    );
+    expect(subQ).toHaveValue(4);
+    fireEvent.change(subQ, { target: { value: "6" } });
+    expect(onChange).toHaveBeenCalledWith({ deepResearchMaxSubQuestions: 6 });
+
+    const gap = screen.getByTestId(
+      "admin-settings-deepResearchMaxGapIterations",
+    );
+    expect(gap).toHaveValue(2);
+    fireEvent.change(gap, { target: { value: "3" } });
+    expect(onChange).toHaveBeenCalledWith({ deepResearchMaxGapIterations: 3 });
+
+    // 각 설정의 역할 설명(HINT)이 포함된다.
+    expect(
+      screen.getByText(/하위 질문으로 나눠 병렬 조사/),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/반성\(reflection\) 루프/)).toBeInTheDocument();
   });
 
   it("이미지 생성 토글(imageGenEnabled)을 렌더하고 클릭 시 onChange 로 반전 값을 전달한다(P22-T1-08)", () => {

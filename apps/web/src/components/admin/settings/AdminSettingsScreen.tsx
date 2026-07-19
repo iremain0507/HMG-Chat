@@ -59,6 +59,20 @@ function validateFields(s: AdminOrgSettings): AllErrors {
   ) {
     errors.toolMaxTokens = `1~${MAX_TOKENS_LIMIT.toLocaleString()} 사이의 정수를 입력하세요.`;
   }
+  if (
+    !Number.isInteger(s.deepResearchMaxSubQuestions) ||
+    s.deepResearchMaxSubQuestions < 1 ||
+    s.deepResearchMaxSubQuestions > 10
+  ) {
+    errors.deepResearchMaxSubQuestions = "1~10 사이의 정수를 입력하세요.";
+  }
+  if (
+    !Number.isInteger(s.deepResearchMaxGapIterations) ||
+    s.deepResearchMaxGapIterations < 0 ||
+    s.deepResearchMaxGapIterations > 5
+  ) {
+    errors.deepResearchMaxGapIterations = "0~5 사이의 정수를 입력하세요.";
+  }
   if (!Number.isInteger(s.ragTopK) || s.ragTopK < 1 || s.ragTopK > 100) {
     errors.ragTopK = "1~100 사이의 정수를 입력하세요.";
   }

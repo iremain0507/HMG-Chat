@@ -11,7 +11,15 @@ import { apiFetch } from "../../../lib/fetch-with-refresh";
 import { showToast } from "../../../lib/toast";
 
 export type ModelsGenerationErrors = Partial<
-  Record<"maxTokens" | "temperature" | "topP" | "toolMaxTokens", string>
+  Record<
+    | "maxTokens"
+    | "temperature"
+    | "topP"
+    | "toolMaxTokens"
+    | "deepResearchMaxSubQuestions"
+    | "deepResearchMaxGapIterations",
+    string
+  >
 >;
 
 export interface ModelsGenerationTabProps {
@@ -190,6 +198,65 @@ export function ModelsGenerationTab({
             className={ERROR_CLASS}
           >
             {errors.toolMaxTokens}
+          </span>
+        )}
+      </label>
+
+      {/* 딥리서치(멀티에이전트) — 병렬 조사 폭·반성 횟수. deep-research-handler 가 invoke 시점에
+          org-scoped 로 읽는다. 설명(HINT) 으로 각 설정의 역할을 안내한다. */}
+      <label className={`${LABEL_CLASS} sm:col-span-2`}>
+        딥리서치 하위 질문 수(deepResearchMaxSubQuestions)
+        <input
+          type="number"
+          data-testid="admin-settings-deepResearchMaxSubQuestions"
+          className={INPUT_CLASS}
+          value={value.deepResearchMaxSubQuestions}
+          onChange={(e) =>
+            onChange({
+              deepResearchMaxSubQuestions: parseNumberField(e.target.value),
+            })
+          }
+        />
+        <span className={HINT_CLASS}>
+          딥리서치가 질문을 몇 개의 하위 질문으로 나눠 병렬 조사할지 상한(1~10).
+          하위 질문마다 조사 에이전트 1개가 동시에 돕니다. 값이 클수록 더 폭넓게
+          조사하지만 비용·시간이 늘어납니다. 기본 4.
+        </span>
+        {errors.deepResearchMaxSubQuestions && (
+          <span
+            data-testid="admin-settings-deepResearchMaxSubQuestions-error"
+            className={ERROR_CLASS}
+          >
+            {errors.deepResearchMaxSubQuestions}
+          </span>
+        )}
+      </label>
+
+      <label className={`${LABEL_CLASS} sm:col-span-2`}>
+        딥리서치 반성(재조사) 횟수(deepResearchMaxGapIterations)
+        <input
+          type="number"
+          data-testid="admin-settings-deepResearchMaxGapIterations"
+          className={INPUT_CLASS}
+          value={value.deepResearchMaxGapIterations}
+          onChange={(e) =>
+            onChange({
+              deepResearchMaxGapIterations: parseNumberField(e.target.value),
+            })
+          }
+        />
+        <span className={HINT_CLASS}>
+          1차 종합 후 답변이 충분한지 스스로 점검해, 부족하면 빠진 부분을 추가로
+          조사하고 다시 종합하는 반성(reflection) 루프의 최대 반복 횟수(0~5).
+          0이면 반성 없이 1회만 종합합니다. 값이 클수록 완성도가 오르지만 시간이
+          늘어납니다. 기본 2.
+        </span>
+        {errors.deepResearchMaxGapIterations && (
+          <span
+            data-testid="admin-settings-deepResearchMaxGapIterations-error"
+            className={ERROR_CLASS}
+          >
+            {errors.deepResearchMaxGapIterations}
           </span>
         )}
       </label>

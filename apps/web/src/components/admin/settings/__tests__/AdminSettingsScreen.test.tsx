@@ -36,6 +36,8 @@ const SETTINGS = {
   defaultModel: "claude-sonnet-5",
   systemPrompt: "",
   toolMaxTokens: 4096,
+  deepResearchMaxSubQuestions: 4,
+  deepResearchMaxGapIterations: 2,
   ragTopK: 10,
   ragRrfK: 60,
   ragChunkSizeTokens: 800,

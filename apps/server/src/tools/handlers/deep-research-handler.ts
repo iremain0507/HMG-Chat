@@ -43,7 +43,19 @@ const DEEP_RESEARCH_TIMEOUT_MS = 300_000;
 // lib/settings-service.ts 를 직접 import 하지 않고 org-settings-schema.ts 의 ResolvedOrgSettings
 // 형태만 재사용).
 export interface ToolSettingsResolverPort {
-  resolve(orgId: string): Promise<Pick<ResolvedOrgSettings, "toolMaxTokens">>;
+  // 새 필드(deepResearch*)는 기존 fake/구현 하위호환을 위해 Partial 로 넓힌다 — 미제공 시
+  // 핸들러가 deps/DEFAULT 로 폴백한다.
+  resolve(
+    orgId: string,
+  ): Promise<
+    Pick<ResolvedOrgSettings, "toolMaxTokens"> &
+      Partial<
+        Pick<
+          ResolvedOrgSettings,
+          "deepResearchMaxSubQuestions" | "deepResearchMaxGapIterations"
+        >
+      >
+  >;
 }
 
 export interface DeepResearchToolDeps {
@@ -71,27 +83,42 @@ export interface DeepResearchToolDeps {
 
 // settings 미주입/조회 실패는 절대 throw 하지 않고 deps.maxTokens 로 fail-soft 한다
 // (messages.ts resolveSettingsSafely 와 동일 원칙, L2/L5).
-async function resolveToolMaxTokens(
+// deep_research 의 org-scoped 파라미터(토큰 예산·병렬 조사 폭·반성 횟수)를 invoke 시점에 한 번에
+// 해석한다. settings 미주입/조회 실패/미설정 필드는 정적 deps → 코드 DEFAULT 로 fail-soft(L2).
+interface ResolvedDeepResearchSettings {
+  maxTokens: number;
+  maxSubQuestions: number;
+  maxGapIterations: number;
+}
+async function resolveDeepResearchSettings(
   deps: DeepResearchToolDeps,
   orgId: string,
   logger: ToolContext["logger"] | undefined,
-): Promise<number> {
-  if (!deps.settings) return deps.maxTokens;
+): Promise<ResolvedDeepResearchSettings> {
+  const fallback: ResolvedDeepResearchSettings = {
+    maxTokens: deps.maxTokens,
+    maxSubQuestions: deps.maxSubQuestions ?? DEFAULT_MAX_SUB_QUESTIONS,
+    maxGapIterations: deps.maxGapIterations ?? DEFAULT_MAX_GAP_ITERATIONS,
+  };
+  if (!deps.settings) return fallback;
   try {
     const resolved = await deps.settings.resolve(orgId);
-    // ResolvedOrgSettings 의 각 필드는 zod `.optional()` 기반이라 Required<> 로도
-    // `| undefined` 가 남는다(messages.ts SAFE_DEFAULT_MAX_TOKENS 와 동일 TS 특성) —
-    // `??` 는 그 잔여 undefined 에 대한 최종 non-null 보강일 뿐, 정상 케이스는 항상
-    // DEFAULT_ORG_SETTINGS.toolMaxTokens(4096) 이상의 값을 갖는다.
-    return resolved.toolMaxTokens ?? deps.maxTokens;
+    // ResolvedOrgSettings 필드는 zod `.optional()` 기반이라 `??` 로 잔여 undefined 를 보강한다.
+    return {
+      maxTokens: resolved.toolMaxTokens ?? fallback.maxTokens,
+      maxSubQuestions:
+        resolved.deepResearchMaxSubQuestions ?? fallback.maxSubQuestions,
+      maxGapIterations:
+        resolved.deepResearchMaxGapIterations ?? fallback.maxGapIterations,
+    };
   } catch (error) {
     logger?.warn({
       category: "system",
-      msg: "deep_research: org settings resolve 실패 — 정적 deps.maxTokens 로 폴백",
+      msg: "deep_research: org settings resolve 실패 — 정적 deps 값으로 폴백",
       orgId,
       context: { error: String(error) },
     });
-    return deps.maxTokens;
+    return fallback;
   }
 }
 
@@ -323,8 +350,7 @@ function remapFindingCitations(findings: ResearchFinding[]): {
 }
 
 export function createDeepResearchTool(deps: DeepResearchToolDeps): AgentTool {
-  const maxSubQuestions = deps.maxSubQuestions ?? DEFAULT_MAX_SUB_QUESTIONS;
-  const maxGapIterations = deps.maxGapIterations ?? DEFAULT_MAX_GAP_ITERATIONS;
+  // maxSubQuestions/maxGapIterations 는 이제 invoke 시점에 org-scoped 로 해석한다(아래).
 
   return {
     spec: deepResearchToolSpec,
@@ -360,9 +386,10 @@ export function createDeepResearchTool(deps: DeepResearchToolDeps): AgentTool {
         signal: AbortSignal.any([baseCtx.signal, timeoutController.signal]),
       };
 
-      // P15-T2-02 — 정적 deps.maxTokens 를 조용히 쓰지 않도록 invoke 시점에 ctx.orgId 로
-      // org-scoped toolMaxTokens 를 조회(L1). settings 미주입/조회 실패 시 deps.maxTokens 유지.
-      const maxTokens = await resolveToolMaxTokens(deps, ctx.orgId, ctx.logger);
+      // P15-T2-02 + deep_research org 설정 — invoke 시점에 ctx.orgId 로 org-scoped 파라미터
+      // (토큰 예산·하위질문 수·반성 횟수)를 한 번에 조회(L1). 미주입/실패/미설정은 deps→DEFAULT 폴백.
+      const { maxTokens, maxSubQuestions, maxGapIterations } =
+        await resolveDeepResearchSettings(deps, ctx.orgId, ctx.logger);
 
       ctx.emitProgress?.({ stage: "planning", label: "조사 계획 수립 중" });
       const plannerText = await runIsolatedText(
@@ -426,8 +453,11 @@ export function createDeepResearchTool(deps: DeepResearchToolDeps): AgentTool {
       // 종합 실패 시 폴백용 — 이미 remap 된 findings 원문(하위질문별 텍스트+[N] 인용).
       let combinedFindings = "";
       let synthesisDegraded = false;
+      // 종합은 이 루프 안에서 이뤄지므로 최소 1라운드는 돌아야 한다(반성 0회여도 1회 종합).
+      // gapRounds=1 이면 종합 1회 후 gapCheck 없이 종료(반성 없음). org 설정 0 → 반성 없이 1회 종합.
+      const gapRounds = Math.max(1, maxGapIterations);
       try {
-        for (let iteration = 1; iteration <= maxGapIterations; iteration += 1) {
+        for (let iteration = 1; iteration <= gapRounds; iteration += 1) {
           const merged = remapFindingCitations(findings);
           citations = merged.citations;
           subQuestionBreakdown = merged.subQuestions;
@@ -443,7 +473,7 @@ export function createDeepResearchTool(deps: DeepResearchToolDeps): AgentTool {
 
           // hard cap 도달 — gapCheck 자체를 호출하지 않고 즉시 종료(MAST 종료조건 가드,
           // 응답 내용과 무관하게 무한루프를 원천 차단).
-          if (iteration === maxGapIterations) break;
+          if (iteration === gapRounds) break;
 
           const gapCheckText = await runIsolatedText(
             reportText,

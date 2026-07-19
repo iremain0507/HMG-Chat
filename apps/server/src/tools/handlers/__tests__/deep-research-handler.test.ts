@@ -493,6 +493,53 @@ describe("createDeepResearchTool", () => {
     }
   });
 
+  it("org 설정 deepResearchMaxSubQuestions/MaxGapIterations 로 병렬 조사 폭·반성 횟수를 org-scoped 로 덮는다", async () => {
+    let gapCheckCalls = 0;
+    const tool = createDeepResearchTool({
+      leadProvider: fakeLeadProvider({
+        // planner 가 4개를 제안해도 org 설정(2)로 하위 질문이 2개로 제한돼야 한다.
+        plannerResponse: "- 질문 A\n- 질문 B\n- 질문 C\n- 질문 D",
+        synthesisResponse: () => "리포트 [1]",
+        gapCheckResponse: () => {
+          gapCheckCalls += 1;
+          return "GAP: 더 조사 필요";
+        },
+      }),
+      leadModel: "fake-lead-model",
+      workerProvider: fakeWorkerProvider(),
+      workerModel: "fake-worker-model",
+      workerTools: [fakeWorkerTool()],
+      maxTokens: 512,
+      // 정적 deps 기본은 4/2 지만 org 설정이 2/0 으로 덮는다.
+      settings: {
+        async resolve() {
+          return {
+            toolMaxTokens: 512,
+            deepResearchMaxSubQuestions: 2,
+            deepResearchMaxGapIterations: 0,
+          };
+        },
+      },
+    });
+
+    const result = await tool.invoke({
+      toolCallId: "call-cfg",
+      args: { query: "리서치 목표" },
+      ctx: fakeToolContext(),
+    });
+    if (result.content.kind !== "json")
+      throw new Error("json content 를 기대함");
+    const data = result.content.data as {
+      report: string;
+      subQuestions: unknown[];
+    };
+    // 병렬 조사 폭: planner 4개 제안 → org 설정 2로 2개 제한.
+    expect(data.subQuestions).toHaveLength(2);
+    // 반성 0회: gapCheck 미호출이지만 리포트는 정상 1회 종합된다(빈 리포트 아님).
+    expect(gapCheckCalls).toBe(0);
+    expect(data.report.length).toBeGreaterThan(0);
+  });
+
   it("P15-T2-02: org settings 에 toolMaxTokens 가 없으면(미설정) 정적 deps.maxTokens(4096)를 그대로 사용한다(비파괴)", async () => {
     const capturedMaxTokens: number[] = [];
     const capturingWorkerProvider: LLMProvider = {

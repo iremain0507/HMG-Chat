@@ -11,6 +11,10 @@ export interface AdminOrgSettings {
   systemPrompt: string;
   toolMaxTokens: number;
 
+  // 딥리서치(멀티에이전트) — 병렬 조사 폭·반성 횟수(deep-research-handler 가 org-scoped 로 읽음).
+  deepResearchMaxSubQuestions: number;
+  deepResearchMaxGapIterations: number;
+
   ragTopK: number;
   ragRrfK: number;
   ragChunkSizeTokens: number;
